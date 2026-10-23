@@ -1,9 +1,9 @@
-import type { CommandInputMap, CommandContext, FactorOption, JobApplicableCategories, PortalOfferedProfile, ScopeRowReadModel } from "@nzi/contracts";
+import type { CommandInputMap, CommandContext, FactorOption, JobApplicableCategories, PortalOfferedProfile, ScopeQaReadiness, ScopeRowReadModel } from "@nzi/contracts";
 import { AuthorizationError, type PortalPrincipal } from "./auth";
 import { CommandValidationError, runPostgresCommand, scopeRowCreateHandler, scopeRowUpdateHandler, type CreateScopeRowResult, type StoredOutcome, type UpdateScopeRowResult } from "./postgresCommands";
 import { enabledHandler, type ScopeRowStateResult } from "./scopeRowState";
 import { clientCategoryGate, portalFacingProfile } from "./portalProfile";
-import { listJobApplicableCategories, listJobFactorOptions, listJobPurchasedGoodsCategories, listJobReportingMonths, listJobSites, listScopeRows } from "./readModels";
+import { getScopeQaReadiness, listJobApplicableCategories, listJobFactorOptions, listJobPurchasedGoodsCategories, listJobReportingMonths, listJobSites, listScopeRows } from "./readModels";
 import { listScopeRowAuditEvents } from "./scopeRowHistory";
 import { getPortalDataEntryAccess, type PortalDataEntryAccess } from "./portalAccess";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
@@ -130,6 +130,8 @@ export type PortalDataView = {
   access: PortalDataEntryAccess | null;
   /** The totals band (R2): the CRM's emissions read over the rows the client sees, all sites. */
   emissions: JobEmissions;
+  /** Review & QA (polish fix 5): the CRM's QA readiness over the rows the client sees — counts only, no identity. */
+  qa: ScopeQaReadiness;
   categories: JobApplicableCategories;
   rows: PortalScopeRow[];
   factors: FactorOption[];
@@ -177,9 +179,12 @@ export async function assemblePortalDataView(db: Queryable, organisationId: stri
     listScopeRows(db, jobId), listJobFactorOptions(db, jobId), listJobSites(db, jobId), listJobPurchasedGoodsCategories(db, jobId), listJobReportingMonths(db, jobId),
   ]);
   const categories = crm.categories.filter((category) => gate.shows(category.code, category.scope));
-  const emissions = await aggregateJobEmissions(db, { organisationId, jobId, siteId: null, rowIds: await visibleRowIds(db, clientId, jobId, rows) });
+  const visible = await visibleRowIds(db, clientId, jobId, rows);
+  const emissions = await aggregateJobEmissions(db, { organisationId, jobId, siteId: null, rowIds: visible });
+  // The CRM's own QA readiness, over the same rows (polish fix 5): read-only status for the client's Review & QA section.
+  const qa = await getScopeQaReadiness(db, jobId, visible);
   return {
-    profile, access, emissions,
+    profile, access, emissions, qa,
     // The CRM's own server metrics (entry count, tCO₂e, completeness), for the categories the client sees — never recomputed.
     categories: { audience: "portal", includedScopes: crm.includedScopes.filter((scope) => categories.some((category) => category.scope === scope)), categories },
     rows: rows.filter((row) => gate.shows(categoryOf(row), row.scope)).map(clientFacingScopeRow),

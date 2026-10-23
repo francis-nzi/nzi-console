@@ -20,11 +20,9 @@
 /* Under the staff preview's sticky banner, the rail sticks below it rather than behind it. */
 .nzp-preview{--nzp-preview-offset:53px;min-height:calc(100vh - 53px)}
 .nzp-preview .nzp-rail{top:var(--nzp-preview-offset);height:calc(100vh - var(--nzp-preview-offset))}
-.nzp-logo{display:flex;align-items:center;gap:11px;padding:6px 8px 12px;color:inherit;text-decoration:none}
-.nzp-logo .mk{width:38px;height:38px;border-radius:10px;background:#fff;display:grid;place-items:center;flex:none}
-.nzp-logo .mk svg{width:25px;height:25px}
-.nzp-logo b{font-size:14px;color:#fff;font-weight:800;line-height:1.1;display:block}
-.nzp-logo .sub{font-size:10px;color:var(--nzp-rail-dim);font-weight:700;letter-spacing:.8px;text-transform:uppercase;margin-top:2px;display:block}
+/* The platform brand is the CRM rail's own (`.nz-brand`: the NZI lockup on its white plate, the wordmark beneath — polish
+   fix 3); only its spacing is fitted to this rail, which carries its own padding. */
+.nzp-rail .nzp-brand{padding:4px 6px 14px;margin-bottom:8px;border-bottom-color:#1d3147}
 .nzp-client{display:flex;align-items:center;gap:10px;margin:0 2px 6px;padding:9px 10px;border-radius:10px;background:#0b1622;border:1px solid #1d3147}
 .nzp-client .nz-logo-mark,.nzp-client .nzp-client-mark{width:30px;height:30px;border-radius:8px;flex:none}
 .nzp-client b{display:block;color:#fff;font-size:12.5px;font-weight:700;line-height:1.2;overflow-wrap:anywhere}
@@ -67,6 +65,10 @@
 /* The report workspace draws its own portal header and "← Reporting jobs" bar; inside the shell the rail is both. */
 /* The SRS maturity bullets are an SVG drawn to its container: in the wide pane, held to a readable size. */
 .nzp-app .nz-portal-readiness-charts > *{max-width:560px}
+/* Polish fix 1: the row drawer white, as the CRM's Editor is. The CRM overlay's scrim (`.nz-site-drawer::before`, z-index -1)
+   paints inside the drawer's own stacking context — above the drawer's background — so the body carries its own white surface,
+   filling the drawer; the scrim still dims the page behind. */
+.nz-site-drawer.nz-pdv-drawer .nz-pdv-drawer-b{background:#fff;flex:1 1 auto;min-height:0}
 /* The issued document is a fixed-width page: on a phone it scrolls in its own box, never the whole portal sideways. */
 .nzp-app .nz-portal-composed{max-width:100%;overflow-x:auto}
 .nzp-app .nz-published-workspace .nz-published-header,.nzp-app .nz-published-workspace .nz-portal-context{display:none}
@@ -138,7 +140,7 @@
   .nzp-rail,.nzp-preview .nzp-rail{position:static;height:auto;flex-direction:row;flex-wrap:wrap;align-items:center;padding:10px 12px;gap:4px}
   .nzp-navsec,.nzp-spacer,.nzp-railcard{display:none}
   .nzp-navitem{width:auto;padding:8px 10px}
-  .nzp-logo{width:100%;padding-bottom:6px}
+  .nzp-rail .nzp-brand{width:100%;padding-bottom:8px;margin-bottom:2px}
   .nzp-client{width:100%}
   .nzp-jobsel{width:100%}
   .nzp-content{padding:16px 16px 36px}

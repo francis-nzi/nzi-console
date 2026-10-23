@@ -12,7 +12,7 @@ import { getPortalDataView, getPortalJobEmissions, getPortalRowHistory } from ".
 import { readJobEmissions } from "../src/emissionsAggregation";
 import { getPortalAssuredDashboard } from "../src/portalAnalytics";
 import { getGrantedPortalReport, portalPublishedReportOf } from "../src/portalComposition";
-import { listGrantedPublishedCrpReports } from "../src/readModels";
+import { getScopeQaReadiness, listGrantedPublishedCrpReports } from "../src/readModels";
 import { getPortalPreview } from "../src/portalPreview";
 import { createPortalTrackerAction, getPortalActionTracker } from "../src/portalActions";
 import { addGrantedReportComment, addStaffReportComment, listGrantedReportComments } from "../src/portalReview";
@@ -149,6 +149,8 @@ describe("the staff portal preview, job-aware and grant-independent, against a r
       const client = await getPortalJobEmissions(database.pool, portal, MAIN, null);
       assert.equal(JSON.stringify(await getPortalJobEmissionsForStaff(database.pool, staff(), CLIENT, MAIN, null)), JSON.stringify(client));
       assert.equal(JSON.stringify(client.headline), JSON.stringify(view.emissions.headline), "the band's re-read agrees with the view's own");
+      // Unhidden, the client's QA readiness is the CRM's own for the job.
+      assert.deepEqual(view.qa, await read((db) => getScopeQaReadiness(db, MAIN)));
       // Unhidden, it is the CRM's read itself: one implementation, not a second.
       assert.equal(JSON.stringify(client.headline), JSON.stringify((await readJobEmissions(database.pool, { organisationId: ORG, jobId: MAIN })).headline));
       const nowhere = await getPortalJobEmissions(database.pool, portal, MAIN, "ppj-no-such-site");
@@ -290,6 +292,9 @@ describe("the staff portal preview, job-aware and grant-independent, against a r
         // The totals band (BUILD-portal-data-crm-parity R2) counts nothing the client cannot see: a hidden scope is in no total.
         assert.ok(!preview.emissions.byScope.some((scope) => scope.scope.startsWith("1")), "no scope 1 in the band");
         assert.equal(preview.emissions.headline.entries, preview.rows.filter((row) => row.enabled !== false).length, "the band counts exactly the rows shown");
+        // Review & QA (polish fix 5): the CRM's QA readiness over the same rows — a hidden category is in no count.
+        assert.equal(preview.qa.enabled, preview.rows.filter((row) => row.enabled !== false).length, "QA counts exactly the rows shown");
+        assert.equal(preview.qa.total, preview.rows.length);
         assert.equal(JSON.stringify(await getPortalJobEmissionsForStaff(database.pool, staff(), CLIENT, MAIN, null)), JSON.stringify(await getPortalJobEmissions(database.pool, portal, MAIN, null)));
         assert.ok(!preview.categories.categories.some((category) => category.scope === "1"), "no scope 1 category in the preview");
         assert.equal(JSON.stringify({ ...preview, access: null }), JSON.stringify({ ...client, access: null }));

@@ -5,6 +5,7 @@
 // portal and the staff preview (R5); in preview the rail card says so, and there is no sign-out or account to reach.
 // Its stylesheet (`portal-shell.css`) is loaded where the shell is mounted — the portal layout and the preview frame.
 import type { ReactNode } from "react";
+import { NziLogo, NziMark } from "@nzi/ui";
 import { LogoMark } from "../../lib/LogoMark";
 import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 import { usePortalSurface } from "../portalSurface";
@@ -49,17 +50,21 @@ export function PortalShell({ client, jobs, jobId, view, person, children }: Por
   const job = jobs.find((entry) => entry.id === jobId) ?? null;
   const home = link("/portal");
   const account = link("/portal/account");
+  // Polish fix 3: the platform brand top-left exactly as the CRM's rail draws it (`WorkspaceRail`) — the Net Zero International
+  // lockup on its white plate, the tree mark where the rail turns narrow, the product beneath. The client's own logo stays in
+  // the identity card below.
   const brand = (
     <>
-      <span className="mk" aria-hidden="true"><svg viewBox="0 0 40 40"><circle cx="20" cy="20" r="19" fill="#1f9d57" /><g fill="#fff"><circle cx="20" cy="15" r="5.6" /><circle cx="14.4" cy="19" r="4.6" /><circle cx="25.6" cy="19" r="4.6" /><circle cx="20" cy="20.6" r="5.6" /></g><rect x="18.6" y="23.3" width="2.8" height="8" rx="1.3" fill="#fff" /></svg></span>
-      <span><b>NZ Insights Pro</b><span className="sub">Client Portal</span></span>
+      <span className="nz-brand-plate"><NziLogo /></span>
+      <NziMark className="mark" />
+      <span className="wm">NZ Insights Pro<small>Client portal</small></span>
     </>
   );
 
   return (
     <div className={`nzp-app${readOnly ? " nzp-preview" : ""}`} data-portal-shell="">
       <nav className="nzp-rail" aria-label="Client portal">
-        {home ? <a className="nzp-logo" href={home}>{brand}</a> : <div className="nzp-logo">{brand}</div>}
+        {home ? <a className="nz-brand nzp-brand" href={home} aria-label="NZ Insights Pro client portal — home">{brand}</a> : <div className="nz-brand nzp-brand">{brand}</div>}
         <div className="nzp-client">
           <LogoMark src={client.logoSrc} name={client.name} className="nzp-client-mark" />
           <span><b>{client.name}</b><small>{job ? shellJobLabel(job) : "No reporting job yet"}</small></span>

@@ -16,12 +16,19 @@ export type RowHistoryState = "loading" | "ready" | "failed";
 export function RowHistory({ state, entries, open, onOpenChange }: { state: RowHistoryState; entries: RowHistoryEntry[]; open: boolean; onOpenChange: (open: boolean) => void }) {
   return (
     <Collapsible title="History" open={open} onOpenChange={onOpenChange}>
-      <div data-row-history="">
-        {state === "loading" ? <p className="muted" role="status">Loading the row&apos;s history…</p>
-          : state === "failed" ? <div className="nz-banner warn" role="alert">The row&apos;s history is unavailable. No events have been inferred.</div>
-          : entries.length === 0 ? <p className="muted">No events are recorded for this row yet.</p>
-          : <div>{entries.map((entry) => <div className="nz-lin" key={entry.id}><div className="stepl"><b>{entry.action}</b><small>{formatDateTime(entry.at)} · {entry.by}</small>{entry.detail ? <small className="num">{entry.detail}</small> : null}</div></div>)}</div>}
-      </div>
+      <RowHistoryList state={state} entries={entries} />
     </Collapsible>
+  );
+}
+
+/** The History itself, without its own header — for a drawer whose one History control is elsewhere (the portal's footer button). */
+export function RowHistoryList({ state, entries }: { state: RowHistoryState; entries: RowHistoryEntry[] }) {
+  return (
+    <div data-row-history="">
+      {state === "loading" ? <p className="muted" role="status">Loading the row&apos;s history…</p>
+        : state === "failed" ? <div className="nz-banner warn" role="alert">The row&apos;s history is unavailable. No events have been inferred.</div>
+        : entries.length === 0 ? <p className="muted">No events are recorded for this row yet.</p>
+        : <div>{entries.map((entry) => <div className="nz-lin" key={entry.id}><div className="stepl"><b>{entry.action}</b><small>{formatDateTime(entry.at)} · {entry.by}</small>{entry.detail ? <small className="num">{entry.detail}</small> : null}</div></div>)}</div>}
+    </div>
   );
 }

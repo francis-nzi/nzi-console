@@ -1,7 +1,7 @@
 // Portal data-entry phase 2 — what the client's Data view derives, kept pure so the profile's gates, the client's write shape
 // and the drawer's sections are tested without a browser (BUILD-portal-dataentry-phase2 §3; settled 22 Oct in
 // `_handoff/portal-dataentry-phase2-GROUNDING.md`).
-import { PORTAL_STAFF_ONLY_FIELDS, type PortalOfferedProfile, type PortalScopeRowFields, type ScopeRowWriteFields } from "@nzi/contracts";
+import { PORTAL_STAFF_ONLY_FIELDS, type PortalOfferedProfile, type PortalScopeRowFields, type ScopeQaReadiness, type ScopeRowWriteFields } from "@nzi/contracts";
 import type { PortalDataView, PortalRowHistoryEntry, PortalScopeRow } from "@nzi/isolated-backend";
 
 /** The data-view route's answer, verified before anything is drawn. */
@@ -13,6 +13,7 @@ export function isPortalDataView(value: unknown): value is PortalDataView {
     && Array.isArray(view.sites) && Array.isArray(view.purchasedGoodsCategories) && Array.isArray(view.reportingMonths)
     // The totals band's read (R2): drawn only from a verified one, never from a missing figure.
     && !!view.emissions && typeof view.emissions.headline?.tco2e === "number" && Array.isArray(view.emissions.byScope) && Array.isArray(view.emissions.bySite)
+    && !!view.qa && typeof view.qa.enabled === "number" && typeof view.qa.independentReviewPending === "number"
     && (view.access === null || (typeof view.access === "object" && (view.access.state === "open" || view.access.state === "scheduled")));
 }
 
@@ -40,6 +41,30 @@ export function rowDrawerSections(profile: PortalOfferedProfile): RowDrawerSecti
     ? (["factorCalculation", "dataQuality", "sourceDetail", "evidenceProvenance"] as const).filter((section) => profile.rowSections.includes(section))
     : [];
   return ["site", "monthly", ...offered, "history"];
+}
+
+/**
+ * The client's Review & QA gates (polish fix 5): the CRM's QA readiness (`getScopeQaReadiness`, over the rows the client sees) as
+ * the CRM's gate list draws it, in the client's words and stripped to what is the client's — calculations and independent review
+ * always; data quality only where the profile shows the client the Data quality section (the tier is otherwise not theirs to
+ * see). Not carried: the CRM's setup gates (datasets, pathway, intensity), anyone's name, the review queue, gaps and their notes,
+ * the v7-import note, and any sign-off — the client QA sign-off action is phase 4. Counts only.
+ */
+export type PortalQaGate = { key: "calculation" | "quality" | "review"; label: string; complete: boolean; detail: string };
+export function portalQaGates(qa: ScopeQaReadiness, profile: PortalOfferedProfile): PortalQaGate[] {
+  const none = qa.enabled === 0;
+  const gates: PortalQaGate[] = [
+    { key: "calculation", label: "Emission calculations", complete: !none && qa.calculationMissing === 0,
+      detail: none ? "No entries yet" : qa.calculationMissing ? `${qa.calculationMissing} awaiting calculation` : "Complete" },
+  ];
+  if (rowDrawerSections(profile).includes("dataQuality")) {
+    gates.push({ key: "quality", label: "Data quality", complete: !none && qa.qualityMissing === 0,
+      detail: none ? "No entries yet" : qa.qualityMissing ? `${qa.qualityMissing} awaiting a quality rating` : "Rated" });
+  }
+  const returned = qa.rejected ? ` · ${qa.rejected} returned to you` : "";
+  gates.push({ key: "review", label: "Independent review", complete: !none && qa.independentReviewPending === 0,
+    detail: none ? "No entries yet" : `${qa.approved} reviewed · ${qa.pending} waiting${returned}` });
+  return gates;
 }
 
 /** Deactivate is offered only where the profile offers it, on an entry the client may change, while the window is open. */
