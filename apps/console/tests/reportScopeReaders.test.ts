@@ -8,16 +8,19 @@ const read = (path: string) => readFileSync(new URL(`../../../${path}`, import.m
 describe("published reports per scope (S-1)", () => {
   const staff = read("apps/console/app/api/isolated/jobs/[jobId]/published-report/route.ts");
   const portal = read("apps/console/app/api/portal/jobs/[jobId]/published-report/route.ts");
-  const page = read("apps/console/app/portal/jobs/[jobId]/page.tsx");
+  // The page and the selection are shared with the staff preview (BUILD-staff-portal-preview-job-aware).
+  const page = read("apps/console/app/portal/jobs/[jobId]/PortalReportPage.tsx");
+  const selection = read("packages/isolated-backend/src/portalComposition.ts");
   const print = read("apps/console/app/portal/jobs/[jobId]/print/page.tsx");
   const register = read("apps/console/app/reports/LiveReportRegister.tsx");
 
   it("serves the report asked for, else the default, and lists every published scope — on both routes", () => {
-    for (const route of [staff, portal]) {
-      assert.match(route, /searchParams\.get\("reportVersionId"\)/);
-      assert.match(route, /wanted\?reports\.find\(item=>item\.reportVersionId===wanted\)\?\?null:reports\[0\]\?\?null/, "the default is the first: whole-client, then the most recent");
-      assert.match(route, /reports:reports\.map\(item=>\(\{reportVersionId:item\.reportVersionId,scope:item\.scope,scopeLabel:item\.scopeLabel,publishedAt:item\.publishedAt\}\)\)/);
-    }
+    for (const route of [staff, portal]) assert.match(route, /searchParams\.get\("reportVersionId"\)/);
+    assert.match(staff, /wanted\?reports\.find\(item=>item\.reportVersionId===wanted\)\?\?null:reports\[0\]\?\?null/, "the default is the first: whole-client, then the most recent");
+    assert.match(staff, /reports:reports\.map\(item=>\(\{reportVersionId:item\.reportVersionId,scope:item\.scope,scopeLabel:item\.scopeLabel,publishedAt:item\.publishedAt\}\)\)/);
+    assert.match(portal, /portalPublishedReportOf\(/, "the portal route selects through the shared selection");
+    assert.match(selection, /wanted \? reports\.find\(\(item\) => item\.reportVersionId === wanted\) \?\? null : reports\[0\] \?\? null/, "the default is the first: whole-client, then the most recent");
+    assert.match(selection, /reports: reports\.map\(\(item\) => \(\{ reportVersionId: item\.reportVersionId, scope: item\.scope, scopeLabel: item\.scopeLabel, publishedAt: item\.publishedAt \}\)\)/);
     assert.match(portal, /listGrantedPublishedCrpReports/, "portal v1: a grant sees every scope of its job");
   });
 

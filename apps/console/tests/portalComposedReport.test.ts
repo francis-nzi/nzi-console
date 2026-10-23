@@ -104,26 +104,28 @@ describe("the portal shows the issued report, and a left-out section is absent e
   });
 
   it("the portal page reads the issued document for the report in view, and the staff preview shows the client's copy", () => {
-    const page = read("apps/console/app/portal/jobs/[jobId]/page.tsx");
+    // The page is shared with the staff preview (BUILD-staff-portal-preview-job-aware): `PortalReportPage`.
+    const page = read("apps/console/app/portal/jobs/[jobId]/PortalReportPage.tsx");
     assert.match(page, /published-report\/composition\?reportVersionId=\$\{encodeURIComponent\(reportVersionId\)\}/);
     assert.match(page, /<PortalWorkspace specs=\{specs\} report=\{body\.report\} approval=\{body\.approval\} view=\{view\} clientMode\/>/);
     const preview = read("apps/console/app/portal-preview/page.tsx");
     assert.match(preview, /report=\{clientFacingPublishedReport\(data\.report\)\}/);
     assert.match(preview, /return \{state:"composed",composition:clientFacingComposition\(composition\)\}/);
     const route = read("apps/console/app/api/portal/jobs/[jobId]/published-report/route.ts");
-    assert.match(route, /report:clientFacingPublishedReport\(report\)/, "the client's copy is what the route sends");
+    assert.match(route, /portalPublishedReportOf\(await listGrantedPublishedCrpReports\(/, "the route sends the shared selection's copy");
+    assert.match(read("packages/isolated-backend/src/portalComposition.ts"), /report: clientFacingPublishedReport\(report\)/, "the client's copy is what the route sends");
   });
 
   it("the scope switcher, comments, approval and analytics are untouched", () => {
-    const page = read("apps/console/app/portal/jobs/[jobId]/page.tsx");
-    assert.match(page, /function ScopeSwitcher\(\{jobId,reports,current\}/);
+    const page = read("apps/console/app/portal/jobs/[jobId]/PortalReportPage.tsx");
+    assert.match(page, /function ScopeSwitcher\(\{pages,jobId,reports,current\}/);
     const workspace = read("apps/console/app/portal-preview/PortalWorkspace.tsx");
     assert.match(workspace, /\/published-report\/comments`/);
     assert.match(workspace, /\/published-report\/approval`/);
     // The dashboard's exclusion question was ruled (a): F-4c — it draws through the report's plan. Pinned in
     // `portalDashboardHonoursReport`; here only that it still reads its figures from the published report.
     const dashboard = read("apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx");
-    assert.match(dashboard, /fetch\(`\/api\/portal\/jobs\/\$\{jobId\}\/published-report`/);
+    assert.match(dashboard, /fetch\(`\$\{surface\.api\}\/jobs\/\$\{jobId\}\/published-report`/);
     // RULING-report-studio-consolidation R5: with the snapshot's years, so a single-year client's annual comparison is absent, not blocking.
     assert.match(dashboard, /<ManifestChartSet manifest=\{manifest\} charts=\{charts\} reviewedSnapshotId=\{snapshotId\} context=\{\{ reportingYears: /, "through the manifest view F-4c draws with");
   });

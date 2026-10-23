@@ -65,7 +65,7 @@ export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   // The governed input spec (NZC-102). A screen with no categories is genuinely empty — a client
   // with no authorised categories is a real state — so `isEmpty` is honest rather than a failure.
   inputSpec: { key: "inputSpec", validate: (value) => record(value) && Array.isArray((value as { spec?: unknown }).spec), isEmpty: (value) => ((value as { spec: unknown[] }).spec ?? []).length === 0 },
-  portalPreview: { key: "portalPreview", validate: (value) => record(value) && record(value.client) && record(value.strategies) && record(value.readiness) && record(value.profile) && Array.isArray(value.profile.profile) && Array.isArray(value.profile.scopes), isEmpty: () => false },
+  portalPreview: { key: "portalPreview", validate: (value) => record(value) && record(value.client) && record(value.strategies) && record(value.readiness) && record(value.profile) && Array.isArray(value.profile.profile) && Array.isArray(value.profile.scopes) && Array.isArray(value.jobs), isEmpty: () => false },
   sales: { key: "sales", validate: (value) => rows(value, "opportunities") && rows(value, "prospects") && rows(value, "runs"), isEmpty: (value) => record(value) && (value.opportunities as unknown[]).length === 0 && (value.prospects as unknown[]).length === 0 },
   // `client: null` is the explicit "no client data here" value (fixture mode), shown as empty — never a stand-in client.
   clientWorkspace: { key: "clientWorkspace", validate: (value) => record(value) && rows(value, "sites") && rows(value, "reportingPeriods") && (value.client === null || (record(value.client) && record(value.evidence))), isEmpty: (value) => record(value) && value.client === null },

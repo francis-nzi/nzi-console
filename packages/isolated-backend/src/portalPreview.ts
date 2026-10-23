@@ -6,6 +6,7 @@ import { getPortalClientReadiness, type PortalReadinessReadModel } from "./porta
 import { readOrganisationBrand } from "./organisationSettings";
 import { portalProfileStaffView } from "./portalProfile";
 import type { PortalProfileStaffView } from "@nzi/contracts";
+import { assertStaffPreviewJob, listClientPreviewJobs, type PortalPreviewJob } from "./portalPreviewReads";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 
 /**
@@ -57,16 +58,29 @@ export type PortalPreviewReadModel = {
    * explain why this client's portal differs from the default (NZC-087). The same resolver Portal Management reads.
    */
   profile: PortalProfileStaffView;
+  /**
+   * Job-aware preview (R3): the client's own jobs — never its portal grants — each opening into the client's job surfaces.
+   * A client with no portal user previews in full.
+   */
+  jobs: PortalPreviewJob[];
+  /** The job being previewed, when a job surface was opened; checked to be this client's before anything is read. */
+  job: PortalPreviewJob | null;
   /** Stamped server-side so the banner cannot be dated by a staff member's device clock. */
   previewedAt: string;
 };
 
+/** Which client surface was opened — recorded on the audit with the job, so the trail says what was looked at. */
+export const PORTAL_PREVIEW_SURFACES = ["home", "dashboard", "data", "report", "reports"] as const;
+export type PortalPreviewSurface = (typeof PORTAL_PREVIEW_SURFACES)[number];
+
 export async function getPortalPreview(
   pool: PoolLike,
   principal: StaffPrincipal,
-  input: { clientId: string; today: string },
+  input: { clientId: string; today: string; jobId?: string | null; surface?: PortalPreviewSurface },
   now = new Date(),
 ): Promise<PortalPreviewReadModel> {
+  const jobId = input.jobId?.trim() || null;
+  const surface: PortalPreviewSurface = input.surface && PORTAL_PREVIEW_SURFACES.includes(input.surface) ? input.surface : jobId ? "report" : "home";
   // Held at all, before anything is read.
   requireCapability(principal, "support.portal_impersonate");
 
@@ -75,6 +89,8 @@ export async function getPortalPreview(
     // Tenant and own-client scope, resolved against the database rather than trusted from the
     // request — the same check every client-subject command makes.
     await assertCapabilityOnClient(db, principal, "support.portal_impersonate", { clientId: input.clientId });
+    // A job surface: the job must be this client's — the same check the staff-preview reads make (R2).
+    if (jobId) await assertStaffPreviewJob(db, principal, input.clientId, jobId);
 
     const client = await db.query<{ client_id: string; name: string }>(
       `SELECT client_id, name FROM nzi_console.clients WHERE organisation_id=$1 AND client_id=$2`,
@@ -86,20 +102,23 @@ export async function getPortalPreview(
     const { shortName: organisationShortName } = await readOrganisationBrand(db, principal.organisationId);
     const readiness = await getPortalClientReadiness(db, { clientId: input.clientId, organisationShortName });
     const profile = await portalProfileStaffView(db, input.clientId);
+    const jobs = await listClientPreviewJobs(db, principal.organisationId, input.clientId);
+    const job = jobId ? jobs.find((entry) => entry.id === jobId) ?? null : null;
 
     // Audited on open, not per fetch: the event a reviewer wants is "who looked at this client's
-    // portal, and when", and one row per surface would bury that in noise.
+    // portal, and when", and one row per fetch would bury that in noise. A job surface carries the
+    // job and the surface (R1): "a named member of staff looked, at this job".
     const auditEventId = `audit-${randomUUID()}`;
     await db.query(
       `INSERT INTO nzi_console.audit_events
         (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, after_json, client_id)
        VALUES ($1,$2,$3,'staff','portal.preview.open','client',$4,$2,$5::jsonb,$4)`,
       [principal.organisationId, auditEventId, principal.userId, input.clientId,
-        JSON.stringify({ clientId: input.clientId, clientName: found.name, readOnly: true, impersonated: false })]);
+        JSON.stringify({ clientId: input.clientId, clientName: found.name, jobId, jobNumber: job?.number ?? null, surface, readOnly: true, impersonated: false })]);
 
     return {
       client: { id: found.client_id, name: found.name },
-      strategies, readiness, profile,
+      strategies, readiness, profile, jobs, job,
       previewedAt: now.toISOString(),
     };
   });

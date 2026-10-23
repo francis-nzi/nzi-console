@@ -1,4 +1,4 @@
-import { getPortalPreview, PortalPreviewError } from "@nzi/isolated-backend";
+import { getPortalPreview, PORTAL_PREVIEW_SURFACES, PortalPreviewError, type PortalPreviewSurface } from "@nzi/isolated-backend";
 import { authFailure } from "../../../../../lib/authResponse";
 import { isolatedPool } from "../../../../../lib/isolatedDatabase";
 import { currentStaff } from "../../../../../lib/staffSession";
@@ -25,7 +25,13 @@ export async function GET(request: Request, { params }: { params: Promise<{ clie
   try {
     const principal = await currentStaff(request);
     const { clientId } = await params;
-    const preview = await getPortalPreview(isolatedPool(), principal, { clientId, today: londonToday() });
+    // Job-aware preview (R1): a job surface names its job and surface, and both go on the open's audit row.
+    const query = new URL(request.url).searchParams;
+    const surface = query.get("surface");
+    const preview = await getPortalPreview(isolatedPool(), principal, {
+      clientId, today: londonToday(), jobId: query.get("jobId"),
+      surface: (PORTAL_PREVIEW_SURFACES as readonly string[]).includes(surface ?? "") ? surface as PortalPreviewSurface : undefined,
+    });
     return Response.json(preview, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {
     if (error instanceof PortalPreviewError) {

@@ -1,6 +1,6 @@
 import {
   derivePortalBaseline, derivePortalTrendYear,
-  type PortalAssuredDashboard, type PortalTrendYear, type ReviewedCrpSnapshotReadModel,
+  type PortalAssuredDashboard, type PortalTrendYear, type PublishedCrpReportReadModel, type ReviewedCrpSnapshotReadModel,
 } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 import { getGrantedPublishedCrpReport, resolveCrpReportingChain } from "./readModels";
@@ -31,7 +31,14 @@ export async function getPortalAssuredDashboard(
   db: Queryable,
   input: { portalUserId: string; clientId: string; jobId: string },
 ): Promise<PortalAssuredDashboard> {
-  const report = await getGrantedPublishedCrpReport(db, input);
+  return assemblePortalAssuredDashboard(db, await getGrantedPublishedCrpReport(db, input), input.jobId);
+}
+
+/**
+ * The dashboard's assembly from the published report the authorizer resolved — the portal grant above, or the staff preview
+ * (`getPortalAssuredDashboardForStaff`). Shared, so the preview cannot draw a figure the client's dashboard would not.
+ */
+export async function assemblePortalAssuredDashboard(db: Queryable, report: PublishedCrpReportReadModel | null, jobId: string): Promise<PortalAssuredDashboard> {
   if (!report) return { published: false };
 
   const baseline = derivePortalBaseline(report.snapshot);
@@ -40,7 +47,7 @@ export async function getPortalAssuredDashboard(
   // its own frozen snapshot payload. The current year is the published snapshot
   // we already have (never the chain's "latest reviewed", which may be newer
   // and unpublished).
-  const chain = await resolveCrpReportingChain(db, input.jobId);
+  const chain = await resolveCrpReportingChain(db, jobId);
   const priorEntries = (chain?.entries ?? []).filter((entry) => entry.kind !== "current" && entry.snapshotId);
   const priorIds = priorEntries.map((entry) => entry.snapshotId!);
   const payloadById = new Map<string, PriorPayload>();

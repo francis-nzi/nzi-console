@@ -104,7 +104,7 @@ describe("the client's Data view (portal data-entry phase 2)", () => {
       assert.match(read("apps/console/app/jobs/CrpDataEntryAccordion.tsx"), /\{canAdd \? <button type="button" className="nz-btn pri"\n\s*onClick=\{\(\) => onAddEntry\(entry\.category\)\}>/);
       const dataView = read("apps/console/app/portal/jobs/[jobId]/data/PortalDataView.tsx");
       assert.match(dataView, /const open = windowOpen\(view\);/);
-      assert.match(dataView, /audience="portal" applicable=\{view\.categories\} canAdd=\{open\}/);
+      assert.match(dataView, /audience="portal" applicable=\{view\.categories\} canAdd=\{open && !surface\.readOnly\}/);
       assert.match(read("apps/console/app/jobs/CrpDataEntryAccordion.tsx"), /\{audience === "crm" \? <JobTemplateSeeding/);
     });
 
