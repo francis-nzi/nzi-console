@@ -34,6 +34,8 @@ export const SHELL_ITEMS: readonly ItemSpec[] = [
   { view: "actions", label: "Actions", group: "workspace", path: perJob("/actions"), flag: "portal-plan" },
   { view: "srs", label: "SRS Readiness", group: "workspace", path: () => "/portal/srs", flag: "portal-readiness" },
   { view: "reports", label: "Reports", group: "workspace", path: () => "/portal/reports", flag: "portal-reports" },
+  // R7: the existing report thread, as the mockup's Conversations — an early version. Per job (each published report's thread).
+  { view: "messages", label: "Messages", group: "communication", path: perJob("/messages") },
 ];
 
 export const SHELL_GROUP_LABELS: Record<ShellGroup, string> = { workspace: "Workspace", communication: "Communication", support: "Support" };
@@ -55,7 +57,7 @@ export function defaultShellJob<T extends ShellJob>(jobs: readonly T[]): T | nul
 
 /** Where the job switcher goes: the same per-job view for the chosen job, else that job's dashboard. */
 export function switchJobPath(view: ShellView, jobId: string): string {
-  const suffix = view === "data" ? "/data" : view === "actions" ? "/actions" : view === "metrics" ? "/metrics" : "/dashboard";
+  const suffix = view === "data" ? "/data" : view === "actions" ? "/actions" : view === "metrics" ? "/metrics" : view === "messages" ? "/messages" : "/dashboard";
   return `/portal/jobs/${encodeURIComponent(jobId)}${suffix}`;
 }
 

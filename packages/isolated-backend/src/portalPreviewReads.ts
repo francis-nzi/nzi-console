@@ -1,5 +1,6 @@
 import { reportScopeLabel, type InputSpecCategory, type PortalActionTracker, type PortalAssuredDashboard, type PortalLiveBroadcast, type ReportScope } from "@nzi/contracts";
 import { assemblePortalActionTracker } from "./portalActions";
+import { assembleReportComments, type PortalReportComment } from "./portalReview";
 import { AuthorizationError, requireCapability, type StaffPrincipal } from "./auth";
 import { assertCapabilityOnClient } from "./access";
 import { listInputSpecForClient } from "./categoryVisibility";
@@ -126,6 +127,18 @@ export function getPortalReportViewForStaff(pool: PoolLike, principal: StaffPrin
 /** The job's Spheres of Influence action tracker as the client sees it (BUILD-portal-shell-lookandfeel, Actions) — read only. */
 export function getPortalActionTrackerForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string): Promise<PortalActionTracker> {
   return previewRead(pool, principal, clientId, jobId, (db) => assemblePortalActionTracker(db, clientId, jobId));
+}
+
+/**
+ * A published report's message thread as the client sees it (BUILD-portal-shell-lookandfeel R7, Messages) — read only: the
+ * preview neither replies nor marks the thread read (both are a portal user's). Only a published version of this client's job.
+ */
+export function listReportCommentsForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string, reportVersionId: string): Promise<PortalReportComment[]> {
+  return previewRead(pool, principal, clientId, jobId, async (db) => {
+    const published = await db.query(`SELECT 1 FROM nzi_console.report_versions WHERE organisation_id = $1 AND job_id = $2 AND report_version_id = $3 AND status = 'published'`, [principal.organisationId, jobId, reportVersionId]);
+    if (!published.rows[0]) throw new AuthorizationError("tenant", "That report is not published for this job.");
+    return assembleReportComments(db, { jobId, reportVersionId });
+  });
 }
 
 /** The input spec as this client sees it (NZC-110) — the client's own resolver. */

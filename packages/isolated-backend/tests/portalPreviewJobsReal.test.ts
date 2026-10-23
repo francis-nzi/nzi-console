@@ -14,9 +14,10 @@ import { getGrantedPortalReport, portalPublishedReportOf } from "../src/portalCo
 import { listGrantedPublishedCrpReports } from "../src/readModels";
 import { getPortalPreview } from "../src/portalPreview";
 import { createPortalTrackerAction, getPortalActionTracker } from "../src/portalActions";
+import { addGrantedReportComment, addStaffReportComment, listGrantedReportComments } from "../src/portalReview";
 import {
   getPortalActionTrackerForStaff, getPortalAssuredDashboardForStaff, getPortalDataViewForStaff, getPortalInputSpecForStaff, getPortalPublishedReportForStaff, getPortalReportViewForStaff,
-  getPortalRowHistoryForStaff, listPortalBroadcastsForStaff, listPortalPreviewJobs,
+  getPortalRowHistoryForStaff, listPortalBroadcastsForStaff, listPortalPreviewJobs, listReportCommentsForStaff,
 } from "../src/portalPreviewReads";
 import { withTenantRead, type Queryable } from "../src/postgres";
 
@@ -171,6 +172,22 @@ describe("the staff portal preview, job-aware and grant-independent, against a r
       assert.equal(JSON.stringify(await getPortalActionTrackerForStaff(database.pool, staff(), CLIENT, MAIN)), JSON.stringify(client));
       await assert.rejects(getPortalActionTrackerForStaff(database.pool, staff(), CLIENT, FOREIGN), refused);
       await assert.rejects(getPortalActionTrackerForStaff(database.pool, staff("viewer", "ppj-view"), CLIENT, MAIN), refused);
+    });
+
+    it("the report thread: identical, read only, and only a published report of this client's job (Messages, R7)", async () => {
+      const [report] = await read((db) => listGrantedPublishedCrpReports(db, { portalUserId: PORTAL, clientId: CLIENT, jobId: MAIN }));
+      assert.ok(report);
+      const thread = { jobId: MAIN, reportVersionId: report.reportVersionId };
+      await addGrantedReportComment(database.pool, { ...portal, displayName: "Pat Client" } as never, { ...thread, body: "Is the depot gas included?" });
+      await addStaffReportComment(database.pool, staff(), { ...thread, body: "Yes — under Scope 1." });
+      const client = await listGrantedReportComments(database.pool, portal, thread);
+      assert.equal(client.length, 2);
+      const before = await writes();
+      assert.equal(JSON.stringify(await listReportCommentsForStaff(database.pool, staff(), CLIENT, MAIN, report.reportVersionId)), JSON.stringify(client));
+      assert.deepEqual(await writes(), before, "reading the thread in preview writes nothing — no read receipt");
+      await assert.rejects(listReportCommentsForStaff(database.pool, staff(), CLIENT, FOREIGN, report.reportVersionId), refused, "another client's job");
+      await assert.rejects(listReportCommentsForStaff(database.pool, staff(), CLIENT, UNGRANTED, report.reportVersionId), refused, "another job's report");
+      await assert.rejects(listReportCommentsForStaff(database.pool, staff("viewer", "ppj-view"), CLIENT, MAIN, report.reportVersionId), refused, "no capability");
     });
 
     it("the input spec and broadcasts: the client's own resolvers", async () => {
