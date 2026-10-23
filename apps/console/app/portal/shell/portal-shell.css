@@ -112,6 +112,21 @@
 .nzp-composer{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;border-top:1px solid var(--nzp-line);padding:12px 14px}
 .nzp-composer textarea{flex:1 1 240px;font:inherit;font-size:13.5px;border:1px solid var(--nzp-line);border-radius:9px;padding:9px 11px;resize:vertical;min-height:44px}
 .nzp-convo-ro{margin:0;border-top:1px solid var(--nzp-line);padding:12px 14px;font-size:12.5px;color:var(--nzp-muted);background:var(--nzp-panel)}
+/* ---- Insights & Help, Files (preview) ---- */
+.nzp-insights{list-style:none;margin:0;padding:0;display:grid;gap:12px}
+.nzp-insights li{display:grid;grid-template-columns:34px 1fr;gap:12px;align-items:start}
+.nzp-insights .ic{width:34px;height:34px;border-radius:9px;background:var(--nzp-green-soft);color:var(--nzp-green-ink);display:grid;place-items:center;font-size:15px}
+.nzp-insights li.soon .ic{background:var(--nzp-info-soft);color:var(--nzp-info)}
+.nzp-insights b{font-size:14px}
+.nzp-insights p{margin:3px 0 8px;font-size:13px;color:var(--nzp-muted)}
+.nzp-preview-banner{background:var(--nzp-info-soft);border:1px solid var(--nzp-line);border-left:3px solid var(--nzp-info);border-radius:var(--nzp-r-sm);padding:11px 14px;font-size:13px;color:var(--nzp-ink)}
+.nzp-dropzone{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;border:2px dashed var(--nzp-line);border-radius:var(--nzp-r);padding:22px;background:var(--nzp-card);color:var(--nzp-muted);font-size:12.5px;opacity:.75}
+.nzp-dropzone b{color:var(--nzp-ink);font-size:14px}
+.nzp-example table{opacity:.6}
+/* A wide table scrolls in its own box on a phone, never the whole portal sideways. */
+.nzp-tablewrap{max-width:100%;overflow-x:auto}
+.nzp-example-tag{margin-left:6px;font-size:9.5px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--nzp-muted);border:1px solid var(--nzp-line);border-radius:5px;padding:1px 5px}
+
 @media (max-width:900px){.nzp-msgwrap{grid-template-columns:1fr}.nzp-threadlist{border-right:0;border-bottom:1px solid var(--nzp-line);max-height:220px}.nzp-msg{max-width:92%}}
 
 @media (max-width:900px){

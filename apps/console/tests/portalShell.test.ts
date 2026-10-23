@@ -20,16 +20,19 @@ describe("the portal shell", () => {
     it("offers the wired views, each behind the client's own flag, for the job in context", () => {
       assert.deepEqual(shellNav("663", (path) => path, all).map((item) => [item.view, item.label, item.href]), [
         ["dashboard", "Dashboard", "/portal/jobs/663/dashboard"], ["metrics", "Metrics", "/portal/jobs/663/metrics"], ["data", "Data", "/portal/jobs/663/data"], ["actions", "Actions", "/portal/jobs/663/actions"],
-        ["srs", "SRS Readiness", "/portal/srs"], ["reports", "Reports", "/portal/reports"], ["messages", "Messages", "/portal/jobs/663/messages"]]);
-      assert.deepEqual(shellNav("663", (path) => path, all).filter((item) => item.group === "communication").map((item) => item.view), ["messages"]);
-      assert.deepEqual(shellNav("663", (path) => path, (flag) => flag !== "portal-data" && flag !== "portal-plan").map((item) => item.view), ["dashboard", "metrics", "srs", "reports", "messages"], "a flag off for clients is off in the rail");
-      assert.deepEqual(shellNav(null, (path) => path, all).map((item) => item.view), ["srs", "reports"], "a per-job view needs a job");
+        ["srs", "SRS Readiness", "/portal/srs"], ["reports", "Reports", "/portal/reports"], ["messages", "Messages", "/portal/jobs/663/messages"],
+        ["files", "Files", "/portal/files"], ["insights", "Insights & Help", "/portal/jobs/663/insights"]]);
+      assert.deepEqual(shellNav("663", (path) => path, all).filter((item) => item.group === "communication").map((item) => item.view), ["messages", "files"]);
+      assert.deepEqual(shellNav("663", (path) => path, all).filter((item) => item.group === "support").map((item) => item.view), ["insights"]);
+      assert.deepEqual(shellNav("663", (path) => path, (flag) => flag !== "portal-data" && flag !== "portal-plan").map((item) => item.view), ["dashboard", "metrics", "srs", "reports", "messages", "files", "insights"], "a flag off for clients is off in the rail");
+      assert.deepEqual(shellNav(null, (path) => path, all).map((item) => item.view), ["srs", "reports", "files"], "a per-job view needs a job");
     });
 
     it("in the staff preview, every item goes to the preview's own page — never into the portal", () => {
       const items = shellNav("663", (path) => previewLink("c1", path), all);
       assert.deepEqual(items.map((item) => item.href), ["/clients/c1/portal-preview/jobs/663/dashboard", "/clients/c1/portal-preview/jobs/663/metrics", "/clients/c1/portal-preview/jobs/663/data",
-        "/clients/c1/portal-preview/jobs/663/actions", "/clients/c1/portal-preview/srs", "/clients/c1/portal-preview/reports", "/clients/c1/portal-preview/jobs/663/messages"]);
+        "/clients/c1/portal-preview/jobs/663/actions", "/clients/c1/portal-preview/srs", "/clients/c1/portal-preview/reports", "/clients/c1/portal-preview/jobs/663/messages",
+        "/clients/c1/portal-preview/files", "/clients/c1/portal-preview/jobs/663/insights"]);
     });
 
     it("opens on the newest job with a published report, else the newest job; the switcher keeps the per-job view", () => {
