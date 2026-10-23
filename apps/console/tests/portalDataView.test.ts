@@ -185,7 +185,7 @@ describe("the client's Data view (portal data-entry phase 2)", () => {
     });
 
     it("the switch-over: dark by absence; once on, the records path takes no new writes and the old tab points to the Data view", () => {
-      assert.match(read("apps/console/app/lib/portalFlags.ts"), /\| "portal-data";/);
+      assert.match(read("apps/console/app/lib/portalFlags.ts"), /\| "portal-data"\n/);
       // Shipped dark (#504), switched on in the dashboard and added to render.yaml in step; the full value is the rollout pin's.
       assert.match(read("render.yaml"), /value: [^\n]*\bportal-data\b/);
       assert.match(read("apps/console/app/portal/jobs/[jobId]/data/page.tsx"), /if \(!portalFeatureEnabled\("portal-data"\)\) redirect/);

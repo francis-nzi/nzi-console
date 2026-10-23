@@ -2,6 +2,8 @@ import { PortalInactivityGuard } from "./PortalInactivityGuard";
 import { PortalTermsGate } from "./PortalTermsGate";
 import { WithOrganisationName } from "../lib/organisationBrand";
 import { WithCurrencyDirectory } from "../lib/currencyDirectory";
+// The portal shell's frame (BUILD-portal-shell-lookandfeel); its classes are used only while `portal-shell` is on.
+import "./shell/portal-shell.css";
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   return (

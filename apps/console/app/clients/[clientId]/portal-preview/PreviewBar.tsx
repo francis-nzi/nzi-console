@@ -9,7 +9,7 @@ import { portalPreviewBase } from "../../../portal/portalPreviewLinks";
  * banner exists to prevent. Under it, the client's surfaces as the client's portal offers them: a surface switched off for
  * clients is not offered here either.
  */
-export function PreviewBar({ preview, surface }: { preview: PortalPreviewReadModel; surface: PortalPreviewSurface }) {
+export function PreviewBar({ preview, surface, nav = true }: { preview: PortalPreviewReadModel; surface: PortalPreviewSurface; /** Off inside the portal shell, whose rail is the nav. */ nav?: boolean }) {
   const base = portalPreviewBase(preview.client.id);
   const job = preview.job;
   const jobBase = job ? `${base}/jobs/${encodeURIComponent(job.id)}` : null;
@@ -38,13 +38,13 @@ export function PreviewBar({ preview, surface }: { preview: PortalPreviewReadMod
           Back to the client
         </Link>
       </div>
-      <nav className="nz-preview-nav" aria-label="Client portal surfaces">
+      {nav ? <nav className="nz-preview-nav" aria-label="Client portal surfaces">
         {items.map((item) => (
           <Link key={item.key} href={item.href} className={item.key === surface ? "on" : undefined} aria-current={item.key === surface ? "page" : undefined}>
             {item.label}
           </Link>
         ))}
-      </nav>
+      </nav> : null}
     </>
   );
 }

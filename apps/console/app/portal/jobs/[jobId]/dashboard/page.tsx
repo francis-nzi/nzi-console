@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { portalFeatureEnabled } from "../../../../lib/portalFlags";
 import { PortalDashboard } from "../PortalDashboard";
 import { PortalActionTrackerPanel } from "../PortalActionTracker";
+import { ShellDashboard } from "../../../shell/ShellViews";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function PortalDashboardPage({ params }: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await params;
   if (!portalFeatureEnabled("portal-analytics")) redirect(`/portal/jobs/${jobId}`);
+  if (portalFeatureEnabled("portal-shell")) return <ShellDashboard jobId={jobId} actions={portalFeatureEnabled("portal-actions")} />;
   return (
     <main className="nz-portal-shell" id="portal-main-content" tabIndex={-1}>
       <PortalDashboard jobId={jobId} />
