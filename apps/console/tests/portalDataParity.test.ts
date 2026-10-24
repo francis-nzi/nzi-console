@@ -88,14 +88,17 @@ describe("the portal Data view at CRM parity — increment 1", () => {
       assert.doesNotMatch(html, /Save &amp; calculate|Approve row|>Reject<|reviewed snapshot|Override tCO|Reviewer note/i, "no staff action (R4)");
     });
 
-    it("detailed: each of the four sections the profile offers, with the CRM's titles; Apportionment & site, Monthly activity and History always", async () => {
-      const all = titles(await drawer([{ profileKey: "entryDrawer", value: "detailed" }, { profileKey: "evidenceProvenance", value: "visible" }, { profileKey: "factorCalculation", value: "visible" }, { profileKey: "dataQuality", value: "visible" }, { profileKey: "sourceDetail", value: "visible" }]));
-      assert.deepEqual(all.filter((title) => title !== "History"), ["Factor & calculation", "Data quality", "Apportionment & site", all.find((title) => !["Factor & calculation", "Data quality", "Apportionment & site", "Monthly activity", "Evidence & provenance", "History"].includes(title))!, "Monthly activity", "Evidence & provenance"]);
-      assert.ok(all.includes("History"));
+    it("detailed: each of the four sections the profile offers, with the CRM's titles; Apportionment & site and Monthly activity always; History by its one footer button", async () => {
+      const html = await drawer([{ profileKey: "entryDrawer", value: "detailed" }, { profileKey: "evidenceProvenance", value: "visible" }, { profileKey: "factorCalculation", value: "visible" }, { profileKey: "dataQuality", value: "visible" }, { profileKey: "sourceDetail", value: "visible" }]);
+      const all = titles(html);
+      assert.deepEqual(all, ["Factor & calculation", "Data quality", "Apportionment & site", all.find((title) => !["Factor & calculation", "Data quality", "Apportionment & site", "Monthly activity", "Evidence & provenance"].includes(title))!, "Monthly activity", "Evidence & provenance"]);
+      // Polish fix 2: one History control — the CRM's footer button, closed to start; no second History header.
+      assert.equal((html.match(/>History</g) ?? []).length, 1, "History appears once");
+      assert.match(html, /<div class="nz-rd-foot"><button type="button" class="nz-btn" aria-expanded="false">History<\/button><\/div>/);
       const none = titles(await drawer([{ profileKey: "entryDrawer", value: "detailed" }, { profileKey: "evidenceProvenance", value: "hidden" }, { profileKey: "factorCalculation", value: "hidden" }, { profileKey: "dataQuality", value: "hidden" }, { profileKey: "sourceDetail", value: "hidden" }]));
-      assert.deepEqual(none, ["Apportionment & site", "Monthly activity", "History"], "a hidden section is simply absent");
+      assert.deepEqual(none, ["Apportionment & site", "Monthly activity"], "a hidden section is simply absent");
       const simple = titles(await drawer([{ profileKey: "entryDrawer", value: "simple" }, { profileKey: "factorCalculation", value: "visible" }]));
-      assert.deepEqual(simple, ["Apportionment & site", "Monthly activity", "History"], "the simple drawer carries none of the four (phase 2, settled)");
+      assert.deepEqual(simple, ["Apportionment & site", "Monthly activity"], "the simple drawer carries none of the four (phase 2, settled)");
     });
 
     it("no staff identity in the drawer, and none of it in preview can act", async () => {

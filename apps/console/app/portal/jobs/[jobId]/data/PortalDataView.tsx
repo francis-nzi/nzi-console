@@ -19,12 +19,12 @@ import {
   scopeRowToEmissionEntryDraft, type DeclaredFactorPreviewResult, type EmissionEntryDraft,
 } from "../../../../jobs/EmissionEntryForm";
 import { rowSourceDetail } from "../../../../jobs/rowSourceDetail";
-import { RowHistory, type RowHistoryEntry, type RowHistoryState } from "../../../../jobs/RowHistory";
+import { RowHistory, RowHistoryList, type RowHistoryEntry, type RowHistoryState } from "../../../../jobs/RowHistory";
 import { formatDate, formatDateTime } from "../../../../lib/formatDate";
 import { formatQuantity, formatTonnes } from "../../../../lib/formatNumber";
 import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
 import { usePortalSurface } from "../../../portalSurface";
-import { historyEntry, isPortalDataView, mayDeactivate, portalScopeRowFields, reviewLabel, rowDrawerSections, windowOpen } from "../../../data/portalDataView";
+import { historyEntry, isPortalDataView, mayDeactivate, portalQaGates, portalScopeRowFields, reviewLabel, rowDrawerSections, windowOpen } from "../../../data/portalDataView";
 
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
@@ -114,7 +114,8 @@ export function PortalDataView({ jobId }: { jobId: string }) {
           emissionsUrl={`${base}/emissions`} liveLabel={surface.readOnly ? "Read-only preview" : "Updates as you enter data"} />
         {view.sites.length > 0 ? <JobSiteTabs sites={view.sites} emissions={view.emissions} selected={siteId || null} onSelect={(next) => setSiteId(next ?? "")} /> : null}
       </> : null}
-      <p className="nz-pdv-note" role="note">What you enter goes straight into this job&apos;s data and waits for {org.your("adviser")}&apos;s review; it counts once reviewed. You can change an entry you made until it has been reviewed.</p>
+      {/* Polish fix 4: no page-level helper in the parity view — the entry's state shows on its row and in its drawer. */}
+      {crmParity ? null : <p className="nz-pdv-note" role="note">What you enter goes straight into this job&apos;s data and waits for {org.your("adviser")}&apos;s review; it counts once reviewed. You can change an entry you made until it has been reviewed.</p>}
       {notice ? <div className={`nz-banner ${notice.kind}`} role={notice.kind === "ok" ? "status" : "alert"}>{notice.text}</div> : null}
 
       <CrpDataEntryAccordion
@@ -125,6 +126,10 @@ export function PortalDataView({ jobId }: { jobId: string }) {
         sites={view.sites.map((entry) => ({ id: entry.id, label: entry.name }))} siteId={siteId}
         factors={refs} reportingMonths={view.reportingMonths} purchasedGoodsCategories={view.purchasedGoodsCategories}
         notice={setNotice} />
+
+      {/* Polish fix 5: the CRM's Review & QA, after data capture as in the CRM — its gate list over the client's own rows,
+          read-only and stripped (`portalQaGates`). The client's sign-off action is phase 4; nothing here acts. */}
+      {crmParity ? <PortalQaSection qa={view.qa} profile={view.profile} adviser={org.your("adviser")} /> : null}
 
       <Drawer open={adding !== null} onClose={() => setAdding(null)} ariaLabel={adding ? `Add an entry to ${adding.name}` : "Add an entry"} className={drawerClass} dismissOnOutsideClick>
         {adding ? <div className="nz-pdv-drawer-b">
@@ -146,6 +151,31 @@ export function PortalDataView({ jobId }: { jobId: string }) {
   );
 }
 
+/**
+ * Review & QA (polish fix 5), in the CRM's readiness-card markup: the gates the client may see, read-only — counts and states,
+ * no names, no actions. A gate the profile does not show the client (data quality, unless its section is shown) is absent.
+ */
+export function PortalQaSection({ qa, profile, adviser }: { qa: View["qa"]; profile: View["profile"]; adviser: string }) {
+  const gates = portalQaGates(qa, profile);
+  const done = qa.enabled > 0 && gates.every((gate) => gate.complete);
+  return (
+    <section className="nz-panel nz-readiness-card nz-pdv-qa" aria-labelledby="pdv-qa-title">
+      <div className="nz-card-heading">
+        <div><span className="nz-eyebrow">Review &amp; QA</span><h3 id="pdv-qa-title">Review status</h3></div>
+        <span className={`nz-st ${done ? "done" : "need"}`}>{done ? "All entries reviewed" : qa.enabled === 0 ? "Nothing to review yet" : "In review"}</span>
+      </div>
+      <p className="muted">Every entry is checked independently by {adviser} before it counts in your report.</p>
+      <div className="nz-gate-list">
+        {gates.map((gate, index) => (
+          <div className={`nz-gate ${gate.complete ? "complete" : "pending"}`} key={gate.key}>
+            <span className="nz-gate-icon">{gate.complete ? "✓" : index + 1}</span><div><b>{gate.label}</b><small>{gate.detail}</small></div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 /** One entry, as the client sees it: what it is, where and when; the profile's sections, read-only; changes; History. */
 export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, adviserInline = adviser, onSaved }: {
   jobId: string; row: PortalScopeRow; view: View; specs: Record<string, InputSpecCategory>; refs: ReturnType<typeof entryFactorRefsFor>;
@@ -154,7 +184,8 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
 }) {
   const [history, setHistory] = useState<RowHistoryEntry[]>([]);
   const [historyState, setHistoryState] = useState<RowHistoryState>("loading");
-  const [showHistory, setShowHistory] = useState(true);
+  // The parity drawer opens History from its one footer button, closed to start, as the CRM's does; phase 2's showed it open.
+  const [showHistory, setShowHistory] = useState(!portalFeatureEnabled("portal-shell"));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [reason, setReason] = useState("");
@@ -270,8 +301,9 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
 
         {actions}
 
-        {sections.includes("history") ? <RowHistory state={historyState} entries={history} open={showHistory} onOpenChange={setShowHistory} /> : null}
-        <div className="nz-rd-foot"><button type="button" className="nz-btn" aria-expanded={showHistory} onClick={() => setShowHistory((previous) => !previous)}>History</button></div>
+        {/* Polish fix 2: one History control, the CRM's footer button — it opens the History here; no second section header. */}
+        {sections.includes("history") && showHistory ? <section className="nz-pdv-history" aria-label="History"><div className="nz-sect">History</div><RowHistoryList state={historyState} entries={history} /></section> : null}
+        {sections.includes("history") ? <div className="nz-rd-foot"><button type="button" className="nz-btn" aria-expanded={showHistory} onClick={() => setShowHistory((previous) => !previous)}>History</button></div> : null}
       </div>
     );
   }

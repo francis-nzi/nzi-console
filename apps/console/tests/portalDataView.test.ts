@@ -36,6 +36,7 @@ const view = (over: Partial<PortalDataView> = {}): PortalDataView => ({
   profile: profile(), access: { jobId: "job-1", startsAt: "2026-10-01T00:00:00Z", expiresAt: "2026-12-31T00:00:00Z", state: "open", reportingMonths: [] },
   categories: { audience: "portal", includedScopes: ["1"], categories: [gas] }, rows: [row()], factors: [], sites: [{ id: "s1", name: "Head Office" }],
   purchasedGoodsCategories: [], reportingMonths: ["2026-01", "2026-02"],
+  qa: { total: 1, enabled: 1, approved: 0, pending: 1, rejected: 0, calculationMissing: 1, qualityMissing: 1, independentReviewPending: 1, migratedRows: 0, readyForReporting: false },
   emissions: { jobId: "job-1", siteId: null, headline: { tco2e: 0.18, marketTco2e: 0, entries: 1, marketEntries: 0 }, byScope: [{ scope: "1", tco2e: 0.18, marketTco2e: 0, entries: 1, marketEntries: 0 }], byCategory: [], bySite: [] },
   ...over,
 } as PortalDataView);
