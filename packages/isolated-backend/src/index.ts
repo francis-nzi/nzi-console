@@ -211,4 +211,9 @@ export async function runIsolatedCommand<T extends Record<string, unknown>>(stor
 }
 export { mailDelivery, smtpSettingsFrom, suppressingMailer, SmtpConfigurationError, type Mailer, type MailMessage, type MailDelivery } from "./mailer";
 export { runReminderTick, scanClientReminders, drainOutbox, clientsWithPlans, REMINDER_TOPIC, MAX_SEND_ATTEMPTS, type ReminderRunSummary } from "./strategyReminderWorker";
+export {
+  sendEmail, validateEmailRequest, deliverEmail, emailDispatchFromEnv, resendTransport, stubReasonFor, EmailValidationError, EmailTransportError,
+  EMAIL_SEND_TOPIC, MAX_EMAIL_ATTEMPTS, ISOLATED_RECIPIENT_DOMAINS,
+  type EmailRequest, type EmailDispatch, type EmailGate, type EmailTransport, type EmailOutcome, type OutboundEmail,
+} from "./email";
 export { previewDeclaredFactor, type DeclaredFactorPreview, type ResolutionEntry } from "./declarativeResolution";

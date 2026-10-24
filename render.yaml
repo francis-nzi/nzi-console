@@ -115,7 +115,7 @@ services:
   # deadline reminders. A separate service because a tick driven by web traffic fires
   # whenever someone happens to be looking, which is neither a schedule nor idempotent.
   #
-  # ON THIS SERVICE IT SENDS NOTHING. NZI_DATABASE_BOUNDARY=isolated-non-production makes
+  # ON THIS SERVICE IT SENDS NO REMINDER. NZI_DATABASE_BOUNDARY=isolated-non-production makes
   # mailDelivery() return "suppress" before either of the other two conditions is read, so
   # the worker composes each reminder, records it in strategy_automation_log, and logs the
   # mail it would have sent. That is the isolation rule, not a limitation to work around:
@@ -123,6 +123,12 @@ services:
   #
   # Real sending needs a non-isolated boundary AND NEXT_PUBLIC_APP_ENV=production AND
   # NZI_MAIL_MODE=send. All three, and the default of every one of them is silence.
+  #
+  # Queued email (`email.send`, email programme phase 1) is drained here too, over Resend.
+  # With RESEND_API_KEY unset every send is recorded as stubbed and nothing leaves. With it
+  # set, the isolated boundary narrows rather than opens: it sends ONLY to @netzero.international
+  # (ISOLATED_RECIPIENT_DOMAINS in email.ts, a code constant so it cannot be widened from the
+  # dashboard) and stubs every other recipient. Reminders are unaffected and still never sent.
   - type: worker
     name: nzi-console-reminders
     runtime: node
@@ -172,6 +178,14 @@ services:
       - key: SMTP_PASS
         sync: false
       - key: SMTP_FROM
+        sync: false
+      # Outbound email over Resend (email.ts). Declared, never valued here; set in the dashboard
+      # at the flip. RESEND_API_KEY absent is a supported state: every send is stubbed. EMAIL_FROM
+      # is the default sender on the verified domain, e.g.
+      # "Net Zero International <no-reply@netzero.international>"; absent, sends are stubbed too.
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
         sync: false
       - key: SMTP_TLS
         sync: false

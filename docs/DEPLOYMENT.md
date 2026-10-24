@@ -185,6 +185,24 @@ Read from the environment, never committed, never logged: `SMTP_HOST`, `SMTP_POR
 Each service supplies its own values in the Render dashboard. On this worker they may be left unset
 entirely — the suppressing mailer is chosen before any transport is built.
 
+### Email over Resend (`email.send`, 0178)
+
+The same drain delivers queued email. `sendEmail` (`email.ts`) writes an `email_messages` row (`queued`) and
+an `email.send` outbox row and sends nothing; the worker hands the row to Resend's HTTP API and resolves it to
+`sent` (with Resend's message id), `stubbed` (recorded, never sent; `last_error` says why) or `failed`. It sends
+only from `queued` and passes the message id as Resend's `Idempotency-Key`, so a redelivered outbox row cannot
+send twice. The body is cleared once the send resolves.
+
+- `RESEND_API_KEY` (dashboard, `sync: false`): **unset, every send is `stubbed`.**
+- `EMAIL_FROM` (dashboard, `sync: false`): the default sender on the verified domain, e.g.
+  `Net Zero International <no-reply@netzero.international>`. Unset, sends are stubbed too.
+- **On the isolated boundary a key narrows rather than opens the gate:** only recipients at
+  `@netzero.international` are sent (`ISOLATED_RECIPIENT_DOMAINS`, a code constant); every other recipient is
+  `stubbed`. Off it, the mail gate above still applies — production, and `NZI_MAIL_MODE=send`.
+- **Test send:** from this worker's Render Shell,
+  `npm run email:test-send -w @nzi/isolated-backend -- --to <you>@netzero.international --actor <name>`, then
+  `-- --status <id>` after the next tick.
+
 ### Consent
 
 `client_contacts.email_consent` (`unknown` | `granted` | `declined`, default `unknown`) follows the

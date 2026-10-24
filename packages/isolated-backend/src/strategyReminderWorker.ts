@@ -4,6 +4,7 @@ import {
   type ClientContactLike, type MessageContent, type ReminderKind,
 } from "@nzi/contracts";
 import { listClientStrategies } from "./reductionStrategies";
+import { deliverEmail, EMAIL_SEND_TOPIC, type EmailDispatch } from "./email";
 import { mailDelivery, type MailDelivery, type Mailer } from "./mailer";
 import { readActiveMessageTemplate } from "./messageTemplates";
 import type { Queryable } from "./postgres";
@@ -49,6 +50,8 @@ export type ReminderRunSummary = {
   /** Outbox rows seen whose topic no handler recognised — the 0001 backlog, mostly. */
   skipped: number;
   delivery: MailDelivery;
+  /** `email.send` rows, counted apart: `sent`/`suppressed`/`failed` above are reminders. */
+  emails: { sent: number; stubbed: number; retried: number; failed: number };
 };
 
 type ReminderPayload = {
@@ -158,13 +161,19 @@ async function clientNameFor(db: Queryable, clientId: string): Promise<string> {
 
 /**
  * Drains pending outbox rows. Every row reaches a terminal state, so the backlog is cleared
- * once rather than re-read on every tick — but only reminder rows can produce a message.
+ * once rather than re-read on every tick — but only rows with a handler can produce a message: reminders, and `email.send`
+ * (`email.ts`, phase 1 of the email programme), whose own row says what to send and whether it already has.
  */
 export async function drainOutbox(db: Queryable, input: {
   organisationId: string;
   today: string;
   mailer: Mailer;
   delivery: MailDelivery;
+  /**
+   * The `email.send` handler's gate and transport. Absent, `email.send` rows are left pending for a drainer that has one —
+   * never skipped, because a skipped send is a lost one.
+   */
+  email?: EmailDispatch;
   limit?: number;
   windowDays?: number;
 }): Promise<Omit<ReminderRunSummary, "scanned" | "claimed">> {
@@ -172,15 +181,37 @@ export async function drainOutbox(db: Queryable, input: {
     `SELECT outbox_id, topic, payload_json, attempts
      FROM nzi_console.transactional_outbox
      WHERE organisation_id = $1 AND state = 'pending' AND available_at <= now()
+       AND ($3::boolean OR topic <> $4)
      ORDER BY created_at
      LIMIT $2
      FOR UPDATE SKIP LOCKED`,
-    [input.organisationId, input.limit ?? 200],
+    [input.organisationId, input.limit ?? 200, input.email !== undefined, EMAIL_SEND_TOPIC],
   );
 
   let sent = 0, suppressed = 0, failed = 0, skipped = 0;
+  const emails = { sent: 0, stubbed: 0, retried: 0, failed: 0 };
 
   for (const row of pending.rows) {
+    if (row.topic === EMAIL_SEND_TOPIC && input.email !== undefined) {
+      const emailMessageId = (row.payload_json as unknown as { emailMessageId?: unknown }).emailMessageId;
+      const outcome = typeof emailMessageId === "string"
+        ? await deliverEmail(db, { organisationId: input.organisationId, emailMessageId, dispatch: input.email })
+        : "stale";
+      if (outcome === "sent" || outcome === "stubbed") { emails[outcome] += 1; await settle(db, input.organisationId, row.outbox_id, "sent"); }
+      // Already resolved by an earlier delivery of this row, or no such message: nothing was sent now.
+      else if (outcome === "stale") { skipped += 1; await settle(db, input.organisationId, row.outbox_id, "skipped"); }
+      else {
+        emails[outcome === "retry" ? "retried" : "failed"] += 1;
+        await db.query(
+          `UPDATE nzi_console.transactional_outbox
+           SET state = $3, attempts = attempts + 1,
+               available_at = now() + (interval '1 minute' * power(4, attempts + 1))
+           WHERE organisation_id=$1 AND outbox_id=$2`,
+          [input.organisationId, row.outbox_id, outcome === "retry" ? "pending" : "failed"]);
+      }
+      continue;
+    }
+
     // The handler lookup is the safety property: a topic nobody handles cannot become mail,
     // which is what makes the pre-drainer backlog inert rather than dangerous.
     if (row.topic !== REMINDER_TOPIC) {
@@ -212,7 +243,7 @@ export async function drainOutbox(db: Queryable, input: {
     }
   }
 
-  return { sent, suppressed, failed, skipped, delivery: input.delivery };
+  return { sent, suppressed, failed, skipped, delivery: input.delivery, emails };
 }
 
 const settle = (db: Queryable, organisationId: string, outboxId: string, state: "sent" | "skipped") =>
@@ -325,6 +356,8 @@ export async function runReminderTick(db: Queryable, input: {
   today: string;
   mailer: Mailer;
   env?: Parameters<typeof mailDelivery>[0];
+  /** The `email.send` handler's dispatch (`emailDispatchFromEnv`). Absent, email rows wait for a drainer that has one. */
+  email?: EmailDispatch;
   windowDays?: number;
   limit?: number;
 }): Promise<ReminderRunSummary> {
@@ -343,7 +376,7 @@ export async function runReminderTick(db: Queryable, input: {
   }
   const drained = await drainOutbox(db, {
     organisationId: input.organisationId, today: input.today,
-    mailer: input.mailer, delivery, limit: input.limit, windowDays: input.windowDays,
+    mailer: input.mailer, delivery, email: input.email, limit: input.limit, windowDays: input.windowDays,
   });
   return { scanned, claimed, ...drained };
 }
