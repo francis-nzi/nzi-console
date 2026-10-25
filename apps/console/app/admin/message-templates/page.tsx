@@ -9,8 +9,8 @@ export const dynamic = "force-dynamic";
 /**
  * Message templates (admin Phase F1). The messages the console sends — a fixed set, governed in code (F-Q3) — each with
  * the organisation's own wording beside the built-in, edited over its declared tokens and previewed against sample values
- * only (F-Q2). The sender and footer are the organisation profile's, shown for reference (F-Q7). Three messages, so no
- * paging.
+ * only (F-Q2). The sender and footer are the organisation profile's, shown for reference (F-Q7). Seven messages (the
+ * transactional four joined in phase 2), so no paging.
  */
 export default async function MessageTemplatesPage() {
   const access = await adminAccess();

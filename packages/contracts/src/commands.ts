@@ -4,7 +4,10 @@ import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, ty
 import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
 import { isCatalogueAmount, isTemplateQuantity, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CODE_PATTERN, JOB_ITEM_DESCRIPTION_MAX, JOB_ITEM_HOURS_MAX, JOB_ITEM_NAME_MAX, JOB_TYPE_ITEMS_MAX, type JobItemEditableFields, type JobTypeTemplateEntry } from "./adminServiceCatalogue";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
-import { MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateRequiredIssues, messageTemplateTokenIssues } from "./messageTemplates";
+import {
+  MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_HTML_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateHtmlIssues, messageTemplateLinkIssues,
+  messageTemplateRequiredIssues, messageTemplateTokenIssues,
+} from "./messageTemplates";
 import { BD_STAGE_KEY_PATTERN, BD_STAGE_NAME_MAX, BD_STAGE_ORDER_MAX, isStageProbability, type BdStageEditableFields } from "./adminCrmBd";
 import { reportScopeIssues, type ReportScope } from "./reportScope";
 import { isPortalProfileKey, isPortalProfileValue, isPortalScope, type PortalProfileKey } from "./portalProfile";
@@ -896,8 +899,9 @@ export type CommandInputMap = {
   "supplier_item.reinstate": { serviceItemId: string; expectedVersion: number };
   "supplier_item.rate.set": { serviceItemId: string; expectedVersion: number; agreedRate: number | null };
   // Message templates (admin Phase F1; ruled phaseF plan F-Q2/F-Q3). admin.templates; a key from the code registry only.
-  "message_template.create": { templateKey: string; subject: string; body: string };
-  "message_template.update": { templateKey: string; expectedVersion: number; subject: string; body: string };
+  /** `html`: the HTML body, only for a key with `htmlPart`; absent or null, the HTML part is made from the text. */
+  "message_template.create": { templateKey: string; subject: string; body: string; html?: string | null };
+  "message_template.update": { templateKey: string; expectedVersion: number; subject: string; body: string; html?: string | null };
   "message_template.deactivate": { templateKey: string; expectedVersion: number };
   "message_template.reinstate": { templateKey: string; expectedVersion: number };
   // The BD funnel (admin Phase F2; ruled phaseF plan). admin.lookups; a stage's key set once.
@@ -1324,14 +1328,27 @@ const versioned = (issues: CommandIssue[], field: string, id: unknown, expectedV
 const messageTemplateKeyIssues = (issues: CommandIssue[], templateKey: unknown) => {
   if (typeof templateKey !== "string" || !messageTemplateDefinition(templateKey)) issues.push({ field: "templateKey", code: "UNKNOWN_KEY", message: "That is not a message the console sends — the set of messages is fixed in code." });
 };
-const messageTemplateContentIssues = (issues: CommandIssue[], input: { templateKey: string; subject: string; body: string }) => {
+const messageTemplateContentIssues = (issues: CommandIssue[], input: { templateKey: string; subject: string; body: string; html?: string | null }) => {
   const definition = typeof input.templateKey === "string" ? messageTemplateDefinition(input.templateKey) : undefined;
   for (const [field, value, max, what] of [["subject", input.subject, MESSAGE_TEMPLATE_SUBJECT_MAX, "A subject"], ["body", input.body, MESSAGE_TEMPLATE_BODY_MAX, "A body"]] as const) {
     if (!text(value)) { issues.push({ field, code: "REQUIRED", message: `${what} is required.` }); continue; }
     if (value.length > max) issues.push({ field, code: "TOO_LONG", message: `${what} is at most ${max} characters.` });
     if (definition) for (const message of messageTemplateTokenIssues(value, definition)) issues.push({ field, code: "UNKNOWN_TOKEN", message });
+    for (const message of messageTemplateLinkIssues(value)) issues.push({ field, code: "LINK_AT_REST", message });
   }
   if (definition && text(input.body)) for (const message of messageTemplateRequiredIssues(input.body, definition)) issues.push({ field: "body", code: "MISSING_TOKEN", message });
+  // The HTML body (phase 2): optional, and only for a message that is sent as HTML — elsewhere it would never be sent.
+  const html = input.html;
+  if (html === undefined || html === null) return;
+  if (typeof html !== "string" || !text(html)) { issues.push({ field: "html", code: "INVALID", message: "An HTML body is either written out or left out — not blank." }); return; }
+  if (definition && !definition.htmlPart) { issues.push({ field: "html", code: "NOT_SENT_AS_HTML", message: "This message is sent as plain text, so it has no HTML body." }); return; }
+  if (html.length > MESSAGE_TEMPLATE_HTML_MAX) issues.push({ field: "html", code: "TOO_LONG", message: `An HTML body is at most ${MESSAGE_TEMPLATE_HTML_MAX} characters.` });
+  if (definition) {
+    for (const message of messageTemplateTokenIssues(html, definition)) issues.push({ field: "html", code: "UNKNOWN_TOKEN", message });
+    for (const message of messageTemplateRequiredIssues(html, definition)) issues.push({ field: "html", code: "MISSING_TOKEN", message: message.replace("The body", "The HTML body") });
+  }
+  for (const message of messageTemplateHtmlIssues(html)) issues.push({ field: "html", code: "UNSAFE_HTML", message });
+  for (const message of messageTemplateLinkIssues(html)) issues.push({ field: "html", code: "LINK_AT_REST", message });
 };
 /** A funnel stage's definition (admin F2): a name, a whole order, a probability from 0 to 100 to two places. */
 const bdStageIssues = (issues: CommandIssue[], input: BdStageEditableFields) => {

@@ -216,4 +216,5 @@ export {
   EMAIL_SEND_TOPIC, MAX_EMAIL_ATTEMPTS, ISOLATED_RECIPIENT_DOMAINS,
   type EmailRequest, type EmailDispatch, type EmailGate, type EmailTransport, type EmailOutcome, type OutboundEmail,
 } from "./email";
+export { sendTemplatedEmail, TemplatedEmailError, type TemplatedEmailRequest } from "./templatedEmail";
 export { previewDeclaredFactor, type DeclaredFactorPreview, type ResolutionEntry } from "./declarativeResolution";

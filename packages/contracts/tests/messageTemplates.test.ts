@@ -18,7 +18,11 @@ const reminder = (kind: "approaching" | "overdue", owner: string, name: string) 
 describe("the registry", () => {
   it("names each key once, in the key pattern, with a send-site, and built-in wording that uses only declared tokens", () => {
     const keys = MESSAGE_TEMPLATE_REGISTRY.map((definition) => definition.key);
-    assert.deepEqual(keys, ["strategy.reminder.approaching", "strategy.reminder.overdue", "staff.invitation"]);
+    assert.deepEqual(keys, [
+      "strategy.reminder.approaching", "strategy.reminder.overdue", "staff.invitation",
+      // Phase 2's transactional keys (BUILD-message-templates-phase2, R3).
+      "portal.access.invite", "password.reset.staff", "password.reset.portal", "message.notification",
+    ]);
     assert.equal(new Set(keys).size, keys.length);
     for (const definition of MESSAGE_TEMPLATE_REGISTRY) {
       assert.match(definition.key, MESSAGE_TEMPLATE_KEY_PATTERN);

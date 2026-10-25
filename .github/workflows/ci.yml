@@ -861,6 +861,12 @@ jobs:
       # body that does not outlive its send are the table's own.
       - name: Queued email is sent once, stubbed without a key, and held to the NZI domain on the isolated boundary
         run: npx tsx --test packages/isolated-backend/tests/emailOutboxReal.test.ts
+      # 0179, email phase 2: a template's HTML body is written through admin.templates, audited before and after, held by the
+      # column grant and bounded by the table; sendTemplatedEmail renders the organisation's wording or the built-in, refuses
+      # a missing or unknown token before anything is written, and queues through sendEmail with template_code set — still
+      # one per idempotency key, and still stubbed for a non-NZI recipient on the isolated boundary.
+      - name: Templated email renders strictly, multipart, and queues through the phase-1 sender
+        run: npx tsx --test packages/isolated-backend/tests/templatedEmailReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
