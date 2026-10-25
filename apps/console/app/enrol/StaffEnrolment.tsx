@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { RecoveryCodesPanel } from "../login/RecoveryCodes";
 
 type Setup = { email: string; displayName: string | null; totpSecret: string; otpauthUri: string };
 
@@ -16,6 +17,8 @@ export function StaffEnrolment() {
   const [token, setToken] = useState<string | null>(null);
   const [setup, setSetup] = useState<Setup | null>(null);
   const [complete, setComplete] = useState(false);
+  // The MFA recovery codes issued with the credential (4-2): shown once, on the completion screen.
+  const [codes, setCodes] = useState<string[]>([]);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   const [passwordLength, setPasswordLength] = useState(0);
@@ -35,7 +38,7 @@ export function StaffEnrolment() {
       });
       const body = await response.json();
       if (!response.ok) { setError(body.message ?? "Enrolment could not be completed."); return; }
-      if (setup) { if (body.enrolled !== true) throw new Error(); setComplete(true); return; }
+      if (setup) { if (body.enrolled !== true) throw new Error(); setCodes(Array.isArray(body.recoveryCodes) ? body.recoveryCodes.filter((code: unknown): code is string => typeof code === "string") : []); setComplete(true); return; }
       if (typeof body.setup?.email !== "string" || typeof body.setup?.totpSecret !== "string" || typeof body.setup?.otpauthUri !== "string") throw new Error();
       setSetup(body.setup);
     } catch { setError("The enrolment service could not confirm the outcome. Retry this step before trying to sign in."); }
@@ -43,7 +46,7 @@ export function StaffEnrolment() {
   }
   async function copySecret() { if (!setup) return; try { await navigator.clipboard.writeText(setup.totpSecret); setCopied(true); } catch { setError("The key could not be copied automatically. Select and copy it manually."); } }
 
-  if (complete) return <section className="nz-invite-card complete"><div className="nz-invite-check">✓</div><span className="nz-eyebrow">Enrolment complete</span><h2>Your sign-in is ready</h2><p>Your password and authenticator are confirmed. This link no longer works.</p><a className="nz-btn pri nz-auth-submit" href="/login">Sign in</a></section>;
+  if (complete) return <section className="nz-invite-card complete"><div className="nz-invite-check">✓</div><span className="nz-eyebrow">Enrolment complete</span><h2>Your sign-in is ready</h2><p>Your password and authenticator are confirmed. This link no longer works.</p>{codes.length ? <RecoveryCodesPanel codes={codes} continueHref="/login" /> : <a className="nz-btn pri nz-auth-submit" href="/login">Sign in</a>}</section>;
 
   return <form onSubmit={submit} className="nz-invite-card" aria-busy={pending}>
     <div className="nz-invite-card-head"><span className="nz-eyebrow">{setup ? "Step 2 of 2" : "Step 1 of 2"}</span><span>{setup ? "Authenticator" : "Password"}</span></div>

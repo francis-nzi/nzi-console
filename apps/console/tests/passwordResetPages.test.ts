@@ -46,7 +46,8 @@ describe("forgot password (phase 4-1)", () => {
     const staff = read("app/login/LoginForm.tsx"), portal = read("app/portal/login/PortalLoginForm.tsx");
     assert.match(staff, /<a href="\/forgot-password">Reset it by email<\/a>/);
     assert.match(portal, /<a href="\/portal\/forgot-password">Reset it by email<\/a>/);
-    for (const form of [staff, portal]) assert.match(form, /An authenticator can only be replaced through the governed/);
+    // 4-2 puts recovery codes first at the MFA step; the governed process stays as the way when there is no code.
+    for (const form of [staff, portal]) assert.match(form, /Use one of the recovery codes you saved[^<]*an authenticator can only be replaced through the governed/);
   });
 
   it("takes the reset token from the URL fragment and clears it from the address bar", () => {
