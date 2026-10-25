@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 // `/verify/<code>` is public by design — a certificate only means something outside NZI if
 // someone holding it can confirm it without an account. What that page may return is bounded
 // by the `verify_training_certificate` function, not by this list.
-const publicPath = (path: string) => path === "/login" || path === "/enrol" || path.startsWith("/api/auth/") || path === "/api/health" || path.startsWith("/_next/") || path === "/favicon.ico" || path.startsWith("/verify/");
+const publicPath = (path: string) => path === "/login" || path === "/enrol" || path === "/forgot-password" || path === "/reset-password" || path.startsWith("/api/auth/") || path === "/api/health" || path.startsWith("/_next/") || path === "/favicon.ico" || path.startsWith("/verify/");
 const decode = (value: string) => Uint8Array.from(atob(value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=")), (char) => char.charCodeAt(0));
 async function validSession(token: string | undefined, secret: string | undefined) {
   if (!token || !secret || new TextEncoder().encode(secret).length < 32) return false;
@@ -25,7 +25,7 @@ async function validTraineeSession(token:string|undefined,secret:string|undefine
 
 export async function middleware(request: NextRequest) {
   if (process.env.NZI_AUTH_REQUIRED !== "true") return NextResponse.next();
-  const path=request.nextUrl.pathname,portalAuthPath=path==="/portal/login"||path==="/portal/invite"||path==="/portal/session-ended"||path.startsWith("/api/portal/auth/")||path.startsWith("/api/portal/invitations/"),portalPath=path==="/portal"||path.startsWith("/portal/")||path.startsWith("/api/portal/");
+  const path=request.nextUrl.pathname,portalAuthPath=path==="/portal/login"||path==="/portal/invite"||path==="/portal/session-ended"||path==="/portal/recover"||path==="/portal/forgot-password"||path==="/portal/reset-password"||path.startsWith("/api/portal/auth/")||path.startsWith("/api/portal/invitations/"),portalPath=path==="/portal"||path.startsWith("/portal/")||path.startsWith("/api/portal/");
   // The trainee realm, checked against its OWN cookie and secret. Keeping the three realms
   // in separate branches is what stops a session from one ever satisfying another.
   const traineePath=path==="/trainee"||path.startsWith("/trainee/")||path.startsWith("/api/trainee/");
