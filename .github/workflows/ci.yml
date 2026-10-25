@@ -411,10 +411,17 @@ jobs:
         run: npx tsx --test packages/isolated-backend/tests/migratedRowCommandsReal.test.ts
       # Matrix v8 — staff invitations from the admin: staff.invite held by Admin alone; the first admin bootstrapped by
       # the audited role command and signed in for real; their invitation issued through the one enrolment path, the
-      # colleague enrolled from the fragment link and signed in; every other role refused; with mail enabled the admin
-      # never holds the link, and an unsent link is withdrawn.
+      # colleague enrolled from the fragment link and signed in; every other role refused. Phase 3: the invitation is emailed
+      # through sendTemplatedEmail in the issue's transaction (the admin never holds the link; an unqueueable email issues
+      # nothing); reinvite revokes and re-sends, audited, at most three an hour; an enrolled member is not reinvited; and the
+      # Team & access roster says how the latest invitation's email resolved.
       - name: Staff invitations from the admin keep every enrolment property
         run: npx tsx --test packages/isolated-backend/tests/staffInvitationsReal.test.ts
+      # 0180, email phase 3: saved staff-invitation wording moves {{link}} → {{inviteLink}} — subject, body and HTML, active or
+      # not, version bumped, audited by the migration; other keys untouched; updated_by kept so the v7 loader still reads an
+      # imported row as the import's; and the rewritten wording renders and queues under the registry's token.
+      - name: The staff invitation's link token is renamed in saved wording, and every row still sends
+        run: npx tsx --test packages/isolated-backend/tests/staffInviteTokenMigrationReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

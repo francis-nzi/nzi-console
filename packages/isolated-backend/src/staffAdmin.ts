@@ -34,11 +34,18 @@ import { blindIndex } from "./subjectCrypto";
 // ── The list ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 export type StaffSignIn = "enrolled" | "invited" | "expired" | "revoked" | "none";
+/**
+ * How the latest invitation's email resolved (phase 3), from `email_messages` by the invitation it carries: null when that
+ * invitation was not emailed (a copied link, the operator's script, or before phase 3). `stubbed` and `failed` are what
+ * make the copy-a-link fallback worth offering.
+ */
+export type StaffInviteEmail = "queued" | "sent" | "stubbed" | "failed";
 export type StaffRow = {
   userId: string; displayName: string; named: boolean; email: string | null; role: StaffRole;
   status: "active" | "deactivated" | "invited" | "suspended";
   positionValueId: string | null; positionLabel: string | null; positionActive: boolean | null;
   provenance: "v7" | "added"; signIn: StaffSignIn; version: number; deactivatedAt: string | null;
+  inviteEmail: StaffInviteEmail | null;
 };
 export type StaffPage = ListPage<StaffRow, StaffListFilterKey, Record<string, never>>;
 
@@ -48,12 +55,16 @@ const staffSql = defineListSql<StaffListSortKey, StaffListFilterKey>({
       m.email, m.role_id AS role, m.status, m.position_value_id AS position, pv.label AS position_label, pv.active AS position_active,
       m.version, m.deactivated_at,
       CASE WHEN m.source_system IS NOT NULL THEN 'v7' ELSE 'added' END AS provenance,
-      coalesce(i.state, 'none') AS sign_in
+      coalesce(i.state, 'none') AS sign_in, i.email_status AS invite_email
     FROM nzi_console.memberships m
     LEFT JOIN nzi_console.reference_values pv ON (pv.organisation_id, pv.value_id) = (m.organisation_id, m.position_value_id)
     LEFT JOIN LATERAL (
       SELECT CASE WHEN consumed_at IS NOT NULL THEN 'enrolled' WHEN revoked_at IS NOT NULL THEN 'revoked'
-                  WHEN expires_at <= now() THEN 'expired' ELSE 'invited' END AS state
+                  WHEN expires_at <= now() THEN 'expired' ELSE 'invited' END AS state,
+             (SELECT e.status FROM nzi_console.email_messages e
+               WHERE e.organisation_id = staff_enrolment_invitations.organisation_id AND e.correlation_id = staff_enrolment_invitations.invitation_id
+                 AND e.template_code = 'staff.invitation'
+               ORDER BY e.created_at DESC LIMIT 1) AS email_status
         FROM nzi_console.staff_enrolment_invitations
        WHERE (organisation_id, user_id) = (m.organisation_id, m.user_id)
        ORDER BY created_at DESC, invitation_id DESC LIMIT 1) i ON true`,
@@ -78,6 +89,7 @@ export async function listStaffPage(db: Queryable, query: StaffListQuery): Promi
       positionValueId: row.position === null ? null : String(row.position), positionLabel: row.position_label === null ? null : String(row.position_label),
       positionActive: row.position_active === null ? null : row.position_active === true,
       provenance: row.provenance as StaffRow["provenance"], signIn: row.sign_in as StaffSignIn, version: Number(row.version), deactivatedAt: iso(row.deactivated_at),
+      inviteEmail: row.invite_email === null || row.invite_email === undefined ? null : row.invite_email as StaffInviteEmail,
     }),
     mapSummary: () => ({}),
   });

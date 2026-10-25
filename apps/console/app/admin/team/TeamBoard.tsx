@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import { PAGE_SIZES, ROLE_CAPABILITY_MATRIX, roleLabels, staffListSpec, staffRoles, todayInLondon, type StaffListQuery, type StaffRole } from "@nzi/contracts";
-import type { StaffHistoryEntry, StaffPage, StaffPickers, StaffRates, StaffRow, StaffSignIn } from "@nzi/isolated-backend";
+import type { StaffHistoryEntry, StaffInviteEmail, StaffPage, StaffPickers, StaffRates, StaffRow, StaffSignIn } from "@nzi/isolated-backend";
 import { AuditLine, CapabilityChip, DataList, DrawerEditor, FieldRow, NumberField, ProvenanceBadge, SelectField, TextAreaField, TextField, type DataListColumn } from "@nzi/ui";
 import { formatDate, formatDateTime } from "../../lib/formatDate";
 import { useListNavigation } from "../../lib/useListNavigation";
@@ -13,20 +13,61 @@ import { useListNavigation } from "../../lib/useListNavigation";
  * The Team & access screen (admin Phase B, B1): DataList → drawer → audit. A person's name and position are edited; their
  * role is changed and they are deactivated or reinstated with a reason. Never yourself, never the last active admin —
  * the drawer says so before it asks, and the command refuses regardless. Rates appear only with finance.manage.
+ *
+ * Invitations (email programme phase 3, staff.invite): each active member's row offers Invite, or Reinvite once they have had
+ * one, until they enrol. The invitation is emailed; the admin never holds the link unless they ask for one to copy — offered
+ * whenever the email could not reach them (stubbed on the isolated boundary, or failed).
  */
 type Editing = { allowed: true } | { allowed: false; reason: string };
 const count = new Intl.NumberFormat("en-GB");
 const dash = <span className="nz-a-muted">—</span>;
 const SIGN_IN: Record<StaffSignIn, string> = { enrolled: "Enrolled", invited: "Invited", expired: "Invitation expired", revoked: "Invitation withdrawn", none: "No invitation on record" };
 const STATUS_LABEL = { active: "Active", deactivated: "Deactivated", invited: "Invited", suspended: "Suspended" } as const;
+const INVITE_EMAIL: Record<StaffInviteEmail, string> = {
+  queued: "Email queued — it goes out within a few minutes", sent: "Email sent", stubbed: "Email not sent from this environment", failed: "Email could not be sent",
+};
 
-export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, rates }: {
+type Invited =
+  | { delivery: "email"; name: string; userId: string; sentTo: string; expiresAt: string; reinvite: boolean }
+  | { delivery: "link"; name: string; userId: string; link: string; expiresAt: string };
+
+/** Who may be invited from their row: active, with a work address, not yet enrolled, and never yourself. */
+const invitable = (row: StaffRow, self: string) => row.status === "active" && !!row.email && row.signIn !== "enrolled" && row.userId !== self;
+
+export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, rates, invite }: {
   page: StaffPage; pickers: StaffPickers; query: StaffListQuery; editing: Editing; self: string; activeAdmins: number; rates: boolean;
+  /** Holds staff.invite (Admin): sees Invite / Reinvite. */
+  invite: boolean;
 }) {
   const router = useRouter();
   const nav = useListNavigation(staffListSpec, query, "/admin/team");
   const [open, setOpen] = useState<{ row: StaffRow | null } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [inviting, setInviting] = useState<string | null>(null);
+  const [invited, setInvited] = useState<Invited | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const canInvite = invite && editing.allowed;
+
+  async function sendInvite(row: StaffRow, delivery: "email" | "link") {
+    if (inviting) return;
+    setInviting(row.userId); setInviteError(null); setInvited(null); setCopied(false); setNotice(null);
+    try {
+      const response = await fetch("/api/isolated/staff-invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: row.userId, delivery }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message ?? "The invitation could not be issued.");
+      const issued = body.invitation;
+      if (issued?.delivery === "email" && typeof issued.sentTo === "string") setInvited({ delivery: "email", name: row.displayName, userId: row.userId, sentTo: issued.sentTo, expiresAt: issued.expiresAt, reinvite: issued.reinvite === true });
+      else if (issued?.delivery === "link" && typeof issued.link === "string") setInvited({ delivery: "link", name: row.displayName, userId: row.userId, link: issued.link, expiresAt: issued.expiresAt });
+      else throw new Error("The invitation service returned an answer it could not read.");
+      router.refresh();
+    } catch (cause) { setInviteError(cause instanceof Error ? cause.message : "The invitation could not be issued."); }
+    finally { setInviting(null); }
+  }
+  async function copyLink() {
+    if (invited?.delivery !== "link") return;
+    try { await navigator.clipboard.writeText(invited.link); setCopied(true); } catch { setInviteError("The link could not be copied automatically. Select and copy it manually."); }
+  }
   const status = query.filters.status?.[0] ?? "";
   const role = query.filters.role?.[0] ?? "";
   const position = query.filters.position?.[0] ?? "";
@@ -39,7 +80,17 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
     </div> },
     { key: "role", header: "Role", sortKey: "role", cell: (row) => <span className="nz-a-prov">{roleLabels[row.role]}</span> },
     { key: "position", header: "Position", sortKey: "position", cell: (row) => row.positionLabel ? <>{row.positionLabel}{row.positionActive === false ? <span className="nz-a-muted"> (inactive)</span> : null}</> : dash },
-    { key: "signIn", header: "Sign-in", cell: (row) => <span className={row.signIn === "enrolled" ? undefined : "nz-a-muted"}>{SIGN_IN[row.signIn]}</span> },
+    { key: "signIn", header: "Sign-in", cell: (row) => <div className="nz-a-signin">
+      <span className={row.signIn === "enrolled" ? undefined : "nz-a-muted"}>{SIGN_IN[row.signIn]}</span>
+      {row.signIn !== "enrolled" && row.inviteEmail ? <div className={`nz-a-sub${row.inviteEmail === "stubbed" || row.inviteEmail === "failed" ? " nz-a-warn" : ""}`}>{INVITE_EMAIL[row.inviteEmail]}</div> : null}
+      {canInvite && invitable(row, self) ? <div className="nz-a-row-actions">
+        <button type="button" className="nz-a-btn sm" disabled={inviting !== null} onClick={(event) => { event.stopPropagation(); void sendInvite(row, "email"); }}>
+          {inviting === row.userId ? "Sending…" : row.signIn === "none" ? "Invite" : "Reinvite"}
+        </button>
+        {row.inviteEmail === "stubbed" || row.inviteEmail === "failed"
+          ? <button type="button" className="nz-a-linkish" disabled={inviting !== null} onClick={(event) => { event.stopPropagation(); void sendInvite(row, "link"); }}>Issue a link to copy</button> : null}
+      </div> : null}
+    </div> },
     { key: "source", header: "Source", cell: (row) => <ProvenanceBadge provenance={row.provenance} /> },
     { key: "status", header: "Status", sortKey: "status", cell: (row) => <span className={`nz-a-badge ${row.status === "active" ? "ok" : "off"}`}><i aria-hidden="true" />{STATUS_LABEL[row.status]}</span> },
   ];
@@ -60,10 +111,22 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
 
     <div className="nz-a-hint-strip">
       <span aria-hidden="true">i</span>
-      <div>A new member starts as <b>Viewer</b>; a role is granted afterwards, with a reason. Nobody changes their own role or deactivates themselves, and the organisation always keeps an active admin ({count.format(activeAdmins)} today). Invitations to sign in are sent from Platform & audit → Access.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
+      <div>A new member starts as <b>Viewer</b>; a role is granted afterwards, with a reason. Nobody changes their own role or deactivates themselves, and the organisation always keeps an active admin ({count.format(activeAdmins)} today). {invite
+        ? <>Invite a member from their row: they are emailed a single-use link, valid 72 hours, to set their own password and connect their own authenticator. Reinvite sends a new link and withdraws the old one.</>
+        : <>Invitations to sign in are sent by an admin (staff.invite).</>}{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
     </div>
 
     {notice ? <div className="nz-a-notice" role="status">{notice}</div> : null}
+    {inviteError ? <div className="nz-a-error" role="alert">{inviteError}</div> : null}
+    {invited?.delivery === "email" ? <div className="nz-a-notice" role="status">
+      {invited.reinvite ? "Reinvited" : "Invited"} {invited.name}: the invitation is emailed to <b>{invited.sentTo}</b>, and works once, until {formatDateTime(invited.expiresAt)}{invited.reinvite ? "; any earlier link no longer works" : ""}. You do not hold the link.
+      {" "}If it does not reach them, <button type="button" className="nz-a-linkish" disabled={inviting !== null} onClick={() => { const row = page.rows.find((entry) => entry.userId === invited.userId); if (row) void sendInvite(row, "link"); }}>issue a link to copy instead</button> — that withdraws the emailed one.
+    </div> : null}
+    {invited?.delivery === "link" ? <div className="nz-a-invite-link" role="status">
+      <div><b>A single-use link for {invited.name} — shown once.</b> Send it to them privately, not in a shared channel. It works once, until {formatDateTime(invited.expiresAt)}; any earlier link no longer works.</div>
+      <output className="nz-a-mono">{invited.link}</output>
+      <button type="button" className="nz-a-btn" onClick={() => void copyLink()}>{copied ? "Copied" : "Copy link"}</button>
+    </div> : null}
 
     <div className="nz-a-lookups">
       <DataList
@@ -154,7 +217,7 @@ function StaffDrawer({ row, pickers, editing, self, activeAdmins, rates, onClose
       if (isNew) {
         const result = await postBrowserCommand("/api/isolated/staff", { displayName: draft.displayName, email: draft.email, positionValueId: draft.positionValueId || null }, key("add"));
         if (result.state !== "success") return fail(result);
-        return onSaved(`Added ${draft.displayName.trim()} as a Viewer. Grant a role, then invite them from Platform & audit → Access.`);
+        return onSaved(`Added ${draft.displayName.trim()} as a Viewer. Grant a role, then invite them from their row.`);
       }
       const path = `/api/isolated/staff/${encodeURIComponent(row.userId)}`;
       let version = row.version;
