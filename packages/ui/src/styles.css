@@ -2057,6 +2057,15 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
    flex:none — the drawer body is a flex column, and would otherwise shrink the frame to a sliver. */
 .nz-a-message-preview-html{display:block;flex:none;width:100%;height:380px;border:1px solid var(--a-line);border-radius:8px;background:#fff;margin-bottom:10px}
 .nz-a-notice{margin-bottom:12px;padding:10px 13px;border-radius:8px;background:var(--a-ok-bg);color:var(--a-ok);font-size:12.5px;font-weight:500}
+/* Team & access invitations (email phase 3): the sign-in cell's state, its email's outcome, and its Invite / Reinvite. */
+.nz-a-signin{display:flex;flex-direction:column;gap:3px;align-items:flex-start}
+.nz-a-sub.nz-a-warn{color:var(--a-warn)}
+.nz-a-row-actions{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:2px}
+.nz-a-btn.sm{padding:3px 10px;font-size:11.5px}
+/* A link shown once, to copy: amber, because it is a credential on screen. */
+.nz-a-invite-link{display:grid;gap:8px;margin-bottom:12px;padding:10px 13px;border-radius:8px;background:var(--a-warn-bg);color:var(--a-warn);font-size:12.5px}
+.nz-a-invite-link output{display:block;padding:7px 9px;border:1px solid var(--a-line);border-radius:6px;background:var(--a-surface);color:inherit;overflow-wrap:anywhere;user-select:all}
+.nz-a-invite-link .nz-a-btn{justify-self:start}
 /* Team & access (admin B1): the drawer sections (rates, history) and the rate sub-form. */
 .nz-a-section{margin-top:18px;padding-top:14px;border-top:1px solid var(--a-line)}.nz-a-section h3{display:flex;align-items:center;gap:8px;margin:0 0 8px;font-size:13px;font-weight:600;color:var(--a-ink)}.nz-a-section p{margin:0 0 8px;font-size:12.5px;color:var(--a-ink-2)}
 .nz-a-history{list-style:none;margin:0 0 10px;padding:0;display:grid;gap:8px;font-size:12.5px;color:var(--a-ink)}.nz-a-history li{overflow-wrap:anywhere}

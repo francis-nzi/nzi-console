@@ -123,13 +123,13 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
   {
     key: "staff.invitation",
     label: "Staff sign-in invitation",
-    purpose: "To a member of staff an admin invites from Platform & audit → Access, when the service may send mail.",
+    purpose: "To a member of staff an admin invites, or reinvites, from Admin → Team & access.",
     channel: "email",
-    sendSite: "Staff enrolment invitations: staffInvitations.ts → inviteStaffMember() (plain text through the mailer today; Team & access invites move to sendTemplatedEmail in phase 3)",
+    sendSite: "Staff invitations from Admin → Team & access: staffInvitations.ts → inviteStaffMember(), through sendTemplatedEmail (phase 3)",
     tokens: [
-      // `link` rather than `inviteLink`: organisations' saved wording already uses it, and renaming would rewrite their rows.
-      { name: "link", description: "The single-use enrolment link", sample: "https://console.example.test/enrol#token=sample-token", required: true, kind: "url" },
-      { name: "expiresAt", description: "When the link expires", sample: "2026-10-04T09:00:00.000Z" },
+      // `inviteLink`, as every invite's is (phase 3, R4). It was `link` until 0180, which rewrote saved wording to match.
+      { name: "inviteLink", description: "The single-use enrolment link", sample: "https://console.example.test/enrol#token=sample-token", required: true, kind: "url" },
+      { name: "expiresAt", description: "When the link expires", sample: "Friday 30 October 2026, 17:00" },
     ],
     builtIn: {
       subject: "Set up your NZ Insights Pro sign-in",
@@ -137,15 +137,15 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
         "You have been invited to the NZ Insights Pro staff console.",
         "",
         "Set your own password and connect your authenticator here:",
-        "{{link}}",
+        "{{inviteLink}}",
         "",
         "This link works once and expires at {{expiresAt}}. Nobody at NZI sees your password or your authenticator.",
         "If you were not expecting this, ignore it — nothing happens unless the link is used.",
       ].join("\n"),
       html: [
         "<p>You have been invited to the NZ Insights Pro staff console.</p>",
-        `<p><a href="{{link}}" style="${BUTTON}">Set up your sign-in</a></p>`,
-        `<p style="${SMALL}">Or copy this link into your browser: {{link}}</p>`,
+        `<p><a href="{{inviteLink}}" style="${BUTTON}">Set up your sign-in</a></p>`,
+        `<p style="${SMALL}">Or copy this link into your browser: {{inviteLink}}</p>`,
         "<p>This link works once and expires at {{expiresAt}}. Nobody at NZI sees your password or your authenticator.</p>",
         `<p style="${SMALL}">If you were not expecting this, ignore it — nothing happens unless the link is used.</p>`,
       ].join("\n"),

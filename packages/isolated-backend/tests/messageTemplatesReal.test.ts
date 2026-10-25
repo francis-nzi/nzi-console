@@ -39,7 +39,7 @@ describe("planning the message-template import (no database)", () => {
     assert.deepEqual(plan.values.map((value) => [value.v7Key, value.templateKey, value.subject, value.body, value.convertedFromHtml]), [
       ["strategy.reminder.overdue", "strategy.reminder.overdue", "Late: {{strategyTitle}}", "Hello {{firstName}},\n\n{{clientName}} & you missed {{targetDate}}.\nThanks", true],
     ]);
-    assert.deepEqual(plan.refused, [{ v7Key: "team_member_invite", reason: "The body must include {{link}} — the single-use enrolment link." }]);
+    assert.deepEqual(plan.refused, [{ v7Key: "team_member_invite", reason: "The body must include {{inviteLink}} — the single-use enrolment link." }]);
   });
 
   it("converts HTML lists, entities and whitespace", () => {
@@ -130,7 +130,7 @@ describe("message templates, against a real database", { skip: TEST_DATABASE_URL
     });
 
     it("inserts onto known keys only, reports the rest, and keeps an organisation's own wording", async () => {
-      await createMessageTemplate(database.pool, { templateKey: "staff.invitation", subject: "Join us", body: "Here: {{link}}" }, context("ada", "admin", LOAD));
+      await createMessageTemplate(database.pool, { templateKey: "staff.invitation", subject: "Join us", body: "Here: {{inviteLink}}" }, context("ada", "admin", LOAD));
       const dry = await loadV7MessageTemplates(database.pool, LOAD, planV7MessageTemplates(withOverdue()), { commit: false });
       assert.equal(dry.inserted, 1);
       assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.message_templates WHERE organisation_id = $1`, [LOAD]))[0].n, 1, "a dry run writes nothing");

@@ -35,5 +35,5 @@ export default async function TeamPage({ searchParams }: { searchParams: Promise
 
   const editing = serviceEnvironment().writes !== "enabled" ? { allowed: false as const, reason: "Writes are switched off in this environment, so the roster is read-only here." } : { allowed: true as const };
   return <TeamBoard page={data.page} pickers={data.pickers} query={query} editing={editing} self={access.userId} activeAdmins={data.activeAdmins}
-    rates={holds(access.capabilities, "finance.manage")} />;
+    rates={holds(access.capabilities, "finance.manage")} invite={holds(access.capabilities, "staff.invite")} />;
 }

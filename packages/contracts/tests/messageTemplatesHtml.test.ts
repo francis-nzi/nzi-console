@@ -39,8 +39,8 @@ describe("the transactional keys (R3)", () => {
     assert.deepEqual(names("password.reset.staff"), ["displayName", "resetLink", "expiresAt"]);
     assert.deepEqual(names("password.reset.portal"), ["displayName", "resetLink", "expiresAt"]);
     assert.deepEqual(names("message.notification"), ["displayName", "clientName", "threadLink"]);
-    assert.deepEqual(names("staff.invitation"), ["link", "expiresAt"], "the existing token kept, so saved wording keeps working");
-    for (const [key, link] of [["portal.access.invite", "inviteLink"], ["password.reset.staff", "resetLink"], ["password.reset.portal", "resetLink"], ["message.notification", "threadLink"], ["staff.invitation", "link"]]) {
+    assert.deepEqual(names("staff.invitation"), ["inviteLink", "expiresAt"], "one link name across every invite (phase 3; 0180 rewrote saved wording)");
+    for (const [key, link] of [["portal.access.invite", "inviteLink"], ["password.reset.staff", "resetLink"], ["password.reset.portal", "resetLink"], ["message.notification", "threadLink"], ["staff.invitation", "inviteLink"]]) {
       const token = definition(key!).tokens.find((entry) => entry.name === link)!;
       assert.equal(token.required, true, key);
       assert.equal(token.kind, "url", key);
@@ -145,7 +145,7 @@ describe("the strict render (R2, R4)", () => {
 
   it("every built-in still renders, the plain-text keys included", () => {
     for (const entry of MESSAGE_TEMPLATE_REGISTRY) assert.ok(renderEmailTemplate(entry, entry.builtIn, samples(entry.key)).ok, entry.key);
-    assert.deepEqual(tokensIn(definition("staff.invitation").builtIn.html!).sort(), ["expiresAt", "link"]);
+    assert.deepEqual(tokensIn(definition("staff.invitation").builtIn.html!).sort(), ["expiresAt", "inviteLink"]);
   });
 });
 

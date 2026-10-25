@@ -2,13 +2,18 @@ import assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
-import { PERMISSION_MATRIX_VERSION, roleCapabilityGrants, staffRoles, type StaffRole } from "@nzi/contracts";
+import { parseListQuery, PERMISSION_MATRIX_VERSION, roleCapabilityGrants, staffListSpec, staffRoles, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { AuthorizationError, completeStaffMfa, resolveStaffPrincipal, startStaffLogin, totpCode, type StaffPrincipal } from "../src/index";
-import type { MailMessage } from "../src/mailer";
-import { completeStaffEnrolment, issueStaffEnrolmentInvitation, StaffEnrolmentError, startStaffEnrolment } from "../src/staffEnrolment";
-import { assignStaffRole } from "../src/staffAdmin";
-import { inviteStaffMember, listStaffEnrolmentRoster } from "../src/staffInvitations";
+import { emailDispatchFromEnv } from "../src/email";
+import { suppressingMailer } from "../src/mailer";
+import { withTenantRead, withTenantWorker } from "../src/postgres";
+import {
+  completeStaffEnrolment, issueStaffEnrolmentInvitation, MAX_ADMIN_INVITES_PER_WINDOW, StaffEnrolmentError, startStaffEnrolment,
+} from "../src/staffEnrolment";
+import { assignStaffRole, listStaffPage } from "../src/staffAdmin";
+import { drainOutbox } from "../src/strategyReminderWorker";
+import { inviteStaffMember } from "../src/staffInvitations";
 import { CommandValidationError } from "../src/postgresCommands";
 
 /**
@@ -25,7 +30,8 @@ const ORG = "net-zero-international";
 const KEY = randomBytes(32).toString("base64");
 const PASSWORD = "a-long-unique-passphrase";
 const ORIGIN = "https://console.example.org";
-const SUPPRESSED = { consoleOrigin: ORIGIN, mail: { mode: "suppress" as const, reason: "isolated" } };
+const DEPS = { consoleOrigin: ORIGIN };
+const LINK = { delivery: "link" as const };
 
 describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
@@ -83,7 +89,7 @@ describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? 
     const viewerSession = await signIn("lead@example.org", secret);
     const asViewer = await resolveStaffPrincipal(database.pool, viewerSession);
     assert.equal(asViewer.role, "viewer");
-    await assert.rejects(() => inviteStaffMember(database.pool, asViewer, { userId: "anyone" }, SUPPRESSED), AuthorizationError,
+    await assert.rejects(() => inviteStaffMember(database.pool, asViewer, { userId: "anyone" }, DEPS), AuthorizationError,
       "a freshly enrolled member could invite before being made Admin");
 
     const changed = await assignStaffRole(database.pool, { organisationId: ORG, userId: "lead", role: "admin", actorId: "operator:francis", reason: "First admin for net-zero-international" });
@@ -102,9 +108,9 @@ describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? 
     assert.ok(admin.capabilities.some((grant) => grant.capability === "staff.invite"), "the first admin cannot invite");
   });
 
-  it("the admin invites a colleague from the console; the link enrols them and they sign in — through the one enrolment path", async () => {
+  it("the admin issues a colleague a link to copy; the link enrols them and they sign in — through the one enrolment path", async () => {
     await member("rae");
-    const result = await inviteStaffMember(database.pool, admin, { userId: "rae" }, SUPPRESSED);
+    const result = await inviteStaffMember(database.pool, admin, { userId: "rae", ...LINK }, DEPS);
     assert.equal(result.delivery, "link");
     if (result.delivery !== "link") return;
     const token = tokenFrom(result.link);
@@ -128,80 +134,128 @@ describe("staff invitations from the admin (matrix v8)", { skip: DATABASE_URL ? 
   it("every role but Admin is refused, and nothing is issued", async () => {
     await member("sam");
     for (const role of staffRoles.filter((role) => role !== "admin")) {
-      await assert.rejects(() => inviteStaffMember(database.pool, principalAs(role), { userId: "sam" }, SUPPRESSED), AuthorizationError, role);
-      await assert.rejects(() => listStaffEnrolmentRoster(database.pool, principalAs(role)), AuthorizationError, `${role} read the roster`);
+      await assert.rejects(() => inviteStaffMember(database.pool, principalAs(role), { userId: "sam" }, DEPS), AuthorizationError, role);
     }
     assert.equal(await openInvitations("sam"), 0);
   });
 
   it("refuses inviting yourself, a non-member, and a member with no work address", async () => {
     await member("noaddress", null);
-    await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "lead" }, SUPPRESSED), /cannot issue your own/);
-    await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "nobody" }, SUPPRESSED), /not a member/);
-    await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "noaddress" }, SUPPRESSED), /no work address/);
+    await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "lead" }, DEPS), /cannot issue your own/);
+    await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "nobody" }, DEPS), /not a member/);
+    await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "noaddress" }, DEPS), /no work address/);
   });
 
-  it("still cannot enrol over working sign-in: an admin's link for an enrolled colleague is refused at setup", async () => {
-    const result = await inviteStaffMember(database.pool, admin, { userId: "rae" }, SUPPRESSED);
-    assert.equal(result.delivery, "link");
-    if (result.delivery !== "link") return;
-    await assert.rejects(() => startStaffEnrolment(database.pool, { token: tokenFrom(result.link), password: PASSWORD }, KEY), /already has working sign-in/);
+  it("an enrolled colleague is not reinvited by an admin; the operator's break-glass link still cannot enrol over working sign-in", async () => {
+    for (const delivery of ["email", "link"] as const) {
+      await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "rae", delivery }, DEPS), /already enrolled/, delivery);
+    }
+    const operator = await issueStaffEnrolmentInvitation(database.pool, { organisationId: ORG, userId: "rae", actorId: "operator:francis" });
+    await assert.rejects(() => startStaffEnrolment(database.pool, { token: operator.token, password: PASSWORD }, KEY), /already has working sign-in/);
   });
 
   // ── Delivery ─────────────────────────────────────────────────────────────────────────────────────────────
 
-  it("with mail enabled, the link goes to the member's work address and the admin never holds it", async () => {
+  const emailFor = async (invitationId: string) => (await db.query<{ template_code: string; to_email: string; subject: string; text_body: string; html_body: string; status: string }>(
+    `SELECT template_code, to_email, subject, text_body, html_body, status FROM nzi_console.email_messages WHERE correlation_id = $1`, [invitationId])).rows;
+  const linkIn = (text: string) => /https:\/\/\S+\/enrol#token=[A-Za-z0-9_-]{43}/.exec(text)![0];
+
+  it("by default the invitation is emailed through sendTemplatedEmail, queued with the issue; the admin never holds the link", async () => {
     await member("uma");
-    const sent: MailMessage[] = [];
-    const result = await inviteStaffMember(database.pool, admin, { userId: "uma" },
-      { consoleOrigin: ORIGIN, mail: { mode: "send" }, mailer: { send: async (message) => { sent.push(message); } } });
+    const result = await inviteStaffMember(database.pool, admin, { userId: "uma" }, DEPS);
     assert.equal(result.delivery, "email");
+    if (result.delivery !== "email") return;
     assert.ok(!("link" in result) && !JSON.stringify(result).includes("#token="), "the admin was handed the link");
-    assert.equal(sent.length, 1);
-    assert.equal(sent[0]!.to, "uma@example.org");
-    assert.equal(sent[0]!.subject, "Set up your NZ Insights Pro sign-in", "no template of its own: the built-in wording (admin F1)");
-    const link = /https:\/\/\S+/.exec(sent[0]!.body)![0];
+    assert.equal(result.sentTo, "uma@example.org");
+    assert.equal(result.reinvite, false);
+    const [email, ...more] = await emailFor(result.invitationId);
+    assert.equal(more.length, 0, "one email per invitation");
+    assert.equal(email!.template_code, "staff.invitation");
+    assert.equal(email!.to_email, "uma@example.org");
+    assert.equal(email!.status, "queued");
+    assert.equal(email!.subject, "Set up your NZ Insights Pro sign-in", "no template of its own: the built-in wording");
+    const link = linkIn(email!.text_body);
+    assert.ok(email!.html_body.includes(`href="${link}"`), "the HTML part links the same link");
+    assert.match(email!.text_body, /expires at \w+day, \d{1,2} \w+ 20\d\d at \d\d:\d\d \(UK time\)/, "the expiry is written for people");
     const issued = (await events("staff.enrolment.issue")).find((event) => event.entity_id === result.invitationId)!;
     assert.equal(issued.after_json.delivery, "email");
     const secret = await enrol(tokenFrom(link));
-    assert.equal((await signIn("uma@example.org", secret)).userId, "uma");
+    assert.equal((await signIn("uma@example.org", secret)).userId, "uma", "the emailed link enrols them on /enrol");
   });
 
-  it("words the invitation in the organisation's own template when it has an active one (admin F1)", async () => {
+  it("words the invitation in the organisation's own template, with {{inviteLink}}", async () => {
     await member("una");
     await db.query(`INSERT INTO nzi_console.message_templates (organisation_id, template_key, subject, body, created_by, updated_by)
-      VALUES ($1, 'staff.invitation', 'Join us', 'Start here: {{link}} (until {{expiresAt}})', 'tester', 'tester')`, [ORG]);
+      VALUES ($1, 'staff.invitation', 'Join us', 'Start here: {{inviteLink}} (until {{expiresAt}})', 'tester', 'tester')`, [ORG]);
     try {
-      const sent: MailMessage[] = [];
-      const result = await inviteStaffMember(database.pool, admin, { userId: "una" },
-        { consoleOrigin: ORIGIN, mail: { mode: "send" }, mailer: { send: async (message) => { sent.push(message); } } });
-      assert.equal(sent[0]!.subject, "Join us");
-      assert.match(sent[0]!.body, new RegExp(`^Start here: ${ORIGIN.replace(/\./g, "\\.")}/enrol#token=[A-Za-z0-9_-]{43} \\(until ${result.expiresAt.replace(/\./g, "\\.")}\\)$`));
+      const result = await inviteStaffMember(database.pool, admin, { userId: "una" }, DEPS);
+      const [email] = await emailFor(result.invitationId);
+      assert.equal(email!.subject, "Join us");
+      assert.match(email!.text_body, new RegExp(`^Start here: ${ORIGIN.replace(/\./g, "\\.")}/enrol#token=[A-Za-z0-9_-]{43} \\(until .+ \\(UK time\\)\\)`));
     } finally {
       await db.query(`UPDATE nzi_console.message_templates SET active = false WHERE organisation_id = $1 AND template_key = 'staff.invitation'`, [ORG]);
     }
   });
 
-  it("if the email cannot be sent, the link is withdrawn rather than left live", async () => {
+  it("if the email cannot be queued, nothing is issued at all — the link and its email are one transaction", async () => {
     await member("vic");
-    await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "vic" },
-      { consoleOrigin: ORIGIN, mail: { mode: "send" }, mailer: { send: async () => { throw new Error("SMTP refused"); } } }), /could not be sent, so the link was withdrawn/);
-    assert.equal(await openInvitations("vic"), 0);
-    assert.ok((await events("staff.enrolment.revoke")).some((event) => event.after_json.userId === "vic"));
+    // Wording that has drifted outside its tokens (written past the command): the strict render refuses it.
+    await db.query(`UPDATE nzi_console.message_templates SET body = 'No link here', active = true WHERE organisation_id = $1 AND template_key = 'staff.invitation'`, [ORG]);
+    try {
+      await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "vic" }, DEPS), /could not be queued, so no link was issued/);
+      assert.equal((await db.query(`SELECT 1 FROM nzi_console.staff_enrolment_invitations WHERE user_id = 'vic'`)).rows.length, 0, "no invitation row, live or revoked");
+      assert.ok(!(await events("staff.enrolment.issue")).some((event) => event.after_json.userId === "vic"), "no issue event survives a rolled-back issue");
+    } finally {
+      await db.query(`UPDATE nzi_console.message_templates SET active = false WHERE organisation_id = $1 AND template_key = 'staff.invitation'`, [ORG]);
+    }
   });
 
-  // ── The picker ───────────────────────────────────────────────────────────────────────────────────────────
+  // ── Reinvite (R5) ────────────────────────────────────────────────────────────────────────────────────────
 
-  it("lists the active roster with each member's latest invitation, and says what it does not know", async () => {
+  it("reinvite revokes the earlier link, emails a new one, is audited as a reinvite — and an admin may send one member three an hour", async () => {
     await member("wes");
-    await inviteStaffMember(database.pool, admin, { userId: "wes" }, SUPPRESSED);
-    const roster = await listStaffEnrolmentRoster(database.pool, admin);
-    const state = (userId: string) => roster.find((entry) => entry.userId === userId)?.invitation?.state ?? null;
-    assert.equal(state("uma"), "enrolled");
-    assert.equal(state("wes"), "open");
-    assert.equal(state("vic"), "revoked");
-    assert.equal(state("sam"), null, "a member never invited was given a state");
-    assert.equal(roster.find((entry) => entry.userId === "wes")!.email, "wes@example.org");
+    const first = await inviteStaffMember(database.pool, admin, { userId: "wes" }, DEPS);
+    const firstLink = linkIn((await emailFor(first.invitationId))[0]!.text_body);
+    const second = await inviteStaffMember(database.pool, admin, { userId: "wes" }, DEPS);
+    assert.equal(second.reinvite, true);
+    await assert.rejects(() => startStaffEnrolment(database.pool, { token: tokenFrom(firstLink), password: PASSWORD }, KEY), StaffEnrolmentError, "the earlier link still worked");
+    const revoked = (await events("staff.enrolment.revoke")).find((event) => event.entity_id === first.invitationId)!;
+    assert.deepEqual([revoked.actor_id, revoked.after_json.reason], ["lead", "superseded by a new invitation"]);
+    const issued = (await events("staff.enrolment.issue")).find((event) => event.entity_id === second.invitationId)!;
+    assert.deepEqual([issued.actor_id, issued.principal_type, issued.after_json.reinvite], ["lead", "staff", true]);
+
+    // A third is allowed (three in the window); a fourth is refused, and nothing is issued or sent for it.
+    const third = await inviteStaffMember(database.pool, admin, { userId: "wes", ...LINK }, DEPS);
+    assert.equal(MAX_ADMIN_INVITES_PER_WINDOW, 3);
+    const before = (await db.query(`SELECT count(*)::int AS n FROM nzi_console.email_messages`)).rows[0].n;
+    await assert.rejects(() => inviteStaffMember(database.pool, admin, { userId: "wes" }, DEPS), /3 invitations in the last hour/);
+    assert.equal((await db.query(`SELECT count(*)::int AS n FROM nzi_console.email_messages`)).rows[0].n, before, "a refused reinvite sent nothing");
+    assert.equal((await db.query(`SELECT revoked_at FROM nzi_console.staff_enrolment_invitations WHERE invitation_id = $1`, [third.invitationId])).rows[0].revoked_at, null,
+      "a refused reinvite does not withdraw the link they already have");
+    // The operator's break-glass is not limited.
+    await issueStaffEnrolmentInvitation(database.pool, { organisationId: ORG, userId: "wes", actorId: "operator:francis" });
+  });
+
+  // ── The roster's sign-in column ──────────────────────────────────────────────────────────────────────────
+
+  it("Team & access shows each member's sign-in state and how their latest invitation's email resolved", async () => {
+    await member("xan");
+    const invited = await inviteStaffMember(database.pool, admin, { userId: "xan" }, DEPS);
+    const roster = async () => (await withTenantRead(database.pool, ORG, (read) => listStaffPage(read, { ...parseListQuery({}, staffListSpec).query, pageSize: 100 }))).rows;
+    const row = async (userId: string) => (await roster()).find((entry) => entry.userId === userId)!;
+    assert.deepEqual([(await row("xan")).signIn, (await row("xan")).inviteEmail], ["invited", "queued"]);
+    assert.deepEqual([(await row("uma")).signIn, (await row("sam")).signIn, (await row("sam")).inviteEmail], ["enrolled", "none", null]);
+
+    // The email pipe stubs example.org on the isolated boundary, and the row says so — which is what offers the copy-a-link fallback.
+    await withTenantWorker(database.pool, ORG, (worker) => drainOutbox(worker, {
+      organisationId: ORG, today: "2026-10-25", mailer: suppressingMailer(), delivery: { mode: "suppress", reason: "test" },
+      email: emailDispatchFromEnv({ NZI_DATABASE_BOUNDARY: "isolated-non-production", RESEND_API_KEY: "re_test_key_0123456789", EMAIL_FROM: "no-reply@netzero.international" }),
+    }));
+    assert.equal((await row("xan")).inviteEmail, "stubbed");
+    assert.equal(invited.delivery, "email");
+    // A link issued to copy carries no email, so the row stops showing the stubbed one.
+    await inviteStaffMember(database.pool, admin, { userId: "xan", ...LINK }, DEPS);
+    assert.deepEqual([(await row("xan")).signIn, (await row("xan")).inviteEmail], ["invited", null]);
   });
 
   // ── The operator's role command ──────────────────────────────────────────────────────────────────────────

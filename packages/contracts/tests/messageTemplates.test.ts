@@ -58,7 +58,7 @@ describe("the built-in wording is what the send-sites sent before F1, word for w
 
   it("the staff invitation", () => {
     const definition = messageTemplateDefinition("staff.invitation")!;
-    assert.deepEqual(renderMessage(definition.builtIn, { link: "https://c.test/enrol#token=t", expiresAt: "2026-10-04T09:00:00.000Z" }), {
+    assert.deepEqual(renderMessage(definition.builtIn, { inviteLink: "https://c.test/enrol#token=t", expiresAt: "2026-10-04T09:00:00.000Z" }), {
       subject: "Set up your NZ Insights Pro sign-in",
       body: [
         "You have been invited to the NZ Insights Pro staff console.",
@@ -92,8 +92,8 @@ describe("tokens and the preview (F-Q2)", () => {
 
   it("requires a body to use the tokens a message cannot do without — an invitation needs its link", () => {
     const invitation = messageTemplateDefinition("staff.invitation")!;
-    assert.deepEqual(messageTemplateRequiredIssues("Welcome. Expires {{expiresAt}}.", invitation), ["The body must include {{link}} — the single-use enrolment link."]);
-    assert.deepEqual(messageTemplateRequiredIssues("Go to {{link}}", invitation), []);
+    assert.deepEqual(messageTemplateRequiredIssues("Welcome. Expires {{expiresAt}}.", invitation), ["The body must include {{inviteLink}} — the single-use enrolment link."]);
+    assert.deepEqual(messageTemplateRequiredIssues("Go to {{inviteLink}}", invitation), []);
   });
 
   it("previews against the registry's samples only", () => {

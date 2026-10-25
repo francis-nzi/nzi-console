@@ -22,6 +22,12 @@ import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, hashPassword,
 
 export const ENROLMENT_TTL_HOURS = 72;
 export const MAX_CODE_ATTEMPTS = 5;
+/**
+ * An admin may issue at most this many invitations for one member in {@link REINVITE_WINDOW_MINUTES} (phase 3, R5): each
+ * one is an email to that person, and reinvite is a button. The operator's break-glass script is not limited.
+ */
+export const MAX_ADMIN_INVITES_PER_WINDOW = 3;
+export const REINVITE_WINDOW_MINUTES = 60;
 const MIN_PASSWORD = 12;
 const MAX_PASSWORD = 256;
 
@@ -39,54 +45,80 @@ const audit = (db: Queryable, input: AuditInput) => db.query(
 
 // ── The operator's side: issue and revoke ──────────────────────────────────────────────────────────────────
 
+export type IssueInvitationInput = {
+  organisationId: string; userId: string; actorId: string; ttlHours?: number;
+  /** Who issued it: an operator in the Render Shell (`system`), or a signed-in admin (`staff`, via inviteStaffMember). */
+  principalType?: "staff" | "system";
+  /** How the link reaches the person — recorded on the issue event. */
+  delivery?: "operator-link" | "admin-link" | "email";
+};
+
 /**
  * Issue an invitation for an existing, active member with a work address. Any open invitation for them is revoked in
  * the same transaction. Returns the token once — it is stored nowhere — for the operator to pass to the person.
  */
 export async function issueStaffEnrolmentInvitation(
-  pool: PoolLike,
-  input: {
-    organisationId: string; userId: string; actorId: string; ttlHours?: number;
-    /** Who issued it: an operator in the Render Shell (`system`), or a signed-in admin (`staff`, via inviteStaffMember). */
-    principalType?: "staff" | "system";
-    /** How the link reaches the person — recorded on the issue event. */
-    delivery?: "operator-link" | "admin-link" | "email";
-  },
-  now = new Date(),
+  pool: PoolLike, input: IssueInvitationInput, now = new Date(),
 ): Promise<{ invitationId: string; token: string; expiresAt: string }> {
+  return withTenantWrite(pool, input.organisationId, (db) => issueStaffEnrolmentInvitationIn(db, input, now));
+}
+
+/**
+ * The issue itself, in the caller's tenant transaction — so the admin's invite can queue its email in the same one, and a
+ * link that was issued is never left without the email that carries it, or the reverse (phase 3).
+ *
+ * An admin (`staff`) is also held to two things the operator's break-glass is not: an enrolled member is not reinvited
+ * (recovery is a reset, phase 4), and no more than {@link MAX_ADMIN_INVITES_PER_WINDOW} invitations go to one member in
+ * {@link REINVITE_WINDOW_MINUTES} minutes (R5). The member row is locked first, so two clicks cannot both pass the count.
+ */
+export async function issueStaffEnrolmentInvitationIn(
+  db: Queryable, input: IssueInvitationInput, now = new Date(),
+): Promise<{ invitationId: string; token: string; expiresAt: string; reinvite: boolean }> {
   const principalType = input.principalType ?? "system", delivery = input.delivery ?? "operator-link";
   const userId = input.userId.trim(), actorId = input.actorId.trim();
   const ttlHours = input.ttlHours ?? ENROLMENT_TTL_HOURS;
   if (!userId || !actorId) throw new StaffEnrolmentError("A member and the issuing operator are required.");
   if (!Number.isFinite(ttlHours) || ttlHours <= 0 || ttlHours > 7 * 24) throw new StaffEnrolmentError("An invitation lasts between a moment and seven days.");
-  return withTenantWrite(pool, input.organisationId, async (db) => {
-    const member = await db.query<{ status: string; email: string | null }>(
-      `SELECT status, email FROM nzi_console.memberships WHERE user_id = $1 FOR UPDATE`, [userId]);
-    const row = member.rows[0];
-    if (!row) throw new StaffEnrolmentError(`${userId} is not a member of ${input.organisationId}.`);
-    if (row.status !== "active") throw new StaffEnrolmentError(`${userId}'s membership is ${row.status}, not active.`);
-    if (!row.email?.trim()) throw new StaffEnrolmentError(`${userId} has no work address to sign in with.`);
+  const member = await db.query<{ status: string; email: string | null }>(
+    `SELECT status, email FROM nzi_console.memberships WHERE user_id = $1 FOR UPDATE`, [userId]);
+  const row = member.rows[0];
+  if (!row) throw new StaffEnrolmentError(`${userId} is not a member of ${input.organisationId}.`);
+  if (row.status !== "active") throw new StaffEnrolmentError(`${userId}'s membership is ${row.status}, not active.`);
+  if (!row.email?.trim()) throw new StaffEnrolmentError(`${userId} has no work address to sign in with.`);
 
-    const revoked = await db.query<{ invitation_id: string }>(
-      `UPDATE nzi_console.staff_enrolment_invitations
-          SET revoked_at = $2, pending_password_salt = NULL, pending_password_hash = NULL,
-              pending_totp_ciphertext = NULL, pending_totp_iv = NULL, pending_totp_tag = NULL
-        WHERE user_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL
-        RETURNING invitation_id`, [userId, now.toISOString()]);
-    for (const previous of revoked.rows) {
-      await audit(db, { organisationId: input.organisationId, actorId, principalType, action: "staff.enrolment.revoke",
-        invitationId: previous.invitation_id, after: { userId, reason: "superseded by a new invitation" } });
-    }
+  const history = await db.query<{ consumed: boolean | null; recent: number; any: number }>(
+    `SELECT (SELECT consumed_at IS NOT NULL FROM nzi_console.staff_enrolment_invitations
+              WHERE user_id = $1 ORDER BY created_at DESC, invitation_id DESC LIMIT 1) AS consumed,
+            (SELECT count(*)::int FROM nzi_console.staff_enrolment_invitations
+              WHERE user_id = $1 AND created_at > $2::timestamptz - make_interval(mins => $3)) AS recent,
+            (SELECT count(*)::int FROM nzi_console.staff_enrolment_invitations WHERE user_id = $1) AS any`,
+    [userId, now.toISOString(), REINVITE_WINDOW_MINUTES]);
+  const { consumed, recent, any } = history.rows[0]!;
+  if (principalType === "staff") {
+    if (consumed === true) throw new StaffEnrolmentError("They have already enrolled, so there is nothing to invite them to. A lost password or authenticator is recovered by a reset, not a new invitation.");
+    if (recent >= MAX_ADMIN_INVITES_PER_WINDOW) throw new StaffEnrolmentError(`They have been sent ${recent} invitations in the last hour, the most allowed. Try again later, or check the address on their record.`);
+  }
+  const reinvite = any > 0;
 
-    const invitationId = randomUUID(), token = randomBytes(32).toString("base64url");
-    const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000).toISOString();
-    await db.query(
-      `INSERT INTO nzi_console.staff_enrolment_invitations (organisation_id,invitation_id,user_id,token_hash,expires_at,created_by)
-       VALUES ($1,$2,$3,$4,$5,$6)`, [input.organisationId, invitationId, userId, tokenHash(token), expiresAt, actorId]);
-    await audit(db, { organisationId: input.organisationId, actorId, principalType, action: "staff.enrolment.issue",
-      invitationId, after: { userId, expiresAt, delivery } });
-    return { invitationId, token, expiresAt };
-  });
+  const revoked = await db.query<{ invitation_id: string }>(
+    `UPDATE nzi_console.staff_enrolment_invitations
+        SET revoked_at = $2, pending_password_salt = NULL, pending_password_hash = NULL,
+            pending_totp_ciphertext = NULL, pending_totp_iv = NULL, pending_totp_tag = NULL
+      WHERE user_id = $1 AND consumed_at IS NULL AND revoked_at IS NULL
+      RETURNING invitation_id`, [userId, now.toISOString()]);
+  for (const previous of revoked.rows) {
+    await audit(db, { organisationId: input.organisationId, actorId, principalType, action: "staff.enrolment.revoke",
+      invitationId: previous.invitation_id, after: { userId, reason: "superseded by a new invitation" } });
+  }
+
+  const invitationId = randomUUID(), token = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000).toISOString();
+  await db.query(
+    `INSERT INTO nzi_console.staff_enrolment_invitations (organisation_id,invitation_id,user_id,token_hash,expires_at,created_by)
+     VALUES ($1,$2,$3,$4,$5,$6)`, [input.organisationId, invitationId, userId, tokenHash(token), expiresAt, actorId]);
+  await audit(db, { organisationId: input.organisationId, actorId, principalType, action: "staff.enrolment.issue",
+    invitationId, after: { userId, expiresAt, delivery, reinvite } });
+  return { invitationId, token, expiresAt, reinvite };
 }
 
 /** Revoke a member's open invitation, clearing anything it held. Returns whether there was one. */
