@@ -14,7 +14,8 @@ import type { PoolLike, Queryable } from "./postgres";
  * - **Declared tokens only (F-Q2)** — checked by the command's validation, as on the screen.
  * - **What is sent** is the organisation's active template, else the registry's built-in wording
  *   (`readActiveMessageTemplate` + `messageContentFor`). Deactivating is going back to the built-in; nothing is deleted.
- * - **Audited in full**: a template is wording, not personal data or an amount, so the audit records before and after.
+ * - **Audited in full**: a template is wording, not personal data or an amount, so the audit records before and after —
+ *   the HTML body (0179, phase 2) included.
  */
 
 export type MessageTemplateProvenance = "v7" | "added";
@@ -22,6 +23,8 @@ export type MessageTemplateRow = {
   key: string; label: string; purpose: string; sendSite: string; channel: string;
   tokens: MessageTemplateDefinition["tokens"];
   builtIn: MessageContent;
+  /** Whether it is sent as HTML and text, so has an HTML body to edit (phase 2). */
+  htmlPart: boolean;
   /** The organisation's own wording, when it has saved some — active or not. */
   saved: (MessageContent & { active: boolean; version: number; provenance: MessageTemplateProvenance; updatedAt: string; updatedBy: string }) | null;
   /** Which wording a send uses today. */
@@ -29,18 +32,18 @@ export type MessageTemplateRow = {
 };
 
 const iso = (date: unknown) => date instanceof Date ? date.toISOString() : String(date);
-type Stored = { template_key: string; subject: string; body: string; active: boolean; version: number; source_system: string | null; updated_at: unknown; updated_by: string };
+type Stored = { template_key: string; subject: string; body: string; html_body: string | null; active: boolean; version: number; source_system: string | null; updated_at: unknown; updated_by: string };
 
 /** Every message the console sends, in registry order, with the organisation's own wording beside the built-in. */
 export async function listMessageTemplates(db: Queryable): Promise<MessageTemplateRow[]> {
   const { rows } = await db.query<Stored>(
-    `SELECT template_key, subject, body, active, version, source_system, updated_at, updated_by FROM nzi_console.message_templates`);
+    `SELECT template_key, subject, body, html_body, active, version, source_system, updated_at, updated_by FROM nzi_console.message_templates`);
   return MESSAGE_TEMPLATE_REGISTRY.map((definition) => {
     const row = rows.find((candidate) => candidate.template_key === definition.key);
     return {
       key: definition.key, label: definition.label, purpose: definition.purpose, sendSite: definition.sendSite, channel: definition.channel,
-      tokens: definition.tokens, builtIn: definition.builtIn,
-      saved: row ? { subject: row.subject, body: row.body, active: row.active, version: row.version, provenance: row.source_system ? "v7" : "added",
+      tokens: definition.tokens, builtIn: definition.builtIn, htmlPart: definition.htmlPart === true,
+      saved: row ? { subject: row.subject, body: row.body, html: row.html_body, active: row.active, version: row.version, provenance: row.source_system ? "v7" : "added",
         updatedAt: iso(row.updated_at), updatedBy: row.updated_by } : null,
       inUse: row?.active ? "own" : "built-in",
     };
@@ -49,22 +52,26 @@ export async function listMessageTemplates(db: Queryable): Promise<MessageTempla
 
 /** The organisation's active wording for a key, or null — in which case the send uses the built-in (`messageContentFor`). */
 export async function readActiveMessageTemplate(db: Queryable, templateKey: string): Promise<MessageContent | null> {
-  const { rows: [row] } = await db.query<{ subject: string; body: string }>(
-    `SELECT subject, body FROM nzi_console.message_templates WHERE template_key = $1 AND active`, [templateKey]);
-  return row ? { subject: row.subject, body: row.body } : null;
+  const { rows: [row] } = await db.query<{ subject: string; body: string; html_body: string | null }>(
+    `SELECT subject, body, html_body FROM nzi_console.message_templates WHERE template_key = $1 AND active`, [templateKey]);
+  if (!row) return null;
+  return row.html_body === null ? { subject: row.subject, body: row.body } : { subject: row.subject, body: row.body, html: row.html_body };
 }
 
 // ── Commands (admin.templates) ───────────────────────────────────────────────────────────────────────────────────────
 
-type Snapshot = { templateKey: string; subject: string; body: string; active: boolean };
+type Snapshot = { templateKey: string; subject: string; body: string; html: string | null; active: boolean };
 export type MessageTemplateResult = Snapshot & { version: number };
-const RETURNING = "RETURNING template_key, subject, body, active, version";
-const snapshot = (row: { template_key: string; subject: string; body: string; active: boolean }): Snapshot =>
-  ({ templateKey: row.template_key, subject: row.subject, body: row.body, active: row.active });
+type Row = { template_key: string; subject: string; body: string; html_body: string | null; active: boolean; version: number };
+const RETURNING = "RETURNING template_key, subject, body, html_body, active, version";
+const snapshot = (row: Omit<Row, "version">): Snapshot =>
+  ({ templateKey: row.template_key, subject: row.subject, body: row.body, html: row.html_body, active: row.active });
+/** Absent or null both mean "no HTML body of its own". */
+const htmlOf = (input: { html?: string | null }) => input.html ?? null;
 
 async function lock(db: Queryable, context: CommandContext, templateKey: string, expectedVersion: number) {
-  const { rows: [row] } = await db.query<{ template_key: string; subject: string; body: string; active: boolean; version: number }>(
-    `SELECT template_key, subject, body, active, version FROM nzi_console.message_templates WHERE organisation_id = $1 AND template_key = $2 FOR UPDATE`,
+  const { rows: [row] } = await db.query<Row>(
+    `SELECT template_key, subject, body, html_body, active, version FROM nzi_console.message_templates WHERE organisation_id = $1 AND template_key = $2 FOR UPDATE`,
     [context.organisationId, templateKey]);
   if (!row) throw new CommandValidationError([{ field: "templateKey", code: "NOT_FOUND", message: "This organisation has no wording of its own for that message yet." }]);
   if (row.version !== expectedVersion) throw new VersionConflictError(expectedVersion, row.version);
@@ -77,10 +84,10 @@ export function createMessageTemplate(pool: PoolLike, input: CommandInputMap["me
     const { rows: [held] } = await db.query<{ held: boolean }>(
       `SELECT EXISTS (SELECT 1 FROM nzi_console.message_templates WHERE organisation_id = $1 AND template_key = $2) AS held`, [context.organisationId, input.templateKey]);
     if (held?.held) throw new CommandValidationError([{ field: "templateKey", code: "DUPLICATE", message: "This organisation already has its own wording for that message — edit it, or reinstate it." }]);
-    const { rows: [saved] } = await db.query<{ template_key: string; subject: string; body: string; active: boolean; version: number }>(
-      `INSERT INTO nzi_console.message_templates (organisation_id, template_key, channel, subject, body, created_by, updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $6) ${RETURNING}`,
-      [context.organisationId, input.templateKey, definition.channel, input.subject, input.body, context.actorId]);
+    const { rows: [saved] } = await db.query<Row>(
+      `INSERT INTO nzi_console.message_templates (organisation_id, template_key, channel, subject, body, html_body, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $7) ${RETURNING}`,
+      [context.organisationId, input.templateKey, definition.channel, input.subject, input.body, htmlOf(input), context.actorId]);
     return { data: { ...snapshot(saved!), version: saved!.version }, entityType: "message_template", entityId: input.templateKey, topic: "message_template.created" };
   });
 }
@@ -88,11 +95,11 @@ export function createMessageTemplate(pool: PoolLike, input: CommandInputMap["me
 export function updateMessageTemplate(pool: PoolLike, input: CommandInputMap["message_template.update"], context: CommandContext): Promise<StoredOutcome<MessageTemplateResult>> {
   return runPostgresCommand(pool, "message_template.update", input, context, async (db) => {
     const current = await lock(db, context, input.templateKey, input.expectedVersion);
-    if (current.subject === input.subject && current.body === input.body) throw new CommandValidationError([{ field: "body", code: "UNCHANGED", message: "That is the wording it already holds." }]);
-    const { rows: [saved] } = await db.query<{ template_key: string; subject: string; body: string; active: boolean; version: number }>(
-      `UPDATE nzi_console.message_templates SET subject = $3, body = $4, version = version + 1, updated_at = now(), updated_by = $5
+    if (current.subject === input.subject && current.body === input.body && current.html_body === htmlOf(input)) throw new CommandValidationError([{ field: "body", code: "UNCHANGED", message: "That is the wording it already holds." }]);
+    const { rows: [saved] } = await db.query<Row>(
+      `UPDATE nzi_console.message_templates SET subject = $3, body = $4, html_body = $5, version = version + 1, updated_at = now(), updated_by = $6
         WHERE organisation_id = $1 AND template_key = $2 ${RETURNING}`,
-      [context.organisationId, input.templateKey, input.subject, input.body, context.actorId]);
+      [context.organisationId, input.templateKey, input.subject, input.body, htmlOf(input), context.actorId]);
     return { data: { ...snapshot(saved!), version: saved!.version }, entityType: "message_template", entityId: input.templateKey,
       topic: "message_template.updated", before: snapshot(current) };
   });
@@ -103,7 +110,7 @@ function setActive(key: "message_template.deactivate" | "message_template.reinst
     runPostgresCommand(pool, key, input, context, async (db) => {
       const current = await lock(db, context, input.templateKey, input.expectedVersion);
       if (current.active === active) throw new CommandValidationError([{ field: "templateKey", code: active ? "ALREADY_ACTIVE" : "ALREADY_INACTIVE", message: active ? "That wording is already in use." : "That message already uses its built-in wording." }]);
-      const { rows: [saved] } = await db.query<{ template_key: string; subject: string; body: string; active: boolean; version: number }>(
+      const { rows: [saved] } = await db.query<Row>(
         `UPDATE nzi_console.message_templates SET active = $3, version = version + 1, updated_at = now(), updated_by = $4
           WHERE organisation_id = $1 AND template_key = $2 ${RETURNING}`,
         [context.organisationId, input.templateKey, active, context.actorId]);

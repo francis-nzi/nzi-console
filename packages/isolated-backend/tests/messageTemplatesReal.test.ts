@@ -103,7 +103,9 @@ describe("message templates, against a real database", { skip: TEST_DATABASE_URL
       assert.equal(await withTenantRead(database.pool, ORG, (db) => readActiveMessageTemplate(db, "strategy.reminder.overdue")), null, "inactive → the built-in wording");
       const listed = await withTenantRead(database.pool, ORG, (db) => listMessageTemplates(db));
       assert.deepEqual(listed.map((row) => [row.key, row.inUse, row.saved?.active ?? null]), [
-        ["strategy.reminder.approaching", "built-in", null], ["strategy.reminder.overdue", "built-in", false], ["staff.invitation", "built-in", null]]);
+        ["strategy.reminder.approaching", "built-in", null], ["strategy.reminder.overdue", "built-in", false], ["staff.invitation", "built-in", null],
+        // Phase 2's transactional keys, in registry order.
+        ["portal.access.invite", "built-in", null], ["password.reset.staff", "built-in", null], ["password.reset.portal", "built-in", null], ["message.notification", "built-in", null]]);
       await reinstateMessageTemplate(database.pool, { templateKey: "strategy.reminder.overdue", expectedVersion: off.data.version }, context("ada", "admin"));
       assert.equal((await withTenantRead(database.pool, ORG, (db) => listMessageTemplates(db)))[1]!.inUse, "own");
     });
@@ -133,7 +135,9 @@ describe("message templates, against a real database", { skip: TEST_DATABASE_URL
       assert.equal(dry.inserted, 1);
       assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.message_templates WHERE organisation_id = $1`, [LOAD]))[0].n, 1, "a dry run writes nothing");
       const outcome = await loadV7MessageTemplates(database.pool, LOAD, planV7MessageTemplates(withOverdue()), { commit: true, runId: `${MESSAGE_TEMPLATES_RUN_PREFIX}first` });
-      assert.deepEqual([outcome.inserted, outcome.stamped, outcome.updated, outcome.refused, outcome.builtIn], [1, 0, 0, [], ["strategy.reminder.approaching"]]);
+      assert.deepEqual([outcome.inserted, outcome.stamped, outcome.updated, outcome.refused, outcome.builtIn], [1, 0, 0, [],
+        // Phase 2's transactional keys have no v7 template here, so they stay on their built-in wording too.
+        ["strategy.reminder.approaching", "portal.access.invite", "password.reset.staff", "password.reset.portal", "message.notification"]]);
       assert.deepEqual(outcome.notes, ["strategy.reminder.overdue (v7 strategy.reminder.overdue): v7's HTML body converted to plain text — read it in the console before relying on it"]);
       const [row] = await q(`SELECT subject, body, active, source_system FROM nzi_console.message_templates WHERE organisation_id = $1 AND template_key = 'strategy.reminder.overdue'`, [LOAD]);
       assert.deepEqual([row.subject, row.body, row.active, row.source_system], ["Late: {{strategyTitle}}", "Hello {{firstName}},\n\n{{targetDate}} has passed.", true, "nzi-pro-v7"]);

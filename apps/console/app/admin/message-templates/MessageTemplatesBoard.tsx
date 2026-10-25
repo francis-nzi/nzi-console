@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateRequiredIssues, messageTemplateTokenIssues, previewMessage,
+  MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_HTML_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateHtmlIssues, messageTemplateLinkIssues,
+  messageTemplateRequiredIssues, messageTemplateTokenIssues, previewEmailTemplate, previewMessage,
 } from "@nzi/contracts";
 import type { MessageTemplateRow } from "@nzi/isolated-backend";
 import { AuditLine, CapabilityChip, DrawerEditor, ProvenanceBadge, TextAreaField, TextField } from "@nzi/ui";
@@ -14,6 +15,10 @@ import { AuditLine, CapabilityChip, DrawerEditor, ProvenanceBadge, TextAreaField
  * subject and body over the message's declared tokens, a live preview against the registry's **sample** values (never a
  * real client's data, F-Q2), and the way back to the built-in wording. Who it is from and the footer are the organisation
  * profile's (F-Q7), shown for reference only.
+ *
+ * Phase 2: a message sent as HTML and text (`htmlPart`) has an HTML body beside the text — left blank, its HTML part is made
+ * from the text — and its preview is the send's own strict render, both parts. The HTML preview is a sandboxed frame with no
+ * script permission, so an admin's markup can never run in another admin's console.
  */
 type Editing = { allowed: true } | { allowed: false; reason: string };
 export type SenderReference = { name: string | null; email: string | null; footer: string | null };
@@ -37,7 +42,7 @@ export function MessageTemplatesBoard({ templates, sender, editing }: { template
 
     <div className="nz-a-hint-strip">
       <span aria-hidden="true">i</span>
-      <div>A message can use only its own <b>tokens</b> — the values the console fills in when it sends, such as <span className="nz-a-mono">{"{{firstName}}"}</span>. The preview fills them with sample values, never a real client’s. Messages are plain text.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
+      <div>A message can use only its own <b>tokens</b> — the values the console fills in when it sends, such as <span className="nz-a-mono">{"{{firstName}}"}</span>. The preview fills them with sample values, never a real client’s. Every message has a plain-text body; the sign-in, reset and portal messages also have an HTML body, and are sent with both.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
     </div>
     {notice ? <div className="nz-a-notice" role="status">{notice}</div> : null}
 
@@ -71,7 +76,12 @@ function TemplateDrawer({ row, sender, editing, onClose, onSaved }: {
   const definition = messageTemplateDefinition(row.key)!;
   const readOnly = !editing.allowed;
   // An organisation with no wording of its own starts from the built-in.
-  const [draft, setDraft] = useState({ subject: row.saved?.subject ?? row.builtIn.subject, body: row.saved?.body ?? row.builtIn.body });
+  // The HTML body only for a message sent as HTML; "" means none of its own — the HTML part is made from the text.
+  const htmlOfRow = (content: { html?: string | null }) => row.htmlPart ? content.html ?? "" : "";
+  const [draft, setDraft] = useState({
+    subject: row.saved?.subject ?? row.builtIn.subject, body: row.saved?.body ?? row.builtIn.body,
+    html: row.saved ? htmlOfRow(row.saved) : htmlOfRow(row.builtIn),
+  });
   const [reason, setReason] = useState("");
   const [reverting, setReverting] = useState(false);
   const [issues, setIssues] = useState<Record<string, string>>({});
@@ -82,15 +92,24 @@ function TemplateDrawer({ row, sender, editing, onClose, onSaved }: {
   const path = `/api/isolated/message-templates/${encodeURIComponent(row.key)}`;
 
   const live = {
-    subject: [...messageTemplateTokenIssues(draft.subject, definition)],
-    body: [...messageTemplateTokenIssues(draft.body, definition), ...messageTemplateRequiredIssues(draft.body, definition)],
+    subject: [...messageTemplateTokenIssues(draft.subject, definition), ...messageTemplateLinkIssues(draft.subject)],
+    body: [...messageTemplateTokenIssues(draft.body, definition), ...messageTemplateRequiredIssues(draft.body, definition), ...messageTemplateLinkIssues(draft.body)],
+    html: draft.html.trim() ? [
+      ...messageTemplateTokenIssues(draft.html, definition),
+      ...messageTemplateRequiredIssues(draft.html, definition).map((issue) => issue.replace("The body", "The HTML body")),
+      ...messageTemplateHtmlIssues(draft.html), ...messageTemplateLinkIssues(draft.html),
+    ] : [],
   };
+  const html = draft.html.trim() ? draft.html : null;
   const preview = previewMessage(draft, definition);
-  const changed = row.saved ? draft.subject !== row.saved.subject || draft.body !== row.saved.body : draft.subject !== row.builtIn.subject || draft.body !== row.builtIn.body;
+  const email = row.htmlPart ? previewEmailTemplate(definition, { subject: draft.subject, body: draft.body, html }, sender.footer) : null;
+  const differs = (content: { subject: string; body: string; html?: string | null }) =>
+    draft.subject !== content.subject || draft.body !== content.body || html !== (row.htmlPart ? content.html ?? null : null);
+  const changed = row.saved ? differs(row.saved) : differs(row.builtIn);
   const fail = (result: Failure) => {
     if (result.state === "validation_failed") {
       setIssues(Object.fromEntries(result.issues.map((issue) => [issue.field, issue.message])));
-      setProblem(result.issues.find((issue) => !["subject", "body", "reason"].includes(issue.field))?.message ?? null);
+      setProblem(result.issues.find((issue) => !["subject", "body", "html", "reason"].includes(issue.field))?.message ?? null);
     } else setProblem(result.state === "conflict" ? "This message changed since you opened it. Close the panel and open it again to see the latest." : result.message);
     keys.current = {};
   };
@@ -110,8 +129,9 @@ function TemplateDrawer({ row, sender, editing, onClose, onSaved }: {
     else if (live.subject.length) local.subject = live.subject.join(" ");
     if (!draft.body.trim()) local.body = "A body is required.";
     else if (live.body.length) local.body = live.body.join(" ");
+    if (live.html.length) local.html = live.html.join(" ");
     if (Object.keys(local).length) { setIssues(local); return; }
-    const content = { subject: draft.subject, body: draft.body };
+    const content = row.htmlPart ? { subject: draft.subject, body: draft.body, html } : { subject: draft.subject, body: draft.body };
     if (!row.saved) await run(() => postBrowserCommand("/api/isolated/message-templates", { templateKey: row.key, ...content }, key("create")), `“${row.label}” now uses your wording.`);
     else if (changed) await run(() => patchBrowserCommand(path, { ...content, expectedVersion: row.saved!.version }, key("update")), `“${row.label}” saved.`);
     else if (!row.saved.active) await run(() => postBrowserCommand(`${path}/reinstate`, { expectedVersion: row.saved!.version }, key("reinstate")), `“${row.label}” uses your wording again.`);
@@ -133,8 +153,11 @@ function TemplateDrawer({ row, sender, editing, onClose, onSaved }: {
       error={issues.subject ?? (live.subject.length ? live.subject.join(" ") : undefined)} onChange={(subject) => setDraft({ ...draft, subject })} />
     <TextAreaField label="Body" value={draft.body} rows={12} required disabled={readOnly} hint={`Plain text — up to ${MESSAGE_TEMPLATE_BODY_MAX.toLocaleString("en-GB")} characters.`}
       error={issues.body ?? (live.body.length ? live.body.join(" ") : undefined)} onChange={(body) => setDraft({ ...draft, body })} />
-    {!readOnly && (row.saved ? draft.subject !== row.builtIn.subject || draft.body !== row.builtIn.body : changed)
-      ? <button type="button" className="nz-a-linkish" onClick={() => setDraft({ subject: row.builtIn.subject, body: row.builtIn.body })}>Start again from the built-in wording</button> : null}
+    {row.htmlPart ? <TextAreaField label="HTML body" value={draft.html} rows={12} disabled={readOnly}
+      hint={`Optional — left blank, the HTML part is made from the plain-text body. Up to ${MESSAGE_TEMPLATE_HTML_MAX.toLocaleString("en-GB")} characters; no scripts, embeds or forms, and links come from tokens.`}
+      error={issues.html ?? (live.html.length ? live.html.join(" ") : undefined)} onChange={(value) => setDraft({ ...draft, html: value })} /> : null}
+    {!readOnly && (row.saved ? differs(row.builtIn) : changed)
+      ? <button type="button" className="nz-a-linkish" onClick={() => setDraft({ subject: row.builtIn.subject, body: row.builtIn.body, html: htmlOfRow(row.builtIn) })}>Start again from the built-in wording</button> : null}
 
     <h3>Tokens</h3>
     <ul className="nz-a-token-list">
@@ -145,10 +168,18 @@ function TemplateDrawer({ row, sender, editing, onClose, onSaved }: {
     </ul>
 
     <h3>Preview <span className="nz-a-sub">with sample values</span></h3>
-    <div className="nz-a-message-preview" aria-label="Preview">
+    {email === null ? <div className="nz-a-message-preview" aria-label="Preview">
       <div className="nz-a-message-preview-subject">{preview.subject}</div>
       <div className="nz-a-message-preview-body">{preview.body}</div>
-    </div>
+    </div> : email.ok ? <>
+      <div className="nz-a-message-preview" aria-label="Preview — plain text">
+        <div className="nz-a-message-preview-subject">{email.email.subject}</div>
+        <div className="nz-a-message-preview-body">{email.email.text}</div>
+      </div>
+      <p className="nz-a-sub">HTML part{html === null ? " — made from the plain-text body" : ""}:</p>
+      {/* sandbox with no permissions: no script, no forms, no top navigation — the markup is shown, never run. */}
+      <iframe className="nz-a-message-preview-html" title="Preview — HTML" sandbox="" srcDoc={email.email.html} />
+    </> : <div className="nz-a-error" role="status">Not sent as it stands: {email.issues.join(" ")}</div>}
     <p className="nz-a-hint">Not part of the template: the sender and footer are the organisation’s, from Organisation settings —
       {" "}<b>{sender.name ?? "no display name set"}</b>{sender.email ? <> · {sender.email}</> : null}{sender.footer ? <> · “{sender.footer}”</> : null}.</p>
     <p className="nz-a-hint">Sent by: {row.sendSite}.</p>
