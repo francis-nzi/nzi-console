@@ -186,7 +186,7 @@ describe("the portal acceptance seed", { skip: DATABASE_URL ? false : "NZI_TEST_
       await assignClientStrategy(pool, {
         clientId: dirty, strategyId: row.strategyId!,
         srsRequirementIds: row.srsRequirementIds,
-        owner: ACTOR, notes: "Left behind by an earlier version of the seed.",
+        status: "agreed", notes: "Left behind by an earlier version of the seed.",
       }, foreign(`assign-${row.strategyId}`));
     }
     // Leave one withdrawn, as a half-finished earlier run would. The assign guard only blocks an

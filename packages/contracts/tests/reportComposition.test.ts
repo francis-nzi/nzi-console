@@ -11,7 +11,7 @@ import { strategyControlLevelLabels, strategyControlLevels, type ClientStrategy 
 
 const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", leverIds: ["lever-energy"], srsRequirementIds: ["req-1"], includeInReport: true, strategyId: null, title: id, scope: "2", category: "Energy",
-  controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
+  controlLevel: "direct_control", iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, estimate: null, ...over,
 });
 
@@ -139,7 +139,26 @@ describe("the report composition", () => {
 
       const noneIncluded = composeReportPlan([action("a", { includeInReport: false })], LEVERS, CODES);
       assert.ok(isReportGap(noneIncluded));
-      if (isReportGap(noneIncluded)) assert.match(noneIncluded.reason, /None of this client's 1 reduction strategies were marked for inclusion/);
+      if (isReportGap(noneIncluded)) assert.match(noneIncluded.reason, /None of this client's 1 reduction strategies were both agreed and marked for inclusion/);
+    });
+
+    it("composes only what is marked for the report AND agreed or beyond (A1, R5)", () => {
+      const section = composeReportPlan([
+        action("agreed"), action("live", { status: "in_progress", progressPct: 40 }), action("done", { status: "complete", progressPct: 100 }),
+        action("proposal", { status: "proposed" }), action("paused", { status: "on_hold" }), action("no", { status: "declined" }),
+        action("held-back", { includeInReport: false }),
+      ], LEVERS, CODES);
+      assert.ok(!isReportGap(section));
+      if (isReportGap(section)) return;
+      const titles = section.groups.flatMap((group) => group.strategies.map((strategy) => strategy.title)).sort();
+      assert.deepEqual(titles, ["agreed", "done", "live"]);
+      assert.deepEqual(section.summary, { total: 3, planned: 1, inProgress: 1, complete: 1 }, "`planned` still counts agreed-not-started, as issued reports do");
+      assert.equal(section.excludedCount, 4, "proposed, on hold, declined and held back are all said to be left out");
+    });
+
+    it("a proposal alone is not a plan the client agreed — the section says so rather than printing it", () => {
+      const section = composeReportPlan([action("a", { status: "proposed" })], LEVERS, CODES);
+      assert.ok(isReportGap(section));
     });
 
     it("leaves out strategies already removed at issue, and keeps the rest frozen", () => {

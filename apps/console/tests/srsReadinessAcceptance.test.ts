@@ -160,7 +160,8 @@ describe("the portal readiness statement", () => {
     assert.doesNotMatch(model, /\.sort\(\(/, "no second ordering of its own");
     // The builder's own inversion excludes withdrawn strategies; the portal adds the
     // client-facing gate so a held-back strategy cannot appear as what closes a gap.
-    assert.match(model, /plan\.filter\(\(strategy\) => strategy\.includeInReport\)/);
+    // A1: the same predicate the report's roadmap uses — marked for the report and agreed or beyond.
+    assert.match(model, /plan\.filter\(strategyIsReportable\)/);
   });
 
   it("projects field by field, so nothing internal rides along", () => {

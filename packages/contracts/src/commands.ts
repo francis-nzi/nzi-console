@@ -100,6 +100,8 @@ export type CommandKey =
   | "job.intensityValue.set"
   | "strategy.library.upsert"
   | "strategy.library.deactivate"
+  | "strategy.lever.upsert"
+  | "strategy.lever.deactivate"
   | "reference.value.create"
   | "reference.value.update"
   | "reference.value.deactivate"
@@ -824,8 +826,12 @@ export type CommandInputMap = {
     periodKey?: string; note?: string; expectedVersion: number;
   };
   /** Open a dated assessment, stamped with the framework version in force. */
-  "strategy.library.upsert": { strategyId?: string; key: string; title: string; description?: string; scope: string; category?: string; controlLevel: string; iconKey: string; expectedVersion?: number };
+  /** `leverIds`: the themes it sits under (A1) — at least one, so it never falls out of a plan grouped by lever. */
+  "strategy.library.upsert": { strategyId?: string; key: string; title: string; description?: string; scope: string; category?: string; controlLevel: string; iconKey: string; leverIds: string[]; expectedVersion?: number };
   "strategy.library.deactivate": { strategyId: string; expectedVersion: number; reason: string };
+  /** A lever — a theme the library is allocated to (A1, R1). Created or edited; versioned on edit. */
+  "strategy.lever.upsert": { leverId?: string; key: string; title: string; iconKey: string; ordering?: number; expectedVersion?: number };
+  "strategy.lever.deactivate": { leverId: string; expectedVersion: number; reason: string };
   /** The reference-value engine (admin A2): a lookup value is added, edited, deactivated or reinstated — never deleted. */
   /** `billableDefault` — for an activity type (TIME Addendum): required on create, so no activity is ever defaultless. */
   "reference.value.create": { categoryKey: string; label: string; code?: string | null; sortOrder?: number; billableDefault?: boolean };
@@ -936,8 +942,14 @@ export type CommandInputMap = {
   "organisation.intensityDefault.deactivate": { metricKey: string; expectedVersion: number };
   /** Q5: the defaults onto every client that has no intensity metric — the count the admin confirmed, or refused. */
   "organisation.intensityDefaults.apply": { expectedClients: number };
-  "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; owner?: string; targetDate?: string | null; notes?: string };
-  "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; owner?: string; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
+  /**
+   * A1: the owner is one of the client's contacts (`ownerContactId`); an action starts Proposed unless the client has
+   * already agreed it (`status: "agreed"`); `origin` says where it came from — `srs_gap` with the requirement it
+   * bridges (S3's path). `client_proposal` is A2's, through the portal, never this command.
+   */
+  "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; ownerContactId?: string | null; status?: string; origin?: string; originSrsRequirementId?: string; targetDate?: string | null; notes?: string };
+  /** `ownerContactId`: absent leaves the owner as it is; null clears it. `status` must be a legal move from the current one. */
+  "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; ownerContactId?: string | null; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
   /**
    * A forward **estimate** of what this strategy will save. Never a measurement, and never
@@ -1939,6 +1951,10 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     required(issues, "iconKey", input.iconKey);
     if (!oneOf(input.scope, strategyScopes)) issues.push({ field: "scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
     if (!oneOf(input.controlLevel, strategyControlLevels)) issues.push({ field: "controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
+    // A strategy under no lever would drop out of every plan grouped by lever (A1).
+    if (!Array.isArray(input.leverIds) || input.leverIds.filter((id) => typeof id === "string" && id.trim() !== "").length === 0) {
+      issues.push({ field: "leverIds", code: "REQUIRED", message: "Allocate it to at least one lever." });
+    }
     // Editing an existing lever is versioned; creating one has nothing to conflict with.
     if (input.strategyId !== undefined && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
@@ -1947,6 +1963,28 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, true);
     required(issues, "strategyId", input.strategyId);
     // Withdrawing a lever changes what every consultant can reach, so it carries a reason.
+    required(issues, "reason", input.reason);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // The levers themselves (A1, R1) — the themes the library is allocated to. Reference data, so admin.lookups, as the
+  // library is; versioned on edit, deactivated rather than deleted.
+  "strategy.lever.upsert": { key: "strategy.lever.upsert", label: "Add or edit a reduction lever", permission: "admin.lookups", reasonRequired: false, transaction: "versioned lever + audit + outbox + idempotency", auditAction: "reduction_lever_upserted", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "key", input.key);
+    required(issues, "title", input.title);
+    required(issues, "iconKey", input.iconKey);
+    if (typeof input.key === "string" && input.key.trim() !== "" && !/^[a-z0-9][a-z0-9-]{0,59}$/.test(input.key.trim().toLowerCase())) {
+      issues.push({ field: "key", code: "INVALID", message: "A key is lower-case letters, digits and hyphens." });
+    }
+    if (typeof input.title === "string" && input.title.trim().length > 120) issues.push({ field: "title", code: "TOO_LONG", message: "At most 120 characters." });
+    if (input.ordering !== undefined && !Number.isInteger(input.ordering)) issues.push({ field: "ordering", code: "INVALID", message: "Order is a whole number." });
+    if (input.leverId !== undefined && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "strategy.lever.deactivate": { key: "strategy.lever.deactivate", label: "Withdraw a reduction lever", permission: "admin.lookups", reasonRequired: true, transaction: "deactivation (never deletion) + audit + outbox + idempotency", auditAction: "reduction_lever_deactivated", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "leverId", input.leverId);
     required(issues, "reason", input.reason);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
@@ -2527,6 +2565,16 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (input.targetDate !== undefined && input.targetDate !== null && !isoDate(input.targetDate)) {
       issues.push({ field: "targetDate", code: "INVALID", message: "Enter the target date as dd/mm/yyyy." });
     }
+    // A1: it enters the ladder at its foot — proposed, or agreed where the client already has.
+    if (input.status !== undefined && input.status !== "proposed" && input.status !== "agreed") {
+      issues.push({ field: "status", code: "INVALID", message: "A new action starts as Proposed, or Agreed if the client has already agreed it." });
+    }
+    // A consultant's command writes a plan or SRS-gap action; a client's proposal arrives through the portal (A2).
+    const origin = input.origin ?? "plan";
+    if (origin !== "plan" && origin !== "srs_gap") issues.push({ field: "origin", code: "INVALID", message: "An action added here comes from the plan or from a UK SRS gap." });
+    const gapRequirement = typeof input.originSrsRequirementId === "string" && input.originSrsRequirementId.trim() !== "";
+    if (origin === "srs_gap" && !gapRequirement) issues.push({ field: "originSrsRequirementId", code: "REQUIRED", message: "Name the UK SRS requirement this action bridges." });
+    if (origin !== "srs_gap" && input.originSrsRequirementId !== undefined) issues.push({ field: "originSrsRequirementId", code: "INVALID", message: "Only an action from a UK SRS gap names a requirement it bridges." });
     return issues;
   } },
   "client.strategy.update": { key: "client.strategy.update", label: "Update a strategy", permission: "strategy.manage", reasonRequired: false, transaction: "versioned client action + audit + outbox + idempotency", auditAction: "client_strategy_updated", validate: (input, context) => {
@@ -2537,7 +2585,8 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
       issues.push({ field: "srsRequirementIds", code: "REQUIRED", message: "Align this strategy to at least one UK SRS requirement." });
     }
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
-    if (!oneOf(input.status, strategyStatuses)) issues.push({ field: "status", code: "INVALID", message: "Status must be planned, in progress or complete." });
+    // Whether the move is legal depends on where it is now — the command checks that, holding the row (A1, R3).
+    if (!oneOf(input.status, strategyStatuses)) issues.push({ field: "status", code: "INVALID", message: "Status must be proposed, agreed, in progress, complete, on hold or declined." });
     if (!Number.isInteger(input.progressPct) || input.progressPct < 0 || input.progressPct > 100) {
       issues.push({ field: "progressPct", code: "INVALID", message: "Progress must be a whole percentage from 0 to 100." });
     } else if ((input.status === "complete") !== (input.progressPct === 100)) {

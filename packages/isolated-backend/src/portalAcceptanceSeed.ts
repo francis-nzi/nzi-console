@@ -31,6 +31,8 @@ export type SeedOptions = {
   organisationId: string;
   actorId: string;
   clientId: string;
+  /** The client contact who owns the seeded strategies (Actions A1: an owner is a client contact). None by default. */
+  ownerContactId?: string;
   /** Somewhere to narrate to. Silent by default, which is what tests want. */
   log?: (line: string) => void;
   /** Deactivate every seeded strategy instead of seeding. Never deletes. */
@@ -72,9 +74,9 @@ export const STRATEGY_CASES: StrategyCase[] = [
   { id: "approaching", what: "target date in 14 days", proves: "plan #14 — due state `approaching` (inside the 30-day window)",
     targetDateOffset: 14, status: "in_progress", progressPct: 25, includeInReport: true },
   { id: "scheduled", what: "target date in 120 days, carries a reduction estimate", proves: "plan #15 — `scheduled`; plan set-up #7 — estimate linkage",
-    targetDateOffset: 120, status: "planned", progressPct: 0, includeInReport: true, estimate: true },
+    targetDateOffset: 120, status: "agreed", progressPct: 0, includeInReport: true, estimate: true },
   { id: "undated", what: "bespoke, no target date, no library description", proves: "plan #16 — due state `none`; plan #5 — bespoke shows no description",
-    targetDateOffset: null, status: "planned", progressPct: 10, includeInReport: true, bespoke: true },
+    targetDateOffset: null, status: "agreed", progressPct: 10, includeInReport: true, bespoke: true },
   { id: "complete-past", what: "complete, target date 60 days ago", proves: "plan #17 — completed work shows `none`, not overdue",
     targetDateOffset: -60, status: "complete", progressPct: 100, includeInReport: true },
   { id: "hidden", what: "include_in_report = false", proves: "plan #3 — absent from the portal entirely",
@@ -82,7 +84,7 @@ export const STRATEGY_CASES: StrategyCase[] = [
   { id: "gap-addressed", what: "live, in-report, aligned to the addressed gap", proves: "readiness #5 — the gap lists this strategy",
     targetDateOffset: 60, status: "in_progress", progressPct: 30, includeInReport: true },
   { id: "gap-withdrawn", what: "aligned to a gap, then withdrawn", proves: "readiness #6 — the gap must read unaddressed",
-    targetDateOffset: 30, status: "planned", progressPct: 0, includeInReport: true, withdraw: true },
+    targetDateOffset: 30, status: "agreed", progressPct: 0, includeInReport: true, withdraw: true },
   { id: "gap-out-of-report", what: "aligned to a gap, include_in_report = false", proves: "readiness #7 — the gap must read unaddressed",
     targetDateOffset: 45, status: "in_progress", progressPct: 20, includeInReport: false },
 ];
@@ -267,8 +269,8 @@ export async function seedPortalAcceptance(pool: PoolLike, options: SeedOptions)
       log(`  = ${entry.id.padEnd(18)} already on the plan — reusing it`);
     } else {
       const assignInput = entry.bespoke
-        ? { clientId, bespoke: BESPOKE, srsRequirementIds: requirementIds ?? [requirements[4]!.id], owner: actorId, notes: "Seeded for the NZC-080 portal acceptance run." }
-        : { clientId, strategyId: chosen!.id, srsRequirementIds: requirementIds ?? chosen!.defaultSrsRequirementIds, owner: actorId, notes: "Seeded for the NZC-080 portal acceptance run." };
+        ? { clientId, bespoke: BESPOKE, srsRequirementIds: requirementIds ?? [requirements[4]!.id], status: "agreed", notes: "Seeded for the NZC-080 portal acceptance run." }
+        : { clientId, strategyId: chosen!.id, srsRequirementIds: requirementIds ?? chosen!.defaultSrsRequirementIds, status: "agreed", notes: "Seeded for the NZC-080 portal acceptance run." };
       const assigned = await step(`client.strategy.assign (${entry.id})`, () => assignClientStrategy(pool, assignInput, context(`assign:${entry.id}`, assignInput)));
       clientStrategyId = assigned.data.clientStrategyId;
       log(`  + ${entry.id.padEnd(18)} ${entry.what}`);
@@ -291,10 +293,13 @@ export async function seedPortalAcceptance(pool: PoolLike, options: SeedOptions)
     strategies.push({ caseId: entry.id, clientStrategyId, action: found ? "reused" : "created" });
 
     const updateInput = {
-      clientStrategyId, expectedVersion: current.version, status: entry.status, owner: actorId,
+      // Assigned as agreed (A1's ladder), so every case's status is one legal move away.
+      clientStrategyId, expectedVersion: current.version, status: entry.status,
       targetDate: entry.targetDateOffset === null ? null : dayOffset(entry.targetDateOffset),
       progressPct: entry.progressPct, notes: "Seeded for the NZC-080 portal acceptance run.",
       srsRequirementIds: current.srsRequirementIds, includeInReport: entry.includeInReport,
+      // Set on the update, so a reused strategy is owned the same way as a new one.
+      ...(options.ownerContactId ? { ownerContactId: options.ownerContactId } : {}),
     };
     const updated = await step(`client.strategy.update (${entry.id})`, () => updateClientStrategy(pool, updateInput, context(`update:${entry.id}`, updateInput)));
     let version = updated.data.version;

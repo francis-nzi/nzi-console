@@ -1,4 +1,4 @@
-import { strategiesBySrsRequirement, strategyStatusLabels, type ClientStrategy, type Lever, type StrategyControlLevel, type StrategyStatus } from "./reductionStrategies";
+import { strategiesBySrsRequirement, strategyIsReportable, strategyStatusLabels, type ClientStrategy, type FrozenStrategyStatus, type Lever, type StrategyControlLevel } from "./reductionStrategies";
 import { gaps as resolveGaps, maturityLabel, type SrsAssessmentItem, type SrsFramework } from "./srsReadiness";
 import type { ReportAuditAppendix, ReportSources } from "./reportSources";
 
@@ -684,7 +684,8 @@ export type ReportPlanStrategy = {
   title: string;
   scope: string;
   category: string;
-  status: StrategyStatus;
+  /** Frozen: a report issued before A1 may say `planned`. */
+  status: FrozenStrategyStatus;
   progressPct: number;
   owner: string;
   targetDate: string | null;
@@ -761,7 +762,7 @@ export type ReportSrsSection = {
 };
 
 /** A strategy answering a gap, as it stood when the report was issued. */
-export type ReportSrsRoadmapStrategy = { title: string; status: StrategyStatus; statusLabel: string };
+export type ReportSrsRoadmapStrategy = { title: string; status: FrozenStrategyStatus; statusLabel: string };
 
 export type ReportSrsRoadmapGap = {
   code: string;
@@ -878,9 +879,10 @@ export function composeReportPlan(
   requirementCodes: ReadonlyMap<string, string>,
 ): ReportPlanSection | ReportSectionGap {
   const live = strategies.filter((strategy) => strategy.active);
-  // `include_in_report` is read HERE, at issue, and frozen with everything else. A later
-  // toggle cannot reach back into a report the client already holds.
-  const included = live.filter((strategy) => strategy.includeInReport);
+  // `include_in_report` and the status are read HERE, at issue, and frozen with everything else. A later toggle
+  // cannot reach back into a report the client already holds. Only what is marked for the report AND agreed or
+  // beyond composes (A1, R5): a proposal, a declined action or one on hold is not presented as the client's plan.
+  const included = live.filter(strategyIsReportable);
   const excludedCount = live.length - included.length;
 
   if (included.length === 0) {
@@ -888,13 +890,15 @@ export function composeReportPlan(
       state: "unavailable",
       reason: live.length === 0
         ? "No reduction strategies were on this client's plan when the report was issued."
-        : `None of this client's ${live.length} reduction strategies were marked for inclusion when the report was issued.`,
+        : `None of this client's ${live.length} reduction strategies were both agreed and marked for inclusion when the report was issued.`,
     };
   }
 
+  // `planned` keeps its name because issued reports carry it; on the live ladder it counts what is agreed and not
+  // yet started — the same meaning it always had.
   const summary = { total: included.length, planned: 0, inProgress: 0, complete: 0 };
   for (const strategy of included) {
-    if (strategy.status === "planned") summary.planned += 1;
+    if (strategy.status === "agreed") summary.planned += 1;
     else if (strategy.status === "in_progress") summary.inProgress += 1;
     else summary.complete += 1;
   }
@@ -1061,8 +1065,8 @@ export function shortPillarLabel(label: string): string {
  *   screen reads. It excludes withdrawn strategies, so a gap cannot look answered by work
  *   the client stopped doing.
  *
- * `plan` must be the strategies **this report froze** — active and `include_in_report`, the
- * same population the plan section shows. Passing the live plan would make a report's
+ * `plan` must be the strategies **this report froze** — `strategyIsReportable`: active, `include_in_report` and
+ * agreed or beyond — the same population the plan section shows. Passing the live plan would make a report's
  * roadmap drift away from its own plan section, which is the failure freezing exists to stop.
  *
  * Pillars appear in the order their worst gap appears, so the pillar needing most attention

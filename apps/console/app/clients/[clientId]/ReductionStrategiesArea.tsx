@@ -4,7 +4,7 @@ import { useState } from "react";
 import { GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
 import {
   strategyDeadline, strategyDeadlineSignals, strategyDeadlineSummary, strategyReminderWindowDays,
-  strategyLibrary, strategyPlanByLever, strategyPlanSummary, strategyScopeLabel,
+  strategyIsReportable, strategyLeverCoverage, strategyLibrary, strategyOriginLabels, strategyPlanByLever, strategyPlanSummary, strategyScopeLabel,
   strategyStatusLabels, strategiesWithoutLever,
   type ClientStrategy, type Lever, type StrategyDeadline, type StrategyStatus,
 } from "@nzi/contracts";
@@ -54,7 +54,12 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
   // Requirement codes, resolved once for the whole area: "S2 M2" is what a report prints
   // and what an assessor asks about; the generated id is neither.
   const codes = new Map((workspace.srs.framework?.requirements ?? []).map((requirement) => [requirement.id, requirement.code]));
-  const excluded = plan.filter((strategy) => !strategy.includeInReport).length;
+  // This view is the whole plan (A1, R5); a report shows only what is marked for it AND agreed or beyond.
+  const live = plan.filter((strategy) => strategy.active);
+  const excluded = live.filter((strategy) => !strategy.includeInReport).length;
+  const notYetReportable = live.filter((strategy) => strategy.includeInReport && !strategyIsReportable(strategy)).length;
+  const coverage = strategyLeverCoverage(plan, levers);
+  const thin = coverage.filter((entry) => entry.thin).length;
 
   // Derived at read time from the date the client set. Nothing is stored and no date is
   // invented: an undated strategy raises nothing at all.
@@ -91,9 +96,22 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
 
         {summary.total === 0 ? null : <div className="nz-action-summary">
           <Stat value={summary.total} label={summary.total === 1 ? "Strategy" : "Strategies"} />
+          <Stat value={summary.proposed} label="Proposed" />
+          <Stat value={summary.agreed} label="Agreed" />
           <Stat value={summary.inProgress} label="In progress" />
           <Stat value={summary.complete} label="Complete" />
-          <Stat value={summary.planned} label="Planned" />
+          {summary.onHold > 0 ? <Stat value={summary.onHold} label="On hold" /> : null}
+          {summary.declined > 0 ? <Stat value={summary.declined} label="Declined" /> : null}
+        </div>}
+
+        {/* Lever coverage (A1, R2): where the plan is thin — a lever with nothing agreed under it. */}
+        {summary.total === 0 ? null : <div className="nz-lever-coverage" aria-label="Lever coverage">
+          <span className="hint">Lever coverage</span>
+          {coverage.map((entry) => <span key={entry.lever.id} className={entry.thin ? "nz-coverage thin" : "nz-coverage"}
+            title={`${entry.actions} on the plan · ${entry.agreed} agreed or beyond · ${entry.complete} complete`}>
+            {entry.lever.title} <b className="num">{entry.agreed}</b>{entry.thin ? <span className="nz-sr-only"> — thin: nothing agreed</span> : null}
+          </span>)}
+          {thin > 0 ? <span className="hint">{thin} {thin === 1 ? "lever has" : "levers have"} nothing agreed yet.</span> : null}
         </div>}
 
         {/* What needs attention, said once at the top rather than left to be found by
@@ -115,6 +133,10 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
           {excluded} {excluded === 1 ? "strategy is" : "strategies are"} held back from the client — absent
           from their portal plan and from reports issued from now on. Reports already issued are
           unaffected: each keeps the plan it was issued with.
+        </p> : null}
+        {notYetReportable > 0 ? <p className="hint" style={{ marginTop: 6 }}>
+          {notYetReportable} {notYetReportable === 1 ? "strategy is" : "strategies are"} marked for the report but not yet
+          agreed (or on hold, or declined) — a report issued now leaves {notYetReportable === 1 ? "it" : "them"} out of its plan.
         </p> : null}
       </div>
     </section>
@@ -198,6 +220,7 @@ function StrategyRow({ strategy, codes, today, access, onDrawer }: {
         <span className="nz-tag">{strategyScopeLabel(strategy.scope)}</span>
         {parts.length > 0 ? ` ${parts.join(" · ")}` : null}
         {strategy.strategyId === null ? <span className="nz-tag" style={{ marginLeft: 6 }}>bespoke</span> : null}
+        {strategy.origin !== "plan" ? <span className="nz-tag" style={{ marginLeft: 6 }}>{strategyOriginLabels[strategy.origin]}</span> : null}
       </div>
       <div className="sub">
         {aligned.map((code) => <span className="nz-tag srs" key={code}>{code}</span>)}
@@ -256,7 +279,7 @@ function deadlineHeadline({ overdue, approaching }: { overdue: number; approachi
 }
 
 function StatusPill({ status }: { status: StrategyStatus }) {
-  const tone = status === "complete" ? "ok" : status === "in_progress" ? "prog" : "plan";
+  const tone = status === "complete" ? "ok" : status === "in_progress" ? "prog" : status === "declined" || status === "on_hold" ? "held" : "plan";
   return <span className={`nz-action-pill ${tone}`}><i />{strategyStatusLabels[status]}</span>;
 }
 

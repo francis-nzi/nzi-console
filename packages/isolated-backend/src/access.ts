@@ -107,6 +107,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   // The catalogue is organisation-wide reference data, not a client's record.
   "strategy.library.upsert": organisation,
   "strategy.library.deactivate": organisation,
+  "strategy.lever.upsert": organisation,
+  "strategy.lever.deactivate": organisation,
   "reference.value.create": organisation,
   "reference.value.update": organisation,
   "reference.value.deactivate": organisation,

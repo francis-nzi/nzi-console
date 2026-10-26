@@ -91,7 +91,7 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
 
   after(async () => { await client?.end(); });
 
-  const addStrategy = async (id: string, targetDate: string | null, status = "planned") => {
+  const addStrategy = async (id: string, targetDate: string | null, status = "agreed") => {
     await client.query(`BEGIN`);
     await client.query(
       `INSERT INTO nzi_console.client_strategies

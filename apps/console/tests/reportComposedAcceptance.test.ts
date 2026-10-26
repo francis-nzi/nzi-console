@@ -95,7 +95,8 @@ describe("the composed report", () => {
     assert.match(view, /plan\.excludedCount > 0/);
     assert.match(view, /not included in this report/);
     const contract = read("packages/contracts/src/reportComposition.ts");
-    assert.match(contract, /strategy\.includeInReport/);
+    // A1: included AND agreed or beyond — one predicate, shared with the roadmap.
+    assert.match(contract, /live\.filter\(strategyIsReportable\)/);
     assert.match(contract, /read HERE, at issue, and frozen with everything else/);
   });
 
@@ -244,8 +245,8 @@ describe("the report's readiness roadmap", () => {
     assert.match(compositions, /composeReportPlan\(strategies, levers, requirementCodes\)/);
     const composeSrs = /async function composeSrs[\s\S]*?^\}/m.exec(compositions)?.[0] ?? "";
     assert.match(composeSrs, /composeSrsRoadmap\(/);
-    assert.match(composeSrs, /planned\.filter\(\(strategy\) => strategy\.includeInReport\)/,
-      "the same population the plan section prints");
+    assert.match(composeSrs, /planned\.filter\(strategyIsReportable\)/,
+      "the same population the plan section prints (A1: marked for the report and agreed or beyond)");
     // And exactly one read of the strategies, shared by both sections.
     assert.equal((compositions.match(/listClientStrategies\(db, input\.clientId\)/g) ?? []).length, 1);
   });

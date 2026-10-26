@@ -1416,6 +1416,12 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-action-pill.ok{background:var(--mint);color:var(--pine)}
 .nz-action-pill.prog{background:#FBF1DE;color:#9A6B00}
 .nz-action-pill.plan{background:var(--paper);color:var(--t2)}
+/* Actions A1: on hold and declined sit off the ladder — muted, struck through when declined. */
+.nz-action-pill.held{background:var(--paper);color:var(--t3,#7A8783);font-style:italic}
+/* Lever coverage (A1, R2): one chip per lever with the count agreed; a thin lever (nothing agreed) is outlined in amber. */
+.nz-lever-coverage{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
+.nz-coverage{display:inline-flex;gap:5px;align-items:center;padding:3px 9px;border:1px solid var(--line);border-radius:999px;font-size:11.5px;color:var(--t2);background:#fff}
+.nz-coverage.thin{border-color:#E7B54A;background:#FFF8E8}
 .nz-action-progress{width:100%;height:6px;overflow:hidden;border-radius:20px;background:var(--paper);border:1px solid var(--line)}
 .nz-action-progress>span{display:block;height:100%;border-radius:20px;background:var(--emerald)}
 .nz-action-head{display:flex;align-items:center;gap:11px;margin-bottom:14px}
@@ -2028,6 +2034,11 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-mitem.excluded .k{background:var(--a-muted-bg);color:var(--a-ink-3)}
 .nz-a-mitem.excluded input:not([type=checkbox]){color:var(--a-ink-3)}
 .nz-a-catbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+/* A checkbox group in an admin drawer (Action library: a strategy's levers). */
+.nz-a-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 14px;margin:0 0 14px;padding:10px 12px;border:1px solid var(--a-line,#E3E8E6);border-radius:8px}
+.nz-a-checks legend{padding:0 4px;font-size:11.5px;font-weight:650;color:var(--t2)}
+.nz-a-checks label{display:flex;gap:7px;align-items:center;font-size:12.5px}
+.nz-a-checks .nz-a-hint,.nz-a-checks .nz-a-error{grid-column:1/-1}
 .nz-admin .nz-a-cat{border:1px solid var(--a-line);background:var(--a-surface);color:var(--a-ink-2);padding:6px 11px;border-radius:20px;font-size:12.5px;font-weight:500;display:inline-flex;gap:7px;align-items:center}
 .nz-a-cat .n{font-family:var(--a-mono);font-size:10.5px;color:var(--a-ink-3)}
 .nz-admin .nz-a-cat:hover{border-color:var(--a-accent)}
