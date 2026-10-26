@@ -1063,6 +1063,63 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-srs-rung input{grid-row:span 2;accent-color:var(--pine)}
 .nz-srs-rung b{font-size:12.5px}
 .nz-srs-rung span{font-size:11.5px;color:var(--t3)}
+/* SRS S2 — the readiness dashboard and the portal's readiness view. The step chip wears the one validated ordinal ramp
+   (@nzi/charts SRS_LADDER.light), with the step number always inside it; the ink per step is ≥ 4.5:1. */
+.nz-srs-chip{display:inline-grid;place-items:center;min-width:20px;height:20px;padding:0 5px;border-radius:5px;font-size:11.5px;font-weight:800;vertical-align:1px}
+.nz-srs-chip[data-step="0"]{background:#89C09F;color:#0B1B2B}
+.nz-srs-chip[data-step="1"]{background:#59A57A;color:#0B1B2B}
+.nz-srs-chip[data-step="2"]{background:#1A8454;color:#fff}
+.nz-srs-chip[data-step="3"]{background:#00673C;color:#fff}
+.nz-srs-chip[data-step="4"]{background:#004B2A;color:#fff}
+.nz-srs-filters{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;margin:0 0 14px}
+.nz-srs-filters label{display:inline-flex;gap:7px;align-items:center;font-size:12px;color:var(--t2)}
+.nz-srs-filters .sp,.nz-srs-sechead .sp{flex:1}
+.nz-srs-filters svg{max-width:100%;height:auto}
+.nz-srs-provisional{border:1px dashed var(--pine);border-radius:10px;background:repeating-linear-gradient(135deg,var(--mint) 0 6px,var(--card) 6px 12px);padding:10px 13px;margin:0 0 14px;font-size:12.5px;color:var(--t1)}
+.nz-srs-headline{display:grid;grid-template-columns:minmax(0,260px) minmax(0,1fr);gap:16px;padding:16px 18px;margin-bottom:16px}
+.nz-srs-headline.provisional{border-style:dashed}
+.nz-srs-hero2 .l,.nz-srs-kpi .l{font-size:12px;color:var(--t3)}
+.nz-srs-hero2 .v{font-size:40px;font-weight:800;letter-spacing:-.02em;line-height:1.05;color:var(--t1)}
+.nz-srs-hero2 .v small{font-size:16px;font-weight:600;color:var(--t3);margin-left:3px}
+.nz-srs-hero2 .step{margin-top:6px;font-size:14px;font-weight:700}
+.nz-srs-hero2 .d,.nz-srs-kpi .d{margin-top:4px;font-size:11.5px;color:var(--t2)}
+.nz-srs-hero2.portal{display:flex;gap:16px;align-items:center;margin:6px 0 10px}
+.nz-srs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:10px}
+.nz-srs-kpi{border:1px solid var(--line);border-radius:10px;padding:10px 12px;min-width:0}
+.nz-srs-kpi .v{font-size:22px;font-weight:800;margin-top:2px;color:var(--t1)}
+.nz-srs-kpi .step{font-size:12px;font-weight:600;margin-top:2px}
+.nz-srs-seg{display:inline-flex;flex-wrap:wrap;max-width:100%;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.nz-srs-seg button{border:0;background:var(--card);padding:4px 10px;font:inherit;font-size:12px;color:var(--t2);cursor:pointer}
+.nz-srs-seg button+button{border-left:1px solid var(--line)}
+.nz-srs-seg button[aria-pressed="true"]{background:var(--mint);color:var(--pine);font-weight:700}
+.nz-srs-sechead{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.nz-srs-sechead .nz-portal-readiness-h{margin:0}
+.nz-srs-dials{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:12px;justify-items:center}
+.nz-srs-dials svg,.nz-srs-radar2 svg,.nz-srs-multiples svg{max-width:100%;height:auto}
+.nz-srs-radar2{display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:center;margin-top:10px}
+.nz-srs-radar2>.nz-srs-tablewrap{flex:1;min-width:min(240px,100%)}
+.nz-srs-multiples{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(160px,100%),1fr));gap:10px}
+.nz-srs-table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px}
+.nz-srs-table caption{text-align:left;font-size:11.5px;color:var(--t3);padding-bottom:4px}
+.nz-srs-table th,.nz-srs-table td{padding:5px 8px;border-bottom:1px solid var(--line2);text-align:left}
+.nz-srs-table thead th{font-weight:600;color:var(--t2)}
+.nz-srs-table .num{font-variant-numeric:tabular-nums}
+.nz-srs-tablewrap{overflow-x:auto}
+.nz-srs-register{min-width:880px}
+.nz-srs-register td{vertical-align:top}
+.nz-srs-sort{border:0;background:none;padding:0;font:inherit;font-weight:600;color:inherit;cursor:pointer}
+.nz-srs-hook{font-size:11.5px;color:var(--pine);text-decoration:none}
+.nz-srs-hook:hover{text-decoration:underline}
+.nz-srs-bridge{display:inline-block;font-size:11px;color:var(--t2);border:1px dashed var(--line);border-radius:6px;padding:2px 7px}
+.nz-srs-qlist{list-style:none;margin:0;padding:0;display:grid}
+.nz-srs-qlist button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;border:0;border-bottom:1px solid var(--line2);background:none;padding:8px 2px;font:inherit;font-size:12.5px;text-align:left;color:var(--t1);cursor:pointer}
+.nz-srs-qlist button:hover{background:var(--paper)}
+.nz-srs-qlist .s{white-space:nowrap;font-size:12px}
+@media (max-width:720px){
+  .nz-srs-headline{grid-template-columns:minmax(0,1fr)}
+  .nz-srs-qlist button{grid-template-columns:auto minmax(0,1fr)}
+  .nz-srs-qlist .s,.nz-srs-qlist .muted{grid-column:2}
+}
 /* the view-level reporting-year picker, and the basis picker in a card header */
 .nz-cw-yearpick{margin:0;gap:3px}
 .nz-cw-yearpick>span{text-align:right}

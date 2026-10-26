@@ -469,6 +469,13 @@ jobs:
       # own plan; the framework is versioned — a draft copied, edited, published to supersede, a published one never edited.
       - name: The SRS framework as versions, and the readiness assessment dated on completion
         run: npx tsx --test packages/isolated-backend/tests/srsS1Real.test.ts
+      # SRS S2: the client portal's readiness dashboard is built from the latest completed assessment only — a draft in
+      # progress never reaches the client — with each question's evidence and history and none of the staff working
+      # fields (owner, due date, action link), though all three are set; it is the CRM's own model for that assessment;
+      # two clients differ; a draft-only client sees "in progress"; reading writes nothing; and a SQL date reads as its
+      # own calendar day on a host ahead of UTC.
+      - name: The portal's readiness dashboard is the latest completed assessment, without the staff working fields
+        run: npx tsx --test packages/isolated-backend/tests/srsS2Real.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

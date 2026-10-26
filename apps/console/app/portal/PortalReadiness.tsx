@@ -1,9 +1,9 @@
 "use client";
 import { useOrganisationName } from "../lib/OrganisationNameProvider";
 import {useEffect,useState} from "react";
-import {Collapsible} from "@nzi/ui";
-import {CRP_RESOLVER_VERSION,RENDERER_VERSION,SrsMaturityBullets,SrsPillarRadar,TOKENS_VERSION} from "@nzi/charts";
-import type {ReportSrsRoadmapGap,ReportSrsRoadmapPillar} from "@nzi/contracts";
+import {Collapsible,Drawer} from "@nzi/ui";
+import {SrsDial,SrsMeter,SrsPillarTable,SrsRadar,SrsScaleKey} from "@nzi/charts";
+import type {ReportSrsRoadmapGap,ReportSrsRoadmapPillar,SrsDashboardModel,SrsDashboardRequirement} from "@nzi/contracts";
 import type {PortalReadinessReadModel} from "@nzi/isolated-backend";
 import {formatDate} from "../lib/formatDate";
 import {redirectIfPortalSessionEnded} from "./portalSessionClient";
@@ -20,6 +20,12 @@ import {redirectIfPortalSessionEnded} from "./portalSessionClient";
  * they were sent keeps its own frozen readiness; these are two reads of one assessment, for
  * two purposes.
  *
+ * **SRS S2.** The headline, the four pillar dials and the radar are the same components the
+ * consultant's dashboard draws, from the same model (`dashboard`), on the same five-step ladder —
+ * so the client and the consultant are looking at one picture. The core questions open in
+ * drawers: the question, the step reached, its evidence and its history. No owner, due date or
+ * internal action link reaches this page (NZC-110); the model never carries them.
+ *
  * Read-only throughout — the assessment is consultant-led, and there is no control here that
  * implies otherwise.
  */
@@ -28,11 +34,15 @@ const valid=(value:unknown):value is PortalReadinessReadModel=>{
   if(!value||typeof value!=="object")return false;
   const model=value as PortalReadinessReadModel;
   return model.state==="none"?typeof model.reason==="string"
-    :model.state==="assessed"&&typeof model.overallPct==="number"&&Array.isArray(model.pillars)&&Array.isArray(model.roadmap?.pillars);
+    :model.state==="assessed"&&Array.isArray(model.roadmap?.pillars)&&typeof model.dashboard?.overall?.level==="number"
+      &&Array.isArray(model.dashboard.pillars)&&Array.isArray(model.dashboard.requirements)&&Array.isArray(model.dashboard.ladder);
 };
 
 /** A short readiness has its gaps open; a long one opens collapsed so the page stays scannable. */
 const EXPAND_UP_TO=6;
+
+const shortPillar=(label:string)=>label.length<=11?label:label.replace(/\bmanagement\b/i,"mgmt").replace(/\s*&\s*targets$/i,"").slice(0,12).trim();
+const signed=(delta:number|null)=>delta===null?null:delta===0?"no change":`${delta>0?"▲ +":"▼ −"}${Math.abs(delta).toFixed(1)}`;
 
 /**
  * Rendered two ways from one implementation: the client fetches its own data, and the staff
@@ -43,6 +53,8 @@ const EXPAND_UP_TO=6;
 export function PortalReadiness({model:provided}:{model?:PortalReadinessReadModel}={}){
   const org=useOrganisationName();
   const [model,setModel]=useState<PortalReadinessReadModel|null>(provided??null),[error,setError]=useState("");
+  const [dialsAs,setDialsAs]=useState<"dials"|"meters">("dials");
+  const [openId,setOpenId]=useState<string|null>(null);
   useEffect(()=>{if(provided!==undefined){setModel(provided);return;}
     fetch("/api/portal/readiness",{cache:"no-store"}).then(async response=>{
     if(await redirectIfPortalSessionEnded(response))return;
@@ -57,44 +69,60 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
   if(model===null)return <section className="nz-panel"><div className="nz-portal-state loading" role="status"><i>↻</i><div>
     <b>Checking your readiness assessment</b><span>Reading your latest completed assessment…</span></div></div></section>;
 
-  // Not assessed is not zero. A 0% here would read as a score the client had been given.
+  // Not assessed is not zero. A 0 here would read as a score the client had been given.
   if(model.state==="none")return <section className="nz-panel"><div className="nz-card-b">
     <span className="nz-eyebrow">UK SRS readiness</span>
     <h2 style={{margin:"2px 0 8px",fontSize:16}}>Your readiness assessment is in progress</h2>
     <p className="sub" style={{marginTop:0}}>{model.reason}</p>
   </div></section>;
 
+  const dashboard=model.dashboard;
   const totalGaps=model.roadmap.pillars.reduce((count,pillar)=>count+pillar.gaps.length,0);
   const expanded=totalGaps<=EXPAND_UP_TO;
-  const provenance={
-    jobId:"",dataHash:"",factorSets:[],generatedAt:model.assessedOn,reviewedSnapshotId:"",
-    resolverVersion:CRP_RESOLVER_VERSION,tokensVersion:TOKENS_VERSION,rendererVersion:RENDERER_VERSION,
-  };
+  const rows=dashboard.pillars.map(pillar=>({label:pillar.label,level:pillar.level,stepName:pillar.stepName,target:pillar.targetLevel,delta:pillar.delta}));
+  const open=dashboard.requirements.find(requirement=>requirement.id===openId)??null;
 
-  return <section className="nz-panel"><div className="nz-card-b">
+  return <>
+  <section className="nz-panel"><div className="nz-card-b">
     <span className="nz-eyebrow">UK SRS readiness</span>
-    <h2 style={{margin:"2px 0 8px",fontSize:16}}>{model.overallLabel} — {Math.round(model.overallPct)}% ready</h2>
+    {/* The headline: the step reached, with its number — the same figure the consultant sees. */}
+    <div className="nz-srs-hero2 portal">
+      <div className="v num">{dashboard.overall.level.toFixed(1)}<small> of 4</small></div>
+      <div>
+        <h2 style={{margin:"0 0 4px",fontSize:16}}><span className="nz-srs-chip" data-step={dashboard.overall.step}>{dashboard.overall.step}</span> {dashboard.overall.stepName}</h2>
+        <div className="d">{signed(dashboard.overall.delta)?<>{signed(dashboard.overall.delta)} since your previous assessment</>:"Your first completed assessment"}</div>
+      </div>
+    </div>
     <p className="sub" style={{marginTop:0}}>
       Assessed with {org.your("consultant")} on {formatDate(model.assessedOn)} against {model.frameworkLabel} version {model.frameworkVersion}.
       This is how ready your own reporting is — not a statement that anything has been filed or assured.
     </p>
+    <SrsScaleKey ladder={dashboard.ladder}/>
+  </div></section>
 
-    <div className="nz-portal-readiness-charts">
-      {model.radar.series.length>0?<SrsPillarRadar showChrome={false} width={280} data={{
-        spec:{id:`portal-srs-radar-${model.assessedOn}`,type:"srs_pillar_radar",title:"Readiness by pillar",family:"crp",specVersion:1},
-        unit:"level",state:"success",provenance,
-        pillars:model.radar.pillars,series:model.radar.series,target:model.radar.target,maxLevel:model.maxLevel,
-      }}/>:null}
-      <div style={{flex:1,minWidth:250}}>
-        <SrsMaturityBullets showChrome={false} data={{
-          spec:{id:`portal-srs-bullets-${model.assessedOn}`,type:"srs_maturity_bullets",title:"Maturity by pillar",family:"crp",specVersion:1},
-          unit:"level",state:"success",provenance,maxLevel:model.maxLevel,
-          rows:model.pillars.map(pillar=>({label:pillar.label,value:pillar.level,valueLabel:pillar.levelLabel,comparison:null,target:pillar.targetLevel})),
-        }}/>
-      </div>
+  <section className="nz-panel"><div className="nz-card-b">
+    <div className="nz-srs-sechead"><h3 className="nz-portal-readiness-h">By pillar</h3><span className="sp"/>
+      <span className="nz-srs-seg" role="group" aria-label="Show as">
+        <button type="button" aria-pressed={dialsAs==="dials"} onClick={()=>setDialsAs("dials")}>Dials</button>
+        <button type="button" aria-pressed={dialsAs==="meters"} onClick={()=>setDialsAs("meters")}>Meters</button>
+      </span></div>
+    {dialsAs==="dials"
+      ?<div className="nz-srs-dials">{dashboard.pillars.map(pillar=><SrsDial key={pillar.key} label={pillar.label} level={pillar.level} stepName={pillar.stepName} target={pillar.targetLevel}/>)}</div>
+      :<SrsMeter rows={dashboard.pillars.map(pillar=>({label:pillar.label,level:pillar.level,stepName:pillar.stepName,target:pillar.targetLevel}))}/>}
+    <div className="nz-srs-radar2">
+      <SrsRadar axes={dashboard.pillars.map(pillar=>({label:shortPillar(pillar.label),value:pillar.level,target:pillar.targetLevel}))} seriesLabel="Your readiness"/>
+      <SrsPillarTable rows={rows} caption="Your readiness by pillar"/>
     </div>
     <p className="nz-portal-readiness-ev">{model.evidenced.count} of {model.evidenced.total} requirements have evidence recorded against them.</p>
+  </div></section>
 
+  <section className="nz-panel"><div className="nz-card-b">
+    <h3 className="nz-portal-readiness-h">The questions</h3>
+    <p className="sub" style={{marginTop:0}}>Each requirement your assessment covered — open one to see the question, where you stand on it, the evidence behind it and how it has moved.</p>
+    <QuestionList model={dashboard} onOpen={setOpenId}/>
+  </div></section>
+
+  <section className="nz-panel"><div className="nz-card-b">
     {totalGaps===0
       ? <p className="sub">No requirement sits below what the framework expects of it. Your consultant will reassess as the standards move.</p>
       : <>
@@ -109,7 +137,66 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
           {model.roadmap.pillars.map(pillar=><PillarGaps key={pillar.key} pillar={pillar} defaultOpen={expanded}/>)}
         </div>
       </>}
-  </div></section>;
+  </div></section>
+
+  <Drawer open={open!==null} onClose={()=>setOpenId(null)} ariaLabel={open?`${open.code} ${open.title}`:"Requirement"} className="nz-pdv-drawer" dismissOnOutsideClick>
+    {open?<QuestionDrawer requirement={open} onClose={()=>setOpenId(null)}/>:null}
+  </Drawer>
+  </>;
+}
+
+/** The core questions, grouped by pillar — each a button that opens its drawer. Read-only: nothing here edits. */
+function QuestionList({model,onOpen}:{model:SrsDashboardModel;onOpen:(id:string)=>void}){
+  const groups:Array<{key:string;label:string;requirements:SrsDashboardRequirement[]}>=[];
+  for(const requirement of model.requirements){
+    let group=groups.find(entry=>entry.key===requirement.pillarKey);
+    if(!group){group={key:requirement.pillarKey,label:requirement.pillarLabel,requirements:[]};groups.push(group);}
+    group.requirements.push(requirement);
+  }
+  return <div className="nz-portal-readiness-gaps nz-srs-questions">{groups.map(group=><Collapsible key={group.key} title={group.label} count={`${group.requirements.length}`}>
+    <ul className="nz-srs-qlist">{group.requirements.map(requirement=><li key={requirement.id}>
+      <button type="button" onClick={()=>onOpen(requirement.id)}>
+        <span className="nz-tag">{requirement.code}</span>
+        <span className="t">{requirement.title}</span>
+        {requirement.maturity===null
+          ?<span className="muted">Not answered</span>
+          :<span className="s"><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}</span>}
+      </button>
+    </li>)}</ul>
+  </Collapsible>)}</div>;
+}
+
+function QuestionDrawer({requirement,onClose}:{requirement:SrsDashboardRequirement;onClose:()=>void}){
+  const evidenceKind={document:"Document",data:"From your own reported data",note:"Note"} as const;
+  return <div className="nz-pdv-drawer-b">
+    <div className="nz-pdv-drawer-h">
+      <span className="nz-eyebrow">{requirement.pillarLabel} · {requirement.code}</span>
+      <h2>{requirement.title}</h2>
+    </div>
+    {requirement.helpText?<div className="nz-pdv-sec"><h3>The question</h3><p>{requirement.helpText}</p></div>:null}
+    <div className="nz-pdv-sec"><h3>Where you stand</h3>
+      <dl className="nz-pdv-facts">
+        <div><dt>Step reached</dt><dd>{requirement.maturity===null?"Not answered in this assessment"
+          :<><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}</>}</dd></div>
+        <div><dt>Expected</dt><dd>Step {requirement.target}</dd></div>
+        {requirement.source==="auto"?<div><dt>Answered from</dt><dd>Your own assured record</dd></div>:null}
+      </dl>
+    </div>
+    <div className="nz-pdv-sec"><h3>Evidence</h3>
+      {requirement.evidence
+        ?<p><b>{evidenceKind[requirement.evidence.kind]}</b>{requirement.evidence.ref?` · ${requirement.evidence.ref}`:""}{requirement.evidence.note?<><br/>{requirement.evidence.note}</>:null}</p>
+        :<p>No evidence is recorded against this requirement yet.</p>}
+    </div>
+    <div className="nz-pdv-sec"><h3>History</h3>
+      {requirement.history.length===0?<p>This is its first assessment.</p>
+        :<table className="nz-srs-table"><caption className="nz-sr-only">Step reached at each completed assessment</caption>
+          <thead><tr><th scope="col">Assessed</th><th scope="col">Step</th></tr></thead>
+          <tbody>{requirement.history.map(point=><tr key={point.assessedOn}><th scope="row">{formatDate(point.assessedOn)}</th>
+            <td>{point.maturity===null?"Not answered":<><span className="nz-srs-chip" data-step={point.maturity}>{point.maturity}</span> {point.stepName}</>}</td></tr>)}</tbody>
+        </table>}
+    </div>
+    <div className="nz-pdv-sec"><button type="button" className="nz-btn" onClick={onClose}>Close</button></div>
+  </div>;
 }
 
 function PillarGaps({pillar,defaultOpen}:{pillar:ReportSrsRoadmapPillar;defaultOpen:boolean}){

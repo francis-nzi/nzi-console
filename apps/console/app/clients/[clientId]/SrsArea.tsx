@@ -2,13 +2,11 @@
 
 import { useMemo, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
-import { CRP_RESOLVER_VERSION, RENDERER_VERSION, SrsGapHeatmap, SrsMaturityBullets, SrsPillarRadar, SrsReadinessTrend, TOKENS_VERSION } from "@nzi/charts";
+import { SrsDial, SrsHeatmap, SrsMeter, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
 import { GatedButton, InfoTip } from "@nzi/ui";
 import {
-  benchmark as resolveBenchmark, evidenceCoverage, gaps as resolveGaps, maturityLabel,
-  orderedRequirements, overallReadiness, pillarReadiness, readinessTrend, srsCompletion, standardReadiness,
-  strategiesBySrsRequirement, strategyStatusLabels,
-  type ClientStrategy, type SrsAssessment, type SrsFramework, type SrsMaturity,
+  gaps as resolveGaps, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
+  type ClientStrategy, type SrsAssessment, type SrsDashboardModel, type SrsDashboardRequirement, type SrsFramework,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
@@ -17,15 +15,17 @@ import { CardHead, Empty } from "./OverviewArea";
 import type { SrsDrawerRequest } from "./srsDrawers";
 
 /**
- * UK SRS Readiness (per the redesign brief and `srs_readiness_v1`).
+ * UK SRS Readiness — the CRM readiness dashboard (SRS S2), on S1's model.
  *
- * Two audiences, one screen: a client tracking and closing gaps, and a prospect seeing
- * where they stand. So it leads with a level and a number — never a bare percentage — and
- * every graphic is drawn from this client's own answers against the framework version the
- * assessment was made against.
+ * In the order the brief sets: the headline (overall maturity and a KPI tile per pillar) → the four dials → the radar
+ * with its table → the requirement heatmap → the reassessment trend → the Metrics & targets read-through, the roadmap
+ * and the "Future" benchmark → the register. It **reads** S1's weighted rollups through `srsDashboard` (the same model
+ * the client portal renders) and writes nothing but what it already did: answering and completing.
  *
- * Maturity is drawn on the sequential status ramp, never the scope palette: scope colour
- * means scope, and borrowing it for "how ready" would make two different things look alike.
+ * **One scale.** Every graphic is on the five-step ladder (0–4), one validated ordinal ramp, with the number and the step
+ * name beside every colour; the scale key is always on screen. **An assessment in progress** is drawn — its provisional
+ * scores hatched and dashed, under a banner that says "In progress · n of m addressed · not yet assessed" — never as a
+ * verdict, and never with an assessed date. The portal and the report read completed assessments only.
  */
 
 export function SrsArea({ workspace, access, onDrawer, onSaved }: {
@@ -47,7 +47,7 @@ export function SrsArea({ workspace, access, onDrawer, onSaved }: {
   }
   if (!current) return <SrsEmpty framework={framework} access={access} onDrawer={onDrawer} />;
 
-  return <SrsDashboard workspace={workspace} framework={framework} assessment={current} assessments={assessments} access={access} onDrawer={onDrawer} onSaved={onSaved} />;
+  return <SrsDashboard workspace={workspace} framework={framework} current={current} assessments={assessments} access={access} onDrawer={onDrawer} onSaved={onSaved} />;
 }
 
 function SrsEmpty({ framework, access, onDrawer }: { framework: SrsFramework; access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void }) {
@@ -73,69 +73,60 @@ function StartButton({ access, onDrawer, label }: { access: EditAccess; onDrawer
     onClick={() => onDrawer({ kind: "srs-start" })}>{label}</GatedButton>;
 }
 
-function SrsDashboard({ workspace, framework, assessment, assessments, access, onDrawer, onSaved }: {
+const signed = (delta: number | null) => delta === null ? null : delta === 0 ? "no change" : `${delta > 0 ? "▲ +" : "▼ −"}${Math.abs(delta).toFixed(1)}`;
+const shortPillar = (label: string) => label.length <= 11 ? label : label.replace(/\bmanagement\b/i, "mgmt").replace(/\s*&\s*targets$/i, "").slice(0, 12).trim();
+
+function SrsDashboard({ workspace, framework, current, assessments, access, onDrawer, onSaved }: {
   workspace: ClientWorkspaceReadModel;
   framework: SrsFramework;
-  assessment: SrsAssessment;
+  current: SrsAssessment;
   assessments: SrsAssessment[];
   access: EditAccess;
   onDrawer: (request: SrsDrawerRequest) => void;
   onSaved: (text: string) => void;
 }) {
   const { client } = workspace;
+  // The filter row (R10): which standard, which assessment. The one in progress (or the latest) leads.
+  const [standardKey, setStandardKey] = useState<string | null>(null);
+  const [assessmentId, setAssessmentId] = useState(current.assessmentId);
+  const [dialsAs, setDialsAs] = useState<"dials" | "meters">("dials");
+  const [trendBy, setTrendBy] = useState<"overall" | "pillar">("overall");
+  const [showTable, setShowTable] = useState<Record<string, boolean>>({});
+  const toggle = (key: string) => setShowTable((now) => ({ ...now, [key]: !now[key] }));
+
+  const assessment = assessments.find((entry) => entry.assessmentId === assessmentId) ?? current;
+  const model = useMemo(() => srsDashboard(framework, assessment, assessments, { standardKey }), [framework, assessment, assessments, standardKey]);
+  const provisional = model.assessment.provisional;
+  const strategiesByRequirement = useMemo(() => strategiesBySrsRequirement(workspace.strategies.plan), [workspace.strategies.plan]);
+  const actions = useMemo(() => new Map(workspace.strategies.plan.map((strategy) => [strategy.id, strategy])), [workspace.strategies.plan]);
+  const gaps = useMemo(() => resolveGaps(framework, assessment.items).filter((gap) => !standardKey || gap.requirement.standardKey === standardKey), [framework, assessment, standardKey]);
+
   const [completing, setCompleting] = useState(false);
   const [completeError, setCompleteError] = useState<string | null>(null);
   async function complete() {
     setCompleting(true); setCompleteError(null);
-    const result = await postBrowserCommand<{ assessedOn: string }>(`/api/isolated/srs-assessments/${encodeURIComponent(assessment.assessmentId)}`,
-      { expectedVersion: assessment.version }, crypto.randomUUID());
+    const result = await postBrowserCommand<{ assessedOn: string }>(`/api/isolated/srs-assessments/${encodeURIComponent(current.assessmentId)}`,
+      { expectedVersion: current.version }, crypto.randomUUID());
     setCompleting(false);
     if (result.state !== "success") { setCompleteError(result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.message); return; }
     onSaved(`Assessment complete — assessed ${formatDate(result.data.assessedOn)}.`);
   }
-  const overall = useMemo(() => overallReadiness(framework, assessment.items), [framework, assessment]);
-  const pillars = useMemo(() => pillarReadiness(framework, assessment.items), [framework, assessment]);
-  const standards = useMemo(() => standardReadiness(framework, assessment.items), [framework, assessment]);
-  const coverage = useMemo(() => evidenceCoverage(framework, assessment.items), [framework, assessment]);
-  const gaps = useMemo(() => resolveGaps(framework, assessment.items), [framework, assessment]);
-  // Completed assessments only (S1, R3): one still in progress is not a position the client was assessed at.
-  const trend = useMemo(() => readinessTrend(framework, assessments), [framework, assessments]);
-  const completion = useMemo(() => srsCompletion(framework, assessment.items), [framework, assessment]);
-  // The reverse of the alignment each strategy carries: requirement → what this client is
-  // doing about it. Derived from the plan already in the workspace, so it cannot disagree
-  // with the Reduction Strategies area next door.
-  const strategiesByRequirement = useMemo(
-    () => strategiesBySrsRequirement(workspace.strategies.plan),
-    [workspace.strategies.plan],
-  );
-  const mark = resolveBenchmark(assessment);
-  const climate = framework.standards.find((standard) => standard.climateLed) ?? framework.standards[0]!;
-  const other = framework.standards.find((standard) => standard.key !== climate.key) ?? null;
-  const itemsByRequirement = new Map(assessment.items.map((item) => [item.requirementId, item]));
-
-  const provenance = {
-    jobId: client.id, dataHash: "", factorSets: [], generatedAt: assessment.assessedOn ?? assessment.startedOn,
-    reviewedSnapshotId: assessment.assessmentId, resolverVersion: CRP_RESOLVER_VERSION,
-    tokensVersion: TOKENS_VERSION, rendererVersion: RENDERER_VERSION,
-  };
-  const maxLevel = framework.maturityLevels.length - 1;
-  // Axis and column labels have to fit the chart: the full wording stays everywhere else,
-  // and the chart's own title and tooltips carry it for anyone who needs it spelled out.
-  const shortPillar = (label: string) => label.length <= 11 ? label
-    : label.replace(/\bmanagement\b/i, "mgmt").replace(/\s*&\s*targets$/i, "").slice(0, 12).trim();
-  const levelLabels = framework.maturityLevels.map((level) => level.label.split(" ")[0]!.slice(0, 3));
+  const currentCompletion = useMemo(() => srsDashboard(framework, current, assessments).assessment, [framework, current, assessments]);
+  const completionReady = currentCompletion.addressed === currentCompletion.total && currentCompletion.total > 0;
+  const tableRows = model.pillars.map((pillar) => ({ label: pillar.label, level: pillar.level, stepName: pillar.stepName, target: pillar.targetLevel, delta: pillar.delta }));
+  const standardLabel = standardKey ? model.standards.find((standard) => standard.key === standardKey)?.label ?? standardKey : "S1 and S2";
 
   return <>
     <div className="nz-cw-vhead"><div><div className="eyebrow">Disclosure</div><h2>UK SRS Readiness</h2></div><span style={{ flex: 1 }} />
-      <span className={assessment.status === "draft" ? "nz-st need" : "nz-st done"}>{assessment.status === "draft" ? `In progress · ${completion.addressed} of ${completion.total} addressed` : "Assessed"}</span>
-      {assessment.status === "draft"
+      <span className={current.status === "draft" ? "nz-st need" : "nz-st done"}>{current.status === "draft" ? `In progress · ${currentCompletion.addressed} of ${currentCompletion.total} addressed` : "Assessed"}</span>
+      {current.status === "draft"
         ? <>
           <GatedButton className="nz-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
-            reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-assess", assessment })}>Continue assessment</GatedButton>
+            reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-assess", assessment: current })}>Continue assessment</GatedButton>
           {/* Dated on completion (S1, R3): it can be completed only once every requirement is addressed. */}
-          <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || !completion.ready || completing}
+          <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || !completionReady || completing}
             blockedReason={access.state !== "allowed" ? access.reason
-              : !completion.ready ? `${completion.total - completion.addressed} of ${completion.total} requirements still to address — an assessment is complete when every one has a maturity.` : undefined}
+              : !completionReady ? `${currentCompletion.total - currentCompletion.addressed} of ${currentCompletion.total} requirements still to address — an assessment is complete when every one has a maturity.` : undefined}
             reasonClassName="hint nz-gated-reason" onClick={() => void complete()}>{completing ? "Completing…" : "Complete assessment"}</GatedButton>
         </>
         // A completed assessment is a record; reassessing starts a new one, which is what gives readiness a trend.
@@ -143,104 +134,132 @@ function SrsDashboard({ workspace, framework, assessment, assessments, access, o
           reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-start" })}>Reassess</GatedButton>}
     </div>
     {completeError ? <div className="nz-banner warn" role="alert">{completeError}</div> : null}
-    <p className="nz-cw-vsub">{client.name} · {assessment.assessedOn
-      ? <>assessed {formatDate(assessment.assessedOn)}</>
-      : <>started {formatDate(assessment.startedOn)} · not yet assessed — it is dated when every requirement is addressed</>} · consultant-led by {assessment.assessedBy} · measured against {framework.label} version {assessment.frameworkVersion}.</p>
+    <p className="nz-cw-vsub">{client.name} · {model.assessment.assessedOn
+      ? <>assessed {formatDate(model.assessment.assessedOn)}</>
+      : <>started {formatDate(model.assessment.startedOn)} · not yet assessed — it is dated when every requirement is addressed</>} · consultant-led by {assessment.assessedBy} · measured against {model.frameworkLabel} version {model.frameworkVersion}.</p>
 
-    {/* The headline: a level and a number, with the confidence behind it. */}
-    <section className="nz-panel nz-srs-hero">
-      <div className="nz-srs-score">
-        <div className="v num">{Math.round(overall.percent)}<small>%</small></div>
-        <span className="nz-st done">{maturityLabel(framework, overall.level)}</span>
+    {/* The filter row (R10): which standard, which assessment — one row, above every graphic. */}
+    <div className="nz-srs-filters" role="group" aria-label="Readiness filters">
+      <label>Standard <select className="nz-sel" value={standardKey ?? ""} onChange={(event) => setStandardKey(event.target.value || null)}>
+        <option value="">Both — S2 climate-led, S1 general</option>
+        {model.standards.map((standard) => <option key={standard.key} value={standard.key}>{standard.label}</option>)}
+      </select></label>
+      <label>Assessment <select className="nz-sel" value={assessmentId} onChange={(event) => setAssessmentId(event.target.value)}>
+        {assessments.map((entry) => <option key={entry.assessmentId} value={entry.assessmentId}>
+          {entry.status === "complete" && entry.assessedOn ? `Assessed ${formatDate(entry.assessedOn)}` : `In progress — started ${formatDate(entry.startedOn)}`}
+        </option>)}
+      </select></label>
+      <span className="sp" />
+      <SrsScaleKey ladder={model.ladder} provisional={provisional} />
+    </div>
+
+    {/* R11: a draft's scores are provisional — said once, loudly, and drawn hatched below. */}
+    {provisional ? <div className="nz-srs-provisional" role="status">
+      <b>In progress · {model.assessment.addressed} of {model.assessment.total} addressed · not yet assessed.</b> The scores below are provisional — hatched and dashed —
+      and change as the assessment is worked through. The client portal and reports show completed assessments only.
+    </div> : null}
+
+    {/* R1: the headline — overall maturity on the ladder, then a tile per pillar. Numbers first. */}
+    <section className={`nz-panel nz-srs-headline${provisional ? " provisional" : ""}`} aria-label="Readiness headline">
+      <div className="nz-srs-hero2">
+        <div className="l">Overall maturity · {standardLabel}</div>
+        <div className="v num">{model.overall.level.toFixed(1)}<small> of 4</small></div>
+        <div className="step"><span className="nz-srs-chip" data-step={model.overall.step}>{model.overall.step}</span> {model.overall.stepName}{provisional ? " · provisional" : ""}</div>
+        <div className="d">{provisional ? "Change is shown once this assessment is complete"
+          : signed(model.overall.delta) ? <>{signed(model.overall.delta)} since the previous assessment</> : "No earlier assessment to compare"}</div>
       </div>
-      <div className="nz-srs-stat"><div className="l">Evidence coverage</div><div className="v num">{coverage.evidenced} / {coverage.total}</div><div className="sub">requirements evidenced</div></div>
-      <div className="nz-srs-stat"><div className="l">Standards assessed</div>
-        <div className="v">{standards.map(({ standard, rollup }) => <span key={standard.key} className="nz-srs-std">
-          <b>{standard.key}</b> <span className="muted">{standard.climateLed ? "climate · led" : "general"}</span> <span className="num">{Math.round(rollup.percent)}%</span>
-        </span>)}</div>
+      <div className="nz-srs-kpis">{model.pillars.map((pillar) => <div className="nz-srs-kpi" key={pillar.key}>
+        <div className="l">{pillar.label}</div>
+        <div className="v num">{pillar.level.toFixed(1)}</div>
+        <div className="step"><span className="nz-srs-chip" data-step={pillar.step}>{pillar.step}</span> {pillar.stepName}</div>
+        <div className="d">{signed(pillar.delta) ?? "—"}<span className="muted"> · target {pillar.targetLevel}</span></div>
+      </div>)}</div>
+    </section>
+
+    {/* R2: the dials — with the linear meters as the compact equivalent, and the table view. */}
+    <section className="nz-panel">
+      <CardHead eyebrow="Maturity" title="By pillar" right={<span className="nz-srs-seg" role="group" aria-label="Show as">
+        <button type="button" aria-pressed={dialsAs === "dials"} onClick={() => setDialsAs("dials")}>Dials</button>
+        <button type="button" aria-pressed={dialsAs === "meters"} onClick={() => setDialsAs("meters")}>Meters</button>
+        <button type="button" aria-pressed={Boolean(showTable.dials)} onClick={() => toggle("dials")}>Table</button>
+      </span>} />
+      <div className="nz-card-b">
+        {dialsAs === "dials"
+          ? <div className="nz-srs-dials">{model.pillars.map((pillar) => <SrsDial key={pillar.key} label={pillar.label} level={pillar.level} stepName={pillar.stepName} target={pillar.targetLevel} provisional={provisional} />)}</div>
+          : <SrsMeter rows={model.pillars.map((pillar) => ({ label: pillar.label, level: pillar.level, stepName: pillar.stepName, target: pillar.targetLevel }))} provisional={provisional} />}
+        {showTable.dials ? <SrsPillarTable rows={tableRows} caption={`Maturity by pillar — ${standardLabel}`} provisional={provisional} /> : null}
       </div>
-      <div className="nz-srs-stat"><div className="l">Assessed</div><div className="v num">{overall.assessed} / {overall.total}</div>
-        <div className="sub">{overall.gaps} below target</div></div>
     </section>
 
     <div className="nz-cw-grid">
       <div className="nz-cw-col">
+        {/* R3: the radar — four fixed axes, the client and the target, and its table beside it (always). */}
         <section className="nz-panel">
-          <CardHead eyebrow="Maturity" title="Readiness by pillar" right={<span className="hint">0 → {framework.maturityLevels[maxLevel]?.label}</span>} />
-          <div className="nz-card-b nz-srs-radar">
-            <SrsPillarRadar showChrome={false} width={300} data={{
-              spec: { id: `srs-radar-${assessment.assessmentId}`, type: "srs_pillar_radar", title: "Readiness by pillar", family: "crp", specVersion: 1 },
-              unit: "level", state: "success", provenance,
-              pillars: pillars.map((pillar) => shortPillar(pillar.label)),
-              series: [climate, ...(other ? [other] : [])].map((standard) => ({
-                key: standard.key === climate.key ? "S2" as const : "S1" as const,
-                label: standard.label.replace(/^UK SRS \w+ — /, ""),
-                values: pillars.map((pillar) => pillar.byStandard[standard.key]?.level ?? 0),
-              })),
-              target: pillars.map((pillar) => pillar.targetLevel),
-              maxLevel,
-            }} />
-            <div style={{ flex: 1, minWidth: 250 }}>
-              <SrsMaturityBullets showChrome={false} data={{
-                spec: { id: `srs-bullets-${assessment.assessmentId}`, type: "srs_maturity_bullets", title: "Maturity by pillar", family: "crp", specVersion: 1 },
-                unit: "level", state: "success", provenance, maxLevel,
-                rows: pillars.map((pillar) => ({
-                  label: pillar.label,
-                  value: pillar.byStandard[climate.key]?.level ?? 0,
-                  valueLabel: maturityLabel(framework, pillar.byStandard[climate.key]?.level ?? 0),
-                  comparison: other ? pillar.byStandard[other.key]?.level ?? 0 : null,
-                  target: pillar.targetLevel,
-                })),
-              }} />
-            </div>
-          </div>
-        </section>
-
-        <section className="nz-panel">
-          <CardHead eyebrow="Gaps" title="Requirement heatmap" right={<span className="hint">{climate.key} {climate.climateLed ? "climate" : ""} shown</span>} />
-          <div className="nz-card-b">
-            <SrsGapHeatmap showChrome={false} data={{
-              spec: { id: `srs-heat-${assessment.assessmentId}`, type: "srs_gap_heatmap", title: "Requirements by maturity", family: "crp", specVersion: 1 },
-              unit: "level", state: "success", provenance, levels: levelLabels,
-              groups: framework.pillars.slice().sort((a, b) => a.ordering - b.ordering).map((pillar) => ({
-                label: pillar.label,
-                rows: framework.requirements
-                  .filter((requirement) => requirement.active && requirement.pillarKey === pillar.key && requirement.standardKey === climate.key)
-                  .sort((a, b) => a.ordering - b.ordering)
-                  .map((requirement) => ({
-                    label: requirement.title,
-                    value: itemsByRequirement.get(requirement.id)?.maturity ?? 0,
-                    target: requirement.targetMaturity,
-                  })),
-              })).filter((group) => group.rows.length > 0),
-            }} />
-            <p className="nz-maps">Each row is a requirement&apos;s maturity on the five-step ladder, with its target marked. A requirement below its target becomes an action on the roadmap.</p>
+          <CardHead eyebrow="Maturity" title="The readiness web" right={<span className="hint">4 pillars · ≤ 2 shapes</span>} />
+          <div className="nz-card-b nz-srs-radar2">
+            <SrsRadar axes={model.pillars.map((pillar) => ({ label: shortPillar(pillar.label), value: pillar.level, target: pillar.targetLevel }))}
+              seriesLabel={client.name.length > 24 ? "This client" : client.name} provisional={provisional} />
+            <SrsPillarTable rows={tableRows} caption="The same four numbers" provisional={provisional} />
           </div>
         </section>
       </div>
-
       <div className="nz-cw-col">
+        {/* R5: the trend — completed assessments only; one assessment is one point. */}
         <section className="nz-panel">
-          <CardHead eyebrow="Confidence" title="Evidence & trend" />
-          <div style={{ padding: "6px 16px 12px" }}>
-            <div className="nz-kv"><span className="k">Requirements evidenced</span><span className="v">{coverage.evidenced} / {coverage.total} · {coverage.percent}%</span></div>
-            {coverage.byPillar.map((pillar) => <div className="nz-kv" key={pillar.pillarKey}>
-              <span className="k">{pillar.label}</span>
-              <span className={`v${pillar.evidenced < pillar.total ? " up" : ""}`}>{pillar.evidenced} / {pillar.total}{pillar.evidenced < pillar.total ? " gaps" : ""}</span>
-            </div>)}
-            <div style={{ marginTop: 10 }}>
-              <div className="hint" style={{ marginBottom: 4 }}>Overall readiness over time</div>
-              {trend.length < 2
-                ? <p className="sub" style={{ margin: 0 }}>One assessment so far — the trend appears on reassessment.</p>
-                : <SrsReadinessTrend showChrome={false} data={{
-                  spec: { id: `srs-trend-${client.id}`, type: "srs_readiness_trend", title: "Readiness over time", family: "crp", specVersion: 1 },
-                  unit: "%", state: "success", provenance,
-                  points: trend.map((point) => ({ label: point.label, value: point.value })),
-                }} />}
+          <CardHead eyebrow="Change" title="Readiness over time" right={<span className="nz-srs-seg" role="group" aria-label="Trend by">
+            <button type="button" aria-pressed={trendBy === "overall"} onClick={() => setTrendBy("overall")}>Overall</button>
+            <button type="button" aria-pressed={trendBy === "pillar"} onClick={() => setTrendBy("pillar")}>By pillar</button>
+            <button type="button" aria-pressed={Boolean(showTable.trend)} onClick={() => toggle("trend")}>Table</button>
+          </span>} />
+          <div className="nz-card-b">
+            {trendBy === "overall"
+              ? <SrsTrend title="Overall maturity" points={model.trend.overall.map((point) => ({ label: formatDate(point.assessedOn), level: point.level }))} />
+              : <div className="nz-srs-multiples">{model.pillars.map((pillar) => <div key={pillar.key}>
+                <div className="hint">{pillar.label}</div>
+                <SrsTrend compact title={pillar.label} points={(model.trend.byPillar[pillar.key] ?? []).map((point) => ({ label: formatDate(point.assessedOn), level: point.level }))} />
+              </div>)}</div>}
+            <p className="nz-maps">{model.trend.overall.length <= 1
+              ? "One completed assessment so far — a single point. The line appears on reassessment; an assessment in progress is not on it."
+              : "Completed assessments only, on the 0–4 ladder. An assessment in progress is not plotted."}</p>
+            {showTable.trend ? <table className="nz-srs-table"><caption>Overall maturity by assessment</caption>
+              <thead><tr><th scope="col">Assessed</th><th scope="col">Maturity (of 4)</th></tr></thead>
+              <tbody>{model.trend.overall.map((point) => <tr key={point.assessmentId}><th scope="row">{formatDate(point.assessedOn)}</th><td className="num">{point.level.toFixed(1)}</td></tr>)}</tbody>
+            </table> : null}
+          </div>
+        </section>
+      </div>
+    </div>
+
+    {/* R4: the heatmap — every requirement on the ramp, with its number; the register below is its table view. */}
+    <section className="nz-panel">
+      <CardHead eyebrow="Detail" title="Every requirement, by pillar" right={<span className="hint">{standardLabel} · the register below lists the same scores</span>} />
+      <div className="nz-card-b">
+        <SrsHeatmap provisional={provisional} columns={groupByPillar(model).map(({ label, requirements }) => ({
+          label, cells: requirements.map((requirement) => ({
+            code: requirement.code, title: requirement.title, maturity: requirement.maturity, stepName: requirement.stepName, target: requirement.target,
+            detail: [evidenceLine(requirement), ...(requirement.owner ? [`Owner: ${requirement.owner}`] : []), ...(requirement.dueDate ? [`Due ${formatDate(requirement.dueDate)}`] : [])],
+          })),
+        }))} />
+        <p className="nz-maps">A dark corner notch marks a requirement below its own target; a dashed empty cell is not yet answered — not a zero.</p>
+      </div>
+    </section>
+
+    <div className="nz-cw-grid">
+      <div className="nz-cw-col">
+        <MetricsReadThrough model={model} />
+        <section className="nz-panel">
+          <CardHead eyebrow="Benchmark" title="Sector comparison" right={<span className="nz-st est">Future</span>} />
+          <div className="nz-card-b">
+            {/* R8: truthful — what it will show, never an invented number and no bar that reads as data. */}
+            <div className="nz-srs-future">
+              {model.benchmark.state === "future"
+                ? <><b>Future.</b> When a defensible peer dataset exists, this will place the client against its sector by percentile. Until then there is deliberately no figure here — no invented comparisons. {model.benchmark.reason}</>
+                : <>This client sits at the <b>{model.benchmark.percentile}th percentile</b> for {model.benchmark.sectorKey}, per {model.benchmark.source}.</>}
             </div>
           </div>
         </section>
-
+      </div>
+      <div className="nz-cw-col">
         <section className="nz-panel">
           <CardHead eyebrow="Roadmap" title="Path to SRS-ready" right={<span className="hint">gaps → actions</span>} />
           <div style={{ padding: "6px 16px 12px" }}>
@@ -257,35 +276,51 @@ function SrsDashboard({ workspace, framework, assessment, assessments, access, o
                 <span className="d">{gap.dueDate ? formatDate(gap.dueDate) : "No date"}</span>
               </div>)}
             {gaps.length > 8 ? <p className="nz-maps">{gaps.length - 8} further gaps are in the register.</p> : null}
-            <p className="nz-maps">A gap is answered by the strategies on this client&apos;s reduction plan that advance it, so the readiness roadmap and the decarbonisation plan share one spine. Each strategy states the requirements it advances when it is added to the plan.</p>
-          </div>
-        </section>
-
-        <section className="nz-panel">
-          <CardHead eyebrow="Benchmark" title="Sector comparison" right={<span className="nz-st est">Future</span>} />
-          <div className="nz-card-b">
-            <div className="nz-srs-future">
-              {mark.state === "future"
-                ? <>Sector and peer benchmarking is <b>built into the model</b> (sector tagging and a percentile slot) and will populate once a defensible peer dataset is available — no invented comparisons. Until then the picture leads on the radar and the roadmap.</>
-                : <>This client sits at the <b>{mark.percentile}th percentile</b> for {mark.sectorKey}, per {mark.source}.</>}
-            </div>
           </div>
         </section>
       </div>
     </div>
 
-    <SrsRegister framework={framework} assessment={assessment} access={access} onDrawer={onDrawer}
-      strategiesByRequirement={strategiesByRequirement} />
+    <SrsRegister model={model} assessment={assessment} framework={framework} access={access} onDrawer={onDrawer} strategiesByRequirement={strategiesByRequirement} actions={actions} />
   </>;
 }
 
+const evidenceLine = (requirement: SrsDashboardRequirement) => requirement.evidence
+  ? `Evidence (${requirement.evidence.kind}): ${(requirement.evidence.ref ?? requirement.evidence.note).slice(0, 60)}`
+  : "No evidence recorded";
+
+/** The model's requirements, by pillar in the framework's order — the heatmap's columns. */
+function groupByPillar(model: SrsDashboardModel) {
+  const groups: Array<{ key: string; label: string; requirements: SrsDashboardRequirement[] }> = [];
+  for (const requirement of model.requirements) {
+    let group = groups.find((entry) => entry.key === requirement.pillarKey);
+    if (!group) { group = { key: requirement.pillarKey, label: requirement.pillarLabel, requirements: [] }; groups.push(group); }
+    group.requirements.push(requirement);
+  }
+  return groups;
+}
+
 /**
- * What this client is actually doing about a requirement.
- *
- * Names the strategies rather than reporting that a link exists: "linked action" told the
- * reader a row had been filled in, which is not the same as the requirement being addressed,
- * and it could not be checked without opening something else.
+ * R7: Metrics & targets as the client's assured NZI record answered it — read through with its provenance (the evidence
+ * each pre-filled answer carries), not re-keyed and not redrawn as new numbers.
  */
+function MetricsReadThrough({ model }: { model: SrsDashboardModel }) {
+  const fromData = model.requirements.filter((requirement) => requirement.source === "auto");
+  return <section className="nz-panel">
+    <CardHead eyebrow="Metrics & targets" title="From the assured NZI record" right={<span className="hint">read-through · not re-keyed</span>} />
+    <div style={{ padding: "6px 16px 12px" }}>
+      {fromData.length === 0
+        ? <p className="sub" style={{ margin: "6px 0" }}>Nothing in this assessment was answered from the client&apos;s assured record — no assured emissions, targets or intensity metrics were held when it was started, so the consultant answered every requirement.</p>
+        : fromData.map((requirement) => <div className="nz-kv" key={requirement.id}>
+          <span className="k"><b>{requirement.code}</b> {requirement.title}</span>
+          <span className="v"><span className="nz-srs-chip" data-step={requirement.maturity ?? 0}>{requirement.maturity ?? "–"}</span> {requirement.stepName ?? "—"}
+            <span className="muted"> · {requirement.evidence?.note || requirement.evidence?.ref || "NZI record"}</span></span>
+        </div>)}
+    </div>
+  </section>;
+}
+
+/** What this client is actually doing about a requirement — the strategies, named, rather than "a link exists". */
 function AlignedStrategies({ strategies }: { strategies: readonly ClientStrategy[] }) {
   if (strategies.length === 0) return <div className="nz-srs-align none">No strategy yet</div>;
   return <div className="nz-srs-align">
@@ -295,58 +330,72 @@ function AlignedStrategies({ strategies }: { strategies: readonly ClientStrategy
   </div>;
 }
 
-/** The register's cell: the strategies if there are any, else why the row is still short. */
-function GapStrategies({ strategies, shortOfTarget, needs }: {
-  strategies: readonly ClientStrategy[]; shortOfTarget: boolean; needs: string | null;
-}) {
-  if (strategies.length > 0) return <AlignedStrategies strategies={strategies} />;
-  // An unaddressed gap says so. A requirement already at target needs nothing, so it stays
-  // blank rather than being nagged about.
-  if (shortOfTarget) return <span className="nz-srs-gap">{needs ? `Needs ${needs}` : "Below target"} · no strategy yet</span>;
-  return <span className="muted">—</span>;
-}
+type SortKey = "order" | "code" | "maturity" | "gap" | "due";
 
-function SrsRegister({ framework, assessment, access, onDrawer, strategiesByRequirement }: {
-  framework: SrsFramework; assessment: SrsAssessment; access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void;
-  strategiesByRequirement: Map<string, ClientStrategy[]>;
+/**
+ * R6: the register — every requirement with its score, evidence, owner and due, sortable: the always-available non-chart
+ * view, and the heatmap's table. Its last column is the **gap→action hook** S1 modelled: the action on the plan where
+ * one is linked, else the strategies that advance it, else "Bridge this gap" — which S3 wires (no creation here).
+ */
+function SrsRegister({ model, assessment, framework, access, onDrawer, strategiesByRequirement, actions }: {
+  model: SrsDashboardModel; assessment: SrsAssessment; framework: SrsFramework; access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void;
+  strategiesByRequirement: Map<string, ClientStrategy[]>; actions: Map<string, ClientStrategy>;
 }) {
-  const items = new Map(assessment.items.map((item) => [item.requirementId, item]));
-  const requirements = orderedRequirements(framework);
-  const level = (maturity: SrsMaturity | null) => maturity === null ? null : framework.maturityLevels.find((entry) => entry.level === maturity) ?? null;
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "order", dir: 1 });
+  const order = new Map(model.requirements.map((requirement, index) => [requirement.id, index]));
+  const sorted = [...model.requirements].sort((a, b) => {
+    const by: Record<SortKey, number> = {
+      order: order.get(a.id)! - order.get(b.id)!,
+      code: a.code.localeCompare(b.code),
+      maturity: (a.maturity ?? -1) - (b.maturity ?? -1),
+      gap: Number(b.gap) - Number(a.gap) || ((a.maturity ?? -1) - a.target) - ((b.maturity ?? -1) - b.target),
+      due: (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"),
+    };
+    return (by[sort.key] || order.get(a.id)! - order.get(b.id)!) * sort.dir;
+  });
+  const header = (key: SortKey, label: string) => <th scope="col" aria-sort={sort.key === key ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
+    <button type="button" className="nz-srs-sort" onClick={() => setSort((now) => ({ key, dir: now.key === key ? (now.dir === 1 ? -1 : 1) : 1 }))}>{label}{sort.key === key ? (sort.dir === 1 ? " ↑" : " ↓") : ""}</button>
+  </th>;
+  const editable = assessment.status === "draft";
 
   return <section className="nz-panel" style={{ marginTop: 16 }}>
-    <CardHead eyebrow="Assessment" title="Requirement register" right={<span className="hint">consultant-led · framework Admin-versioned</span>} />
-    <table className="nz-tbl">
-      <thead><tr><th>Requirement</th><th>Std</th><th>Pillar</th><th>Maturity</th><th>Evidence</th><th>Gap → strategy</th><th /></tr></thead>
-      <tbody>
-        {requirements.map((requirement) => {
-          const item = items.get(requirement.id) ?? null;
-          const maturity = item?.maturity ?? null;
-          const shortOfTarget = maturity === null || maturity < requirement.targetMaturity;
-          return <tr key={requirement.id}>
-            <td><b>{requirement.title}</b>{requirement.helpText ? <InfoTip label={`About ${requirement.code}`}>{requirement.helpText}</InfoTip> : null}
-              <div className="muted">{requirement.code}{requirement.source === "nzi-data" ? " · from NZI data" : ""}</div></td>
-            <td><span className="nz-st est">{requirement.standardKey}</span></td>
-            <td>{framework.pillars.find((pillar) => pillar.key === requirement.pillarKey)?.label}</td>
-            <td>{maturity === null
-              ? <span className="muted">Not assessed</span>
-              : <span className={`nz-srs-mtag m${maturity}`}>{level(maturity)?.label}</span>}</td>
-            <td>{item?.evidence
-              ? <span title={item.evidence.note}>{item.evidence.ref ?? item.evidence.note.slice(0, 40) ?? item.evidence.kind}</span>
-              : <span className="up">none</span>}</td>
-            <td><GapStrategies strategies={strategiesByRequirement.get(requirement.id) ?? []}
-              shortOfTarget={shortOfTarget} needs={level(requirement.targetMaturity)?.label ?? null} /></td>
-            <td style={{ textAlign: "right" }}>
-              <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || assessment.status !== "draft"}
-                blockedReason={access.state !== "allowed" ? access.reason : assessment.status !== "draft" ? "This assessment is complete — start a reassessment to change it." : undefined}
-                reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-item", assessment, requirement, item })}>Assess</GatedButton>
-            </td>
-          </tr>;
-        })}
-      </tbody>
-    </table>
+    <CardHead eyebrow="Assessment" title="Requirement register" right={<span className="hint">{model.requirements.length} requirements · sortable · the heatmap&apos;s table</span>} />
+    <div className="nz-srs-tablewrap">
+      <table className="nz-tbl nz-srs-register">
+        <thead><tr>{header("code", "Requirement")}<th scope="col">Pillar</th>{header("maturity", "Maturity")}<th scope="col">Target</th><th scope="col">Evidence</th><th scope="col">Owner</th>{header("due", "Due")}{header("gap", "Gap → action")}<th /></tr></thead>
+        <tbody>
+          {sorted.map((requirement) => {
+            const linked = requirement.linkedActionId ? actions.get(requirement.linkedActionId) ?? null : null;
+            const aligned = strategiesByRequirement.get(requirement.id) ?? [];
+            const frameworkRequirement = framework.requirements.find((entry) => entry.id === requirement.id) ?? null;
+            const item = assessment.items.find((entry) => entry.requirementId === requirement.id) ?? null;
+            return <tr key={requirement.id}>
+              <td><b>{requirement.title}</b>{requirement.helpText ? <InfoTip label={`About ${requirement.code}`}>{requirement.helpText}</InfoTip> : null}
+                <div className="muted">{requirement.code} · {requirement.standardKey}{requirement.source === "auto" ? " · from NZI data" : ""}</div></td>
+              <td>{requirement.pillarLabel}</td>
+              <td>{requirement.maturity === null ? <span className="muted">Not answered</span>
+                : <><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}{model.assessment.provisional ? <span className="muted"> · provisional</span> : null}</>}</td>
+              <td className="num">{requirement.target}</td>
+              <td>{requirement.evidence ? <span title={requirement.evidence.note}>{requirement.evidence.kind} · {(requirement.evidence.ref ?? requirement.evidence.note).slice(0, 40)}</span> : <span className="up">none</span>}</td>
+              <td>{requirement.owner || <span className="muted">—</span>}</td>
+              <td>{requirement.dueDate ? formatDate(requirement.dueDate) : <span className="muted">—</span>}</td>
+              <td>{linked
+                ? <a className="nz-srs-hook" href="?area=strategies">On the plan: <b>{linked.title}</b> <span className="muted">{strategyStatusLabels[linked.status]}</span></a>
+                : aligned.length > 0 ? <AlignedStrategies strategies={aligned} />
+                  : requirement.gap ? <span className="nz-srs-bridge" title="S3 creates a bridging action from the Actions library here; until then, add one on the Reduction strategies plan.">Bridge this gap · from the Actions library (coming)</span>
+                    : <span className="muted">—</span>}</td>
+              <td style={{ textAlign: "right" }}>
+                {frameworkRequirement ? <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || !editable}
+                  blockedReason={access.state !== "allowed" ? access.reason : !editable ? "This assessment is complete — start a reassessment to change it." : undefined}
+                  reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-item", assessment, requirement: frameworkRequirement, item })}>Assess</GatedButton> : null}
+              </td>
+            </tr>;
+          })}
+        </tbody>
+      </table>
+    </div>
     <div className="nz-card-b">
-      <p className="nz-maps">The framework — standards, pillars, requirements, weights and the maturity definitions — is Admin-managed and versioned, so the tool tracks UK SRS as it changes (the mandatory rules proposed for 2027) without a code change. This assessment is measured against version {assessment.frameworkVersion}; a later version does not restate it.</p>
+      <p className="nz-maps">The framework is Admin-managed and versioned; this assessment is measured against version {model.frameworkVersion}, and a later version does not restate it.</p>
     </div>
   </section>;
 }
