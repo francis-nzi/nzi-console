@@ -455,6 +455,13 @@ jobs:
       # the chrome only; From, reply-to and the isolation gate are unchanged.
       - name: Emails attributed to a member carry their signature, which only they edit
         run: npx tsx --test packages/isolated-backend/tests/emailSignaturesReal.test.ts
+      # 0186 (Actions A1): a plan written before 0186 — planned becomes agreed, the free-text owner kept as legacy text;
+      # the library admin-managed and versioned, levers and their allocation included, withdrawn never deleted, and
+      # admin.lookups only; the plan's ladder holds (illegal moves refused); the owner is the client's own active contact,
+      # in the command and through the foreign key; an SRS-gap action names its requirement and its origin never changes;
+      # the report plan composes only included, agreed-or-beyond actions while the plan read shows them all; no money.
+      - name: The action library, the plan's status ladder, owners who are contacts, and what a report composes
+        run: npx tsx --test packages/isolated-backend/tests/actionsA1Real.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

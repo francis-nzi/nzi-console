@@ -1,5 +1,5 @@
 import {
-  composeSrsRoadmap, evidenceCoverage, maturityLabel, overallReadiness, pillarReadiness,
+  composeSrsRoadmap, evidenceCoverage, maturityLabel, overallReadiness, pillarReadiness, strategyIsReportable,
   type ReportSrsRoadmap,
 } from "@nzi/contracts";
 import { listClientStrategies } from "./reductionStrategies";
@@ -125,7 +125,8 @@ export async function getPortalClientReadiness(
     // ordering and one reverse mapping, so the client's document and their portal cannot
     // disagree about which gap matters most or what is aimed at it. `strategiesBySrsRequirement`
     // inside it already excludes withdrawn strategies.
-    roadmap: composeSrsRoadmap(framework, assessment.items, plan.filter((strategy) => strategy.includeInReport)),
+    // The same population as the report's roadmap (A1): marked for the report and agreed or beyond.
+    roadmap: composeSrsRoadmap(framework, assessment.items, plan.filter(strategyIsReportable)),
     evidenced: { count: coverage.evidenced, total: coverage.total },
   };
 }

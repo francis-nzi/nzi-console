@@ -61,7 +61,7 @@ describe("the reminder worker's tick, as nzi_console_worker", { skip: TEST_DATAB
     // A strategy on a plan must advance an SRS requirement, checked at commit: the two rows are one transaction.
     await q(`BEGIN`);
     await q(`INSERT INTO nzi_console.client_strategies (organisation_id, client_strategy_id, client_id, strategy_id, status, target_date, progress_pct, created_by)
-      VALUES ($1, 'plan-t', 'client-t', $2, 'planned', '2026-10-20'::date, 0, 'tester')`, [ORG, library!.strategy_id]);
+      VALUES ($1, 'plan-t', 'client-t', $2, 'agreed', '2026-10-20'::date, 0, 'tester')`, [ORG, library!.strategy_id]);
     await q(`INSERT INTO nzi_console.client_strategy_srs_requirements (organisation_id, client_strategy_id, framework_id, requirement_id)
       SELECT organisation_id, 'plan-t', framework_id, requirement_id FROM nzi_console.srs_requirements WHERE organisation_id = $1 ORDER BY requirement_id LIMIT 1`, [ORG]);
     await q(`COMMIT`);

@@ -14,7 +14,7 @@ const lever = (id: string, over: Partial<LibraryStrategy> = {}): LibraryStrategy
 
 const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", leverIds: [], srsRequirementIds: ["req-1"], includeInReport: true, strategyId: null, title: id, scope: "2", category: "Energy",
-  controlLevel: "direct_control", iconKey: "energy", status: "planned", owner: "", targetDate: null,
+  controlLevel: "direct_control", iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, estimate: null, ...over,
 });
 
@@ -30,19 +30,25 @@ describe("the action-lever library", () => {
       // Someone who chose "in progress" meant it; silently marking it complete would be
       // the form deciding something the person didn't.
       assert.equal(strategyProgressForStatus("in_progress", 100), 99);
-      assert.equal(strategyProgressForStatus("planned", 40), 40);
+      assert.equal(strategyProgressForStatus("agreed", 40), 40);
     });
 
     it("completes an action dragged to 100%", () => {
       assert.equal(strategyStatusForProgress(100, "in_progress"), "complete");
     });
 
-    it("reopens a completed action as in-progress, never as planned", () => {
+    it("reopens a completed action as in-progress, never as agreed", () => {
       // Work that was finished and then reopened was never "not started".
       assert.equal(strategyStatusForProgress(80, "complete"), "in_progress");
       assert.equal(strategyStatusForProgress(0, "complete"), "in_progress");
-      // And an untouched planned action stays planned.
-      assert.equal(strategyStatusForProgress(0, "planned"), "planned");
+      // And an untouched agreed action stays agreed.
+      assert.equal(strategyStatusForProgress(0, "agreed"), "agreed");
+    });
+
+    it("completes at 100% only where completing is a legal move (A1)", () => {
+      assert.equal(strategyStatusForProgress(100, "agreed"), "complete");
+      assert.equal(strategyStatusForProgress(100, "proposed"), "proposed", "a proposal at 100% is still a proposal");
+      assert.equal(strategyStatusForProgress(100, "declined"), "declined");
     });
   });
 
@@ -55,10 +61,10 @@ describe("the action-lever library", () => {
         action("d", { active: false, status: "complete", progressPct: 100 }),
       ]);
       assert.equal(summary.total, 3, "a removed action is not on the plan");
-      assert.equal(summary.planned + summary.inProgress + summary.complete, summary.total);
+      assert.equal(summary.proposed + summary.agreed + summary.inProgress + summary.complete + summary.onHold + summary.declined, summary.total);
       assert.equal(summary.inProgress, 1);
       assert.equal(summary.complete, 1);
-      assert.equal(summary.planned, 1);
+      assert.equal(summary.agreed, 1);
       assert.equal(summary.progressPct, 53);
     });
 
@@ -82,11 +88,11 @@ describe("the action-lever library", () => {
     it("orders within a group by the order of work, not the alphabet", () => {
       const groups = strategyPlanGroups([
         action("z-complete", { status: "complete", progressPct: 100 }),
-        action("a-planned"),
+        action("a-agreed"),
         action("m-live", { status: "in_progress", progressPct: 50 }),
       ]);
       // What is live, then what is next, then what is behind you.
-      assert.deepEqual(groups[0]!.actions.map((entry) => entry.title), ["m-live", "a-planned", "z-complete"]);
+      assert.deepEqual(groups[0]!.actions.map((entry) => entry.title), ["m-live", "a-agreed", "z-complete"]);
     });
 
     it("leaves a removed action out of the plan entirely", () => {

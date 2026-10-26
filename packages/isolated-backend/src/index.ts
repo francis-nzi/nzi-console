@@ -137,7 +137,7 @@ export * from "./factorApplicability";
 export * from "./factorApplicabilityCommands";
 export {
   assignClientStrategy, deactivateLibraryStrategy, listLevers, listLibraryStrategies, listClientStrategies,
-  removeClientStrategy, setClientStrategyEstimate, updateClientStrategy, upsertLibraryStrategy,
+  removeClientStrategy, setClientStrategyEstimate, updateClientStrategy, upsertLibraryStrategy, upsertLever, deactivateLever,
   type AssignStrategyResult, type DeactivateStrategyResult, type RemoveStrategyResult,
   type UpdateStrategyResult, type UpsertStrategyResult,
 } from "./reductionStrategies";

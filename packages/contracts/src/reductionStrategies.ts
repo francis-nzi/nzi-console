@@ -40,12 +40,66 @@ export const strategyControlLevelScopeHint: Record<StrategyControlLevel, string>
   influence: "Scope 3 downstream",
 };
 
-export const strategyStatuses = ["planned", "in_progress", "complete"] as const;
+/**
+ * The status ladder (Actions A1, R3; settled 26 Oct): Proposed → Agreed → In progress → Complete, with On hold and
+ * Declined at the edges. In the order a plan is read.
+ */
+export const strategyStatuses = ["proposed", "agreed", "in_progress", "complete", "on_hold", "declined"] as const;
 export type StrategyStatus = (typeof strategyStatuses)[number];
+/**
+ * What a report **frozen before A1** may carry: 0075's `planned`, which 0186 moved to `agreed` on the live plan
+ * but which stays in every composition issued before it. A report is what it said when it was issued.
+ */
+export type FrozenStrategyStatus = StrategyStatus | "planned";
 
-export const strategyStatusLabels: Record<StrategyStatus, string> = {
-  planned: "Planned", in_progress: "In progress", complete: "Complete",
+export const strategyStatusLabels: Record<FrozenStrategyStatus, string> = {
+  proposed: "Proposed", agreed: "Agreed", in_progress: "In progress", complete: "Complete", on_hold: "On hold", declined: "Declined",
+  planned: "Planned",
 };
+
+/**
+ * The legal moves (R3). Staff own Proposed → Agreed; the owner drives In progress → Complete (in A1 staff record it
+ * on their behalf; A2 gives the client contact the portal path). Every other move here is an edge the ladder needs:
+ * agreed work paused or dropped, paused work resumed, finished work reopened, a declined action proposed again.
+ * Anything not listed — Proposed straight to In progress, Declined straight to Complete — is refused.
+ */
+export const strategyTransitions: Readonly<Record<StrategyStatus, readonly StrategyStatus[]>> = {
+  proposed: ["agreed", "declined"],
+  agreed: ["in_progress", "complete", "on_hold", "declined"],
+  in_progress: ["complete", "on_hold", "declined"],
+  complete: ["in_progress"],
+  on_hold: ["agreed", "in_progress", "declined"],
+  declined: ["proposed"],
+};
+
+/** Whether `from` may become `to`. Staying put is always allowed — an edit that changes other fields. */
+export const strategyTransitionAllowed = (from: StrategyStatus, to: StrategyStatus): boolean =>
+  from === to || strategyTransitions[from].includes(to);
+
+/** The states a status select should offer from here: where it is, then where it may go. */
+export const strategyNextStatuses = (from: StrategyStatus): StrategyStatus[] =>
+  strategyStatuses.filter((status) => strategyTransitionAllowed(from, status));
+
+/** Agreed or beyond on the main ladder — the states a report's Plan section may show (R5). */
+export const strategyReportableStatuses: readonly StrategyStatus[] = ["agreed", "in_progress", "complete"];
+
+/**
+ * Whether a strategy composes into a client-facing report (R5): on the plan, marked **Include in report**, and
+ * **agreed or beyond**. A proposal the client has not agreed, an action they declined, or one on hold is not
+ * presented as their plan. The staff workspace shows the whole plan regardless.
+ */
+export const strategyIsReportable = (strategy: Pick<ClientStrategy, "active" | "includeInReport" | "status">): boolean =>
+  strategy.active && strategy.includeInReport && strategyReportableStatuses.includes(strategy.status);
+
+/** Where an action came from (R6, R7) — set when it is created, never changed. */
+export const strategyOrigins = ["plan", "srs_gap", "client_proposal"] as const;
+export type StrategyOrigin = (typeof strategyOrigins)[number];
+export const strategyOriginLabels: Record<StrategyOrigin, string> = {
+  plan: "Added by NZI", srs_gap: "From a UK SRS gap", client_proposal: "Proposed by the client",
+};
+
+/** The order of work: what is live, then what is next, then what is waiting, then what is behind you. */
+const statusRank: Record<StrategyStatus, number> = { in_progress: 0, agreed: 1, proposed: 2, on_hold: 3, complete: 4, declined: 5 };
 
 export const strategyScopeLabel = (scope: StrategyScope) => scope === "governance" ? "Governance" : `Scope ${scope}`;
 
@@ -96,7 +150,16 @@ export type ClientStrategy = {
   controlLevel: StrategyControlLevel;
   iconKey: string;
   status: StrategyStatus;
+  /**
+   * Who owns it, as a name to show: the owning contact's name when one is chosen, else what 0075's free-text owner
+   * held, else "". Kept a string so every surface that prints an owner prints the same thing.
+   */
   owner: string;
+  /** The owning client contact (A1, R4) — null when none is chosen yet. */
+  ownerContactId: string | null;
+  /** Where it came from (R6, R7), and for an SRS-gap action, the requirement it bridges. */
+  origin: StrategyOrigin;
+  originSrsRequirementId: string | null;
   targetDate: string | null;
   progressPct: number;
   notes: string;
@@ -125,7 +188,8 @@ export function strategyProgressForStatus(status: StrategyStatus, progressPct: n
 }
 
 export function strategyStatusForProgress(progressPct: number, current: StrategyStatus): StrategyStatus {
-  if (progressPct >= 100) return "complete";
+  // Reaching 100% completes it only where completing is a legal move — a proposal at 100% is still a proposal.
+  if (progressPct >= 100) return strategyTransitionAllowed(current, "complete") ? "complete" : current;
   // Dragging a complete action back below 100 makes it in-progress, not planned: work that
   // was finished and then reopened was never "not started".
   return current === "complete" ? "in_progress" : current;
@@ -133,28 +197,50 @@ export function strategyStatusForProgress(progressPct: number, current: Strategy
 
 export type StrategyPlanSummary = {
   total: number;
-  planned: number;
+  proposed: number;
+  agreed: number;
   inProgress: number;
   complete: number;
+  onHold: number;
+  declined: number;
   /**
-   * Mean progress across live actions, or null when the plan is empty — never 0, which
-   * would read as "no progress" rather than "nothing planned yet".
+   * Mean progress across the live actions still on the ladder (declined ones excluded — they were never going to
+   * progress), or null when there are none — never 0, which would read as "no progress" rather than "nothing yet".
    */
   progressPct: number | null;
 };
 
+const summaryKey: Record<StrategyStatus, Exclude<keyof StrategyPlanSummary, "total" | "progressPct">> = {
+  proposed: "proposed", agreed: "agreed", in_progress: "inProgress", complete: "complete", on_hold: "onHold", declined: "declined",
+};
+
 export function strategyPlanSummary(actions: readonly ClientStrategy[]): StrategyPlanSummary {
   const live = actions.filter((action) => action.active);
-  const summary: StrategyPlanSummary = { total: live.length, planned: 0, inProgress: 0, complete: 0, progressPct: null };
-  let progressTotal = 0;
-  for (const action of live) {
-    if (action.status === "planned") summary.planned += 1;
-    else if (action.status === "in_progress") summary.inProgress += 1;
-    else summary.complete += 1;
-    progressTotal += action.progressPct;
-  }
-  if (live.length > 0) summary.progressPct = Math.round(progressTotal / live.length);
+  const summary: StrategyPlanSummary = { total: live.length, proposed: 0, agreed: 0, inProgress: 0, complete: 0, onHold: 0, declined: 0, progressPct: null };
+  for (const action of live) summary[summaryKey[action.status]] += 1;
+  const progressing = live.filter((action) => action.status !== "declined");
+  if (progressing.length > 0) summary.progressPct = Math.round(progressing.reduce((total, action) => total + action.progressPct, 0) / progressing.length);
   return summary;
+}
+
+/**
+ * The lever-coverage summary (R2): for every live lever, how much of the plan sits under it — so a consultant sees
+ * where the plan is thin. `agreed` counts agreed-or-beyond (what the client has committed to); a lever with nothing
+ * agreed is `thin` even if something is proposed under it. Declined actions count for nothing. A strategy under two
+ * levers counts under both, as the grouping shows it.
+ */
+export type StrategyLeverCoverage = { lever: Lever; actions: number; agreed: number; complete: number; thin: boolean };
+
+export function strategyLeverCoverage(strategies: readonly ClientStrategy[], levers: readonly Lever[]): StrategyLeverCoverage[] {
+  const counted = strategies.filter((strategy) => strategy.active && strategy.status !== "declined");
+  return [...levers]
+    .filter((lever) => lever.active)
+    .sort((a, b) => a.ordering - b.ordering || a.title.localeCompare(b.title))
+    .map((lever) => {
+      const under = counted.filter((strategy) => strategy.leverIds.includes(lever.id));
+      const agreed = under.filter((strategy) => strategyReportableStatuses.includes(strategy.status)).length;
+      return { lever, actions: under.length, agreed, complete: under.filter((strategy) => strategy.status === "complete").length, thin: agreed === 0 };
+    });
 }
 
 /**
@@ -172,6 +258,8 @@ export type Lever = {
   iconKey: string;
   ordering: number;
   active: boolean;
+  /** Bumped on every edit (A1) — an Admin's change is checked against the version they saw. Absent on older reads. */
+  version?: number;
 };
 
 export type StrategyLeverGroup = { lever: Lever; strategies: ClientStrategy[] };
@@ -188,7 +276,6 @@ export function strategyPlanByLever(
   strategies: readonly ClientStrategy[],
   levers: readonly Lever[],
 ): StrategyLeverGroup[] {
-  const rank: Record<StrategyStatus, number> = { in_progress: 0, planned: 1, complete: 2 };
   const live = strategies.filter((strategy) => strategy.active);
   return [...levers]
     .filter((lever) => lever.active)
@@ -197,8 +284,8 @@ export function strategyPlanByLever(
       lever,
       strategies: live
         .filter((strategy) => strategy.leverIds.includes(lever.id))
-        // In progress first (what is live), then planned (what is next), then complete.
-        .sort((a, b) => rank[a.status] - rank[b.status] || a.title.localeCompare(b.title)),
+        // The order of work: in progress, agreed, proposed, on hold, complete, declined.
+        .sort((a, b) => statusRank[a.status] - statusRank[b.status] || a.title.localeCompare(b.title)),
     }))
     .filter((group) => group.strategies.length > 0);
 }
@@ -234,7 +321,7 @@ export type StrategyControlLevelGroup = {
  * first (what is live), then planned (what is next), then complete (what is behind you).
  */
 export function strategyPlanGroups(actions: readonly ClientStrategy[]): StrategyControlLevelGroup[] {
-  const rank: Record<StrategyStatus, number> = { in_progress: 0, planned: 1, complete: 2 };
+  const rank = statusRank;
   return strategyControlLevels
     .map((controlLevel) => ({
       controlLevel,

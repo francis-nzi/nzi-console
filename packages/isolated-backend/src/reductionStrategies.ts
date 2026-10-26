@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Lever, LibraryStrategy, StrategyScope, StrategyControlLevel, StrategyStatus, ClientStrategy, CommandContext, CommandInputMap, StrategyEstimate } from "@nzi/contracts";
-import { resolveEstimateTco2e } from "@nzi/contracts";
+import type { Lever, LibraryStrategy, StrategyScope, StrategyControlLevel, StrategyStatus, StrategyOrigin, ClientStrategy, CommandContext, CommandInputMap, StrategyEstimate } from "@nzi/contracts";
+import { resolveEstimateTco2e, strategyNextStatuses, strategyStatusLabels, strategyTransitionAllowed } from "@nzi/contracts";
 import { getBenchmarkInForce } from "./clientTargetRecords";
 import { dateOnlyOrNull } from "./dates";
 import { VersionConflictError } from "./errors";
@@ -53,12 +53,12 @@ const STRATEGY_COLUMNS = `s.strategy_id, s.strategy_key, s.title, s.description,
 
 /** The levers, in the order Admin set — the plan's grouping follows this. */
 export async function listLevers(db: Queryable): Promise<Lever[]> {
-  const result = await db.query<{ lever_id: string; lever_key: string; title: string; icon_key: string; ordering: number; active: boolean }>(
-    `SELECT lever_id, lever_key, title, icon_key, ordering, active
+  const result = await db.query<{ lever_id: string; lever_key: string; title: string; icon_key: string; ordering: number; active: boolean; version: number }>(
+    `SELECT lever_id, lever_key, title, icon_key, ordering, active, version
      FROM nzi_console.levers ORDER BY ordering, lower(title)`);
   return result.rows.map((row) => ({
     id: row.lever_id, key: row.lever_key, title: row.title,
-    iconKey: row.icon_key, ordering: row.ordering, active: row.active,
+    iconKey: row.icon_key, ordering: row.ordering, active: row.active, version: row.version,
   }));
 }
 
@@ -77,7 +77,9 @@ type ClientStrategyRow = {
   client_strategy_id: string; client_id: string; strategy_id: string | null;
   bespoke_title: string | null; bespoke_scope: string | null; bespoke_category: string | null;
   bespoke_control_level: string | null; bespoke_icon_key: string | null;
-  status: string; owner: string; target_date: Date | string | null; progress_pct: number;
+  status: string; legacy_owner_text: string; owner_contact_id: string | null; owner_contact_name: string | null;
+  origin: string; origin_srs_requirement_id: string | null;
+  target_date: Date | string | null; progress_pct: number;
   notes: string; active: boolean; version: number;
   estimate_amount: string | null; estimate_unit: string | null; estimate_scope: string | null;
   estimate_tco2e_per_year: string | null; estimate_assumptions: string; estimate_confidence: string | null;
@@ -105,7 +107,11 @@ const mapClientStrategy = (row: ClientStrategyRow): ClientStrategy => ({
   leverIds: row.lever_ids ?? [],
   srsRequirementIds: row.srs_requirement_ids ?? [],
   includeInReport: row.include_in_report,
-  status: row.status as StrategyStatus, owner: row.owner,
+  status: row.status as StrategyStatus,
+  // The owning contact's name (A1); else what 0075's free text held; an erased contact's name is gone, so "".
+  owner: row.owner_contact_id !== null ? row.owner_contact_name ?? "" : row.legacy_owner_text,
+  ownerContactId: row.owner_contact_id,
+  origin: row.origin as StrategyOrigin, originSrsRequirementId: row.origin_srs_requirement_id,
   targetDate: dateOnlyOrNull(row.target_date), progressPct: row.progress_pct,
   notes: row.notes, active: row.active, version: row.version,
   estimate: mapEstimate(row),
@@ -136,7 +142,8 @@ const mapEstimate = (row: ClientStrategyRow): StrategyEstimate | null => {
 export async function listClientStrategies(db: Queryable, clientId: string): Promise<ClientStrategy[]> {
   const result = await db.query<ClientStrategyRow>(
     `SELECT a.client_strategy_id, a.client_id, a.strategy_id, a.bespoke_title, a.bespoke_scope, a.bespoke_category,
-            a.bespoke_control_level, a.bespoke_icon_key, a.status, a.owner, a.target_date, a.progress_pct,
+            a.bespoke_control_level, a.bespoke_icon_key, a.status, a.legacy_owner_text, a.owner_contact_id,
+            oc.full_name AS owner_contact_name, a.origin, a.origin_srs_requirement_id, a.target_date, a.progress_pct,
             a.notes, a.active, a.version, a.include_in_report,
             a.estimate_amount::text, a.estimate_unit, a.estimate_scope, a.estimate_tco2e_per_year::text,
             a.estimate_assumptions, a.estimate_confidence, a.estimate_source, a.estimate_source_version,
@@ -150,15 +157,123 @@ export async function listClientStrategies(db: Queryable, clientId: string): Pro
      LEFT JOIN nzi_console.reduction_strategies l ON (l.organisation_id, l.strategy_id) = (a.organisation_id, a.strategy_id)
      LEFT JOIN nzi_console.strategy_levers sl ON (sl.organisation_id, sl.strategy_id) = (l.organisation_id, l.strategy_id)
      LEFT JOIN nzi_console.client_strategy_srs_requirements cr ON (cr.organisation_id, cr.client_strategy_id) = (a.organisation_id, a.client_strategy_id)
+     LEFT JOIN nzi_console.client_contacts oc ON (oc.organisation_id, oc.contact_id) = (a.organisation_id, a.owner_contact_id)
      WHERE a.client_id = $1
-     GROUP BY a.organisation_id, a.client_strategy_id, l.title, l.scope, l.category, l.control_level, l.icon_key
+     GROUP BY a.organisation_id, a.client_strategy_id, l.title, l.scope, l.category, l.control_level, l.icon_key, oc.full_name
      ORDER BY a.created_at, a.client_strategy_id`, [clientId]);
   return result.rows.map(mapClientStrategy);
 }
 
 /* ── The catalogue ───────────────────────────────────────────────────────────────────── */
 
-export type UpsertStrategyResult = { strategyId: string; version: number; created: boolean };
+/**
+ * Allocate a library strategy to its levers (A1, R1), replacing what it had. Every lever must be this organisation's;
+ * a withdrawn one may stay where it already was but is not newly allocated, as a withdrawn strategy is not newly
+ * assigned. Returns the allocation as saved, sorted, for the audit trail.
+ */
+async function setStrategyLevers(db: Queryable, organisationId: string, strategyId: string, leverIds: readonly string[]): Promise<string[]> {
+  const wanted = [...new Set(leverIds.map((id) => id.trim()).filter(Boolean))].sort();
+  const known = await db.query<{ lever_id: string; active: boolean; held: boolean }>(
+    `SELECT l.lever_id, l.active,
+            EXISTS (SELECT 1 FROM nzi_console.strategy_levers x WHERE (x.organisation_id, x.strategy_id, x.lever_id) = (l.organisation_id, $2, l.lever_id)) AS held
+       FROM nzi_console.levers l WHERE l.organisation_id = $1 AND l.lever_id = ANY($3::text[])`,
+    [organisationId, strategyId, wanted]);
+  const byId = new Map(known.rows.map((row) => [row.lever_id, row]));
+  const missing = wanted.filter((id) => !byId.has(id));
+  if (missing.length) throw new CommandValidationError([{ field: "leverIds", code: "NOT_FOUND", message: "One of those levers is not in the library." }]);
+  if (wanted.some((id) => !byId.get(id)!.active && !byId.get(id)!.held)) {
+    throw new CommandValidationError([{ field: "leverIds", code: "WITHDRAWN", message: "That lever has been withdrawn; it cannot be newly allocated." }]);
+  }
+  await db.query(`DELETE FROM nzi_console.strategy_levers WHERE organisation_id = $1 AND strategy_id = $2`, [organisationId, strategyId]);
+  await db.query(
+    `INSERT INTO nzi_console.strategy_levers (organisation_id, strategy_id, lever_id) SELECT $1, $2, unnest($3::text[])`,
+    [organisationId, strategyId, wanted]);
+  return wanted;
+}
+
+const leversOf = async (db: Queryable, organisationId: string, strategyId: string) =>
+  (await db.query<{ lever_id: string }>(
+    `SELECT lever_id FROM nzi_console.strategy_levers WHERE organisation_id = $1 AND strategy_id = $2 ORDER BY lever_id`,
+    [organisationId, strategyId])).rows.map((row) => row.lever_id);
+
+export type UpsertLeverResult = { leverId: string; version: number; created: boolean };
+
+/** Add or edit a lever (A1, R1): admin-managed reference data, versioned on edit, the key unique per organisation. */
+export function upsertLever(pool: PoolLike, input: CommandInputMap["strategy.lever.upsert"], context: CommandContext): Promise<StoredOutcome<UpsertLeverResult>> {
+  return runPostgresCommand<"strategy.lever.upsert", UpsertLeverResult>(pool, "strategy.lever.upsert", input, context, async (db) => {
+    const key = input.key.trim().toLowerCase();
+    const title = input.title.trim();
+    const clash = await db.query<{ lever_id: string }>(
+      `SELECT lever_id FROM nzi_console.levers WHERE organisation_id = $1 AND lever_key = $2`, [context.organisationId, key]);
+    if (clash.rows[0] && clash.rows[0].lever_id !== input.leverId) {
+      throw new CommandValidationError([{ field: "key", code: "DUPLICATE", message: "A lever with that key already exists." }]);
+    }
+    if (input.leverId === undefined) {
+      const leverId = `lever-${randomUUID()}`;
+      const ordering = input.ordering ?? (await db.query<{ next: number }>(
+        `SELECT coalesce(max(ordering), 0) + 1 AS next FROM nzi_console.levers WHERE organisation_id = $1`, [context.organisationId])).rows[0]!.next;
+      await db.query(
+        `INSERT INTO nzi_console.levers (organisation_id, lever_id, lever_key, title, icon_key, ordering, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [context.organisationId, leverId, key, title, input.iconKey.trim(), ordering, context.actorId]);
+      return {
+        data: { leverId, version: 1, created: true },
+        entityType: "reduction_lever", entityId: leverId, topic: "strategy.lever.upserted",
+        after: { key, title, iconKey: input.iconKey.trim(), ordering },
+      };
+    }
+    const current = await db.query<{ version: number; lever_key: string; title: string; icon_key: string; ordering: number }>(
+      `SELECT version, lever_key, title, icon_key, ordering FROM nzi_console.levers WHERE organisation_id = $1 AND lever_id = $2 FOR UPDATE`,
+      [context.organisationId, input.leverId]);
+    const lever = current.rows[0];
+    if (!lever) throw new CommandValidationError([{ field: "leverId", code: "NOT_FOUND", message: "That lever is not in the library." }]);
+    if (lever.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion!, lever.version);
+    const ordering = input.ordering ?? lever.ordering;
+    const saved = await db.query<{ version: number }>(
+      `UPDATE nzi_console.levers SET lever_key = $3, title = $4, icon_key = $5, ordering = $6, version = version + 1, updated_at = now(), updated_by = $7
+        WHERE organisation_id = $1 AND lever_id = $2 RETURNING version`,
+      [context.organisationId, input.leverId, key, title, input.iconKey.trim(), ordering, context.actorId]);
+    return {
+      data: { leverId: input.leverId, version: saved.rows[0]!.version, created: false },
+      entityType: "reduction_lever", entityId: input.leverId, topic: "strategy.lever.upserted",
+      before: { key: lever.lever_key, title: lever.title, iconKey: lever.icon_key, ordering: lever.ordering },
+      after: { key, title, iconKey: input.iconKey.trim(), ordering },
+    };
+  });
+}
+
+export type DeactivateLeverResult = { leverId: string; version: number; strategiesUnder: number };
+
+/**
+ * Withdraw a lever (A1, R1): deactivated, never deleted. The strategies under it keep the allocation — a plan grouped by
+ * lever shows a strategy whose only lever is withdrawn under "Other" rather than losing it — and the count comes back so
+ * the Admin knows what they have just moved.
+ */
+export function deactivateLever(pool: PoolLike, input: CommandInputMap["strategy.lever.deactivate"], context: CommandContext): Promise<StoredOutcome<DeactivateLeverResult>> {
+  return runPostgresCommand<"strategy.lever.deactivate", DeactivateLeverResult>(pool, "strategy.lever.deactivate", input, context, async (db) => {
+    const current = await db.query<{ version: number; active: boolean; title: string }>(
+      `SELECT version, active, title FROM nzi_console.levers WHERE organisation_id = $1 AND lever_id = $2 FOR UPDATE`,
+      [context.organisationId, input.leverId]);
+    const lever = current.rows[0];
+    if (!lever) throw new CommandValidationError([{ field: "leverId", code: "NOT_FOUND", message: "That lever is not in the library." }]);
+    if (lever.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, lever.version);
+    if (!lever.active) throw new CommandValidationError([{ field: "leverId", code: "ALREADY_WITHDRAWN", message: "That lever is already withdrawn." }]);
+    const under = await db.query<{ count: string }>(
+      `SELECT count(*)::text FROM nzi_console.strategy_levers WHERE organisation_id = $1 AND lever_id = $2`, [context.organisationId, input.leverId]);
+    const saved = await db.query<{ version: number }>(
+      `UPDATE nzi_console.levers SET active = false, version = version + 1, updated_at = now(), updated_by = $3
+        WHERE organisation_id = $1 AND lever_id = $2 RETURNING version`,
+      [context.organisationId, input.leverId, context.actorId]);
+    return {
+      data: { leverId: input.leverId, version: saved.rows[0]!.version, strategiesUnder: Number(under.rows[0]?.count ?? 0) },
+      entityType: "reduction_lever", entityId: input.leverId, topic: "strategy.lever.deactivated",
+      before: { active: true }, after: { active: false, title: lever.title },
+    };
+  });
+}
+
+/** `leverIds` as allocated — the audit event's after_json, so a re-allocation is on the record (A1). */
+export type UpsertStrategyResult = { strategyId: string; version: number; created: boolean; leverIds: string[] };
 
 export function upsertLibraryStrategy(pool: PoolLike, input: CommandInputMap["strategy.library.upsert"], context: CommandContext): Promise<StoredOutcome<UpsertStrategyResult>> {
   return runPostgresCommand(pool, "strategy.library.upsert", input, context, async (db) => {
@@ -181,11 +296,12 @@ export function upsertLibraryStrategy(pool: PoolLike, input: CommandInputMap["st
            (organisation_id, strategy_id, strategy_key, title, description, scope, category, control_level, icon_key, created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
         [context.organisationId, strategyId, key, title, description, input.scope, category, input.controlLevel, input.iconKey, context.actorId]);
-      const data: UpsertStrategyResult = { strategyId, version: 1, created: true };
+      const leverIds = await setStrategyLevers(db, context.organisationId, strategyId, input.leverIds);
+      const data: UpsertStrategyResult = { strategyId, version: 1, created: true, leverIds };
       return {
         data,
         entityType: "reduction_strategy", entityId: strategyId, topic: "strategy.library.upserted",
-        after: { key, title, scope: input.scope, controlLevel: input.controlLevel },
+        after: { key, title, scope: input.scope, controlLevel: input.controlLevel, leverIds },
       };
     }
 
@@ -203,12 +319,14 @@ export function upsertLibraryStrategy(pool: PoolLike, input: CommandInputMap["st
            version=version+1, updated_at=now(), updated_by=$10
        WHERE organisation_id=$1 AND strategy_id=$2 RETURNING version`,
       [context.organisationId, input.strategyId, key, title, description, input.scope, category, input.controlLevel, input.iconKey, context.actorId]);
-    const data: UpsertStrategyResult = { strategyId: input.strategyId, version: saved.rows[0]!.version, created: false };
+    const beforeLevers = await leversOf(db, context.organisationId, input.strategyId);
+    const leverIds = await setStrategyLevers(db, context.organisationId, input.strategyId, input.leverIds);
+    const data: UpsertStrategyResult = { strategyId: input.strategyId, version: saved.rows[0]!.version, created: false, leverIds };
     return {
       data,
       entityType: "reduction_strategy", entityId: input.strategyId, topic: "strategy.library.upserted",
-      before: { key: strategy.strategy_key, title: strategy.title, scope: strategy.scope, controlLevel: strategy.control_level },
-      after: { key, title, scope: input.scope, controlLevel: input.controlLevel },
+      before: { key: strategy.strategy_key, title: strategy.title, scope: strategy.scope, controlLevel: strategy.control_level, leverIds: beforeLevers },
+      after: { key, title, scope: input.scope, controlLevel: input.controlLevel, leverIds },
     };
   });
 }
@@ -292,12 +410,54 @@ async function setStrategyAlignment(db: Queryable, input: {
   }
 }
 
-export type AssignStrategyResult = { clientStrategyId: string; strategyId: string | null };
+/**
+ * The owner must be one of this client's contacts, and a current one (A1, R4). The foreign key holds the first half
+ * (it runs through `client_id`); saying it here names the problem instead of a constraint. A contact who has since
+ * become inactive may stay as an existing owner — the check is on choosing one.
+ */
+async function assertOwnerContact(db: Queryable, organisationId: string, clientId: string, contactId: string): Promise<void> {
+  const contact = (await db.query<{ client_id: string; status: string }>(
+    `SELECT client_id, status FROM nzi_console.client_contacts WHERE organisation_id = $1 AND contact_id = $2`, [organisationId, contactId])).rows[0];
+  if (!contact || contact.client_id !== clientId) {
+    throw new CommandValidationError([{ field: "ownerContactId", code: "NOT_A_CONTACT", message: "The owner must be one of this client's contacts." }]);
+  }
+  if (contact.status !== "active") throw new CommandValidationError([{ field: "ownerContactId", code: "INACTIVE", message: "That contact is no longer active; choose a current one." }]);
+}
+
+/**
+ * The UK SRS requirement an `srs_gap` action bridges (A1, R7), with the framework it belongs to — taken from the
+ * requirement, never the caller, as the alignment is. Where the id appears in more than one framework version, the one
+ * in force wins, then the newest.
+ */
+async function gapRequirement(db: Queryable, organisationId: string, requirementId: string): Promise<{ frameworkId: string; requirementId: string }> {
+  const found = (await db.query<{ framework_id: string }>(
+    `SELECT r.framework_id FROM nzi_console.srs_requirements r
+       JOIN nzi_console.srs_frameworks f ON (f.organisation_id, f.framework_id) = (r.organisation_id, r.framework_id)
+      WHERE r.organisation_id = $1 AND r.requirement_id = $2
+      ORDER BY (f.status = 'active') DESC, f.version DESC LIMIT 1`, [organisationId, requirementId])).rows[0];
+  if (!found) throw new CommandValidationError([{ field: "originSrsRequirementId", code: "UNKNOWN_REQUIREMENT", message: "That UK SRS requirement does not exist." }]);
+  return { frameworkId: found.framework_id, requirementId };
+}
+
+/** What an assignment records — the audit event's after_json — ids and states only (A1). */
+export type AssignStrategyResult = {
+  clientStrategyId: string; strategyId: string | null;
+  status: StrategyStatus; ownerContactId: string | null; origin: StrategyOrigin; originSrsRequirementId: string | null;
+};
 
 export function assignClientStrategy(pool: PoolLike, input: CommandInputMap["client.strategy.assign"], context: CommandContext): Promise<StoredOutcome<AssignStrategyResult>> {
   return runPostgresCommand(pool, "client.strategy.assign", input, context, async (db) => {
     const clientStrategyId = `caction-${randomUUID()}`;
     const targetDate = input.targetDate ?? null;
+    // A1: it enters the ladder proposed (or agreed, where the client already has); its owner is one of their contacts;
+    // and it says where it came from. An SRS-gap action is aligned to the gap it bridges as well as anything chosen.
+    const status = input.status === "agreed" ? "agreed" : "proposed";
+    const ownerContactId = input.ownerContactId?.trim() || null;
+    if (ownerContactId) await assertOwnerContact(db, context.organisationId, input.clientId, ownerContactId);
+    const origin: StrategyOrigin = input.origin === "srs_gap" ? "srs_gap" : "plan";
+    const gap = origin === "srs_gap" ? await gapRequirement(db, context.organisationId, input.originSrsRequirementId!.trim()) : null;
+    const requirementIds = gap ? [...new Set([...input.srsRequirementIds, gap.requirementId])] : input.srsRequirementIds;
+    const ladder = [status, ownerContactId, origin, gap?.frameworkId ?? null, gap?.requirementId ?? null] as const;
 
     if (input.strategyId) {
       const strategy = await db.query<{ active: boolean; title: string }>(
@@ -317,15 +477,16 @@ export function assignClientStrategy(pool: PoolLike, input: CommandInputMap["cli
 
       await db.query(
         `INSERT INTO nzi_console.client_strategies
-           (organisation_id, client_strategy_id, client_id, strategy_id, owner, target_date, notes, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [context.organisationId, clientStrategyId, input.clientId, input.strategyId, input.owner?.trim() ?? "", targetDate, input.notes?.trim() ?? "", context.actorId]);
-      await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId, requirementIds: input.srsRequirementIds });
-      const data: AssignStrategyResult = { clientStrategyId, strategyId: input.strategyId };
+           (organisation_id, client_strategy_id, client_id, strategy_id, target_date, notes, created_by,
+            status, owner_contact_id, origin, origin_srs_framework_id, origin_srs_requirement_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [context.organisationId, clientStrategyId, input.clientId, input.strategyId, targetDate, input.notes?.trim() ?? "", context.actorId, ...ladder]);
+      await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId, requirementIds });
+      const data: AssignStrategyResult = { clientStrategyId, strategyId: input.strategyId, status, ownerContactId, origin, originSrsRequirementId: gap?.requirementId ?? null };
       return {
         data,
         entityType: "client_strategy", entityId: clientStrategyId, topic: "client.strategy.assigned",
-        after: { clientId: input.clientId, strategyId: input.strategyId, title: strategy.rows[0].title },
+        after: { clientId: input.clientId, strategyId: input.strategyId, title: strategy.rows[0].title, status, ownerContactId, origin, originSrsRequirementId: gap?.requirementId ?? null },
       };
     }
 
@@ -333,27 +494,32 @@ export function assignClientStrategy(pool: PoolLike, input: CommandInputMap["cli
     await db.query(
       `INSERT INTO nzi_console.client_strategies
          (organisation_id, client_strategy_id, client_id, bespoke_title, bespoke_scope, bespoke_category,
-          bespoke_control_level, bespoke_icon_key, owner, target_date, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          bespoke_control_level, bespoke_icon_key, target_date, notes, created_by,
+          status, owner_contact_id, origin, origin_srs_framework_id, origin_srs_requirement_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
       [context.organisationId, clientStrategyId, input.clientId, bespoke.title.trim(), bespoke.scope,
         bespoke.category?.trim() ?? "", bespoke.controlLevel, bespoke.iconKey ?? "target",
-        input.owner?.trim() ?? "", targetDate, input.notes?.trim() ?? "", context.actorId]);
-    await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId, requirementIds: input.srsRequirementIds });
-    const data: AssignStrategyResult = { clientStrategyId, strategyId: null };
+        targetDate, input.notes?.trim() ?? "", context.actorId, ...ladder]);
+    await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId, requirementIds });
+    const data: AssignStrategyResult = { clientStrategyId, strategyId: null, status, ownerContactId, origin, originSrsRequirementId: gap?.requirementId ?? null };
     return {
       data,
       entityType: "client_strategy", entityId: clientStrategyId, topic: "client.strategy.assigned",
-      after: { clientId: input.clientId, bespoke: true, title: bespoke.title.trim() },
+      after: { clientId: input.clientId, bespoke: true, title: bespoke.title.trim(), status, ownerContactId, origin, originSrsRequirementId: gap?.requirementId ?? null },
     };
   });
 }
 
-export type UpdateStrategyResult = { clientStrategyId: string; version: number };
+export type UpdateStrategyResult = {
+  clientStrategyId: string; version: number;
+  /** The state as saved — the audit event's after_json (A1). */
+  status: StrategyStatus; progressPct: number; ownerContactId: string | null; targetDate: string | null; includeInReport: boolean;
+};
 
 export function updateClientStrategy(pool: PoolLike, input: CommandInputMap["client.strategy.update"], context: CommandContext): Promise<StoredOutcome<UpdateStrategyResult>> {
   return runPostgresCommand(pool, "client.strategy.update", input, context, async (db) => {
-    const current = await db.query<{ version: number; active: boolean; status: string; progress_pct: number; owner: string; target_date: Date | string | null }>(
-      `SELECT version, active, status, progress_pct, owner, target_date FROM nzi_console.client_strategies
+    const current = await db.query<{ version: number; active: boolean; client_id: string; status: StrategyStatus; progress_pct: number; owner_contact_id: string | null; target_date: Date | string | null; include_in_report: boolean }>(
+      `SELECT version, active, client_id, status, progress_pct, owner_contact_id, target_date, include_in_report FROM nzi_console.client_strategies
        WHERE organisation_id=$1 AND client_strategy_id=$2 FOR UPDATE`,
       [context.organisationId, input.clientStrategyId]);
     const action = current.rows[0];
@@ -361,19 +527,39 @@ export function updateClientStrategy(pool: PoolLike, input: CommandInputMap["cli
     if (action.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, action.version);
     if (!action.active) throw new CommandValidationError([{ field: "clientStrategyId", code: "REMOVED", message: "That action has been removed from the plan." }]);
 
+    // The ladder (A1, R3), checked against the status held under the row lock — not the one the form last saw.
+    const status = input.status as StrategyStatus;
+    if (!strategyTransitionAllowed(action.status, status)) {
+      const next = strategyNextStatuses(action.status).filter((value) => value !== action.status).map((value) => strategyStatusLabels[value]);
+      throw new CommandValidationError([{
+        field: "status", code: "ILLEGAL_TRANSITION",
+        message: `A ${strategyStatusLabels[action.status].toLowerCase()} action cannot become ${strategyStatusLabels[status].toLowerCase()}; it can become ${next.join(" or ").toLowerCase()}.`,
+      }]);
+    }
+
+    // The owner (A1, R4): absent leaves it; null clears it; a new one must be this client's current contact. Choosing a
+    // contact retires 0075's free-text owner — it said the same thing less precisely.
+    const ownerChanges = input.ownerContactId !== undefined && (input.ownerContactId?.trim() || null) !== action.owner_contact_id;
+    const ownerContactId = input.ownerContactId === undefined ? action.owner_contact_id : input.ownerContactId?.trim() || null;
+    if (ownerChanges && ownerContactId) await assertOwnerContact(db, context.organisationId, action.client_id, ownerContactId);
+
     const saved = await db.query<{ version: number }>(
       `UPDATE nzi_console.client_strategies
-       SET status=$3, owner=$4, target_date=$5, progress_pct=$6, notes=$7, include_in_report=$9,
+       SET status=$3, owner_contact_id=$4, target_date=$5, progress_pct=$6, notes=$7, include_in_report=$9,
+           legacy_owner_text = CASE WHEN $4::text IS NOT NULL THEN '' ELSE legacy_owner_text END,
            version=version+1, updated_at=now(), updated_by=$8
        WHERE organisation_id=$1 AND client_strategy_id=$2 RETURNING version`,
-      [context.organisationId, input.clientStrategyId, input.status, input.owner?.trim() ?? "",
+      [context.organisationId, input.clientStrategyId, status, ownerContactId,
         input.targetDate ?? null, input.progressPct, input.notes?.trim() ?? "", context.actorId, input.includeInReport]);
     await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId: input.clientStrategyId, requirementIds: input.srsRequirementIds });
     return {
-      data: { clientStrategyId: input.clientStrategyId, version: saved.rows[0]!.version },
+      // The runner writes `data` as the audit event's after_json, so the new state travels here — ids and states only:
+      // the owner is named by contact id, never by name (NZC-120).
+      data: { clientStrategyId: input.clientStrategyId, version: saved.rows[0]!.version, status, progressPct: input.progressPct, ownerContactId,
+        targetDate: input.targetDate ?? null, includeInReport: input.includeInReport },
       entityType: "client_strategy", entityId: input.clientStrategyId, topic: "client.strategy.updated",
-      before: { status: action.status, progressPct: action.progress_pct, owner: action.owner, targetDate: dateOnlyOrNull(action.target_date) },
-      after: { status: input.status, progressPct: input.progressPct, owner: input.owner?.trim() ?? "", targetDate: input.targetDate ?? null },
+      before: { status: action.status, progressPct: action.progress_pct, ownerContactId: action.owner_contact_id, targetDate: dateOnlyOrNull(action.target_date), includeInReport: action.include_in_report },
+      after: { status, progressPct: input.progressPct, ownerContactId, targetDate: input.targetDate ?? null, includeInReport: input.includeInReport },
     };
   });
 }

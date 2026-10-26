@@ -72,9 +72,11 @@ describe("the client portal reads the frozen composition (F-4a), against a real 
       await q(`INSERT INTO nzi_console.client_sites (organisation_id, client_id, site_id, name, in_service_from, created_by) VALUES ($1, $2, $3, 'Works', '2020-01-01', 'seed'), ($1, $2, $4, 'Annex', '2020-01-01', 'seed')`,
         [ORG, id, id === CLIENT ? "s-a" : "o-a", id === CLIENT ? "s-b" : "o-b"]);
     }
-    // Strategies (owned by a distinctive internal user, so a leak of the name anywhere is unmistakable) and an SRS
-    // assessment, so the plan section is composed (D6).
-    await seedPortalAcceptance(database.pool, { organisationId: ORG, actorId: STRATEGY_OWNER, clientId: CLIENT });
+    // Strategies (owned by a contact with a distinctive name — an owner is a client contact since Actions A1 — so a leak
+    // of the name anywhere is unmistakable) and an SRS assessment, so the plan section is composed (D6).
+    await q(`INSERT INTO nzi_console.client_contacts (organisation_id, contact_id, client_id, full_name, status, created_by, updated_by) VALUES ($1, 'pcomp-owner', $2, $3, 'active', 'seed', 'seed')`,
+      [ORG, CLIENT, STRATEGY_OWNER]);
+    await seedPortalAcceptance(database.pool, { organisationId: ORG, actorId: STRATEGY_OWNER, clientId: CLIENT, ownerContactId: "pcomp-owner" });
     for (const [jobId, clientId, sequence] of [["j-main", CLIENT, 9701], ["j-legacy", CLIENT, 9702], ["j-ungranted", CLIENT, 9703], ["j-foreign", OTHER, 9704]] as const) {
       await q(`INSERT INTO nzi_console.jobs (organisation_id, job_id, client_id, sequence, job_family, title, status, workflow_stage, reporting_year) VALUES ($1, $2, $3, $4, 'crp', 'CRP', 'open', 'delivery', 2025)`, [ORG, jobId, clientId, sequence]);
       await q(`INSERT INTO nzi_console.job_emissions_config (organisation_id, job_id, reporting_from, reporting_to, country_code) VALUES ($1, $2, '2025-01-01', '2025-12-31', 'GB')`, [ORG, jobId]);

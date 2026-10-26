@@ -29,7 +29,7 @@ const estimate = (over: Partial<StrategyEstimate> = {}): StrategyEstimate => ({
 const strategy = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", leverIds: [], srsRequirementIds: ["req-1"], includeInReport: true,
   strategyId: null, title: id, scope: "1", category: "Energy", controlLevel: "direct_control",
-  iconKey: "energy", status: "planned", owner: "", targetDate: "2027-06-30", progressPct: 0,
+  iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, targetDate: "2027-06-30", progressPct: 0,
   notes: "", active: true, version: 1, estimate: estimate(), ...over,
 });
 

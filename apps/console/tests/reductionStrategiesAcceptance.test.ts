@@ -233,14 +233,16 @@ describe("Reduction Strategies", () => {
     // One flag, two surfaces, and the copy says which is live and which is frozen: the
     // portal plan updates on the client's next load, the report keeps what it was issued
     // with. A consultant clearing this must know it reaches the portal too.
-    assert.match(forms, /Show this to the client/);
+    // A1 names the toggle as the brief does — "Include in report?" — and says a report shows it once Agreed.
+    assert.match(forms, /Include in report/);
     assert.match(forms, /their portal plan, which updates live/);
-    assert.match(forms, /reports issued from\s+now on/);
+    assert.match(forms, /reports issued from\s+now on — where it appears once it is Agreed or beyond/);
     // The plan section of an issued report is composed at issue and frozen with everything
     // else — so a strategy held back next week does not vanish from a report already sent.
     const compositions = read("packages/isolated-backend/src/reportCompositions.ts");
     assert.match(compositions, /composeReportPlan\(strategies, levers, requirementCodes\)/);
-    assert.match(read("packages/contracts/src/reportComposition.ts"), /strategy\.includeInReport/);
+    assert.match(read("packages/contracts/src/reportComposition.ts"), /live\.filter\(strategyIsReportable\)/);
+    assert.match(read("packages/contracts/src/reductionStrategies.ts"), /strategy\.active && strategy\.includeInReport && strategyReportableStatuses\.includes\(strategy\.status\)/);
   });
 
   it("makes a library add confirm its alignment rather than inherit it silently", () => {

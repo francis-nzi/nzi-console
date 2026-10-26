@@ -3,12 +3,12 @@
 import { useRef, useState, type ReactNode } from "react";
 import { Collapsible, GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
 import { StrategyEstimateFields } from "./StrategyEstimateFields";
-import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
+import { patchBrowserCommand, postBrowserCommand, putBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import {
   requirementsByPillar,
   strategyProgressForStatus, strategyScopeLabel, strategyScopes, strategyControlLevelLabels, strategyControlLevels,
-  strategyStatusForProgress, strategyStatuses, strategyStatusLabels,
-  type SrsFramework, type StrategyLibraryEntry, type StrategyScope, type StrategyControlLevel, type StrategyStatus, type ClientStrategy, type LibraryStrategy, type TargetBenchmark,
+  strategyNextStatuses, strategyOriginLabels, strategyStatusForProgress, strategyStatusLabels,
+  type ClientContactReadModel, type SrsFramework, type StrategyLibraryEntry, type StrategyScope, type StrategyControlLevel, type StrategyStatus, type ClientStrategy, type LibraryStrategy, type TargetBenchmark,
 } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
 
@@ -92,6 +92,37 @@ function SrsAlignmentPicker({ framework, selected, onChange, disabled }: {
   </div>;
 }
 
+/**
+ * The owner (Actions A1, R4): one of this client's contacts, never free text. The list is the client's active contacts;
+ * an owner who has since become inactive stays selectable on the action they already own, marked as such, so opening
+ * the drawer never silently changes who owns it. What 0075's free-text owner said is shown until a contact is chosen.
+ */
+function OwnerPicker({ contacts, value, current, legacy, onChange, disabled }: {
+  contacts: readonly ClientContactReadModel[]; value: string; current?: { id: string; name: string } | null; legacy?: string;
+  onChange: (contactId: string) => void; disabled?: boolean;
+}) {
+  const options = contacts.filter((contact) => contact.status === "active");
+  const held = current && !options.some((contact) => contact.id === current.id) ? current : null;
+  return <label className="nz-fl"><span>Owner</span>
+    <select className="nz-sel" value={value} disabled={disabled} onChange={(event) => onChange(event.target.value)}>
+      <option value="">No owner yet</option>
+      {options.map((contact) => <option key={contact.id} value={contact.id}>{contact.fullName}{contact.jobTitle ? ` — ${contact.jobTitle}` : ""}</option>)}
+      {held ? <option value={held.id}>{held.name || "A contact no longer on file"} (inactive)</option> : null}
+    </select>
+    {options.length === 0 && !held ? <small className="hint">This client has no active contacts yet — add one in Profile to give the action an owner.</small> : null}
+    {legacy && !value ? <small className="hint">Previously noted as &ldquo;{legacy}&rdquo; — choose the contact who owns it.</small> : null}
+  </label>;
+}
+
+/** Whether the client has already agreed the action as it is added — else it joins the plan as a proposal (R3). */
+function AgreedCheck({ agreed, onChange, disabled }: { agreed: boolean; onChange: (agreed: boolean) => void; disabled?: boolean }) {
+  return <>
+    <label className="nz-fl nz-check"><input type="checkbox" checked={agreed} disabled={disabled} onChange={(event) => onChange(event.target.checked)} />
+      <span>The client has already agreed this</span></label>
+    <small className="hint">Otherwise it joins the plan as Proposed, and appears in reports once it is Agreed.</small>
+  </>;
+}
+
 /** No framework, no requirements to align to — said plainly rather than shown as a dead form. */
 function NoFramework() {
   return <div className="nz-banner warn" role="alert">
@@ -100,8 +131,8 @@ function NoFramework() {
   </div>;
 }
 
-export function StrategyLibraryForm({ clientId, library, framework, access, onClose, onSaved, onBespoke }: {
-  clientId: string; library: StrategyLibraryEntry[]; framework: SrsFramework | null; access: EditAccess;
+export function StrategyLibraryForm({ clientId, library, framework, contacts, access, onClose, onSaved, onBespoke }: {
+  clientId: string; library: StrategyLibraryEntry[]; framework: SrsFramework | null; contacts: readonly ClientContactReadModel[]; access: EditAccess;
   onClose: () => void; onSaved: (text: string) => void; onBespoke: () => void;
 }) {
   const [controlLevel, setControlLevel] = useState<StrategyControlLevel | "all">("all");
@@ -111,6 +142,10 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
   // The entry awaiting confirmation, and the alignment as the person has it so far.
   const [confirming, setConfirming] = useState<StrategyLibraryEntry | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  // A1: who owns it, by when, and whether the client has already agreed it.
+  const [ownerContactId, setOwnerContactId] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+  const [agreed, setAgreed] = useState(false);
 
   const shown = library.filter((entry) =>
     (controlLevel === "all" || entry.strategy.controlLevel === controlLevel) && (scope === "all" || entry.strategy.scope === scope));
@@ -123,6 +158,7 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
   const startAdd = (entry: StrategyLibraryEntry) => {
     setError(null);
     setSelected(defaults(entry));
+    setOwnerContactId(""); setTargetDate(""); setAgreed(false);
     setConfirming(entry);
   };
   const cancelAdd = () => { setConfirming(null); setSelected([]); setError(null); };
@@ -132,7 +168,8 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
     setError(null);
     const result = await postBrowserCommand<{ clientStrategyId: string }>(
       `/api/isolated/clients/${encodeURIComponent(clientId)}/strategies`,
-      { strategyId: entry.strategy.id, srsRequirementIds: selected }, crypto.randomUUID());
+      { strategyId: entry.strategy.id, srsRequirementIds: selected, ownerContactId: ownerContactId || null, targetDate: targetDate || null,
+        status: agreed ? "agreed" : "proposed" }, crypto.randomUUID());
     setPending(false);
     if (result.state !== "success") { setError(errorText(result)); return; }
     cancelAdd();
@@ -160,6 +197,13 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
           The catalogue&rsquo;s alignment is filled in below — keep it, or change it to match what they are
           actually doing.
         </p>
+
+        <div className="nz-two">
+          <OwnerPicker contacts={contacts} value={ownerContactId} onChange={setOwnerContactId} disabled={pending} />
+          <label className="nz-fl"><span>Target date</span>
+            <input className="nz-inp" type="date" value={targetDate} disabled={pending} onChange={(event) => setTargetDate(event.target.value)} /></label>
+        </div>
+        <AgreedCheck agreed={agreed} onChange={setAgreed} disabled={pending} />
 
         <SrsAlignmentPicker framework={framework} selected={selected} onChange={setSelected} disabled={pending} />
         {!unchanged ? <small className="hint">Changed from the catalogue&rsquo;s alignment for this client.</small> : null}
@@ -236,15 +280,16 @@ export function StrategyLibraryForm({ clientId, library, framework, access, onCl
   </>;
 }
 
-export function StrategyBespokeForm({ clientId, framework, access, onClose, onSaved }: {
-  clientId: string; framework: SrsFramework | null; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
+export function StrategyBespokeForm({ clientId, framework, contacts, access, onClose, onSaved }: {
+  clientId: string; framework: SrsFramework | null; contacts: readonly ClientContactReadModel[]; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const [title, setTitle] = useState("");
   const [srsRequirementIds, setSrsRequirementIds] = useState<string[]>([]);
   const [scope, setScope] = useState<StrategyScope>("3");
   const [controlLevel, setControlLevel] = useState<StrategyControlLevel>("direct_control");
   const [category, setCategory] = useState("");
-  const [owner, setOwner] = useState("");
+  const [ownerContactId, setOwnerContactId] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [targetDate, setTargetDate] = useState("");
   const [notes, setNotes] = useState("");
   const [pending, setPending] = useState(false);
@@ -256,7 +301,8 @@ export function StrategyBespokeForm({ clientId, framework, access, onClose, onSa
     key.current ??= crypto.randomUUID();
     const result = await postBrowserCommand<{ clientStrategyId: string }>(
       `/api/isolated/clients/${encodeURIComponent(clientId)}/strategies`,
-      { bespoke: { title, scope, controlLevel, category }, srsRequirementIds, owner, targetDate: targetDate || null, notes }, key.current);
+      { bespoke: { title, scope, controlLevel, category }, srsRequirementIds, ownerContactId: ownerContactId || null, targetDate: targetDate || null, notes,
+        status: agreed ? "agreed" : "proposed" }, key.current);
     setPending(false);
     if (result.state !== "success") { key.current = null; setError(errorText(result)); return; }
     key.current = null;
@@ -285,11 +331,11 @@ export function StrategyBespokeForm({ clientId, framework, access, onClose, onSa
       <div className="nz-two">
         <label className="nz-fl"><span>Category</span>
           <input className="nz-inp" value={category} onChange={(event) => setCategory(event.target.value)} placeholder="e.g. Heating" /></label>
-        <label className="nz-fl"><span>Owner</span>
-          <input className="nz-inp" value={owner} onChange={(event) => setOwner(event.target.value)} placeholder="Who at the client is leading it" /></label>
+        <OwnerPicker contacts={contacts} value={ownerContactId} onChange={setOwnerContactId} />
       </div>
       <label className="nz-fl"><span>Target date</span>
         <input className="nz-inp" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></label>
+      <AgreedCheck agreed={agreed} onChange={setAgreed} />
       <label className="nz-fl"><span>Notes</span>
         <textarea className="nz-notes" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
 
@@ -310,8 +356,8 @@ export function StrategyBespokeForm({ clientId, framework, access, onClose, onSa
   </>;
 }
 
-export function StrategyEditForm({ action, framework, benchmark, libraryDefault, access, onClose, onSaved }: {
-  action: ClientStrategy; framework: SrsFramework | null;
+export function StrategyEditForm({ action, framework, contacts, benchmark, libraryDefault, access, onClose, onSaved }: {
+  action: ClientStrategy; framework: SrsFramework | null; contacts: readonly ClientContactReadModel[];
   /** The baseline a percentage estimate resolves against — the target pathway's own. */
   benchmark: TargetBenchmark | null;
   /** The catalogue entry this strategy came from, so its modelled figure can seed the form. */
@@ -320,7 +366,7 @@ export function StrategyEditForm({ action, framework, benchmark, libraryDefault,
 }) {
   const [status, setStatus] = useState<StrategyStatus>(action.status);
   const [progressPct, setProgressPct] = useState(action.progressPct);
-  const [owner, setOwner] = useState(action.owner);
+  const [ownerContactId, setOwnerContactId] = useState(action.ownerContactId ?? "");
   const [targetDate, setTargetDate] = useState(action.targetDate ?? "");
   const [notes, setNotes] = useState(action.notes);
   const [srsRequirementIds, setSrsRequirementIds] = useState<string[]>([...action.srsRequirementIds]);
@@ -339,7 +385,7 @@ export function StrategyEditForm({ action, framework, benchmark, libraryDefault,
     setPending(true); setError(null);
     const result = await patchBrowserCommand<{ version: number }>(
       `/api/isolated/clients/${encodeURIComponent(action.clientId)}/strategies`,
-      { clientStrategyId: action.id, expectedVersion: action.version, status, owner, targetDate: targetDate || null, progressPct, notes,
+      { clientStrategyId: action.id, expectedVersion: action.version, status, ownerContactId: ownerContactId || null, targetDate: targetDate || null, progressPct, notes,
         srsRequirementIds, includeInReport },
       crypto.randomUUID());
     setPending(false);
@@ -349,9 +395,10 @@ export function StrategyEditForm({ action, framework, benchmark, libraryDefault,
 
   async function remove() {
     setPending(true); setError(null);
-    const result = await putBrowserCommand<{ version: number }>(
+    // The reason travels as the command's reason header — the one the validator reads — as well as in the body.
+    const result = await putBrowserCommandWithReason<{ version: number }>(
       `/api/isolated/clients/${encodeURIComponent(action.clientId)}/strategies`,
-      { clientStrategyId: action.id, expectedVersion: action.version, reason }, crypto.randomUUID());
+      { clientStrategyId: action.id, expectedVersion: action.version, reason }, crypto.randomUUID(), reason);
     setPending(false);
     if (result.state !== "success") { setError(errorText(result)); return; }
     onSaved("Strategy removed from the plan. It stays on the record.");
@@ -359,12 +406,15 @@ export function StrategyEditForm({ action, framework, benchmark, libraryDefault,
 
   return <>
     <DrawerHeader kicker={`Reduction strategy · version ${action.version}`} title={action.title}
-      subtitle={<><span className="nz-tag">{strategyScopeLabel(action.scope)}</span> {action.category}</>} />
+      subtitle={<><span className="nz-tag">{strategyScopeLabel(action.scope)}</span> {action.category}
+        {" · "}<span className="nz-tag">{strategyOriginLabels[action.origin]}</span></>} />
     <div className="nz-db">
+      {/* Only the moves the ladder allows from where it stands (A1, R3) — the command refuses the rest. */}
       <label className="nz-fl"><span>Status</span>
         <select className="nz-sel" value={status} onChange={(event) => chooseStatus(event.target.value as StrategyStatus)}>
-          {strategyStatuses.map((value) => <option key={value} value={value}>{strategyStatusLabels[value]}</option>)}
-        </select></label>
+          {strategyNextStatuses(action.status).map((value) => <option key={value} value={value}>{strategyStatusLabels[value]}</option>)}
+        </select>
+        <small className="hint">Proposed → Agreed → In progress → Complete, or On hold / Declined along the way.</small></label>
 
       <label className="nz-fl"><span>Progress — {progressPct}%</span>
         <input type="range" min={0} max={100} step={5} value={progressPct}
@@ -372,8 +422,9 @@ export function StrategyEditForm({ action, framework, benchmark, libraryDefault,
         <small className="hint">What the client reports, not a modelled reduction.</small></label>
 
       <div className="nz-two">
-        <label className="nz-fl"><span>Owner</span>
-          <input className="nz-inp" value={owner} onChange={(event) => setOwner(event.target.value)} /></label>
+        <OwnerPicker contacts={contacts} value={ownerContactId}
+          current={action.ownerContactId ? { id: action.ownerContactId, name: action.owner } : null}
+          legacy={action.ownerContactId ? undefined : action.owner} onChange={setOwnerContactId} />
         <label className="nz-fl"><span>{status === "complete" ? "Completed" : "Target date"}</span>
           <input className="nz-inp" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></label>
       </div>
@@ -389,11 +440,11 @@ export function StrategyEditForm({ action, framework, benchmark, libraryDefault,
           report is issued and freezes it, so a report already sent is unaffected either way. */}
       <label className="nz-fl nz-check"><input type="checkbox" checked={includeInReport}
         onChange={(event) => setIncludeInReport(event.target.checked)} />
-        <span>Show this to the client</span></label>
+        <span>Include in report</span></label>
       <small className="hint">
         Controls what the client sees: their portal plan, which updates live, and the reports issued from
-        now on. A report already issued keeps the plan it was issued with. Clear it to hold a strategy
-        back from both.
+        now on — where it appears once it is Agreed or beyond. A report already issued keeps the plan it was
+        issued with. Clear it to hold a strategy back from both; this plan here shows it either way.
       </small>
 
       {removing ? <div className="nz-action-remove">
