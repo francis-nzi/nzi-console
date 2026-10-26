@@ -175,6 +175,12 @@ export function srsPortalDashboard(framework: SrsFramework, assessments: readonl
   const model = srsDashboard(framework, latest, assessments, options);
   return {
     ...model,
-    requirements: model.requirements.map(({ owner: _owner, dueDate: _due, linkedActionId: _link, ...client }) => client),
+    requirements: model.requirements.map(({ owner: _owner, dueDate: _due, linkedActionId: _link, ...client }) => ({
+      ...client,
+      // The S2 review's ruling: evidence crosses as its kind and reference only. The free-text note is a consultant's
+      // working record ("client slow to engage") and stays one — blanked here, before the model leaves the contract,
+      // unless and until a note carries an explicit client-safe flag.
+      evidence: client.evidence === null ? null : { kind: client.evidence.kind, ref: client.evidence.ref, note: "" },
+    })),
   };
 }
