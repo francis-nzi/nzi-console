@@ -435,6 +435,12 @@ jobs:
       # sessions ended and recovery codes issued.
       - name: Recovery codes stand in for a lost authenticator, and the portal invitation arrives by email
         run: npx tsx --test packages/isolated-backend/tests/mfaRecoveryPortalInviteReal.test.ts
+      # 0183: the reminder worker's tick, run as nzi_console_worker rather than the superuser the reminder tests use — the
+      # role holds every privilege the tick needs; a whole tick over a real plan (levers, SRS alignment) and queued email
+      # completes and reports both parts; the old one-transaction tick is shown never dispatching email when the scan fails;
+      # the split tick dispatches it anyway and reports the reminder failure; and an email-side failure does not stop the scan.
+      - name: The worker's tick runs as the worker role, and email is drained apart from the reminder scan
+        run: npx tsx --test packages/isolated-backend/tests/workerTickReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic
