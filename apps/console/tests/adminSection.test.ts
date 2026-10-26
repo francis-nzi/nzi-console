@@ -22,7 +22,7 @@ describe("admin access is checked by every admin page", () => {
   const found = pages(adminDir);
 
   it("finds the admin pages", () => {
-    assert.deepEqual(found.map((path) => relative(adminDir, path).replace(/\\/g, "/")).sort(), ["[section]/page.tsx", "action-library/page.tsx", "crm-pipeline/page.tsx", "custom-fields/page.tsx", "file-types/page.tsx", "job-types/page.tsx", "lookups/page.tsx", "message-templates/page.tsx", "milestone-templates/page.tsx", "organisation/page.tsx", "page.tsx", "portal-broadcasts/page.tsx", "service-catalogue/page.tsx", "suppliers/page.tsx", "tax-currency/currencies/page.tsx", "tax-currency/page.tsx", "tax-currency/vat-rates/page.tsx", "team/page.tsx"]);
+    assert.deepEqual(found.map((path) => relative(adminDir, path).replace(/\\/g, "/")).sort(), ["[section]/page.tsx", "action-library/page.tsx", "crm-pipeline/page.tsx", "custom-fields/page.tsx", "file-types/page.tsx", "job-types/page.tsx", "lookups/page.tsx", "message-templates/page.tsx", "milestone-templates/page.tsx", "organisation/page.tsx", "page.tsx", "portal-broadcasts/page.tsx", "service-catalogue/page.tsx", "srs-framework/page.tsx", "suppliers/page.tsx", "tax-currency/currencies/page.tsx", "tax-currency/page.tsx", "tax-currency/vat-rates/page.tsx", "team/page.tsx"]);
   });
 
   for (const path of pages(adminDir)) {
@@ -52,7 +52,7 @@ describe("the admin rail follows the approved design", () => {
   });
 
   it("shows every unbuilt area with its roadmap phase (ruled P9), and links each to its own page", () => {
-    const LIVE = ["overview", "lookups", "team", "organisation", "job-types", "milestone-templates", "file-types", "tax-currency", "service-catalogue", "suppliers", "message-templates", "action-library", "crm-pipeline", "custom-fields", "portal-broadcasts"];
+    const LIVE = ["overview", "lookups", "team", "organisation", "job-types", "milestone-templates", "file-types", "tax-currency", "service-catalogue", "suppliers", "message-templates", "action-library", "srs-framework", "crm-pipeline", "custom-fields", "portal-broadcasts"];
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "action-library")?.capability, "admin.lookups", "Action library is live (Actions A1), under admin.lookups as the library commands are");
     const unbuilt = ADMIN_ITEMS.filter((item) => !LIVE.includes(item.id));
     assert.ok(unbuilt.every((item) => item.phase && item.href === `/admin/${item.id}`));

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   strategyControlLevelLabels, strategyControlLevels, activeMetrics, composeReportPlan,
-  composeSrsRoadmap, isReportGap, maturityLabel, strategyIsReportable, type ClientStrategy,
+  composeSrsRoadmap, isReportGap, latestAssessed, maturityLabel, strategyIsReportable, type ClientStrategy,
   overallReadiness, pillarReadiness, reportAssurance, resolveIntensity, intensityUnit, withCurrencyDirectory,
   intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel, isCurrencyIntensityTarget, reportingIntensityOf,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
@@ -276,7 +276,7 @@ async function composeSrs(
   planned: readonly ClientStrategy[],
 ): Promise<ReportSrsSection | ReportSectionGap> {
   const [framework, assessments] = [await getSrsFramework(db), await listSrsAssessments(db, clientId)];
-  const assessment = assessments.find((entry) => entry.status === "complete") ?? null;
+  const assessment = latestAssessed(assessments);
   if (!framework || !assessment) {
     return {
       state: "unavailable",

@@ -359,7 +359,7 @@ async function seedAssessment(
     resumed = true;
     log(`\n  = SRS assessment ${assessmentId} already started — resuming it`);
   } else {
-    const startInput = { clientId, assessedOn: dayOffset(0), notes: "Seeded for the NZC-080 portal acceptance run." };
+    const startInput = { clientId, notes: "Seeded for the NZC-080 portal acceptance run." };
     const started = await step("srs.assessment.start", () => startSrsAssessment(pool, startInput, context("srs:start", startInput)));
     assessmentId = started.data.assessmentId;
     log(`\n  + SRS assessment ${assessmentId} started`);
@@ -372,6 +372,13 @@ async function seedAssessment(
     { requirement: reserved.noStrategy, maturity: 2, note: "gap with no strategy at all" },
     ...requirements.slice(4, 10).map((requirement) => ({ requirement, maturity: Math.max(requirement.targetMaturity, 1), note: "met" })),
   ];
+  // SRS S1 (R3): an assessment completes only when every requirement is addressed, so every other requirement is
+  // answered too — at its target, so the four reserved gaps above stay the only gaps the acceptance run reads.
+  // Every active requirement — the NZI-data ones included, which `requirements` (the answerable set) leaves out.
+  const framework = await withTenantRead(pool, organisationId, (db: Queryable) => getSrsFramework(db));
+  const reservedIds = new Set(answers.map((answer) => answer.requirement.id));
+  answers.push(...(framework?.requirements ?? []).filter((requirement) => requirement.active && !reservedIds.has(requirement.id))
+    .map((requirement) => ({ requirement, maturity: requirement.targetMaturity, note: "met (addressed so the assessment can complete)" })));
 
   // `srs.assessment.item.set` versions the ITEM, not the assessment: a fresh header is v1, while
   // an unanswered requirement has no row and expects v0. Read per requirement, then thread each

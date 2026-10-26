@@ -191,6 +191,10 @@ export type CommandKey =
   | "srs.assessment.start"
   | "srs.assessment.item.set"
   | "srs.assessment.complete"
+  | "srs.framework.draft.create"
+  | "srs.framework.requirement.upsert"
+  | "srs.framework.maturity.update"
+  | "srs.framework.publish"
   | "client.logo.set"
   | "client.logo.remove"
   | "report.section.edit"
@@ -990,7 +994,8 @@ export type CommandInputMap = {
       confidence?: EstimateConfidence | null; source: EstimateSource; sourceVersion?: number | null;
     } | null;
   };
-  "srs.assessment.start": { clientId: string; assessedOn: string; notes?: string; prefillFromNziData?: boolean };
+  /** Opens an assessment, dated `started_on` today (S1, R3); its assessed date is set when it is completed. */
+  "srs.assessment.start": { clientId: string; notes?: string; prefillFromNziData?: boolean };
   /** Answer one requirement. `maturity: null` clears the answer back to unassessed. */
   "srs.assessment.item.set": {
     assessmentId: string; requirementId: string; maturity: number | null;
@@ -998,6 +1003,17 @@ export type CommandInputMap = {
     owner?: string; dueDate?: string | null; linkedActionId?: string | null; expectedVersion: number;
   };
   "srs.assessment.complete": { assessmentId: string; expectedVersion: number };
+  /** S1, R1: a new framework version, as a draft copied from the one in force. One draft at a time. */
+  "srs.framework.draft.create": { label?: string; notes?: string };
+  /** Add a requirement to the draft, or change one: wording, help, weight, target, order — or retire it (`active: false`). */
+  "srs.framework.requirement.upsert": {
+    frameworkId: string; requirementId?: string; standardKey: string; pillarKey: string; code: string; title: string;
+    helpText?: string; weight: number; targetMaturity: number; active: boolean; ordering?: number;
+  };
+  /** A ladder step's wording in the draft. The five steps themselves (0–4) are fixed (R5). */
+  "srs.framework.maturity.update": { frameworkId: string; level: number; label: string; definition: string };
+  /** Publish the draft: it becomes the version in force and the one before is superseded. */
+  "srs.framework.publish": { frameworkId: string; effectiveFrom: string };
   "client.logo.set": { clientId: string; fileName: string; contentType: ClientLogoContentType; dataBase64: string };
   "client.logo.remove": { clientId: string };
   "report.section.edit": { jobId: string; sectionKey: string; bodyHtml: string; expectedVersion: number; contentSource?: "ai" | "client-edited" };
@@ -2739,7 +2755,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
-  "srs.assessment.start": { key: "srs.assessment.start", label: "Start an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment stamped with the active framework version + optional NZI pre-fill + audit + outbox + idempotency", auditAction: "srs_assessment_started", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); if (!isoDate(input.assessedOn)) issues.push({ field: "assessedOn", code: "INVALID", message: "Enter the assessment date as dd/mm/yyyy." }); return issues; } },
+  "srs.assessment.start": { key: "srs.assessment.start", label: "Start an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment stamped with the active framework version + optional NZI pre-fill + audit + outbox + idempotency", auditAction: "srs_assessment_started", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); return issues; } },
   "srs.assessment.item.set": { key: "srs.assessment.item.set", label: "Answer an SRS requirement", permission: "srs.manage", reasonRequired: false, transaction: "assessment item upsert + audit + outbox + idempotency", auditAction: "srs_assessment_item_set", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "assessmentId", input.assessmentId);
@@ -2753,6 +2769,41 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     return issues;
   } },
   "srs.assessment.complete": { key: "srs.assessment.complete", label: "Complete an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment status + completion stamp + audit + outbox + idempotency", auditAction: "srs_assessment_completed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "assessmentId", input.assessmentId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
+  // The SRS framework (S1, R1): reference data an Admin versions, so admin.lookups as the action library is. A draft is
+  // edited; publishing it supersedes the version in force; a published version never changes (0187's triggers).
+  "srs.framework.draft.create": { key: "srs.framework.draft.create", label: "Start a new SRS framework version", permission: "admin.lookups", reasonRequired: false, transaction: "draft framework copied from the version in force + audit + outbox + idempotency", auditAction: "srs_framework_draft_created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    if (input.label !== undefined && (typeof input.label !== "string" || input.label.trim().length > 120)) issues.push({ field: "label", code: "INVALID", message: "A label of at most 120 characters." });
+    return issues;
+  } },
+  "srs.framework.requirement.upsert": { key: "srs.framework.requirement.upsert", label: "Add or edit an SRS requirement in a draft", permission: "admin.lookups", reasonRequired: false, transaction: "draft requirement + audit + outbox + idempotency", auditAction: "srs_framework_requirement_upserted", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "frameworkId", input.frameworkId);
+    required(issues, "standardKey", input.standardKey);
+    required(issues, "pillarKey", input.pillarKey);
+    required(issues, "code", input.code);
+    required(issues, "title", input.title);
+    if (typeof input.code === "string" && input.code.trim().length > 20) issues.push({ field: "code", code: "TOO_LONG", message: "A code is at most 20 characters, e.g. S2 G1." });
+    if (!(typeof input.weight === "number" && Number.isFinite(input.weight) && input.weight > 0 && input.weight <= 100)) issues.push({ field: "weight", code: "INVALID", message: "Weight is a positive number, at most 100." });
+    if (!(Number.isInteger(input.targetMaturity) && input.targetMaturity >= 0 && input.targetMaturity <= 4)) issues.push({ field: "targetMaturity", code: "INVALID", message: "The target is a step on the five-point ladder, 0 to 4." });
+    if (typeof input.active !== "boolean") issues.push({ field: "active", code: "INVALID", message: "Say whether the requirement is active." });
+    if (input.ordering !== undefined && !Number.isInteger(input.ordering)) issues.push({ field: "ordering", code: "INVALID", message: "Order is a whole number." });
+    return issues;
+  } },
+  "srs.framework.maturity.update": { key: "srs.framework.maturity.update", label: "Reword an SRS maturity step in a draft", permission: "admin.lookups", reasonRequired: false, transaction: "draft ladder wording + audit + outbox + idempotency", auditAction: "srs_framework_maturity_updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "frameworkId", input.frameworkId);
+    if (!(Number.isInteger(input.level) && input.level >= 0 && input.level <= 4)) issues.push({ field: "level", code: "INVALID", message: "The ladder has five fixed steps, 0 to 4." });
+    required(issues, "label", input.label);
+    required(issues, "definition", input.definition);
+    return issues;
+  } },
+  "srs.framework.publish": { key: "srs.framework.publish", label: "Publish an SRS framework version", permission: "admin.lookups", reasonRequired: false, transaction: "draft → active, the version in force → superseded + audit + outbox + idempotency", auditAction: "srs_framework_published", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "frameworkId", input.frameworkId);
+    if (!isoDate(input.effectiveFrom)) issues.push({ field: "effectiveFrom", code: "INVALID", message: "Enter the date it takes effect as dd/mm/yyyy." });
+    return issues;
+  } },
   "client.targets.set": { key: "client.targets.set", label: "Set reduction targets", permission: "target.edit", reasonRequired: false, transaction: "versioned target record + benchmark stamp + audit + outbox + idempotency", auditAction: "client_targets_set", validate: (input, context) => { const issues = [...baseIssues(context, false), ...forwardTargetIssues(input)]; required(issues, "clientId", input.clientId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
   "client.logo.set": { key: "client.logo.set", label: "Upload client logo", permission: "client.edit", reasonRequired: false, transaction: "logo asset + client pointer + audit + outbox + idempotency", auditAction: "client_logo_set", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "fileName", input.fileName); if (!oneOf(input.contentType, clientLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG, SVG, JPEG or WebP." }); if (!text(input.dataBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.dataBase64)) issues.push({ field: "dataBase64", code: "INVALID", message: "The logo file could not be read." }); else if (Math.floor(input.dataBase64.length * 3 / 4) > CLIENT_LOGO_MAX_BYTES) issues.push({ field: "dataBase64", code: "TOO_LARGE", message: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` }); return issues; } },
   "client.logo.remove": { key: "client.logo.remove", label: "Remove client logo", permission: "client.edit", reasonRequired: false, transaction: "client pointer cleared (asset retained) + audit + outbox + idempotency", auditAction: "client_logo_removed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); return issues; } },

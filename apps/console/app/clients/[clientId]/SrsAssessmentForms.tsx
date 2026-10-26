@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { GatedButton } from "@nzi/ui";
 import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { orderedRequirements, todayInLondon, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity, type SrsRequirement } from "@nzi/contracts";
+import { orderedRequirements, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity, type SrsRequirement } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
 
 /**
@@ -18,10 +18,7 @@ const errorText = (result: BrowserCommandResult<unknown>) =>
 export function SrsStartForm({ clientId, framework, access, onClose, onSaved }: {
   clientId: string; framework: SrsFramework; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
-  // The prefilled assessment date is the platform's day, so it agrees with the day the
-  // server will record — not the browser's UTC one, which is yesterday after midnight BST.
-  const today = todayInLondon();
-  const [assessedOn, setAssessedOn] = useState(today);
+  // No date to enter (S1, R3): it is opened today, and dated "assessed" on the day every requirement is addressed.
   const [prefill, setPrefill] = useState(true);
   const [notes, setNotes] = useState("");
   const [pending, setPending] = useState(false);
@@ -36,7 +33,7 @@ export function SrsStartForm({ clientId, framework, access, onClose, onSaved }: 
     key.current ??= crypto.randomUUID();
     const result = await postBrowserCommand<{ assessmentId: string; prefilled: number }>(
       `/api/isolated/clients/${encodeURIComponent(clientId)}/srs-assessments`,
-      { assessedOn, notes, prefillFromNziData: prefill }, key.current);
+      { notes, prefillFromNziData: prefill }, key.current);
     setPending(false);
     if (result.state !== "success") { key.current = null; setError(errorText(result)); return; }
     key.current = null;
@@ -49,9 +46,7 @@ export function SrsStartForm({ clientId, framework, access, onClose, onSaved }: 
     <div className="nz-dh"><div className="k">Disclosure</div><h3>Start a readiness assessment</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
     <div className="nz-db">
       <p className="nz-hint" style={{ marginTop: 0 }}>An assessment scores <b>{requirementCount} requirements</b> against <b>{framework.label} version {framework.version}</b>. The version is stamped on it, so a later framework change never restates what was assessed today.</p>
-      <label className="nz-fl"><span>Assessment date</span>
-        <input className="nz-inp" type="date" value={assessedOn} onChange={(event) => setAssessedOn(event.target.value)} />
-      </label>
+      <p className="nz-hint">It is opened today and saved as you go. It is <b>dated as assessed when every requirement has been addressed</b> and you complete it — until then it reads as in progress.</p>
       <label className="nz-check"><input type="checkbox" checked={prefill} onChange={(event) => setPrefill(event.target.checked)} />
         Answer what this client&apos;s record already answers</label>
       <span className="nz-hint">{fromNzi} requirements read the assured emissions, their targets and their intensity metrics. Each is marked as resolved from NZI data, carries the record it came from as evidence, and can be overridden.</span>

@@ -191,7 +191,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} access={access.client} onDrawer={openDrawer} />
         : area === "reporting" ? <ReportingArea workspace={workspace} />
         : area === "strategies" ? <ReductionStrategiesArea workspace={workspace} today={today} access={access.actions} onDrawer={openStrategyDrawer} />
-        : area === "srs" ? <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} />
+        : area === "srs" ? <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} onSaved={srsSaved} />
         : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
         : area === "comms" ? <CommsArea workspace={workspace} />
         : area === "files" ? <FilesArea workspace={workspace} />

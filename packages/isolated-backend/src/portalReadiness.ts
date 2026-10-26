@@ -1,5 +1,5 @@
 import {
-  composeSrsRoadmap, evidenceCoverage, maturityLabel, overallReadiness, pillarReadiness, strategyIsReportable,
+  composeSrsRoadmap, evidenceCoverage, latestAssessed, maturityLabel, overallReadiness, pillarReadiness, strategyIsReportable,
   type ReportSrsRoadmap,
 } from "@nzi/contracts";
 import { listClientStrategies } from "./reductionStrategies";
@@ -79,7 +79,7 @@ export async function getPortalClientReadiness(
   if (!framework) {
     return { state: "none", reason: "No readiness framework is published yet, so there is nothing to assess against." };
   }
-  const assessment = assessments.find((entry) => entry.status === "complete") ?? null;
+  const assessment = latestAssessed(assessments);
   if (!assessment) {
     return {
       state: "none",

@@ -118,6 +118,9 @@ export { createTrainingBooking, getTrainingRun, issueTrainingCertificates, jobHa
 export { getJobAnnualMetrics, type JobAnnualMetricsReadModel } from "./intensityMetricRecords";
 export { deactivateClientIntensityMetric, denominatorFor, listClientIntensityMetrics, listClientIntensityValues, listJobIntensityValues, setClientIntensityMetric, setJobIntensityValue } from "./intensityMetrics";
 export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, resolveNziFacts, setSrsAssessmentItem, startSrsAssessment } from "./srsReadiness";
+export {
+  createSrsFrameworkDraft, listSrsFrameworkVersions, publishSrsFramework, updateSrsMaturityLevel, upsertSrsRequirement, type SrsFrameworkVersion,
+} from "./srsFramework";
 export { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 export * from "./clientLogo";
 export * from "./clientLogoFetch";

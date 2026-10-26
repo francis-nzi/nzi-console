@@ -2,9 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   benchmark, evidenceCoverage, gaps, maturityLabel, overallReadiness, pillarReadiness,
-  prefillFromNzi, readinessTrend, rollup, standardReadiness,
+  isAssessed, latestAssessed, prefillFromNzi, readinessTrend, rollup, srsCompletion, standardReadiness,
   type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity, type SrsNziFacts,
 } from "../src/srsReadiness";
+import { commandGrantForRole, validateCommand } from "../src/index";
 
 /**
  * The readiness resolver. Every surface reads these, so the rules they encode are the
@@ -151,7 +152,7 @@ test("pre-fill claims nothing when the record is empty, and never claims assuran
 test("the trend reads oldest first, across reassessments", () => {
   const assessment = (id: string, on: string, items: SrsAssessmentItem[]): SrsAssessment => ({
     assessmentId: id, clientId: "c", frameworkId: "uk-srs-2026", frameworkVersion: 1, status: "complete",
-    assessedOn: on, assessedBy: "a", completedAt: `${on}T00:00:00Z`, notes: "", version: 1,
+    startedOn: on, assessedOn: on, assessedBy: "a", completedAt: `${on}T00:00:00Z`, notes: "", version: 1,
     sectorKey: null, benchmarkPercentile: null, benchmarkSource: null, items,
   });
   const trend = readinessTrend(framework, [
@@ -160,4 +161,42 @@ test("the trend reads oldest first, across reassessments", () => {
   ]);
   assert.deepEqual(trend.map((point) => point.assessmentId), ["a", "b"]);
   assert.ok(trend[1]!.value > trend[0]!.value, "readiness improves across the two");
+});
+
+/* ── SRS S1: completion, the assessed date, and the framework commands ─────────────────── */
+
+const assessmentOf = (id: string, status: "draft" | "complete", startedOn: string, assessedOn: string | null, items: SrsAssessmentItem[]): SrsAssessment => ({
+  assessmentId: id, clientId: "c", frameworkId: "uk-srs-2026", frameworkVersion: 1, status, startedOn, assessedOn, assessedBy: "a",
+  completedAt: assessedOn ? `${assessedOn}T12:00:00Z` : null, notes: "", version: 1, sectorKey: null, benchmarkPercentile: null, benchmarkSource: null, items,
+});
+
+test("S1 R3: an assessment is ready to complete only when every active requirement has a maturity — Not started counts", () => {
+  const partial = srsCompletion(framework, [item("g1", 0), item("g2", 3), item("m1", 2)]);
+  assert.deepEqual([partial.addressed, partial.total, partial.ready, partial.missing.map((r) => r.id)], [3, 5, partial.ready, ["m2", "s1g1"]]);
+  assert.equal(partial.ready, false);
+  assert.equal(srsCompletion(framework, [item("g1", 0), item("g2", 3), item("m1", 2), item("m2", 1), item("s1g1", 4)]).ready, true, "0 is an answer");
+  assert.equal(srsCompletion(framework, [item("g1", null), item("g2", 3), item("m1", 2), item("m2", 1), item("s1g1", 4)]).ready, false, "a cleared answer is not");
+  assert.equal(srsCompletion(framework, [item("g1", 0), item("g2", 3), item("m1", 2), item("m2", 1), item("s1g1", 4), item("retired", null)]).ready, true, "a retired requirement is not asked");
+});
+
+test("S1 R3: only a completed assessment is 'assessed' — the trend, the portal and the report read nothing else", () => {
+  const done = assessmentOf("done", "complete", "2026-03-01", "2026-03-20", [item("g1", 2)]);
+  const later = assessmentOf("later", "complete", "2026-09-01", "2026-09-10", [item("g1", 4)]);
+  const draft = assessmentOf("draft", "draft", "2026-10-01", null, [item("g1", 1)]);
+  assert.deepEqual(readinessTrend(framework, [draft, later, done]).map((point) => point.assessmentId), ["done", "later"], "oldest first, drafts left off");
+  assert.equal(isAssessed(draft), false);
+  assert.equal(isAssessed(assessmentOf("odd", "complete", "2026-01-01", null, [])), false, "complete without a date is not trusted");
+  assert.equal(latestAssessed([draft, later, done])?.assessmentId, "later");
+  assert.equal(latestAssessed([draft]), null);
+});
+
+test("S1 R1/R5: the framework commands keep the ladder at five fixed steps and a requirement's weight and target on it", () => {
+  const context = { organisationId: "o", actorId: "a", principal: "staff" as const, idempotencyKey: "k", correlationId: "c", grant: commandGrantForRole("admin", "o", "a") };
+  const fields = (key: Parameters<typeof validateCommand>[0], input: never) => validateCommand(key, input, context).map((issue) => `${issue.field}:${issue.code}`);
+  const requirementInput = { frameworkId: "f", standardKey: "S2", pillarKey: "metrics", code: "S2 M9", title: "T", weight: 1, targetMaturity: 2, active: true };
+  assert.deepEqual(fields("srs.framework.requirement.upsert", requirementInput as never), []);
+  assert.deepEqual(fields("srs.framework.requirement.upsert", { ...requirementInput, weight: 0, targetMaturity: 5 } as never), ["weight:INVALID", "targetMaturity:INVALID"]);
+  assert.deepEqual(fields("srs.framework.maturity.update", { frameworkId: "f", level: 5, label: "Beyond", definition: "d" } as never), ["level:INVALID"]);
+  assert.deepEqual(fields("srs.framework.publish", { frameworkId: "f", effectiveFrom: "soon" } as never), ["effectiveFrom:INVALID"]);
+  assert.deepEqual(fields("srs.assessment.start", { clientId: "c" } as never), [], "no date to type: it is dated when it is completed");
 });
