@@ -45,7 +45,7 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
   access: EditAccess;
   onDrawer: (request: StrategyDrawerRequest) => void;
 }) {
-  const { levers, library, plan } = workspace.strategies;
+  const { levers, library, plan, proposals } = workspace.strategies;
   const summary = strategyPlanSummary(plan);
   const groups = strategyPlanByLever(plan, levers);
   const unallocated = strategiesWithoutLever(plan, levers);
@@ -78,6 +78,9 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
   });
 
   return <>
+    {/* A2, R2: the client's proposals wait here for a decision — off the plan, and out of every count below, until approved. */}
+    {proposals.length > 0 ? <ProposalsQueue proposals={proposals} access={access} onDrawer={onDrawer} /> : null}
+
     <section className="nz-panel">
       <CardHead eyebrow="Job" title="Reduction strategies" />
       <div className="nz-card-b">
@@ -179,6 +182,41 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
       top of this screen; it is never measured, and it never appears in a client-facing surface from here.
     </p>
   </>;
+}
+
+/**
+ * Actions A2, R2: what the client has proposed in their portal. Pending ones wait for a consultant to approve (onto the plan,
+ * Agreed) or decline (with the reason the client reads); declined ones stay listed, with that reason, as the record of the
+ * answer. Neither is on the plan, so neither is in its counts, its coverage or its report.
+ */
+function ProposalsQueue({ proposals, access, onDrawer }: { proposals: readonly ClientStrategy[]; access: EditAccess; onDrawer: (request: StrategyDrawerRequest) => void }) {
+  const pending = proposals.filter((proposal) => proposal.proposal?.state === "pending");
+  const declined = proposals.filter((proposal) => proposal.proposal?.state === "declined");
+  return <section className="nz-panel nz-proposals">
+    <CardHead eyebrow="From the client portal" title={pending.length > 0 ? `${pending.length} proposed action${pending.length === 1 ? "" : "s"} to decide` : "Proposed actions"} />
+    <div className="nz-card-b">
+      {pending.length > 0 ? <p className="sub" style={{ marginTop: 0 }}>The client proposed these. They are not on the plan until you approve them; the client sees each as &ldquo;with your adviser&rdquo;.</p> : null}
+      {pending.map((proposal) => <div className="nz-action-row" key={proposal.id}>
+        <span className="nz-action-icon"><NziIcon name="target" size={18} /></span>
+        <div className="nz-action-main">
+          <div className="nm">{proposal.title}</div>
+          <div className="sub"><span className="nz-tag">{strategyScopeLabel(proposal.scope)}</span> proposed {proposal.proposal ? formatDate(proposal.proposal.proposedOn) : ""}</div>
+          {proposal.proposal?.note ? <div className="sub nz-proposal-note">&ldquo;{proposal.proposal.note}&rdquo;</div> : null}
+        </div>
+        <GatedButton className="nz-btn sm pri" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
+          reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "strategy-proposal", strategy: proposal })}>Review</GatedButton>
+      </div>)}
+      {declined.length > 0 ? <details className="nz-proposals-declined">
+        <summary>{declined.length} not taken forward</summary>
+        {declined.map((proposal) => <div className="nz-action-row" key={proposal.id}>
+          <div className="nz-action-main">
+            <div className="nm">{proposal.title}</div>
+            <div className="sub">Declined {proposal.proposal?.decidedOn ? formatDate(proposal.proposal.decidedOn) : ""} · {proposal.proposal?.decisionReason}</div>
+          </div>
+        </div>)}
+      </details> : null}
+    </div>
+  </section>;
 }
 
 function LeverGroup({ lever, strategies, collapsed, onToggle, codes, today, access, onDrawer }: {

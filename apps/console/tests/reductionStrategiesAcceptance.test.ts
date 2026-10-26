@@ -303,10 +303,14 @@ describe("strategy deadline signals", () => {
     // nothing: what the console and the portal show is derived from the date the client
     // set, so a surface that started writing would have quietly become a second source of
     // truth about what is overdue.
-    for (const source of [area, portal, portalModel]) {
+    for (const source of [area, portalModel]) {
       for (const verb of ["INSERT", "UPDATE ", "postBrowserCommand", "patchBrowserCommand"]) {
         assert.ok(!source.includes(verb), `a read-time signal must not write (${verb})`);
       }
+    }
+    // A2: the portal view now writes — but only the client's own plan commands, never anything about the signal.
+    for (const target of portal.match(/(post|patch)BrowserCommand<[^>]*>\("[^"]+"/g) ?? []) {
+      assert.match(target, /"\/api\/portal\/strategies(\/proposals)?"$/, `the portal writes only to its plan routes: ${target}`);
     }
     // And neither surface reads the send log: a reminder having gone out is not the same
     // fact as a date having passed, and showing one for the other would be a lie on a slow
@@ -325,19 +329,23 @@ describe("strategy deadline signals", () => {
     assert.match(area, /today: string;/);
   });
 
-  it("keeps the portal read-only and session-scoped", () => {
+  it("keeps the portal session-scoped, its writes behind their flag, and no delete", () => {
     assert.match(portalRoute, /user\.clientId/);
     assert.doesNotMatch(portalRoute, /params|searchParams/);
-    for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
-      assert.doesNotMatch(portalRoute, new RegExp(`export async function ${method}\b`), method);
-    }
+    // A2: reads always; the client's writes (add, update) only with `portal-plan-participation` on. There is no delete —
+    // taking an action off a plan is the adviser's, with a reason. (`\\b`, not `\b`: in a template literal the latter is a
+    // backspace, and the regex would never match anything.)
+    for (const method of ["PUT", "DELETE"]) assert.doesNotMatch(portalRoute, new RegExp(`export async function ${method}\\b`), method);
+    for (const method of ["GET", "POST", "PATCH"]) assert.match(portalRoute, new RegExp(`export async function ${method}\\b`), method);
+    assert.equal(portalRoute.split("requirePortalPlanParticipation();").length - 1, 2, "both writes are behind the flag");
     assert.match(portalRoute, /withTenantRead/);
   });
 
   it("shows the client only what the report would show them", () => {
     // include_in_report is the consultant's control over what this client is presented
-    // with; a strategy held back may be unagreed or sensitive, so the portal fails closed.
-    assert.match(portalModel, /strategy\.active && strategy\.includeInReport/);
+    // with; a strategy held back may be unagreed or sensitive, so the portal fails closed. A2: and only what is on the
+    // plan (a client's proposal once approved), never a declined action (A1 review note).
+    assert.match(portalModel, /strategyOnPlan\(strategy\) && strategy\.includeInReport && strategy\.status !== "declined"/);
   });
 
   it("distinguishes loading, failed and nothing-due in the portal", () => {
@@ -469,11 +477,11 @@ describe("strategy drawers follow the side-panel anatomy", () => {
   const count = (source: string, needle: string) => source.split(needle).length - 1;
 
   it("keeps the primary action reachable: fixed header, scrolling body, pinned footer", () => {
-    // Four views — the library list, its confirm step, bespoke, edit — each with exactly one
+    // Five views — the library list, its confirm step, bespoke, edit, and (A2) a client's proposal — each with exactly one
     // header, one scrollable body and one pinned footer.
-    assert.equal(count(forms, 'className="nz-db"'), 4, "every drawer view has a scrollable body");
-    assert.equal(count(forms, 'className="nz-df"'), 4, "and a pinned footer");
-    assert.equal(count(forms, "<DrawerHeader "), 4, "and the fixed eyebrow + title + subtitle header");
+    assert.equal(count(forms, 'className="nz-db"'), 5, "every drawer view has a scrollable body");
+    assert.equal(count(forms, 'className="nz-df"'), 5, "and a pinned footer");
+    assert.equal(count(forms, "<DrawerHeader "), 5, "and the fixed eyebrow + title + subtitle header");
     // The old single block that could not scroll is gone.
     assert.ok(!forms.includes("nz-drawer-form"), "no non-scrolling form wrapper");
     assert.ok(!forms.includes("nz-drawer-actions"), "no in-body action row that scrolls away");
@@ -482,7 +490,7 @@ describe("strategy drawers follow the side-panel anatomy", () => {
   });
 
   it("shows an action's error next to the action", () => {
-    assert.equal(count(forms, "<FooterError error={error} />"), 4);
+    assert.equal(count(forms, "<FooterError error={error} />"), 5);
     assert.ok(css.includes(".nz-df>.nz-banner{flex:1 0 100%;margin:0}"));
   });
 
@@ -527,16 +535,17 @@ describe("the portal plan view", () => {
   const route = read("apps/console/app/api/portal/strategies/route.ts");
   const home = read("apps/console/app/portal/PortalHome.tsx");
 
-  it("is read-only — there is no way to change the plan from the portal", () => {
-    // The plan is agreed with the consultant; a portal write would fork one plan into two.
-    for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
-      assert.doesNotMatch(route, new RegExp(`export async function ${method}\b`), method);
-    }
-    for (const verb of ["postBrowserCommand", "patchBrowserCommand", "INSERT", "UPDATE "]) {
-      assert.ok(!portal.includes(verb), `the view must not write (${verb})`);
-      assert.ok(!model.includes(verb), `nor the read model (${verb})`);
-    }
-    assert.ok(!portal.includes("<button"), "and offers no control that implies it could");
+  it("lets the client act only through the plan's own commands, in their own session, and never in the preview", () => {
+    // Actions A2: the plan is still one plan — the client's writes are commands into it, never a second copy. The read
+    // model writes nothing; the view acts only when it fetched its own model (not the staff preview's) and participation
+    // is on; there is no delete anywhere on the portal side.
+    for (const verb of ["postBrowserCommand", "patchBrowserCommand", "INSERT", "UPDATE "]) assert.ok(!model.includes(verb), `the read model does not write (${verb})`);
+    assert.match(portal, /const interactive=provided===undefined&&participation!==null;/);
+    assert.doesNotMatch(route, /export async function DELETE\b/);
+    assert.ok(!portal.includes("DELETE") && !portal.includes("deleteBrowserCommand"), "no delete control");
+    // Agreeing, declining and alignment are the adviser's: the view offers only the owner's moves the model computed.
+    assert.match(portal, /strategy\.nextStatuses\.map/);
+    assert.match(model, /nextStatuses: yours \? strategyClientNextStatuses\(strategy\.status\) : \[\]/);
   });
 
   it("resolves live rather than from a frozen composition", () => {
@@ -551,7 +560,7 @@ describe("the portal plan view", () => {
   });
 
   it("applies the one client-facing gate and no second flag", () => {
-    assert.match(model, /strategy\.active && strategy\.includeInReport/);
+    assert.match(model, /strategyOnPlan\(strategy\) && strategy\.includeInReport/);
     // One flag, one meaning. A portal-only visibility flag would let the two surfaces
     // disagree about what the client was told.
     assert.ok(!model.includes("includeInPortal"), "no portal-only visibility flag");
@@ -564,11 +573,13 @@ describe("the portal plan view", () => {
     for (const shape of ["PortalStrategyHighlight", "PortalPlanStrategy"]) {
       const block = new RegExp(`export type ${shape} = \\{[\\s\\S]*?\\n\\};`).exec(model)?.[0] ?? "";
       assert.ok(block.length > 0, `${shape} is declared`);
-      assert.doesNotMatch(block, /^\s*owner\??:/m, `${shape} carries no owner`);
       assert.doesNotMatch(block, /^\s*notes\??:/m, `${shape} carries no notes`);
     }
-    assert.doesNotMatch(portal, /\.owner/, "and the view never reaches for it");
-    assert.doesNotMatch(portal, /\.notes/, "nor the consultant's working notes");
+    // The highlight still names no owner. The plan row names one only since A1/A2, and only one of the client's own
+    // contacts — 0075's free-text handle (a consultant's) never crosses.
+    assert.doesNotMatch(/export type PortalStrategyHighlight = \{[\s\S]*?\n\};/.exec(model)?.[0] ?? "", /^\s*owner\??:/m);
+    assert.match(model, /owner: strategy\.ownerContactId !== null \? strategy\.owner : "",/);
+    assert.doesNotMatch(portal, /legacy|\.notes/, "nor the consultant's working notes");
   });
 
   it("states an empty plan rather than drawing an empty list", () => {
@@ -583,7 +594,7 @@ describe("the portal plan view", () => {
   });
 
   it("groups by lever with the shared collapsible, not a bespoke one", () => {
-    assert.match(portal, /import \{Collapsible\} from "@nzi\/ui"/);
+    assert.match(portal, /import \{Collapsible[,}][^}]*\}? from "@nzi\/ui"/);
     assert.match(model, /strategyPlanByLever\(plan, levers\)/);
     assert.match(model, /strategiesWithoutLever\(plan, levers\)/);
     assert.match(model, /label: "Other"/);

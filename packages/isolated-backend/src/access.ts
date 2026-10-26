@@ -7,7 +7,7 @@
 // command touches is in the caller's organisation (assert_client_access /
 // assert_job_access); and (4) an `own_clients` grant is exercised only on a client
 // the caller owns. UI gating reads the same capabilities but is never relied on.
-import { grantFor, grantsAllow, staffCapabilityOf, type Capability, type CapabilityGrant, type CapabilityScope, type CommandContext, type CommandInputMap, type CommandKey } from "@nzi/contracts";
+import { commandDefinitions, grantFor, grantsAllow, staffCapabilityOf, type Capability, type CapabilityGrant, type CapabilityScope, type CommandContext, type CommandInputMap, type CommandKey } from "@nzi/contracts";
 import { AuthorizationError } from "./auth";
 import type { Queryable } from "./postgres";
 
@@ -65,6 +65,10 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "portal.scope.row.create": job,
   "portal.scope.row.update": job,
   "portal.scope.row.deactivate": job,
+  // Actions A2: the client's own plan — the session's client, held to it in `authorizePortalCommand`.
+  "portal.strategy.add": client,
+  "portal.strategy.propose": client,
+  "portal.strategy.update": clientStrategy,
   "scope.review.approve": job,
   "scope.review.reject": job,
   "report.publish": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
@@ -193,6 +197,10 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.strategy.update": clientStrategy,
   "client.strategy.remove": clientStrategy,
   "client.strategy.estimate.set": clientStrategy,
+  "client.strategy.proposal.approve": clientStrategy,
+  "client.strategy.proposal.decline": clientStrategy,
+  // The library is organisation reference data; the handler holds it to an approved proposal.
+  "strategy.library.promote": organisation,
   "srs.assessment.start": client,
   "srs.assessment.item.set": srsAssessment,
   "srs.assessment.complete": srsAssessment,
@@ -354,6 +362,7 @@ async function authorizePortalCommand<K extends CommandKey>(db: Queryable, key: 
   if (context.principal !== "portal" || !context.portal) throw new AuthorizationError("portal.dataentry", "Only a client portal user can make this entry.");
   if (context.portal.portalUserId !== context.actorId) throw new AuthorizationError("tenant", "The command's portal identity belongs to a different user.");
   const subject = subjectOf[key](input);
+  if ((commandDefinitions[key] as { permission: string }).permission === "portal.plan") return authorizePortalPlanCommand(db, subject, context);
   if (subject.kind !== "job") throw new AuthorizationError("tenant", TENANT_REFUSED);
   const access = await resolveAccess(db, context.organisationId, context.actorId, "job", subject.id);
   if (access.clientId !== context.portal.clientId) throw new AuthorizationError("tenant", "This job is not available to your account.");
@@ -366,6 +375,24 @@ async function authorizePortalCommand<K extends CommandKey>(db: Queryable, key: 
   if (!grant) throw new AuthorizationError("tenant", "This job is not available to your account.");
   if (!grant.open) throw new AuthorizationError("portal.dataentry", "Data entry for this job is not open just now.");
   // A portal user owns no client: no own-clients rule applies, and the handler's checks are the profile's.
+  return { ...access, ownedByActor: false };
+}
+
+/**
+ * Actions A2: a client's write on their own reduction plan. No job grant or data-entry window applies — the plan belongs
+ * to the client, not to a job — so the rule is the portal session itself: an **active** portal user, writing on **their
+ * own client's** plan, and nothing else. The record the command names is resolved here, and must be that client's; the
+ * handler then holds the owner's half of the ladder (`portalStrategyCommands.ts`).
+ */
+async function authorizePortalPlanCommand(db: Queryable, subject: Subject, context: CommandContext): Promise<ClientAccess> {
+  const portal = context.portal!;
+  if (subject.kind !== "client" && subject.kind !== "clientStrategy") throw new AuthorizationError("tenant", TENANT_REFUSED);
+  const access = await resolveAccess(db, context.organisationId, context.actorId, subject.kind, subject.id);
+  if (access.clientId !== portal.clientId) throw new AuthorizationError("tenant", "That is not on your plan.");
+  const user = (await db.query<{ status: string }>(
+    `SELECT status FROM nzi_console.portal_users WHERE organisation_id = $1 AND portal_user_id = $2 AND client_id = $3`,
+    [context.organisationId, portal.portalUserId, portal.clientId])).rows[0];
+  if (user?.status !== "active") throw new AuthorizationError("tenant", "Your portal account is not active.");
   return { ...access, ownedByActor: false };
 }
 

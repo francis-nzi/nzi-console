@@ -8,8 +8,9 @@ import {
   requirementsByPillar,
   strategyProgressForStatus, strategyScopeLabel, strategyScopes, strategyControlLevelLabels, strategyControlLevels,
   strategyNextStatuses, strategyOriginLabels, strategyStatusForProgress, strategyStatusLabels,
-  type ClientContactReadModel, type SrsFramework, type StrategyLibraryEntry, type StrategyScope, type StrategyControlLevel, type StrategyStatus, type ClientStrategy, type LibraryStrategy, type TargetBenchmark,
+  type ClientContactReadModel, type Lever, type SrsFramework, type StrategyLibraryEntry, type StrategyScope, type StrategyControlLevel, type StrategyStatus, type ClientStrategy, type LibraryStrategy, type TargetBenchmark,
 } from "@nzi/contracts";
+import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
 
 /**
@@ -484,6 +485,148 @@ export function StrategyEditForm({ action, framework, contacts, benchmark, libra
               : srsRequirementIds.length === 0 ? "Align this strategy to at least one UK SRS requirement." : undefined}
             reasonClassName="hint nz-gated-reason"
             onClick={() => void save()}>{pending ? "Saving…" : "Save"}</GatedButton>
+        </>}
+    </div>
+  </>;
+}
+
+/**
+ * A client's proposed action (Actions A2, R2/R3): the consultant rules on it, once.
+ *
+ * **Approve** settles it as a plan action — its wording, scope, control level and category as the consultant judges them,
+ * what it advances (the alignment every action on a plan carries), who owns it and by when — and it joins the plan
+ * **Agreed**. **Decline** keeps it off the plan, with a reason the client reads in their portal ("Not taken forward").
+ *
+ * **Also add to the library** is offered only to an Admin holding the library capability: a deliberate copy, made after
+ * the approval succeeds, so the library entry is always of an approved action. It never happens on its own.
+ */
+export function StrategyProposalForm({ proposal, framework, contacts, levers, canPromote, access, onClose, onSaved }: {
+  proposal: ClientStrategy; framework: SrsFramework | null; contacts: readonly ClientContactReadModel[];
+  levers: readonly Lever[]; canPromote: boolean; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
+}) {
+  const [title, setTitle] = useState(proposal.title);
+  const [scope, setScope] = useState<StrategyScope>(proposal.scope);
+  const [controlLevel, setControlLevel] = useState<StrategyControlLevel>(proposal.controlLevel);
+  const [category, setCategory] = useState(proposal.category);
+  const [ownerContactId, setOwnerContactId] = useState("");
+  const [targetDate, setTargetDate] = useState("");
+  const [includeInReport, setIncludeInReport] = useState(true);
+  const [srsRequirementIds, setSrsRequirementIds] = useState<string[]>([]);
+  const [promote, setPromote] = useState(false);
+  const [libraryKey, setLibraryKey] = useState(proposal.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60));
+  const [leverIds, setLeverIds] = useState<string[]>([]);
+  const [declining, setDeclining] = useState(false);
+  const [reason, setReason] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const note = proposal.proposal?.note ?? "";
+
+  async function approve() {
+    setPending(true); setError(null);
+    const result = await patchBrowserCommand<{ version: number }>(
+      `/api/isolated/clients/${encodeURIComponent(proposal.clientId)}/strategies/proposals`,
+      { clientStrategyId: proposal.id, expectedVersion: proposal.version, title, scope, controlLevel, category, srsRequirementIds, includeInReport,
+        ownerContactId: ownerContactId || null, targetDate: targetDate || null }, crypto.randomUUID());
+    if (result.state !== "success") { setPending(false); setError(errorText(result)); return; }
+    if (promote) {
+      const promoted = await postBrowserCommand<{ strategyId: string }>("/api/isolated/reduction-strategies/promote",
+        { clientStrategyId: proposal.id, key: libraryKey, leverIds, description: note }, crypto.randomUUID());
+      setPending(false);
+      // The approval stands either way; a failed copy is said plainly rather than undoing the decision.
+      if (promoted.state !== "success") { onSaved(`${title.trim()} approved and agreed — but not added to the library: ${errorText(promoted)}`); return; }
+      onSaved(`${title.trim()} approved, agreed, and added to the library.`);
+      return;
+    }
+    setPending(false);
+    onSaved(`${title.trim()} approved — it is on the plan as Agreed.`);
+  }
+
+  async function decline() {
+    setPending(true); setError(null);
+    const result = await putBrowserCommandWithReason<{ version: number }>(
+      `/api/isolated/clients/${encodeURIComponent(proposal.clientId)}/strategies/proposals`,
+      { clientStrategyId: proposal.id, expectedVersion: proposal.version, reason }, crypto.randomUUID(), reason);
+    setPending(false);
+    if (result.state !== "success") { setError(errorText(result)); return; }
+    onSaved("Proposal declined. The client sees it as not taken forward, with your reason.");
+  }
+
+  const activeLevers = levers.filter((lever) => lever.active);
+  const toggleLever = (id: string) => setLeverIds((now) => now.includes(id) ? now.filter((value) => value !== id) : [...now, id]);
+
+  return <>
+    <DrawerHeader kicker={`Proposed by the client${proposal.proposal ? ` · ${formatDate(proposal.proposal.proposedOn)}` : ""}`}
+      title={proposal.title} subtitle="Approve it onto the plan as Agreed, or decline it with a reason the client will read." />
+    <div className="nz-db">
+      {note !== "" ? <div className="nz-banner"><b>What the client wrote</b><p className="sub" style={{ margin: "4px 0 0", whiteSpace: "pre-wrap" }}>{note}</p></div> : null}
+      {declining
+        ? <label className="nz-fl"><span>Why is it not being taken forward?</span>
+          <textarea className="nz-notes" rows={4} value={reason} disabled={pending} onChange={(event) => setReason(event.target.value)}
+            placeholder="e.g. Already covered by the site-wide LED retrofit on your plan." />
+          <small className="hint">The client reads this in their portal, beside &ldquo;Not taken forward&rdquo;.</small></label>
+        : <>
+          <label className="nz-fl"><span>The action, as it will appear on the plan</span>
+            <input className="nz-inp" value={title} disabled={pending} onChange={(event) => setTitle(event.target.value)} /></label>
+          <div className="nz-two">
+            <label className="nz-fl"><span>Scope</span>
+              <select className="nz-sel" value={scope} disabled={pending} onChange={(event) => setScope(event.target.value as StrategyScope)}>
+                {strategyScopes.map((value) => <option key={value} value={value}>{strategyScopeLabel(value)}</option>)}
+              </select></label>
+            <label className="nz-fl"><span>How much do they control?</span>
+              <select className="nz-sel" value={controlLevel} disabled={pending} onChange={(event) => setControlLevel(event.target.value as StrategyControlLevel)}>
+                {strategyControlLevels.map((value) => <option key={value} value={value}>{strategyControlLevelLabels[value]}</option>)}
+              </select></label>
+          </div>
+          <div className="nz-two">
+            <label className="nz-fl"><span>Category</span>
+              <input className="nz-inp" value={category} disabled={pending} onChange={(event) => setCategory(event.target.value)} placeholder="e.g. Heating" /></label>
+            <OwnerPicker contacts={contacts} value={ownerContactId} onChange={setOwnerContactId} disabled={pending} />
+          </div>
+          <label className="nz-fl"><span>Target date</span>
+            <input className="nz-inp" type="date" value={targetDate} disabled={pending} onChange={(event) => setTargetDate(event.target.value)} /></label>
+          <label className="nz-fl nz-check"><input type="checkbox" checked={includeInReport} disabled={pending} onChange={(event) => setIncludeInReport(event.target.checked)} />
+            <span>Include in report</span></label>
+          <small className="hint">Shown on the client&rsquo;s portal plan, and in reports issued from now on (as Agreed).</small>
+          {framework === null ? <NoFramework />
+            : <SrsAlignmentPicker framework={framework} selected={srsRequirementIds} onChange={setSrsRequirementIds} disabled={pending} />}
+
+          {canPromote ? <div className="nz-srs-picker">
+            <label className="nz-fl nz-check"><input type="checkbox" checked={promote} disabled={pending} onChange={(event) => setPromote(event.target.checked)} />
+              <span>Also add it to the library, for every client</span></label>
+            <small className="hint">A copy, made once the approval succeeds — with this wording, scope and alignment as its defaults. This client&rsquo;s own action stays theirs.</small>
+            {promote ? <>
+              <label className="nz-fl"><span>Library key</span>
+                <input className="nz-inp" value={libraryKey} disabled={pending} onChange={(event) => setLibraryKey(event.target.value)} /></label>
+              <div className="nz-fl"><span>Levers it sits under</span>
+                <div className="nz-filters">{activeLevers.map((lever) => <button key={lever.id} type="button" aria-pressed={leverIds.includes(lever.id)}
+                  className={leverIds.includes(lever.id) ? "on" : undefined} disabled={pending} onClick={() => toggleLever(lever.id)}>{lever.title}</button>)}</div>
+              </div>
+            </> : null}
+          </div> : null}
+        </>}
+    </div>
+    <div className="nz-df">
+      <FooterError error={error} />
+      {declining
+        ? <>
+          <button type="button" className="nz-btn" onClick={() => { setDeclining(false); setReason(""); }}>Back</button>
+          <span className="sp" />
+          <GatedButton className="nz-btn danger" blocked={access.state !== "allowed" || pending || reason.trim() === ""}
+            blockedReason={access.state !== "allowed" ? access.reason : reason.trim() === "" ? "Say why — the client reads it." : undefined}
+            reasonClassName="hint nz-gated-reason" onClick={() => void decline()}>{pending ? "Declining…" : "Decline proposal"}</GatedButton>
+        </>
+        : <>
+          <GatedButton className="nz-btn danger" blocked={access.state !== "allowed" || pending}
+            blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason"
+            onClick={() => setDeclining(true)}>Decline…</GatedButton>
+          <span className="sp" />
+          <button type="button" className="nz-btn" onClick={onClose}>Cancel</button>
+          <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || pending || title.trim() === "" || srsRequirementIds.length === 0 || (promote && libraryKey.trim() === "")}
+            blockedReason={access.state !== "allowed" ? access.reason
+              : title.trim() === "" ? "Say what the action is."
+                : srsRequirementIds.length === 0 ? "Align it to at least one UK SRS requirement — it joins the plan."
+                  : promote && libraryKey.trim() === "" ? "Give the library entry a key." : undefined}
+            reasonClassName="hint nz-gated-reason" onClick={() => void approve()}>{pending ? "Approving…" : "Approve and agree"}</GatedButton>
         </>}
     </div>
   </>;

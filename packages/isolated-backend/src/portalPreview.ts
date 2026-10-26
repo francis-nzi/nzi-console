@@ -77,7 +77,7 @@ export type PortalPreviewSurface = (typeof PORTAL_PREVIEW_SURFACES)[number];
 export async function getPortalPreview(
   pool: PoolLike,
   principal: StaffPrincipal,
-  input: { clientId: string; today: string; jobId?: string | null; surface?: PortalPreviewSurface },
+  input: { clientId: string; today: string; jobId?: string | null; surface?: PortalPreviewSurface; /** A2: the plan as the client sees it with `portal-plan-participation` on — shown, never actionable, here. */ planParticipation?: boolean },
   now = new Date(),
 ): Promise<PortalPreviewReadModel> {
   const jobId = input.jobId?.trim() || null;
@@ -99,7 +99,7 @@ export async function getPortalPreview(
     const found = client.rows[0];
     if (!found) throw new PortalPreviewError("That client is unavailable.");
 
-    const strategies = await getPortalClientStrategies(db, { clientId: input.clientId, today: input.today });
+    const strategies = await getPortalClientStrategies(db, { clientId: input.clientId, today: input.today, participation: input.planParticipation === true });
     const { shortName: organisationShortName } = await readOrganisationBrand(db, principal.organisationId);
     const readiness = await getPortalClientReadiness(db, { clientId: input.clientId, organisationShortName });
     const profile = await portalProfileStaffView(db, input.clientId);

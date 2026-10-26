@@ -22,7 +22,7 @@ import { ReportingTemplateForm, ReportingTemplateInitialiseForm } from "./Client
 import { ReportProfileForm } from "./ClientReportProfile";
 import { SrsArea } from "./SrsArea";
 import { ReductionStrategiesArea } from "./ReductionStrategiesArea";
-import { StrategyBespokeForm, StrategyEditForm, StrategyLibraryForm } from "./StrategyForms";
+import { StrategyBespokeForm, StrategyEditForm, StrategyLibraryForm, StrategyProposalForm } from "./StrategyForms";
 import { strategyDrawerLabel, type StrategyDrawerRequest } from "./strategyDrawers";
 import { SrsItemForm, SrsStartForm } from "./SrsAssessmentForms";
 import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
@@ -81,6 +81,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   };
 
   const canPreviewPortal = useHasCapability("support.portal_impersonate", client.ownerUserId);
+  // Actions A2, R3: promoting a client's approved proposal into the library is the library's own capability.
+  const canPromoteToLibrary = useHasCapability("admin.lookups") && writeEnabled;
   // CLIENT-12 — the History area is offered only to whoever may read this client's audit history.
   const canReadHistory = useHasCapability("audit.view", client.ownerUserId);
   // Portal data-entry phase 1: behind `portal-management` (ships dark), and only to a holder of portal.admin on this client.
@@ -241,6 +243,10 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           benchmark={workspace.targets.benchmarkInForce}
           libraryDefault={workspace.strategies.library.find((entry) => entry.id === strategyDrawer.strategy.strategyId) ?? null}
           access={access.actions}
+          onClose={closeStrategyDrawer} onSaved={(text: string) => { closeStrategyDrawer(); strategySaved(text); }} /> : null}
+      {strategyDrawer?.kind === "strategy-proposal"
+        ? <StrategyProposalForm key={strategyDrawer.strategy.id} proposal={strategyDrawer.strategy} framework={workspace.srs.framework} contacts={contacts}
+          levers={workspace.strategies.levers} canPromote={canPromoteToLibrary} access={access.actions}
           onClose={closeStrategyDrawer} onSaved={(text: string) => { closeStrategyDrawer(); strategySaved(text); }} /> : null}
     </Drawer>
   </AppShell>;

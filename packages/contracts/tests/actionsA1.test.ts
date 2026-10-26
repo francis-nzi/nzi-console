@@ -14,7 +14,7 @@ import {
 const context: CommandContext = { organisationId: "org-nzi", actorId: "user-1", principal: "staff", idempotencyKey: "idem-1", correlationId: "corr-1", grant: commandGrantForRole("admin", "org-nzi", "user-1") };
 const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", leverIds: ["lever-energy"], srsRequirementIds: ["req-1"], includeInReport: true, strategyId: null, title: id, scope: "2", category: "",
-  controlLevel: "direct_control", iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, targetDate: null,
+  controlLevel: "direct_control", iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, proposal: null, targetDate: null,
   progressPct: 0, notes: "", active: true, version: 1, estimate: null, ...over,
 });
 const lever = (id: string, ordering: number, active = true): Lever => ({ id, key: id, title: id, iconKey: "target", ordering, active });

@@ -1,4 +1,5 @@
 import { getPortalPreview, PORTAL_PREVIEW_SURFACES, PortalPreviewError, type PortalPreviewSurface } from "@nzi/isolated-backend";
+import { portalFeatureEnabled } from "../../../../../lib/portalFlags";
 import { authFailure } from "../../../../../lib/authResponse";
 import { isolatedPool } from "../../../../../lib/isolatedDatabase";
 import { currentStaff } from "../../../../../lib/staffSession";
@@ -31,6 +32,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ clie
     const preview = await getPortalPreview(isolatedPool(), principal, {
       clientId, today: londonToday(), jobId: query.get("jobId"),
       surface: (PORTAL_PREVIEW_SURFACES as readonly string[]).includes(surface ?? "") ? surface as PortalPreviewSurface : undefined,
+      planParticipation: portalFeatureEnabled("portal-plan-participation"),
     });
     return Response.json(preview, { headers: { "Cache-Control": "private, no-store" } });
   } catch (error) {

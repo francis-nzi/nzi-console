@@ -19,7 +19,7 @@ export {
 export {
   getPortalClientStrategies,
   type PortalPlanGroup, type PortalPlanRequirement, type PortalPlanStrategy,
-  type PortalStrategiesReadModel, type PortalStrategyHighlight,
+  type PortalStrategiesReadModel, type PortalStrategyHighlight, type PortalPlanParticipation, type PortalLibraryOption, type PortalContactOption, type PortalProposal,
 } from "./portalStrategies";
 export { verifyTrainingCertificate, type CertificateVerification } from "./certificateVerification";
 export {
@@ -144,6 +144,14 @@ export {
   type AssignStrategyResult, type DeactivateStrategyResult, type RemoveStrategyResult,
   type UpdateStrategyResult, type UpsertStrategyResult,
 } from "./reductionStrategies";
+export {
+  approveClientProposal, declineClientProposal, promoteClientProposal,
+  type ApproveProposalResult, type DeclineProposalResult, type PromoteProposalResult,
+} from "./strategyProposals";
+export {
+  addPortalStrategy, proposePortalStrategy, updatePortalStrategy,
+  type PortalAddStrategyResult, type PortalProposeStrategyResult, type PortalUpdateStrategyResult,
+} from "./portalStrategyCommands";
 export {
   composeReport, freezeReportComposition, getReportComposition, previewReportComposition,
   type FreezeCompositionResult, type ReportCompositionPreview, type SnapshotForComposition,

@@ -117,12 +117,18 @@ describe("the permission matrix (NZC-022)", () => {
   it("names only enum capabilities on commands, and no legacy or ad-hoc permission string survives in source", () => {
     // Portal data-entry phase 2: a portal command names no staff capability — it runs only for a portal principal, under its
     // access grant, window and profile — and says so; every other command names an enum capability.
+    // Actions A2 adds the client's own plan (`portal.plan`): held to the session's client, never a job grant.
     for (const definition of Object.values(commandDefinitions)) {
-      if (definition.principal === "portal") assert.equal(definition.permission, "portal.dataentry", definition.key);
-      else assert.ok(isCapability(definition.permission), definition.key);
+      if (definition.principal === "portal") {
+        assert.equal(definition.permission, definition.key.startsWith("portal.strategy.") ? "portal.plan" : "portal.dataentry", definition.key);
+      } else assert.ok(isCapability(definition.permission), definition.key);
     }
     assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.principal === "portal").map((definition) => definition.key).sort(),
-      ["portal.scope.row.create", "portal.scope.row.deactivate", "portal.scope.row.update"], "only the client's three writes are portal commands");
+      ["portal.scope.row.create", "portal.scope.row.deactivate", "portal.scope.row.update", "portal.strategy.add", "portal.strategy.propose", "portal.strategy.update"],
+      "only the client's three data-entry writes and three plan writes are portal commands");
+    // And the staff side of A2 names enum capabilities: the plan's, and the library's for promotion.
+    assert.deepEqual(["client.strategy.proposal.approve", "client.strategy.proposal.decline", "strategy.library.promote"].map((key) => commandDefinitions[key as keyof typeof commandDefinitions].permission),
+      ["strategy.manage", "strategy.manage", "admin.lookups"]);
     const legacy = /["'`](financials\.edit|emissions\.data\.edit|emissions\.review|reports\.publish|clients\.create|jobs\.create|jobs\.stage\.change|datasets\.override|portal\.access\.manage|sales\.convert|staff\.access\.manage)["'`]/;
     const roots = ["../src", "../../contracts/src", "../../../apps/console/app"].map((path) => resolve(here, path));
     const offenders: string[] = [];

@@ -34,3 +34,7 @@ export function portalCommandFailure(error: unknown): Response {
 export class PortalDataOffError extends Error { constructor() { super("Not found."); this.name = "PortalDataOffError"; } }
 export function requirePortalData(): void { if (!portalFeatureEnabled("portal-data")) throw new PortalDataOffError(); }
 export const portalDataOff = () => Response.json({ code: "NOT_FOUND", message: "Not found." }, { status: 404 });
+
+/** Actions A2: the client's plan writes are dark until `portal-plan-participation` is on (dark by absence, as #503 established). */
+export class PortalPlanParticipationOffError extends Error { constructor() { super("Not found."); this.name = "PortalPlanParticipationOffError"; } }
+export function requirePortalPlanParticipation(): void { if (!portalFeatureEnabled("portal-plan-participation")) throw new PortalPlanParticipationOffError(); }

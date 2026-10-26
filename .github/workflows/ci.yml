@@ -462,6 +462,14 @@ jobs:
       # the report plan composes only included, agreed-or-beyond actions while the plan read shows them all; no money.
       - name: The action library, the plan's status ladder, owners who are contacts, and what a report composes
         run: npx tsx --test packages/isolated-backend/tests/actionsA1Real.test.ts
+      # 0188 (Actions A2): from the portal a client adds a library action (origin plan, Proposed, the library's alignment),
+      # proposes a custom one (pending, off the plan, unaligned, not reportable), nominates an owner from their own contacts
+      # (another client's refused by the command and the key), and — only as the owner — moves date, progress and status
+      # along the owner's half of the ladder; staff approve (aligned, Agreed) or decline with the reason the client reads,
+      # once (a trigger holds it); an approved proposal is promoted into the library under admin.lookups, once; another
+      # client's user, a disabled one and a portal principal on a staff command are refused; all audited; no staff identity.
+      - name: The client's hand in their plan, and staff's gate on proposals and the library
+        run: npx tsx --test packages/isolated-backend/tests/actionsA2Real.test.ts
       # 0187 (SRS S1): assessments as they stood before — a draft's typed date moves to started_on, a completed one keeps
       # its own; an assessment opens dated today, one at a time, pre-filled from the client's assured record; completion
       # is refused until every requirement is addressed and dates it; weighted rollups on the 0–4 ladder; a trend of
