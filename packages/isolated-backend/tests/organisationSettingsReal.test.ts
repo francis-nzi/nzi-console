@@ -37,7 +37,7 @@ describe("Organisation settings, against a real database", { skip: TEST_DATABASE
   const auditOf = (auditEventId: string) => q(`SELECT action, reason, before_json, after_json FROM nzi_console.audit_events WHERE audit_event_id = $1`, [auditEventId]).then((rows) => rows[0]);
   const blank: OrganisationProfileFields = {
     legalName: null, displayName: null, shortName: null, registrationNumber: null, vatNumber: null, addressLine1: null, addressLine2: null, addressCity: null, addressRegion: null,
-    addressPostcode: null, addressCountry: null, contactEmail: null, contactPhone: null, websiteUrl: null, footerOverride: null, signatoryUserId: null, signatoryTitle: null,
+    addressPostcode: null, addressCountry: null, contactEmail: null, contactPhone: null, websiteUrl: null, footerOverride: null, signatoryUserId: null, signatoryTitle: null, emailLogoUrl: null, emailBadgeUrl: null, emailConfidentialityNotice: null,
   };
 
   before(async () => {

@@ -34,16 +34,18 @@ type ProfileRow = {
   address_line_1: string | null; address_line_2: string | null; address_city: string | null; address_region: string | null; address_postcode: string | null;
   address_country: string | null; contact_email: string | null; contact_phone: string | null; website_url: string | null; footer_override: string | null;
   signatory_user_id: string | null; signatory_title: string | null; logo_asset_id: string | null; version: number; updated_at: Date; updated_by: string;
+  email_logo_url: string | null; email_badge_url: string | null; email_confidentiality_notice: string | null;
   source_system: string | null;
 };
 const PROFILE_COLUMNS = `legal_name, display_name, short_name, registration_number, vat_number, address_line_1, address_line_2, address_city, address_region,
   address_postcode, address_country, contact_email, contact_phone, website_url, footer_override, signatory_user_id, signatory_title, logo_asset_id,
-  version, updated_at, updated_by, source_system`;
+  email_logo_url, email_badge_url, email_confidentiality_notice, version, updated_at, updated_by, source_system`;
 const COLUMN: Record<keyof OrganisationProfileFields, keyof ProfileRow> = {
   legalName: "legal_name", displayName: "display_name", shortName: "short_name", registrationNumber: "registration_number", vatNumber: "vat_number",
   addressLine1: "address_line_1", addressLine2: "address_line_2", addressCity: "address_city", addressRegion: "address_region",
   addressPostcode: "address_postcode", addressCountry: "address_country", contactEmail: "contact_email", contactPhone: "contact_phone",
   websiteUrl: "website_url", footerOverride: "footer_override", signatoryUserId: "signatory_user_id", signatoryTitle: "signatory_title",
+  emailLogoUrl: "email_logo_url", emailBadgeUrl: "email_badge_url", emailConfidentialityNotice: "email_confidentiality_notice",
 };
 const fieldsOf = (row: ProfileRow): OrganisationProfileFields =>
   Object.fromEntries(ORGANISATION_PROFILE_FIELDS.map((key) => [key, row[COLUMN[key]] as string | null])) as OrganisationProfileFields;

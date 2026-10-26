@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, putBrowserCommandWithReason } from "@nzi/api-client";
 import {
-  CLIENT_LOGO_MAX_BYTES, organisationLogoContentTypes, intensityDividers, intensityIconKeys, intensityUnit, normaliseProfile, organisationFooter, ORGANISATION_PROFILE_FIELDS,
+  CLIENT_LOGO_MAX_BYTES, organisationLogoContentTypes, intensityDividers, intensityIconKeys, intensityUnit, normaliseProfile, organisationFooter, ORGANISATION_PROFILE_FIELDS, emailBrandFor,
   type OrganisationLogoContentType, type IntensityDivider, type OrganisationProfileFields,
 } from "@nzi/contracts";
 import type { IntensityDefault, OrganisationBankView, OrganisationHistoryEntry, OrganisationProfileView } from "@nzi/isolated-backend";
@@ -135,6 +135,18 @@ function ProfileForm({ profile, roster, editing, status, report, saved }: CardPr
     <div className="nz-a-hint">Derived from the profile: <b>{derived || "—"}</b></div>
     <TextAreaField label="Footer override" hint="Leave empty to use the derived footer — it then follows any change to the profile." value={draft.footerOverride} rows={2}
       error={issues.footerOverride} disabled={readOnly} onChange={(value) => edit({ ...draft, footerOverride: value })} />
+    <h4 className="nz-a-subhead">Email signature</h4>
+    <div className="nz-a-hint">Every templated email — invitations, password resets, notifications — closes with the house signature: the display name in bold, these logos side by side, the website above, and the confidentiality block. Empty uses the house standard.</div>
+    <FieldRow>
+      {field("emailLogoUrl", "NZI logo address", { placeholder: "Built-in NZI logo", hint: "An https image address anyone can open — mail apps load it with no sign-in. PNG or JPG." })}
+      {field("emailBadgeUrl", "CPD Member badge address", { placeholder: "No badge", hint: "Shown beside the logo. https, PNG or JPG; empty leaves the badge out." })}
+    </FieldRow>
+    <TextAreaField label="Confidentiality notice" hint="The GDPR block that closes every email, up to 1,000 characters. Empty uses the house wording." value={draft.emailConfidentialityNotice} rows={4}
+      error={issues.emailConfidentialityNotice} disabled={readOnly} onChange={(value) => edit({ ...draft, emailConfidentialityNotice: value })} />
+    <div className="nz-a-hint">The signature will read: {(() => {
+      const brand = emailBrandFor(normaliseProfile(toFields(draft)), null);
+      return [brand.company, brand.website ? `Website: ${brand.website.label}` : null, brand.notice].filter(Boolean).map((line, index) => <span key={index}><br /><b>{line}</b></span>);
+    })()}</div>
     <h4 className="nz-a-subhead">Certificates</h4>
     <FieldRow>
       <SelectField label="Signatory" value={draft.signatoryUserId} placeholder="None" options={signatoryOptions} error={issues.signatoryUserId} disabled={readOnly}

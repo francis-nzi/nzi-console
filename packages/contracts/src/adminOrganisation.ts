@@ -23,19 +23,26 @@ export type OrganisationProfileFields = {
   footerOverride: string | null;
   signatoryUserId: string | null;
   signatoryTitle: string | null;
+  /** The house email signature (phase 5-1, 0184): the NZI logo, an absolute https URL a mail client fetches with no session. Null: the built-in logo. */
+  emailLogoUrl: string | null;
+  /** The badge beside it (the CPD Member badge), likewise an https URL. Null: no badge. */
+  emailBadgeUrl: string | null;
+  /** The confidentiality (GDPR) block that closes every email. Null: the house wording. */
+  emailConfidentialityNotice: string | null;
 };
 export const ORGANISATION_PROFILE_FIELDS = [
   "legalName", "displayName", "shortName", "registrationNumber", "vatNumber", "addressLine1", "addressLine2", "addressCity", "addressRegion",
   "addressPostcode", "addressCountry", "contactEmail", "contactPhone", "websiteUrl", "footerOverride", "signatoryUserId", "signatoryTitle",
+  "emailLogoUrl", "emailBadgeUrl", "emailConfidentialityNotice",
 ] as const satisfies ReadonlyArray<keyof OrganisationProfileFields>;
 
 export type OrganisationBankFields = { accountName: string | null; sortCode: string | null; accountNumber: string | null };
 export const ORGANISATION_BANK_FIELDS = ["accountName", "sortCode", "accountNumber"] as const satisfies ReadonlyArray<keyof OrganisationBankFields>;
 
 /** Text limits, as 0142 holds them. */
-export const ORGANISATION_TEXT_MAX: Record<Exclude<keyof OrganisationProfileFields, "registrationNumber" | "vatNumber" | "contactEmail" | "contactPhone" | "websiteUrl" | "signatoryUserId">, number> = {
+export const ORGANISATION_TEXT_MAX: Record<Exclude<keyof OrganisationProfileFields, "registrationNumber" | "vatNumber" | "contactEmail" | "contactPhone" | "websiteUrl" | "signatoryUserId" | "emailLogoUrl" | "emailBadgeUrl">, number> = {
   legalName: 200, displayName: 120, shortName: 20, addressLine1: 200, addressLine2: 200, addressCity: 100, addressRegion: 100, addressPostcode: 20,
-  addressCountry: 100, footerOverride: 500, signatoryTitle: 120,
+  addressCountry: 100, footerOverride: 500, signatoryTitle: 120, emailConfidentialityNotice: 1000,
 };
 export const BANK_ACCOUNT_NAME_MAX = 140;
 
@@ -77,6 +84,11 @@ export function profileIssues(fields: OrganisationProfileFields): OrganisationIs
   if (fields.contactPhone !== null && !/^[0-9+() .-]{5,30}$/.test(fields.contactPhone)) issues.push({ field: "contactPhone", code: "INVALID", message: "A phone number: digits, spaces and + ( ) - only." });
   if (fields.websiteUrl !== null && (fields.websiteUrl.length > 300 || !/^https?:\/\/\S+$/.test(fields.websiteUrl))) issues.push({ field: "websiteUrl", code: "INVALID", message: "A web address starting https://" });
   if (fields.signatoryTitle !== null && fields.signatoryUserId === null) issues.push({ field: "signatoryTitle", code: "NO_SIGNATORY", message: "Choose the signatory the title belongs to." });
+  // Mail apps fetch a logo with no session and refuse anything but https, so an address that is not one would be a broken image.
+  for (const key of ["emailLogoUrl", "emailBadgeUrl"] as const) {
+    const value = fields[key];
+    if (value !== null && (value.length > 500 || !/^https:\/\/[^\s"<>]+$/.test(value))) issues.push({ field: key, code: "INVALID", message: "An image address starting https:// that anyone can open — mail apps fetch it with no sign-in." });
+  }
   return issues;
 }
 

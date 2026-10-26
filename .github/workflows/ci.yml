@@ -441,6 +441,13 @@ jobs:
       # the split tick dispatches it anyway and reports the reminder failure; and an email-side failure does not stop the scan.
       - name: The worker's tick runs as the worker role, and email is drained apart from the reminder scan
         run: npx tsx --test packages/isolated-backend/tests/workerTickReal.test.ts
+      # 0184: the house email signature on the real send path — with nothing set, a send closes with the house standard
+      # (Net Zero International, the NZI logo at the console origin, the website, the GDPR block) after a bulletproof button;
+      # the values saved through the real profile command are used, both logos side by side; a non-https logo address is
+      # refused by the command and the table; the drain posts the branded HTML to Resend for an NZI address and still stubs
+      # an off-domain one; with no origin and no logo set the logo is left out and the send still goes.
+      - name: Templated email closes with the house signature, from Organisation settings with defaults
+        run: npx tsx --test packages/isolated-backend/tests/emailBrandedFrameReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

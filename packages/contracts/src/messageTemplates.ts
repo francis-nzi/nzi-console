@@ -22,6 +22,8 @@
  * enrolment, reset or other single-use link is refused (`messageTemplateLinkIssues`).
  */
 
+import type { OrganisationProfileFields } from "./adminOrganisation";
+
 export const MESSAGE_TEMPLATE_CHANNELS = ["email"] as const;
 export type MessageTemplateChannel = (typeof MESSAGE_TEMPLATE_CHANNELS)[number];
 export const MESSAGE_TEMPLATE_SUBJECT_MAX = 200;
@@ -57,8 +59,7 @@ export type MessageTemplateDefinition = {
   v7?: { key: string; tokens: Readonly<Record<string, string>> };
 };
 
-// Inline styles, because mail clients drop stylesheets. Deep Pine on white — the brand's own, and AA for button text.
-const BUTTON = "display:inline-block;background:#0B7A4B;color:#ffffff;text-decoration:none;font-weight:600;padding:10px 18px;border-radius:6px";
+// Inline styles, because mail clients drop stylesheets. Buttons are the frame's (`<a class="cta">`, phase 5-1), not inline here.
 const SMALL = "color:#5b6875;font-size:13px";
 
 const REMINDER_TOKENS: readonly MessageToken[] = [
@@ -144,7 +145,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
       ].join("\n"),
       html: [
         "<p>You have been invited to the NZ Insights Pro staff console.</p>",
-        `<p><a href="{{inviteLink}}" style="${BUTTON}">Set up your sign-in</a></p>`,
+        `<a class="cta" href="{{inviteLink}}">Set up your sign-in</a>`,
         `<p style="${SMALL}">Or copy this link into your browser: {{inviteLink}}</p>`,
         "<p>This link works once and expires at {{expiresAt}}. Nobody at NZI sees your password or your authenticator.</p>",
         `<p style="${SMALL}">If you were not expecting this, ignore it — nothing happens unless the link is used.</p>`,
@@ -184,7 +185,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
       html: [
         "<p>Hello {{displayName}},</p>",
         "<p>{{senderName}} at Net Zero International has given you access to <b>{{clientName}}</b>'s client portal in NZ Insights Pro.</p>",
-        `<p><a href="{{inviteLink}}" style="${BUTTON}">Set up your portal access</a></p>`,
+        `<a class="cta" href="{{inviteLink}}">Set up your portal access</a>`,
         `<p style="${SMALL}">Or copy this link into your browser: {{inviteLink}}</p>`,
         "<p>This link works once and expires at {{expiresAt}}. Nobody at NZI sees your password or your authenticator.</p>",
         `<p style="${SMALL}">If you were not expecting this, ignore it — nothing happens unless the link is used.</p>`,
@@ -217,7 +218,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
       html: [
         "<p>Hello {{displayName}},</p>",
         "<p>Someone asked to reset the password for your NZ Insights Pro staff account. If it was you, choose a new password:</p>",
-        `<p><a href="{{resetLink}}" style="${BUTTON}">Choose a new password</a></p>`,
+        `<a class="cta" href="{{resetLink}}">Choose a new password</a>`,
         `<p style="${SMALL}">Or copy this link into your browser: {{resetLink}}</p>`,
         "<p>This link works once and expires at {{expiresAt}}. Your authenticator is unchanged — you will still need it to sign in.</p>",
         `<p style="${SMALL}">If you did not ask for this, ignore this email: your password stays as it is.</p>`,
@@ -250,7 +251,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
       html: [
         "<p>Hello {{displayName}},</p>",
         "<p>Someone asked to reset the password for your NZ Insights Pro client portal account. If it was you, choose a new password:</p>",
-        `<p><a href="{{resetLink}}" style="${BUTTON}">Choose a new password</a></p>`,
+        `<a class="cta" href="{{resetLink}}">Choose a new password</a>`,
         `<p style="${SMALL}">Or copy this link into your browser: {{resetLink}}</p>`,
         "<p>This link works once and expires at {{expiresAt}}. Your authenticator is unchanged — you will still need it to sign in.</p>",
         `<p style="${SMALL}">If you did not ask for this, ignore this email: your password stays as it is. If it keeps happening, tell your adviser at NZI.</p>`,
@@ -285,7 +286,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
       html: [
         "<p>Hello {{displayName}},</p>",
         "<p>There is a new message for <b>{{clientName}}</b> in your NZ Insights Pro client portal.</p>",
-        `<p><a href="{{threadLink}}" style="${BUTTON}">Read it in the portal</a></p>`,
+        `<a class="cta" href="{{threadLink}}">Read it in the portal</a>`,
         `<p style="${SMALL}">For your security the message itself is not in this email — it stays in the portal, behind your sign-in.</p>`,
       ].join("\n"),
     },
@@ -384,6 +385,89 @@ const isSendableLink = (value: string) => {
 };
 
 export type RenderedEmail = { subject: string; text: string; html: string };
+
+// ── The house signature chrome (email programme phase 5-1) ─────────────────────────────────────────────────────────
+
+/** A logo in the signature: an absolute URL a mail client can fetch with no session. `width` when it is known, so Outlook sizes it. */
+export type EmailLogo = { url: string; alt: string; width: number | null };
+
+/**
+ * The fixed house signature that closes every templated email (R1): from Organisation settings (0184) through
+ * {@link emailBrandFor}, with the house standard as built-in defaults so it is right before anyone fills anything in.
+ * It is the organisation's chrome only — no sign-off, no person (R5): the personal lines are 5-2.
+ */
+export type EmailBrand = {
+  /** The company, bold — "Net Zero International". Null: no signature at all (a frame with no organisation behind it). */
+  company: string | null;
+  /** Side by side beneath the company — the NZI logo, then the CPD Member badge. Empty: no logo row. */
+  logos: EmailLogo[];
+  /** "Website: netzero.international", linked. */
+  website: { href: string; label: string } | null;
+  /** The confidentiality (GDPR) block that closes the email. */
+  notice: string | null;
+};
+
+/** The button: NZI Deep Pine, which white text reads on at 5.4 : 1. Code-owned, like the rest of the frame. */
+export const EMAIL_BUTTON_COLOUR = "#0B7A4B";
+export const DEFAULT_EMAIL_WEBSITE = "https://netzero.international";
+/** The house GDPR confidentiality block, verbatim (Francis, 26 Oct 2026). */
+export const DEFAULT_EMAIL_CONFIDENTIALITY_NOTICE = "Under the General Data Protection Regulation (GDPR) (EU) 2016/679, we have a legal duty to protect "
+  + "any information we collect from you. Information contained in this email and any attachments may be privileged or confidential and intended "
+  + "for the exclusive use of the original recipient. If you have received this email by mistake, please advise the sender immediately and delete "
+  + "the email, including emptying your deleted items.";
+/** The NZI logo, as a PNG (Outlook cannot show WebP), served publicly from the console's own origin. 1428 × 600. */
+export const EMAIL_LOGO_PATH = "/brand/netzero-logo.png";
+const DEFAULT_ORGANISATION_NAME = "Net Zero International";
+/** Every logo is drawn at this height, side by side; the built-in one's width follows from its 1428 × 600. */
+const LOGO_HEIGHT = 48;
+const BUILT_IN_LOGO_WIDTH = Math.round((LOGO_HEIGHT * 1428) / 600);
+
+type BrandProfile = Pick<OrganisationProfileFields, "legalName" | "displayName" | "websiteUrl" | "emailLogoUrl" | "emailBadgeUrl" | "emailConfidentialityNotice">;
+
+/**
+ * The house signature from the organisation profile and the console's origin (R3). Every value falls back rather than
+ * failing (R4): no profile, no origin, no badge — the signature still closes the mail, and the send still goes. A logo
+ * that cannot be had is left out, never drawn as a broken image; the company name above it carries the identity.
+ */
+export function emailBrandFor(profile: BrandProfile | null, origin: string | null): EmailBrand {
+  const company = profile?.displayName ?? profile?.legalName ?? DEFAULT_ORGANISATION_NAME;
+  const nzi: EmailLogo | null = profile?.emailLogoUrl ? { url: profile.emailLogoUrl, alt: company, width: null } : builtInLogo(origin, company);
+  const badge: EmailLogo | null = profile?.emailBadgeUrl ? { url: profile.emailBadgeUrl, alt: "CPD Member", width: null } : null;
+  return {
+    company,
+    logos: [nzi, badge].filter((logo): logo is EmailLogo => logo !== null),
+    website: websiteLink(profile?.websiteUrl ?? DEFAULT_EMAIL_WEBSITE),
+    notice: profile?.emailConfidentialityNotice ?? DEFAULT_EMAIL_CONFIDENTIALITY_NOTICE,
+  };
+}
+
+/** The built-in logo at the console's origin — https only, since a mail client will not load anything else (localhost aside, for previews). */
+const builtInLogo = (origin: string | null, alt: string): EmailLogo | null => {
+  if (!origin) return null;
+  try {
+    const url = new URL(origin);
+    return url.protocol === "https:" || url.hostname === "localhost" ? { url: `${url.origin}${EMAIL_LOGO_PATH}`, alt, width: BUILT_IN_LOGO_WIDTH } : null;
+  } catch { return null; }
+};
+
+/** The website as the signature shows it — `netzero.international`, linked to the address itself. */
+const websiteLink = (address: string) => {
+  try {
+    const url = new URL(address);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return { href: url.href, label: `${url.hostname.replace(/^www\./, "")}${url.pathname.replace(/\/$/, "")}` };
+  } catch { return null; }
+};
+
+/** The frame with no organisation behind it: the one footer line given (if any) as the signature, nothing else. */
+const plainBrand = (footer: string | null | undefined): EmailBrand => ({ company: footer?.trim() || null, logos: [], website: null, notice: null });
+
+/** The signature as plain text — the company and website, then the confidentiality block — so the text part is complete alone. */
+const signatureText = (brand: EmailBrand) => {
+  const head = [brand.company, brand.website ? `Website: ${brand.website.label}` : null].filter((line): line is string => Boolean(line));
+  const parts = [head.join("\n"), brand.notice ?? ""].filter(Boolean);
+  return parts.length ? `\n\n--\n${parts.join("\n\n")}` : "";
+};
 export type EmailRenderResult = { ok: true; email: RenderedEmail } | { ok: false; issues: string[] };
 
 /**
@@ -393,9 +477,14 @@ export type EmailRenderResult = { ok: true; email: RenderedEmail } | { ok: false
  * a required token that is empty or absent from a part; a link that is not https; content that has drifted outside its
  * declared tokens — each is an issue, and nothing is rendered. Values are escaped into the HTML part and left as they are
  * in the text. The organisation's footer, when it has one, closes both parts.
+ *
+ * Both parts close with the house signature (phase 5-1) when a `brand` is given — `emailBrandFor`, from Organisation
+ * settings — and otherwise with only the `footer` line. Branding never refuses: the strict part is the wording and the
+ * values, as before.
  */
 export function renderEmailTemplate(
-  definition: MessageTemplateDefinition, content: MessageContent, values: Readonly<Record<string, string>>, options: { footer?: string | null } = {},
+  definition: MessageTemplateDefinition, content: MessageContent, values: Readonly<Record<string, string>>,
+  options: { brand?: EmailBrand; footer?: string | null } = {},
 ): EmailRenderResult {
   const issues: string[] = [];
   const declared = new Map(definition.tokens.map((token) => [token.name, token]));
@@ -418,21 +507,24 @@ export function renderEmailTemplate(
   if (issues.length) return { ok: false, issues: [...new Set(issues)] };
 
   const escaped = Object.fromEntries(Object.entries(values).map(([name, value]) => [name, escapeHtml(value)]));
-  const footer = options.footer?.trim() || null;
+  const brand = options.brand ?? plainBrand(options.footer);
   const fragment = html === null ? linkedTextToHtml(content.body, values, definition) : renderMessageText(html, escaped);
+  const subject = renderMessageText(content.subject, values);
   return {
     ok: true,
     email: {
-      subject: renderMessageText(content.subject, values),
-      text: renderMessageText(content.body, values) + (footer ? `\n\n--\n${footer}` : ""),
-      html: emailHtmlDocument(fragment, footer),
+      subject,
+      // The plain-text part is the message as written, then the signature — the graceful fallback, and complete on its own.
+      text: renderMessageText(content.body, values) + signatureText(brand),
+      html: brandedEmailDocument(fragment, brand, subject),
     },
   };
 }
 
 /** The board's preview: the strict render against the key's **sample** values (F-Q2), so it shows exactly what a send would. */
-export const previewEmailTemplate = (definition: MessageTemplateDefinition, content: MessageContent, footer?: string | null): EmailRenderResult =>
-  renderEmailTemplate(definition, content, Object.fromEntries(definition.tokens.map((token) => [token.name, token.sample])), { footer });
+export const previewEmailTemplate = (definition: MessageTemplateDefinition, content: MessageContent, branding?: EmailBrand | string | null): EmailRenderResult =>
+  renderEmailTemplate(definition, content, Object.fromEntries(definition.tokens.map((token) => [token.name, token.sample])),
+    typeof branding === "object" && branding !== null ? { brand: branding } : { footer: branding ?? null });
 
 /**
  * The HTML part of a template with none of its own: the text, escaped, with each link token's value made a link — a reset
@@ -451,16 +543,87 @@ function linkedTextToHtml(body: string, values: Readonly<Record<string, string>>
     .replace(/\u0000(\d+)\u0000/g, (_whole, index: string) => { const link = escapeHtml(links[Number(index)]!); return `<a href="${link}">${link}</a>`; });
 }
 
-/** The code-owned frame every HTML part is sent in: no tokens, nothing editable, the footer escaped. */
-function emailHtmlDocument(fragment: string, footer: string | null): string {
+const FONT = "Arial,Helvetica,sans-serif";
+// LINK: the house signature's website link, the blue its mail client draws.
+const INK = "#1C2B26", MUTED = "#6B7A75", LINK = "#2F6F9E";
+
+/**
+ * A link the author marked `<a class="cta" href="…">Label</a>` becomes a bulletproof button: a VML rounded rectangle for
+ * Outlook's Word renderer, and an inline-styled link in a table cell for everything else — so it is a button in every
+ * client, not only those that honour CSS on links. A surrounding `<p>` is dropped (a table cannot sit inside one).
+ */
+function ctaButtons(fragment: string, colour: string): string {
+  return fragment.replace(/(?:<p>\s*)?<a\s+([^>]*\bclass="cta"[^>]*)>([\s\S]*?)<\/a>(?:\s*<\/p>)?/g, (whole, attributes: string, label: string) => {
+    const href = /\bhref="([^"]*)"/.exec(attributes)?.[1];
+    if (!href) return whole;
+    const text = label.replace(/<[^>]*>/g, "").trim();
+    const width = Math.max(200, Math.min(420, text.length * 9 + 56));
+    return [
+      `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:8px 0 18px"><tr><td align="center" bgcolor="${colour}" style="border-radius:6px;background:${colour}">`,
+      `<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${href}" style="height:44px;v-text-anchor:middle;width:${width}px" arcsize="14%" stroke="f" fillcolor="${colour}"><w:anchorlock/><center style="color:#ffffff;font-family:${FONT};font-size:15px;font-weight:bold">${text}</center></v:roundrect><![endif]-->`,
+      `<!--[if !mso]><!--><a href="${href}" style="display:inline-block;padding:12px 24px;font-family:${FONT};font-size:15px;font-weight:bold;line-height:20px;color:#ffffff;text-decoration:none;border-radius:6px;background:${colour}">${label}</a><!--<![endif]-->`,
+      "</td></tr></table>",
+    ].join("");
+  });
+}
+
+/**
+ * Body typography, inline — Outlook does not inherit a table cell's font into a paragraph. A paragraph gets the body style
+ * ahead of any of its own; a plain link takes the brand colour. Nothing else in the author's markup is touched.
+ */
+function bodyTypography(fragment: string, colour: string): string {
+  const base = `margin:0 0 14px;font-family:${FONT};font-size:15px;line-height:1.55;color:${INK}`;
+  return fragment
+    .replace(/<p(\s+style="([^"]*)")?>/g, (_whole, _attr: string | undefined, own: string | undefined) => `<p style="${base}${own ? `;${own}` : ""}">`)
+    .replace(/<a\s+href="([^"]*)">/g, (_whole, href: string) => `<a href="${href}" style="color:${colour};word-break:break-all">`);
+}
+
+/**
+ * The house signature chrome (R1), in the same inline, table-based markup as the rest: the company in bold; the logos side by
+ * side, each at the same height (a table row, since Outlook ignores flex and floats); the website, linked; and the GDPR
+ * confidentiality block, set small beneath a rule. Every value escaped. Empty when there is nothing to sign with.
+ */
+function signatureHtml(brand: EmailBrand): string {
+  const text = `font-family:${FONT};color:${INK}`;
+  const logos = brand.logos.map((logo, index) => {
+    const size = logo.width === null ? `height="${LOGO_HEIGHT}"` : `width="${logo.width}" height="${LOGO_HEIGHT}"`;
+    const style = `display:block;height:${LOGO_HEIGHT}px;${logo.width === null ? "width:auto" : `width:${logo.width}px`};border:0;outline:none;text-decoration:none;font-family:${FONT};font-size:12px;color:${MUTED}`;
+    return `<td valign="middle" style="padding:0 ${index === brand.logos.length - 1 ? 0 : 16}px 0 0"><img src="${escapeHtml(logo.url)}" ${size} alt="${escapeHtml(logo.alt)}" style="${style}"></td>`;
+  }).join("");
+  const rows = [
+    brand.company ? `<p style="margin:0;${text};font-size:14px;line-height:1.5;font-weight:bold">${escapeHtml(brand.company)}</p>` : "",
+    logos ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:12px 0 10px"><tr>${logos}</tr></table>` : "",
+    brand.website
+      ? `<p style="margin:${logos ? 0 : "6px 0 0"};${text};font-size:12px;line-height:1.7">Website: <a href="${escapeHtml(brand.website.href)}" style="color:${LINK};text-decoration:underline">${escapeHtml(brand.website.label)}</a></p>`
+      : "",
+    brand.notice
+      ? `<p style="margin:16px 0 0;padding-top:12px;border-top:1px solid #E6ECE9;font-family:${FONT};font-size:11px;line-height:1.5;color:${MUTED}">${escapeHtml(brand.notice)}</p>`
+      : "",
+  ].join("");
+  return rows ? `<tr><td style="padding:8px 32px 28px;font-family:${FONT};font-size:13px;color:${INK}">${rows}</td></tr>` : "";
+}
+
+/**
+ * The code-owned frame every HTML part is sent in (phase 5-1): real HTML email, not web HTML — a table layout, every style
+ * inline, no stylesheet and no web font, the logos at absolute URLs — so it holds in Outlook (MSO), Gmail and Apple Mail. A
+ * clean body with the link drawn as a bulletproof button, then the house signature chrome. No banner header (the house
+ * standard is signature-led). No tokens, nothing an admin edits.
+ */
+function brandedEmailDocument(fragment: string, brand: EmailBrand, subject: string): string {
+  const colour = EMAIL_BUTTON_COLOUR;
   return [
     "<!doctype html>",
-    '<html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>',
+    '<html lang="en-GB" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">',
+    '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting">',
+    `<title>${escapeHtml(subject)}</title>`,
+    "<!--[if mso]><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml><![endif]--></head>",
     // overflow-wrap: a single-use link is one long unbroken word, and on a phone it would run off the edge.
-    '<body style="margin:0;padding:24px 16px;background:#ffffff;color:#0B1B2B;font-family:Inter,Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;overflow-wrap:anywhere;word-break:break-word">',
-    '<div style="max-width:560px;margin:0 auto">',
-    fragment,
-    footer ? `<hr style="border:0;border-top:1px solid #e3e8ec;margin:24px 0 12px"><p style="color:#5b6875;font-size:12px">${escapeHtml(footer).replace(/\n/g, "<br>")}</p>` : "",
-    "</div></body></html>",
+    `<body style="margin:0;padding:0;background:#EEF2F0;word-break:break-word;overflow-wrap:anywhere">`,
+    `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#EEF2F0" style="background:#EEF2F0"><tr><td align="center" style="padding:24px 12px">`,
+    `<table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" bgcolor="#FFFFFF" style="width:100%;max-width:600px;background:#FFFFFF;border:1px solid #E3E8E6;border-radius:10px">`,
+    `<tr><td style="padding:28px 32px 4px;font-family:${FONT};font-size:15px;line-height:1.55;color:${INK}">${bodyTypography(ctaButtons(fragment, colour), colour)}</td></tr>`,
+    signatureHtml(brand),
+    "</table>",
+    "</td></tr></table></body></html>",
   ].join("\n");
 }

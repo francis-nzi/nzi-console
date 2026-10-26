@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import {
   MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_HTML_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateHtmlIssues, messageTemplateLinkIssues,
-  messageTemplateRequiredIssues, messageTemplateTokenIssues, previewEmailTemplate, previewMessage,
+  messageTemplateRequiredIssues, messageTemplateTokenIssues, previewEmailTemplate, type EmailBrand, previewMessage,
 } from "@nzi/contracts";
 import type { MessageTemplateRow } from "@nzi/isolated-backend";
 import { AuditLine, CapabilityChip, DrawerEditor, ProvenanceBadge, TextAreaField, TextField } from "@nzi/ui";
@@ -21,7 +21,7 @@ import { AuditLine, CapabilityChip, DrawerEditor, ProvenanceBadge, TextAreaField
  * script permission, so an admin's markup can never run in another admin's console.
  */
 type Editing = { allowed: true } | { allowed: false; reason: string };
-export type SenderReference = { name: string | null; email: string | null; footer: string | null };
+export type SenderReference = { name: string | null; email: string | null; footer: string | null; brand: EmailBrand };
 type Failure = Exclude<BrowserCommandResult<unknown>, { state: "success" }>;
 
 export function MessageTemplatesBoard({ templates, sender, editing }: { templates: MessageTemplateRow[]; sender: SenderReference; editing: Editing }) {
@@ -102,7 +102,7 @@ function TemplateDrawer({ row, sender, editing, onClose, onSaved }: {
   };
   const html = draft.html.trim() ? draft.html : null;
   const preview = previewMessage(draft, definition);
-  const email = row.htmlPart ? previewEmailTemplate(definition, { subject: draft.subject, body: draft.body, html }, sender.footer) : null;
+  const email = row.htmlPart ? previewEmailTemplate(definition, { subject: draft.subject, body: draft.body, html }, sender.brand) : null;
   const differs = (content: { subject: string; body: string; html?: string | null }) =>
     draft.subject !== content.subject || draft.body !== content.body || html !== (row.htmlPart ? content.html ?? null : null);
   const changed = row.saved ? differs(row.saved) : differs(row.builtIn);
@@ -180,7 +180,7 @@ function TemplateDrawer({ row, sender, editing, onClose, onSaved }: {
       {/* sandbox with no permissions: no script, no forms, no top navigation — the markup is shown, never run. */}
       <iframe className="nz-a-message-preview-html" title="Preview — HTML" sandbox="" srcDoc={email.email.html} />
     </> : <div className="nz-a-error" role="status">Not sent as it stands: {email.issues.join(" ")}</div>}
-    <p className="nz-a-hint">Not part of the template: the sender and footer are the organisation’s, from Organisation settings —
+    <p className="nz-a-hint">Not part of the template: the house signature — company, logos, website and confidentiality block — and the sender are the organisation’s, from Organisation settings —
       {" "}<b>{sender.name ?? "no display name set"}</b>{sender.email ? <> · {sender.email}</> : null}{sender.footer ? <> · “{sender.footer}”</> : null}.</p>
     <p className="nz-a-hint">Sent by: {row.sendSite}.</p>
 
