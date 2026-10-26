@@ -47,7 +47,7 @@ export async function createPortalInvitation(pool:PoolLike,principal:StaffPrinci
     const link=portalInviteLink(origin,issued.token),base={invitationId:issued.invitationId,portalUserId,expiresAt:issued.expiresAt};
     if(delivery==="link")return{...base,delivery:"link" as const,token:issued.token,link};
     const sender=(await db.query<{display_name:string|null}>(`SELECT display_name FROM nzi_console.memberships WHERE user_id=$1`,[principal.userId])).rows[0]?.display_name?.trim()||"Your adviser";
-    try{const queued=await sendTemplatedEmail(db,principal.organisationId,{templateCode:"portal.access.invite",consoleOrigin:origin,to:email,vars:{displayName,clientName:client.rows[0].name,senderName:sender,inviteLink:link,expiresAt:expiryForPeople(issued.expiresAt)},correlationId:issued.invitationId,idempotencyKey:`portal.access.invite:${issued.invitationId}`});return{...base,delivery:"email" as const,sentTo:email,emailMessageId:queued.emailMessageId};}
+    try{const queued=await sendTemplatedEmail(db,principal.organisationId,{templateCode:"portal.access.invite",consoleOrigin:origin,attributedTo:principal.userId,to:email,vars:{displayName,clientName:client.rows[0].name,senderName:sender,inviteLink:link,expiresAt:expiryForPeople(issued.expiresAt)},correlationId:issued.invitationId,idempotencyKey:`portal.access.invite:${issued.invitationId}`});return{...base,delivery:"email" as const,sentTo:email,emailMessageId:queued.emailMessageId};}
     // Thrown inside the transaction, so the invitation is rolled back with it: no live link without its email.
     catch(error){throw new PortalInvitationError(`The invitation could not be queued, so no link was issued: ${error instanceof Error?error.message:"the email was refused"}`);}
   });}

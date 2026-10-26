@@ -448,6 +448,13 @@ jobs:
       # an off-domain one; with no origin and no logo set the logo is left out and the send still goes.
       - name: Templated email closes with the house signature, from Organisation settings with defaults
         run: npx tsx --test packages/isolated-backend/tests/emailBrandedFrameReal.test.ts
+      # 0185: team-member signatures — an un-edited member's defaults from their record; an attributed portal invitation
+      # carries the adviser's lines above the chrome (no mobile line when none is set); the member saves their own —
+      # normalised, versioned, sealed, audited by field name only — and a body naming another member writes only theirs;
+      # stale versions and bad values are refused by the command and the table; system and deactivated-member emails carry
+      # the chrome only; From, reply-to and the isolation gate are unchanged.
+      - name: Emails attributed to a member carry their signature, which only they edit
+        run: npx tsx --test packages/isolated-backend/tests/emailSignaturesReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

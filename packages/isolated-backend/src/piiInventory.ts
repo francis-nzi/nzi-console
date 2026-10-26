@@ -327,6 +327,10 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
   { table: "memberships", column: "email", label: "Work email address", stage: "sealed", erasure: "shred-key",
     storage: indexed("email_sealed", "email_bidx", "memberships.email", "email") },
   { table: "memberships", column: "display_name", label: "Name", stage: "sealed", erasure: "shred-key", storage: sealed("display_name_sealed") },
+  // The member's email signature (0185, email phase 5-2): written by the member, sealed in the same transaction.
+  { table: "memberships", column: "signature_title", label: "Email signature title", stage: "sealed", erasure: "shred-key", storage: sealed("signature_title_sealed") },
+  { table: "memberships", column: "signature_email", label: "Email signature address", stage: "sealed", erasure: "shred-key", storage: sealed("signature_email_sealed") },
+  { table: "memberships", column: "signature_mobile", label: "Email signature mobile", stage: "sealed", erasure: "shred-key", storage: sealed("signature_mobile_sealed") },
   { table: "supplier_contacts", column: "email", label: "Email address at a supplier", stage: "sealed", erasure: "shred-key",
     storage: indexed("email_sealed", "email_bidx", "supplier_contacts.email", "email") },
   { table: "supplier_contacts", column: "full_name", label: "Name as a supplier contact", stage: "sealed", erasure: "shred-key", storage: sealed("full_name_sealed") },

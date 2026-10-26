@@ -2,6 +2,7 @@ import { emailBrandFor, messageContentFor, messageTemplateDefinition, renderEmai
 import { sendEmail, type EmailRequest } from "./email";
 import { readActiveMessageTemplate } from "./messageTemplates";
 import { readOrganisationProfile } from "./organisationSettings";
+import { emailPersonForMember } from "./staffSignature";
 import type { Queryable } from "./postgres";
 
 /**
@@ -15,6 +16,9 @@ import type { Queryable } from "./postgres";
  * - **The house signature** (phase 5-1): company, logos, website and GDPR block from Organisation settings (`emailBrandFor`), with built-in
  *   defaults for anything unset — so branding never stops a send. The logo is the console's public NZI asset at
  *   `consoleOrigin` unless settings name another. The sender stays the deployment's `EMAIL_FROM`.
+ * - **The member's lines** (phase 5-2): when the send is `attributedTo` a member, their sign-off, name, title, email and
+ *   mobile go above the chrome, from their own record; a system email carries the chrome only. From and reply-to are
+ *   unchanged by it — the signature is body content.
  * - **Then it is `sendEmail`**, with `templateCode` set: the same validation, queue, idempotency and isolation gate as
  *   phase 1 — on the isolated boundary a templated send to anyone outside the NZI domain is still stubbed.
  *
@@ -27,8 +31,13 @@ export class TemplatedEmailError extends Error {
 
 export type TemplatedEmailRequest = Pick<EmailRequest, "to" | "from" | "replyTo" | "correlationId" | "idempotencyKey"> & {
   templateCode: string;
-  /** The console's own origin, for the frame's default logo URL. Absent: the header shows the name as a wordmark. */
+  /** The console's own origin, for the signature's built-in logo URL. Absent: the logo is left out. */
   consoleOrigin?: string;
+  /**
+   * The member the email is from (phase 5-2, R5): their personal lines go above the house chrome. Explicit — the sending
+   * code names the member; nothing is guessed from the From header. Absent: a system email, the chrome only.
+   */
+  attributedTo?: string;
   /** One value per token the message uses — every one, and no others. Links are passed here, never stored (R5). */
   vars: Readonly<Record<string, string>>;
 };
@@ -38,7 +47,8 @@ export async function sendTemplatedEmail(db: Queryable, organisationId: string, 
   if (!definition) throw new TemplatedEmailError(`${input.templateCode} is not a message the console sends.`, ["UNKNOWN_TEMPLATE"]);
   const content = messageContentFor(definition, await readActiveMessageTemplate(db, definition.key));
   const profile = await readOrganisationProfile(db, organisationId);
-  const brand = emailBrandFor(profile?.fields ?? null, input.consoleOrigin ?? null);
+  const person = input.attributedTo ? await emailPersonForMember(db, input.attributedTo) : null;
+  const brand = { ...emailBrandFor(profile?.fields ?? null, input.consoleOrigin ?? null), person };
   const rendered = renderEmailTemplate(definition, content, input.vars, { brand });
   // Names the template and the issue — never a value, since values are links and names.
   if (!rendered.ok) throw new TemplatedEmailError(`${definition.key} was not sent: ${rendered.issues.join(" ")}`, rendered.issues);

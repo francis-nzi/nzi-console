@@ -23,6 +23,7 @@
  */
 
 import type { OrganisationProfileFields } from "./adminOrganisation";
+import type { EmailPerson } from "./staffSignature";
 
 export const MESSAGE_TEMPLATE_CHANNELS = ["email"] as const;
 export type MessageTemplateChannel = (typeof MESSAGE_TEMPLATE_CHANNELS)[number];
@@ -405,6 +406,11 @@ export type EmailBrand = {
   website: { href: string; label: string } | null;
   /** The confidentiality (GDPR) block that closes the email. */
   notice: string | null;
+  /**
+   * The personal lines (phase 5-2) — sign-off, name, title above the company; Email and Mobile UK beside the website — for
+   * an email attributed to a member. Absent or null: the organisation's chrome only, as every system email is (R3).
+   */
+  person?: EmailPerson | null;
 };
 
 /** The button: NZI Deep Pine, which white text reads on at 5.4 : 1. Code-owned, like the rest of the frame. */
@@ -462,10 +468,19 @@ const websiteLink = (address: string) => {
 /** The frame with no organisation behind it: the one footer line given (if any) as the signature, nothing else. */
 const plainBrand = (footer: string | null | undefined): EmailBrand => ({ company: footer?.trim() || null, logos: [], website: null, notice: null });
 
-/** The signature as plain text — the company and website, then the confidentiality block — so the text part is complete alone. */
+/**
+ * The signature as plain text — the person's sign-off and lines when there is one, then the company, the website and their
+ * contact lines, then the confidentiality block — so the text part is complete alone.
+ */
 const signatureText = (brand: EmailBrand) => {
-  const head = [brand.company, brand.website ? `Website: ${brand.website.label}` : null].filter((line): line is string => Boolean(line));
-  const parts = [head.join("\n"), brand.notice ?? ""].filter(Boolean);
+  const person = brand.person ?? null;
+  const lines = (values: Array<string | null | undefined>) => values.filter((line): line is string => Boolean(line)).join("\n");
+  const parts = [
+    person ? person.signOff : "",
+    lines([person?.name, person?.title, brand.company, brand.website ? `Website: ${brand.website.label}` : null,
+      person?.email ? `Email: ${person.email}` : null, person?.mobile ? `Mobile UK: ${person.mobile}` : null]),
+    brand.notice ?? "",
+  ].filter(Boolean);
   return parts.length ? `\n\n--\n${parts.join("\n\n")}` : "";
 };
 export type EmailRenderResult = { ok: true; email: RenderedEmail } | { ok: false; issues: string[] };
@@ -590,18 +605,32 @@ function signatureHtml(brand: EmailBrand): string {
     const style = `display:block;height:${LOGO_HEIGHT}px;${logo.width === null ? "width:auto" : `width:${logo.width}px`};border:0;outline:none;text-decoration:none;font-family:${FONT};font-size:12px;color:${MUTED}`;
     return `<td valign="middle" style="padding:0 ${index === brand.logos.length - 1 ? 0 : 16}px 0 0"><img src="${escapeHtml(logo.url)}" ${size} alt="${escapeHtml(logo.alt)}" style="${style}"></td>`;
   }).join("");
+  const person = brand.person ?? null;
+  const link = (href: string, label: string) => `<a href="${escapeHtml(href)}" style="color:${LINK};text-decoration:underline">${escapeHtml(label)}</a>`;
+  // The contact lines: the organisation's website, then — on a member's email — their address and mobile (5-2).
+  const contact = [
+    brand.website ? `Website: ${link(brand.website.href, brand.website.label)}` : null,
+    person?.email ? `Email: ${link(`mailto:${person.email}`, person.email)}` : null,
+    person?.mobile ? `Mobile UK: ${escapeHtml(person.mobile)}` : null,
+  ].filter((line): line is string => line !== null);
   const rows = [
-    brand.company ? `<p style="margin:0;${text};font-size:14px;line-height:1.5;font-weight:bold">${escapeHtml(brand.company)}</p>` : "",
-    logos ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:12px 0 10px"><tr>${logos}</tr></table>` : "",
-    brand.website
-      ? `<p style="margin:${logos ? 0 : "6px 0 0"};${text};font-size:12px;line-height:1.7">Website: <a href="${escapeHtml(brand.website.href)}" style="color:${LINK};text-decoration:underline">${escapeHtml(brand.website.label)}</a></p>`
+    person
+      ? `<p style="margin:0 0 14px;${text};font-size:14px;line-height:1.5">${escapeHtml(person.signOff)}</p>`
+        + `<p style="margin:0;${text};font-size:14px;line-height:1.5">${escapeHtml(person.name)}</p>`
+        + (person.title ? `<p style="margin:0;${text};font-size:14px;line-height:1.5">${escapeHtml(person.title)}</p>` : "")
       : "",
+    brand.company ? `<p style="margin:${person ? "2px 0 0" : 0};${text};font-size:14px;line-height:1.5;font-weight:bold">${escapeHtml(brand.company)}</p>` : "",
+    logos ? `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:12px 0 10px"><tr>${logos}</tr></table>` : "",
+    contact.length ? `<p style="margin:${logos ? 0 : "6px 0 0"};${text};font-size:12px;line-height:1.7">${contact.join("<br>")}</p>` : "",
     brand.notice
       ? `<p style="margin:16px 0 0;padding-top:12px;border-top:1px solid #E6ECE9;font-family:${FONT};font-size:11px;line-height:1.5;color:${MUTED}">${escapeHtml(brand.notice)}</p>`
       : "",
   ].join("");
   return rows ? `<tr><td style="padding:8px 32px 28px;font-family:${FONT};font-size:13px;color:${INK}">${rows}</td></tr>` : "";
 }
+
+/** The signature alone in the same frame — the account page's preview of a member's lines in the house chrome (5-2). */
+export const emailSignatureDocument = (brand: EmailBrand): string => brandedEmailDocument("", brand, "Your email signature");
 
 /**
  * The code-owned frame every HTML part is sent in (phase 5-1): real HTML email, not web HTML — a table layout, every style
