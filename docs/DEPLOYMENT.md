@@ -193,6 +193,12 @@ an `email.send` outbox row and sends nothing; the worker hands the row to Resend
 only from `queued` and passes the message id as Resend's `Idempotency-Key`, so a redelivered outbox row cannot
 send twice. The body is cleared once the send resolves.
 
+**Each tick runs email first, in its own transaction, then the reminder scan and drain in another** (0183's fix).
+Before that the email drain ran after the scan in one transaction, so a failing scan (a missing grant on
+`strategy_levers`, Oct 2026) stopped every email. A failure on either side is reported in `tick.complete`
+(`emails` / `reminders`, each a summary or `{ "failed": "…" }`) and never stops the other; 0183 also asserts at
+deploy that `nzi_console_worker` holds every privilege the tick needs.
+
 - `RESEND_API_KEY` (dashboard, `sync: false`): **unset, every send is `stubbed`.**
 - `EMAIL_FROM` (dashboard, `sync: false`): the default sender on the verified domain, e.g.
   `Net Zero International <no-reply@netzero.international>`. Unset, sends are stubbed too.

@@ -7,7 +7,8 @@ import { listClientStrategies } from "./reductionStrategies";
 import { deliverEmail, EMAIL_SEND_TOPIC, type EmailDispatch } from "./email";
 import { mailDelivery, type MailDelivery, type Mailer } from "./mailer";
 import { readActiveMessageTemplate } from "./messageTemplates";
-import type { Queryable } from "./postgres";
+import type { PoolLike, Queryable } from "./postgres";
+import { withTenantWorker } from "./postgres";
 
 /**
  * The reminder worker's two halves: **scan** (what is owed) and **drain** (what is sent).
@@ -174,6 +175,8 @@ export async function drainOutbox(db: Queryable, input: {
    * never skipped, because a skipped send is a lost one.
    */
   email?: EmailDispatch;
+  /** `"email"`: only `email.send` rows — the worker tick's own email drain, kept apart from everything reminder-side. */
+  only?: "email";
   limit?: number;
   windowDays?: number;
 }): Promise<Omit<ReminderRunSummary, "scanned" | "claimed">> {
@@ -182,10 +185,11 @@ export async function drainOutbox(db: Queryable, input: {
      FROM nzi_console.transactional_outbox
      WHERE organisation_id = $1 AND state = 'pending' AND available_at <= now()
        AND ($3::boolean OR topic <> $4)
+       AND (NOT $5::boolean OR topic = $4)
      ORDER BY created_at
      LIMIT $2
      FOR UPDATE SKIP LOCKED`,
-    [input.organisationId, input.limit ?? 200, input.email !== undefined, EMAIL_SEND_TOPIC],
+    [input.organisationId, input.limit ?? 200, input.email !== undefined, EMAIL_SEND_TOPIC, input.only === "email"],
   );
 
   let sent = 0, suppressed = 0, failed = 0, skipped = 0;
@@ -349,6 +353,57 @@ export async function clientsWithPlans(db: Queryable): Promise<string[]> {
      WHERE s.active AND s.target_date IS NOT NULL AND c.status = 'active'
      ORDER BY 1`);
   return result.rows.map((row) => row.client_id);
+}
+
+/* ── The worker's tick: email and reminders apart ────────────────────────────────────── */
+
+export type TickPart<T> = { ok: true; summary: T } | { ok: false; error: string };
+export type WorkerTickSummary = {
+  emails: TickPart<ReminderRunSummary["emails"]>;
+  reminders: TickPart<Omit<ReminderRunSummary, "emails">>;
+};
+
+const partOf = async <T>(work: () => Promise<T>): Promise<TickPart<T>> => {
+  try { return { ok: true, summary: await work() }; }
+  catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+};
+
+/**
+ * One tick of the worker, in two transactions that cannot sink each other (BUILD-fix-worker-tick-permission).
+ *
+ * **Email first, on its own.** The `email.send` drain reads only the outbox and `email_messages`, so nothing reminder-side —
+ * a plan query, a missing grant, a bad strategy row — can stop it or roll back what it sent. Before this the drain ran after
+ * the reminder scan in one transaction, so a failing scan meant no email ever left.
+ *
+ * **Then the reminders**: the scan and the drain of every non-email row, together as before (a claim and its enqueue are one
+ * fact). Their failure is reported, and the next tick tries again.
+ *
+ * Each part's outcome is returned for the tick's log line; neither throws.
+ */
+export async function runWorkerTick(pool: PoolLike, input: {
+  organisationId: string;
+  today: string;
+  mailer: Mailer;
+  email: EmailDispatch;
+  env?: Parameters<typeof mailDelivery>[0];
+  windowDays?: number;
+  limit?: number;
+}): Promise<WorkerTickSummary> {
+  const delivery = mailDelivery(input.env ?? {
+    mailMode: process.env.NZI_MAIL_MODE, appEnv: process.env.NEXT_PUBLIC_APP_ENV, boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
+  });
+  const emails = await partOf(async () => (await withTenantWorker(pool, input.organisationId, (db) => drainOutbox(db, {
+    organisationId: input.organisationId, today: input.today, mailer: input.mailer, delivery,
+    email: input.email, only: "email", limit: input.limit,
+  }))).emails);
+  // No email dispatch here: email.send rows are the part above's, and this drain leaves them be.
+  const reminders = await partOf(async () => {
+    const { emails: _emails, ...rest } = await withTenantWorker(pool, input.organisationId, (db) => runReminderTick(db, {
+      organisationId: input.organisationId, today: input.today, mailer: input.mailer, env: input.env, windowDays: input.windowDays, limit: input.limit,
+    }));
+    return rest;
+  });
+  return { emails, reminders };
 }
 
 export async function runReminderTick(db: Queryable, input: {

@@ -1,7 +1,7 @@
 import pg from "pg";
 import {
-  emailDispatchFromEnv, mailDelivery, runReminderTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
-  withTenantWorker, type Mailer,
+  emailDispatchFromEnv, mailDelivery, runWorkerTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
+  type Mailer,
 } from "../src/index";
 import { smtpMailer } from "../src/smtpMailer";
 
@@ -75,15 +75,18 @@ async function main() {
 
   while (!stopping) {
     try {
-      const summary = await withTenantWorker(pool, organisationId, (db) =>
-        runReminderTick(db, { organisationId, today: londonToday(), mailer, email, env: {
-          mailMode: process.env.NZI_MAIL_MODE,
-          appEnv: process.env.NEXT_PUBLIC_APP_ENV,
-          boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
-        } }));
+      // Email and reminders in their own transactions, email first: a reminder-side failure is reported, never fatal to email.
+      const { emails, reminders } = await runWorkerTick(pool, { organisationId, today: londonToday(), mailer, email, env: {
+        mailMode: process.env.NZI_MAIL_MODE,
+        appEnv: process.env.NEXT_PUBLIC_APP_ENV,
+        boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
+      } });
       log("tick.complete", {
-        scanned: summary.scanned, claimed: summary.claimed, sent: summary.sent,
-        suppressed: summary.suppressed, failed: summary.failed, skipped: summary.skipped, emails: summary.emails,
+        emails: emails.ok ? emails.summary : { failed: emails.error },
+        reminders: reminders.ok
+          ? { scanned: reminders.summary.scanned, claimed: reminders.summary.claimed, sent: reminders.summary.sent,
+            suppressed: reminders.summary.suppressed, failed: reminders.summary.failed, skipped: reminders.summary.skipped }
+          : { failed: reminders.error },
       });
     } catch (error) {
       // A tick that throws must not kill the clock: the next one re-reads the same state,
