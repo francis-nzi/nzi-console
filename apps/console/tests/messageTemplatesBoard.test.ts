@@ -11,6 +11,7 @@ import { describe, it } from "node:test";
  */
 const here = dirname(fileURLToPath(import.meta.url));
 const board = readFileSync(join(here, "../app/admin/message-templates/MessageTemplatesBoard.tsx"), "utf8");
+const page = readFileSync(join(here, "../app/admin/message-templates/page.tsx"), "utf8");
 
 describe("the Message templates board (phase 2)", () => {
   it("previews the HTML part in a sandboxed frame with no permissions — never in the console's own document", () => {
@@ -19,8 +20,10 @@ describe("the Message templates board (phase 2)", () => {
     assert.doesNotMatch(board, /sandbox="[^"]+"/, "the sandbox grants nothing: no scripts, forms, popups or top navigation");
   });
 
-  it("previews with the send's own render, against the samples and the organisation's footer", () => {
-    assert.match(board, /previewEmailTemplate\(definition, \{ subject: draft\.subject, body: draft\.body, html \}, sender\.footer\)/);
+  it("previews with the send's own render, against the samples and the organisation's branded frame", () => {
+    assert.match(board, /previewEmailTemplate\(definition, \{ subject: draft\.subject, body: draft\.body, html \}, sender\.brand\)/);
+    // The page builds the brand the way a send does (5-1): the profile's settings and the console origin for the logo.
+    assert.match(page, /brand: emailBrandFor\(profile\?\.fields \?\? null, process\.env\.NZI_ISOLATED_API_URL \?\? null\)/);
     // A refusal is shown as one, rather than a preview of a mail that would not be sent.
     assert.match(board, /Not sent as it stands: \{email\.issues\.join\(" "\)\}/);
   });

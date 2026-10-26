@@ -114,7 +114,7 @@ export async function requestPasswordReset(
     // The email is the console role's to queue (it renders the organisation's wording and footer); the token is the
     // authentication role's to hold. Two transactions, so a send that fails withdraws the link below.
     await withTenantWrite(pool, input.organisationId, (db) => sendTemplatedEmail(db, input.organisationId, {
-      templateCode: input.principal === "staff" ? "password.reset.staff" : "password.reset.portal",
+      templateCode: input.principal === "staff" ? "password.reset.staff" : "password.reset.portal", consoleOrigin: origin.origin,
       to: issued.account.email,
       vars: { displayName: issued.account.displayName ?? "there", resetLink: resetLink(origin.origin, input.principal, issued.token), expiresAt: expiryForPeople(issued.expiresAt) },
       correlationId: issued.resetId, idempotencyKey: `password.reset:${issued.resetId}`,

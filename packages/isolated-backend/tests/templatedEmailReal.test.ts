@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
-import { commandGrantForRole, messageTemplateDefinition, type CommandContext, type StaffRole } from "@nzi/contracts";
+import { commandGrantForRole, DEFAULT_EMAIL_CONFIDENTIALITY_NOTICE, messageTemplateDefinition, type CommandContext, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { emailDispatchFromEnv } from "../src/email";
 import { suppressingMailer } from "../src/mailer";
@@ -51,8 +51,8 @@ describe("templated email (phase 2), against a real database", { skip: TEST_DATA
     database = (await createDisposableDatabase("templatedemail"))!;
     await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [ORG]);
     await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, 'ada', 'admin', 'active', 'Ada Admin')`, [ORG]);
-    // A known footer, so both parts can be checked for it (F-Q7: the organisation's, never the template's).
-    await q(`UPDATE nzi_console.organisation_profiles SET footer_override = 'Net Zero International Ltd' WHERE organisation_id = $1`, [ORG]);
+    // A known company name, so both parts can be checked for the organisation's signature (F-Q7: never the template's; 5-1).
+    await q(`UPDATE nzi_console.organisation_profiles SET display_name = 'Net Zero International Ltd' WHERE organisation_id = $1`, [ORG]);
   });
   beforeEach(async () => {
     await q(`DELETE FROM nzi_console.transactional_outbox WHERE organisation_id = $1`, [ORG]);
@@ -105,7 +105,7 @@ describe("templated email (phase 2), against a real database", { skip: TEST_DATA
   });
 
   describe("sendTemplatedEmail", () => {
-    it("renders the built-in, multipart, with the footer, and queues it through sendEmail with template_code set", async () => {
+    it("renders the built-in, multipart, with the house signature, and queues it through sendEmail with template_code set", async () => {
       const queued = await send({ templateCode: "portal.access.invite", to: "grace@netzero.international", vars: {
         displayName: "Grace", clientName: "Example Manufacturing Ltd", senderName: "Sam Adviser", inviteLink: "https://console.example.test/portal/accept#token=t1", expiresAt: "Friday",
       } });
@@ -115,9 +115,10 @@ describe("templated email (phase 2), against a real database", { skip: TEST_DATA
       assert.equal(row.status, "queued");
       assert.equal(row.subject, "Your NZ Insights Pro client portal access for Example Manufacturing Ltd");
       assert.match(row.text_body, /https:\/\/console\.example\.test\/portal\/accept#token=t1/);
-      assert.match(row.text_body, /\n\n--\nNet Zero International Ltd$/);
+      // The text part closes with the house signature (5-1): the company, the website, then the GDPR block.
+      assert.ok(row.text_body.endsWith(`\n\n--\nNet Zero International Ltd\nWebsite: netzero.international\n\n${DEFAULT_EMAIL_CONFIDENTIALITY_NOTICE}`), row.text_body);
       assert.match(row.html_body, /href="https:\/\/console\.example\.test\/portal\/accept#token=t1"/);
-      assert.match(row.html_body, /Net Zero International Ltd/);
+      assert.match(row.html_body, /font-weight:bold">Net Zero International Ltd<\/p>/);
       const [outbox] = await q(`SELECT topic, payload_json FROM nzi_console.transactional_outbox WHERE organisation_id = $1`, [ORG]);
       assert.deepEqual([outbox.topic, outbox.payload_json], ["email.send", { emailMessageId: queued.emailMessageId }]);
     });

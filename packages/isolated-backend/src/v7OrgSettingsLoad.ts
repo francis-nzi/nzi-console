@@ -28,7 +28,8 @@ import type { V7Row, V7Table } from "./v7ClientExtract";
 export const ORG_SETTINGS_RUN_PREFIX = "v7-org-settings-";
 export const V7_ORG_SETTINGS_TABLES: readonly V7Table[] = ["system_settings"];
 
-type ProfileField = Exclude<keyof OrganisationProfileFields, "shortName" | "footerOverride" | "signatoryUserId" | "signatoryTitle">;
+// The email signature fields (0184) are the console's own: v7 had no such settings, so nothing is imported into them.
+type ProfileField = Exclude<keyof OrganisationProfileFields, "shortName" | "footerOverride" | "signatoryUserId" | "signatoryTitle" | "emailLogoUrl" | "emailBadgeUrl" | "emailConfidentialityNotice">;
 /** v7's key for each profile field (`services/company_profile.py`). */
 export const V7_PROFILE_KEYS: Record<string, ProfileField> = {
   company_legal_name: "legalName", company_display_name: "displayName", company_registration_number: "registrationNumber", vat_number: "vatNumber",
@@ -78,6 +79,7 @@ export function planV7OrgSettings(extract: Partial<Record<V7Table, readonly V7Ro
   const blankFields: OrganisationProfileFields = {
     legalName: null, displayName: null, shortName: null, registrationNumber: null, vatNumber: null, addressLine1: null, addressLine2: null, addressCity: null, addressRegion: null,
     addressPostcode: null, addressCountry: null, contactEmail: null, contactPhone: null, websiteUrl: null, footerOverride: null, signatoryUserId: null, signatoryTitle: null,
+    emailLogoUrl: null, emailBadgeUrl: null, emailConfidentialityNotice: null,
   };
   const normalised = normaliseProfile({ ...blankFields, ...raw });
   const refused = new Map(profileIssues(normalised).map((issue) => [issue.field, issue.code]));

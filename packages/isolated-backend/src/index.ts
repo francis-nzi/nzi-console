@@ -221,6 +221,9 @@ export {
 } from "./email";
 export { sendTemplatedEmail, TemplatedEmailError, type TemplatedEmailRequest } from "./templatedEmail";
 export {
+  readStaffSignature, updateOwnStaffSignature, emailPersonForMember, StaffSignatureError, type StaffSignatureRecord, type SignatureMember,
+} from "./staffSignature";
+export {
   requestPasswordReset, completePasswordReset, resetLink, PasswordResetError, RESET_TTL_MINUTES, MAX_RESET_REQUESTS_PER_HOUR,
   MIN_RESET_PASSWORD, type ResetPrincipal,
 } from "./passwordReset";

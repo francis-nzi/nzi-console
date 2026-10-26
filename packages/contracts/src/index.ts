@@ -132,6 +132,7 @@ export * from "./adminCommercialLookups";
 export * from "./adminServiceCatalogue";
 export * from "./adminSuppliers";
 export * from "./messageTemplates";
+export * from "./staffSignature";
 export * from "./adminCrmBd";
 export * from "./adminCustomFields";
 export * from "./adminPortalBroadcasts";

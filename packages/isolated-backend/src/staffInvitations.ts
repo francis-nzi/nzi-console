@@ -71,7 +71,7 @@ export async function inviteStaffMember(
     const sentTo = member!.email.trim().toLowerCase();
     try {
       const queued = await sendTemplatedEmail(db, principal.organisationId, {
-        templateCode: "staff.invitation", to: sentTo,
+        templateCode: "staff.invitation", to: sentTo, consoleOrigin: origin.origin,
         vars: { inviteLink: link, expiresAt: expiryForPeople(issued.expiresAt) },
         // Correlated to the invitation, so the roster can say how its email resolved; one email per invitation.
         correlationId: issued.invitationId, idempotencyKey: `staff.invitation:${issued.invitationId}`,

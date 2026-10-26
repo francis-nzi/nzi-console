@@ -129,10 +129,14 @@ export function sealPortalUserRow(
 /** A staff member's place in an organisation — the subject a staff person is, by ruling. */
 export function sealMembershipRow(
   seal: Seal,
-  row: { userId: string; email?: string | null; displayName?: string | null },
+  row: { userId: string; email?: string | null; displayName?: string | null; signatureTitle?: string | null; signatureEmail?: string | null; signatureMobile?: string | null },
 ) {
   const sealed: Record<string, string | null | undefined> = {};
   if (row.displayName !== undefined) sealed.display_name_sealed = row.displayName;
+  // The email signature's personal lines (0185).
+  if (row.signatureTitle !== undefined) sealed.signature_title_sealed = row.signatureTitle;
+  if (row.signatureEmail !== undefined) sealed.signature_email_sealed = row.signatureEmail;
+  if (row.signatureMobile !== undefined) sealed.signature_mobile_sealed = row.signatureMobile;
   return sealRowPii(seal.db, {
     organisationId: seal.organisationId,
     subject: { sourceTable: "memberships", sourceId: row.userId },

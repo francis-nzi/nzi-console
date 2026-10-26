@@ -1,3 +1,4 @@
+import { emailBrandFor } from "@nzi/contracts";
 import { listMessageTemplates, readOrganisationProfile, withTenantRead, type MessageTemplateRow } from "@nzi/isolated-backend";
 import { serviceEnvironment } from "../../lib/environment";
 import { isolatedPool } from "../../lib/isolatedDatabase";
@@ -22,7 +23,9 @@ export default async function MessageTemplatesPage() {
       const profile = await readOrganisationProfile(db, access.organisationId);
       return {
         templates: await listMessageTemplates(db),
-        sender: { name: profile?.fields.displayName ?? null, email: profile?.fields.contactEmail ?? null, footer: profile?.footer || null },
+        sender: { name: profile?.fields.displayName ?? null, email: profile?.fields.contactEmail ?? null, footer: profile?.footer || null,
+          // The house signature as a send would draw it (5-1): the same settings, the same console origin for the logo.
+          brand: emailBrandFor(profile?.fields ?? null, process.env.NZI_ISOLATED_API_URL ?? null) },
       };
     });
   } catch {

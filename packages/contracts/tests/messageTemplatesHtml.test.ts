@@ -116,10 +116,11 @@ describe("the strict render (R2, R4)", () => {
     const entry = definition("password.reset.staff");
     const rendered = renderEmailTemplate(entry, { subject: entry.builtIn.subject, body: "Hi {{displayName}} <b>\n\n{{resetLink}}" }, samples("password.reset.staff"));
     assert.ok(rendered.ok);
-    assert.ok(rendered.email.html.includes("<p>Hi Sam Adviser &#60;b&#62;</p>"));
+    // The frame (5-1) styles each paragraph inline; the text inside is the text, escaped.
+    assert.match(rendered.email.html, /<p style="[^"]*">Hi Sam Adviser &#60;b&#62;<\/p>/);
     // The link token becomes a link — a reset mail you cannot click is no better than its text part.
     const link = samples("password.reset.staff").resetLink!;
-    assert.ok(rendered.email.html.includes(`<p><a href="${link}">${link}</a></p>`));
+    assert.ok(rendered.email.html.includes(`<a href="${link}" style="color:#0B7A4B;word-break:break-all">${link}</a>`));
     assert.equal(textToHtml("one\ntwo\n\nthree"), "<p>one<br>two</p>\n<p>three</p>");
   });
 
