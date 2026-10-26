@@ -29,7 +29,9 @@ describe("SRS readiness", () => {
   it("stamps an assessment with the framework version it was measured against", () => {
     assert.match(migration, /framework_version integer NOT NULL/);
     assert.match(read("packages/isolated-backend/src/srsReadiness.ts"), /framework_version[\s\S]*?framework\.version/, "the handler copies the version in force");
-    assert.match(area, /version \{assessment\.frameworkVersion\}/, "the screen says which version it was measured against");
+    // S2: through the dashboard model, which carries the assessment's own stamped version.
+    assert.match(area, /version \{model\.frameworkVersion\}/, "the screen says which version it was measured against");
+    assert.match(read("packages/contracts/src/srsDashboard.ts"), /frameworkVersion: assessment\.frameworkVersion/);
   });
 
   it("carries the future benchmark slot without inventing peer data", () => {
@@ -70,12 +72,15 @@ describe("SRS readiness", () => {
   });
 
   it("draws every graphic from the assessment, with nothing seeded", () => {
-    for (const chart of ["SrsPillarRadar", "SrsMaturityBullets", "SrsGapHeatmap", "SrsReadinessTrend"]) {
+    // SRS S2: the ladder graphics, one ordinal ramp, shared with the portal.
+    for (const chart of ["SrsDial", "SrsMeter", "SrsRadar", "SrsHeatmap", "SrsTrend", "SrsScaleKey", "SrsPillarTable"]) {
       assert.ok(area.includes(chart), chart);
     }
     assert.doesNotMatch(area, /values: \[\s*\d+\s*,/, "no hard-coded series");
     assert.doesNotMatch(area, /@nzi\/mock-data/, "no mock data");
-    assert.match(area, /overallReadiness|pillarReadiness/, "figures come from the shared resolver");
+    // Figures come from the shared resolver: the area reads `srsDashboard`, which reads S1's rollups.
+    assert.match(area, /srsDashboard\(framework, assessment, assessments, \{ standardKey \}\)/);
+    assert.match(read("packages/contracts/src/srsDashboard.ts"), /overallReadiness\(scoped[\s\S]*pillarReadiness\(scoped/);
   });
 
   it("says plainly when there is no framework or no assessment", () => {
@@ -103,20 +108,21 @@ describe("what a requirement is being addressed by", () => {
     assert.match(area, /strategyStatusLabels\[strategy\.status\]/, "each strategy is named with its status");
   });
 
-  it("retires the linked_action_id decoy from the view", () => {
-    // It said a row had been filled in, not that the requirement was addressed, and the
-    // column it points at has no foreign key behind it.
-    assert.doesNotMatch(area, /linkedActionId/, "the view no longer reads the decoy column");
-    // The rendered literals, not the word — the comment above the replacement still explains
-    // what these said and why naming the strategies is not the same claim.
-    assert.doesNotMatch(area, /" · linked action"/, "nor renders the roadmap string");
-    assert.doesNotMatch(area, /" · no action yet"/, "nor its negative");
-    assert.doesNotMatch(area, /"Linked action"/, "nor the register's version");
+  it("reads linked_action_id only as the real gap→action hook, resolved to a strategy on the plan", () => {
+    // Once a decoy with no foreign key behind it; S1 (0187) gave it one, to client_strategies, as the S3 hook. The
+    // register reads it only by resolving it to a strategy on this client's plan and naming it — never "a link exists".
+    assert.match(read("packages/isolated-backend/migrations/0187_srs_framework_versions_and_completion.sql"), /srs_assessment_items_linked_action_fk[\s\S]*REFERENCES nzi_console\.client_strategies/);
+    assert.match(area, /requirement\.linkedActionId \? actions\.get\(requirement\.linkedActionId\)/);
+    assert.match(area, /On the plan: <b>\{linked\.title\}<\/b>/);
+    assert.doesNotMatch(area, /" · linked action"/, "nor renders the old roadmap string");
+    assert.doesNotMatch(area, /"Linked action"/, "nor the register's old version");
   });
 
   it("says honestly when nothing addresses a requirement", () => {
     assert.match(area, /No strategy yet/, "an unaddressed requirement says so");
-    assert.match(area, /no strategy yet/, "and so does an unaddressed gap in the register");
+    // S2: an unaddressed gap in the register offers the S3 hook by name, and creates nothing.
+    assert.match(area, /Bridge this gap/);
+    assert.doesNotMatch(area, /srs\.gap|createBridging|\/api\/isolated\/actions/, "no creation path in S2");
   });
 
   it("leaves the column in place — dropping it is a separate migration", () => {
@@ -178,7 +184,12 @@ describe("the portal readiness statement", () => {
       assert.doesNotMatch(portal, new RegExp(`\\.${internal}\\b`), `the view never reaches for ${internal}`);
       assert.doesNotMatch(model, new RegExp(`${internal}:`), `nor does the read model project ${internal}`);
     }
-    assert.match(model, /evidenced: \{ count:/, "only the count of what is evidenced crosses");
+    assert.match(model, /evidenced: \{ count:/, "the headline carries only the count of what is evidenced");
+    // SRS S2 (R9): the questions-in-drawers show each requirement's evidence and history, as the brief sets — but the
+    // staff working fields (owner, due date, the action link) are taken out field by field before the model leaves
+    // the contract, so the portal cannot reach them even by accident (NZC-110).
+    assert.match(read("packages/contracts/src/srsDashboard.ts"), /requirements: model\.requirements\.map\(\(\{ owner: _owner, dueDate: _due, linkedActionId: _link, \.\.\.client \}\) => client\)/);
+    assert.doesNotMatch(portal, /\.owner\b/, "the view never reaches for an owner");
   });
 
   it("is read-only — no mutation path and no control implying one", () => {
@@ -188,16 +199,24 @@ describe("the portal readiness statement", () => {
     assert.match(route, /withTenantRead/);
     assert.match(route, /user\.clientId/);
     assert.doesNotMatch(route, /params|searchParams/, "the client is the session's own");
-    assert.ok(!portal.includes("<button"), "and the view offers nothing to press");
+    // S2: the questions open in drawers, so there are buttons — but each only opens, closes or switches a view. Nothing
+    // in the view sends anything: no command helper, and its one fetch is the GET above.
+    for (const write of ["postBrowserCommand", "putBrowserCommand", "patchBrowserCommand", "method:"]) {
+      assert.ok(!portal.includes(write), `the view never writes (${write})`);
+    }
+    for (const handler of portal.match(/onClick=\{[^}]*\}/g) ?? []) {
+      assert.match(handler, /setOpenId|setDialsAs|onClose|onOpen/, `a button only opens or switches a view: ${handler}`);
+    }
     for (const verb of ["postBrowserCommand", "patchBrowserCommand", "INSERT", "UPDATE "]) {
       assert.ok(!model.includes(verb), `the read model must not write (${verb})`);
     }
   });
 
-  it("reuses the proven readiness charts rather than drawing its own", () => {
-    assert.match(portal, /SrsPillarRadar/);
-    assert.match(portal, /SrsMaturityBullets/);
+  it("reuses the CRM's readiness charts rather than drawing its own", () => {
+    // SRS S2: the same dial and radar components the CRM dashboard draws, from the same model.
+    for (const chart of ["SrsDial", "SrsMeter", "SrsRadar", "SrsPillarTable", "SrsScaleKey"]) assert.match(portal, new RegExp(`<${chart}\\b`), chart);
     assert.match(portal, /from "@nzi\/charts"/);
+    assert.match(model, /dashboard: srsPortalDashboard\(framework, assessments\)/);
   });
 
   it("sits with the plan, so the page reads as one story", () => {

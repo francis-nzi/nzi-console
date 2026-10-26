@@ -1,6 +1,6 @@
 import {
-  composeSrsRoadmap, evidenceCoverage, latestAssessed, maturityLabel, overallReadiness, pillarReadiness, strategyIsReportable,
-  type ReportSrsRoadmap,
+  composeSrsRoadmap, evidenceCoverage, latestAssessed, maturityLabel, overallReadiness, pillarReadiness, srsPortalDashboard, strategyIsReportable,
+  type ReportSrsRoadmap, type SrsDashboardModel,
 } from "@nzi/contracts";
 import { listClientStrategies } from "./reductionStrategies";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
@@ -64,6 +64,12 @@ export type PortalReadinessReadModel =
     roadmap: ReportSrsRoadmap;
     /** How many requirements have been evidenced, out of how many. */
     evidenced: { count: number; total: number };
+    /**
+     * SRS S2: the readiness dashboard's model — the hero, the four pillar dials, the radar, the questions in drawers —
+     * built from this same completed assessment by `srsPortalDashboard`, which leaves out owner, due date and the action
+     * link field by field (NZC-110). The CRM dashboard renders the same model, so the client sees the same pictures.
+     */
+    dashboard: SrsDashboardModel;
   };
 
 export async function getPortalClientReadiness(
@@ -128,6 +134,7 @@ export async function getPortalClientReadiness(
     // The same population as the report's roadmap (A1): marked for the report and agreed or beyond.
     roadmap: composeSrsRoadmap(framework, assessment.items, plan.filter(strategyIsReportable)),
     evidenced: { count: coverage.evidenced, total: coverage.total },
+    dashboard: srsPortalDashboard(framework, assessments)!,
   };
 }
 

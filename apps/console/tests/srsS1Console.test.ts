@@ -45,18 +45,23 @@ describe("the Admin SRS framework (R1)", () => {
 
 describe("the client's SRS area, dated on completion (R3)", () => {
   it("says in progress — with how much is addressed — or assessed, never an assessed date on a draft", () => {
-    assert.match(area, /In progress · \$\{completion\.addressed\} of \$\{completion\.total\} addressed/);
+    // S2: the completion reads through the dashboard model (S1's `srsCompletion`), and the date only from a completed one.
+    assert.match(area, /In progress · \$\{currentCompletion\.addressed\} of \$\{currentCompletion\.total\} addressed/);
     assert.match(area, /not yet assessed — it is dated when every requirement is addressed/);
-    assert.match(area, /assessment\.assessedOn\s*\?/);
+    assert.match(area, /model\.assessment\.assessedOn\s*\?/);
+    assert.match(read("../../packages/contracts/src/srsDashboard.ts"), /assessedOn: isAssessed\(assessment\) \? assessment\.assessedOn : null/);
   });
 
   it("holds Complete until every requirement is addressed, and reassessing starts a new assessment", () => {
-    assert.match(area, /blocked=\{access\.state !== "allowed" \|\| !completion\.ready \|\| completing\}/);
+    assert.match(area, /blocked=\{access\.state !== "allowed" \|\| !completionReady \|\| completing\}/);
     assert.match(area, /onClick=\{\(\) => onDrawer\(\{ kind: "srs-start" \}\)\}>Reassess/);
   });
 
   it("draws the trend from completed assessments only, and asks for no date at start", () => {
-    assert.match(area, /readinessTrend\(framework, assessments\)/);
+    const dashboard = read("../../packages/contracts/src/srsDashboard.ts");
+    assert.match(dashboard, /const completed = assessments\.filter\(isAssessed\)/);
+    assert.match(dashboard, /overall: completed\.map\(/);
+    assert.match(area, /model\.trend\.overall\.map/);
     assert.doesNotMatch(start, /assessedOn/);
   });
 });

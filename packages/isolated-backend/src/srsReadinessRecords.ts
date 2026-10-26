@@ -1,4 +1,5 @@
 import type { Queryable } from "./postgres";
+import { dateOnlyOrNull } from "./dates";
 import type { SrsAssessment, SrsAssessmentItem, SrsFramework, SrsMaturity } from "@nzi/contracts";
 
 /**
@@ -10,7 +11,12 @@ import type { SrsAssessment, SrsAssessmentItem, SrsFramework, SrsMaturity } from
  */
 
 const iso = (value: Date | string) => value instanceof Date ? value.toISOString() : String(value);
-const dateOnlyValue = (value: Date | string | null) => value == null ? null : iso(value).slice(0, 10);
+/**
+ * A SQL `date` read as the calendar day it holds. pg parses a `date` to local midnight, so slicing its UTC ISO string
+ * moved every date a day back on a host ahead of UTC (31 Mar 2027 in BST read as 30 Mar) — the shared `dateOnly` reads
+ * the local parts instead (SRS S2, found by its real-DB test).
+ */
+const dateOnlyValue = (value: Date | string | null) => dateOnlyOrNull(value);
 
 /** The framework a given assessment was measured against, or the one in force. */
 export async function getSrsFramework(db: Queryable, frameworkId?: string): Promise<SrsFramework | null> {

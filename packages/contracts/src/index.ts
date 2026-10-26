@@ -104,6 +104,7 @@ export * from "./jobDates";
 export * from "./permissions";
 export * from "./targets";
 export * from "./srsReadiness";
+export * from "./srsDashboard";
 export * from "./intensityMetrics";
 export * from "./reportingTemplate";
 export * from "./datasetSources";

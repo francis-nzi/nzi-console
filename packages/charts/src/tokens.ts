@@ -35,9 +35,11 @@ export const tokens = {
   // SRS readiness â a sequential maturity ramp (0 not started â 4 assured) plus the two
   // standard series. Deliberately not the scope palette: scope identity means scope.
   srs: {
-    maturity: ["#E4E9E5", "#CDEBD9", "#8FD3AE", "#2E9E68", "#0B6B41"],
-    /** Text that stays legible on each maturity fill. */
-    maturityInk: ["#3C4A43", "#095C35", "#095C35", "#FFFFFF", "#FFFFFF"],
+    // SRS S2: the one validated ordinal ramp (SRS_LADDER.light in SrsLadder.tsx) — the earlier ramp failed the ordinal
+    // check (steps 0→1 ΔL 0.016, light end 1.23:1 on white). Every SRS graphic now reads the same five steps.
+    maturity: ["#89C09F", "#59A57A", "#1A8454", "#00673C", "#004B2A"],
+    /** Text that stays legible on each maturity fill — ≥ 4.5:1 on every step. */
+    maturityInk: ["#0B1B2B", "#0B1B2B", "#FFFFFF", "#FFFFFF", "#FFFFFF"],
     s2: "#0B7A4B",   // climate â the brand pine, the led standard
     s1: "#6B4E9B",   // general â a categorical partner hue, not a scope colour
     target: "#14201A",
@@ -62,10 +64,10 @@ export const tokens = {
 /**
  * Bump whenever a visual token changes. It participates in asset identity.
  *
- * NOT bumped for the `srs` block above: it is purely additive â no existing chart's
- * appearance changes, so every already-published asset identity stays valid.
+ * 2 (SRS S2): the SRS maturity ramp moved to the validated ordinal steps, so SRS bullets and heatmaps render
+ * differently and their asset identities must change with them. Every other chart's appearance is unchanged.
  */
-export const TOKENS_VERSION = 1;
+export const TOKENS_VERSION = 2;
 
 /**
  * SRS maturity fill for a level 0â4, and the ink that stays legible on it.

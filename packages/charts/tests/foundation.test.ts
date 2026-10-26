@@ -41,7 +41,7 @@ test("an included unreviewed measurement degrades charts and blocks publication"
 test("render targets have distinct content-addressed derivative keys", () => {
   const [chart] = resolveCrpCharts(reviewedCrpSnapshotSample);
   assert.notEqual(chartAssetKey(chart, "screen"), chartAssetKey(chart, "print"));
-  assert.match(chartAssetKey(chart, "portal"), /tokens-1:renderer-1:portal$/);
+  assert.match(chartAssetKey(chart, "portal"), new RegExp(`tokens-${TOKENS_VERSION}:renderer-1:portal$`));
 });
 
 test("the professional CRP manifest requires every catalogue chart", () => {
