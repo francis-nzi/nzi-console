@@ -137,15 +137,19 @@ describe("the portal plan view", () => {
     assert.deepEqual(model.highlights, []);
   });
 
-  it("carries no owner and no consultant notes to the client", async () => {
-    // `owner` is an internal handle and `notes` is the consultant's working note. Both are
-    // kept off the wire rather than merely unrendered: an unused field in a JSON response
-    // is still a field the client can read.
+  it("carries no consultant handle and no consultant notes to the client — only an owner from their own team", async () => {
+    // 0075's free-text owner held an internal consultant handle, and `notes` is the consultant's working note. Both are
+    // kept off the wire rather than merely unrendered: an unused field in a JSON response is still a field the client
+    // can read. Since A1 an owner is one of the client's own contacts, and A2 has the client nominate them, so that name
+    // — and only that — crosses.
     const state = world({ strategies: [strategy()] });
     const payload = JSON.stringify(await read(state));
     assert.ok(!payload.includes("mosei"), "no owner handle");
     assert.ok(!payload.includes("hesitant on capex"), "no consultant notes");
-    assert.ok(!payload.includes("\"owner\""), "and no owner field at all");
+    const unowned = (await read(state)).plan.flatMap((group) => group.strategies)[0]!;
+    assert.deepEqual([unowned.owner, unowned.ownerContactId], ["", null], "the legacy handle reads as no owner");
+    const owned = world({ strategies: [strategy({ owner_contact_id: "contact-ada", owner_contact_name: "Ada Client", legacy_owner_text: "" })] });
+    assert.equal((await read(owned)).plan.flatMap((group) => group.strategies)[0]!.owner, "Ada Client", "a client contact owner is shown");
   });
 
   it("describes a strategy from the catalogue, and a bespoke one not at all", async () => {

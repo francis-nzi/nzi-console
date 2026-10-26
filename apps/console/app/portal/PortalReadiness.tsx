@@ -139,7 +139,7 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
       </>}
   </div></section>
 
-  <Drawer open={open!==null} onClose={()=>setOpenId(null)} ariaLabel={open?`${open.code} ${open.title}`:"Requirement"} className="nz-pdv-drawer" dismissOnOutsideClick>
+  <Drawer open={open!==null} onClose={()=>setOpenId(null)} ariaLabel={open?`${open.code} ${open.title}`:"Requirement"} className="nz-site-drawer nz-pdv-drawer" dismissOnOutsideClick>
     {open?<QuestionDrawer requirement={open} onClose={()=>setOpenId(null)}/>:null}
   </Drawer>
   </>;

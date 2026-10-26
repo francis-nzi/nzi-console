@@ -9,7 +9,7 @@ const contact = (over: Partial<ClientContactLike> = {}): ClientContactLike =>
 const strategy = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", leverIds: [], srsRequirementIds: ["req-1"], includeInReport: true,
   strategyId: null, title: id, scope: "2", category: "Energy", controlLevel: "direct_control",
-  iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, targetDate: null, progressPct: 0,
+  iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, proposal: null, targetDate: null, progressPct: 0,
   notes: "", active: true, version: 1, estimate: null, ...over,
 });
 

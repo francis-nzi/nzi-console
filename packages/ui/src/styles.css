@@ -1548,6 +1548,16 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 /* The client-facing plan on the portal: read-only, grouped by lever. Tokens throughout, so
    it follows the viewer's theme — unlike the report, which is deliberately paper-only. */
 .nz-portal-plan{margin-top:10px}
+/* Actions A2: the client's hand in their plan — add, propose, owner, update. Tokens only, as the rest of the portal. */
+.nz-portal-plan-actions{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px}
+.nz-portal-plan-owner{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:6px;flex-wrap:wrap}
+.nz-portal-library{list-style:none;margin:0;padding:0;display:grid}
+.nz-portal-library li{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--line2)}
+.nz-portal-library li:first-child{border-top:0}
+.nz-portal-proposal-reason{margin:4px 0 0;padding:6px 9px;border-left:3px solid var(--line);background:var(--paper)}
+.nz-proposals .nz-proposal-note{font-style:italic;white-space:pre-wrap}
+.nz-proposals-declined{margin-top:10px}
+.nz-proposals-declined summary{cursor:pointer;font-size:12.5px;color:var(--t2)}
 .nz-portal-plan-item{padding:11px 0;border-top:1px solid var(--line2)}
 .nz-portal-plan-item:first-child{border-top:0}
 .nz-portal-plan-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px}

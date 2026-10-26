@@ -68,6 +68,9 @@ export type CommandKey =
   | "portal.scope.row.create"
   | "portal.scope.row.update"
   | "portal.scope.row.deactivate"
+  | "portal.strategy.add"
+  | "portal.strategy.propose"
+  | "portal.strategy.update"
   | "scope.row.reactivate"
   | "scope.review.approve"
   | "scope.review.reject"
@@ -181,6 +184,9 @@ export type CommandKey =
   | "client.strategy.update"
   | "client.strategy.remove"
   | "client.strategy.estimate.set"
+  | "client.strategy.proposal.approve"
+  | "client.strategy.proposal.decline"
+  | "strategy.library.promote"
   | "knowledge.capture"
   | "knowledge.alias.add"
   | "knowledge.edit"
@@ -734,6 +740,17 @@ export type CommandInputMap = {
   "portal.scope.row.update": { jobId: string; rowId: string; expectedVersion: number } & PortalScopeRowFields;
   /** Off by default (profile `deactivate`); the same row rule as update, with a reason as staff give one. */
   "portal.scope.row.deactivate": { jobId: string; rowId: string; expectedVersion: number };
+  /**
+   * Actions A2: the client in their own plan. `clientId` is the portal session's client — set by the route, never read
+   * from the request. Adding from the library lands Proposed (origin plan); a custom action lands as a pending proposal.
+   */
+  "portal.strategy.add": { clientId: string; strategyId: string };
+  "portal.strategy.propose": { clientId: string; title: string; scope: string; note?: string };
+  /**
+   * Each field absent leaves it as it is. `ownerContactId` (any client user; null clears it) nominates one of the client's
+   * own contacts; `targetDate`, `status` and `progressPct` are the owner's, on an action they own (A2, R4).
+   */
+  "portal.strategy.update": { clientStrategyId: string; expectedVersion: number; ownerContactId?: string | null; targetDate?: string | null; status?: string; progressPct?: number };
   "scope.row.reactivate": { jobId: string; rowId: string; expectedVersion: number };
   "scope.review.approve": { jobId: string; rowIds: string[]; expectedReviewVersion: number; reviewerNote?: string };
   "scope.review.reject": { jobId: string; rowIds: string[]; expectedReviewVersion: number; reviewerNote: string };
@@ -956,6 +973,15 @@ export type CommandInputMap = {
   "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; ownerContactId?: string | null; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
   /**
+   * A2, R2: staff decide a client's proposal. Approving makes it a real plan action, Agreed, aligned to what it advances,
+   * with the wording, scope and control level the consultant settles on. Declining keeps it off the plan with the reason the
+   * client is shown.
+   */
+  "client.strategy.proposal.approve": { clientStrategyId: string; expectedVersion: number; title: string; scope: string; controlLevel: string; category?: string; srsRequirementIds: string[]; includeInReport: boolean; ownerContactId?: string | null; targetDate?: string | null };
+  "client.strategy.proposal.decline": { clientStrategyId: string; expectedVersion: number; reason: string };
+  /** A2, R3: an approved client proposal copied into the shared library, once — the library capability's act, never the client's. */
+  "strategy.library.promote": { clientStrategyId: string; key: string; description?: string; leverIds: string[] };
+  /**
    * A forward **estimate** of what this strategy will save. Never a measurement, and never
    * derived from an assured snapshot.
    *
@@ -1117,8 +1143,11 @@ export type CommandInputMap = {
  * What a portal command is authorized by (portal data-entry phase 2). Not a PERMISSION_MATRIX capability — no member of staff
  * holds it and no grant carries it: a portal command runs only for a portal principal, under its access grant on the job,
  * the open data-entry window and the client's portal profile.
+ *
+ * `portal.plan` (Actions A2): the client's own reduction plan — any active portal user of the client, on that client's
+ * plan only, with the owner's half of the ladder checked by the handler.
  */
-export type PortalCommandPermission = "portal.dataentry";
+export type PortalCommandPermission = "portal.dataentry" | "portal.plan";
 type CommandDefinitionCommon<K extends CommandKey> = {
   key: K; label: string; reasonRequired: boolean; transaction: string; auditAction: string;
   validate: (input: CommandInputMap[K], context: CommandContext) => CommandIssue[];
@@ -1782,6 +1811,43 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "portal.scope.row.create": { key: "portal.scope.row.create", label: "Enter a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "scope row (pending, client-provenanced) + audit + outbox + idempotency", auditAction: "portal_scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...portalStaffOnlyIssues(input as Record<string, unknown>), ...scopeRowIssues({ ...input, qualityTier: null })]; required(issues, "jobId", input.jobId); required(issues, "categoryCode", input.categoryCode); return issues; } },
   "portal.scope.row.update": { key: "portal.scope.row.update", label: "Change a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "versioned scope row (back to pending) + audit + outbox + idempotency", auditAction: "portal_scope_row_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...portalStaffOnlyIssues(input as Record<string, unknown>), ...scopeRowIssues({ ...input, qualityTier: null })]; required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); required(issues, "categoryCode", input.categoryCode); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "portal.scope.row.deactivate": { key: "portal.scope.row.deactivate", label: "Deactivate a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: true, transaction: "deactivation (never deletion; figures kept) + audit + outbox + idempotency", auditAction: "portal_scope_row_deactivated", validate: (input, context) => scopeRowStateIssues(input, context, true) },
+  // Actions A2: the client's hand in their own plan. Portal commands, authorized by the portal session's own client — never a
+  // job grant — and refused anything that is staff's to set (alignment, inclusion, the consultant's notes, agreeing).
+  "portal.strategy.add": { key: "portal.strategy.add", label: "Add an action from the library in the client portal", principal: "portal", permission: "portal.plan", reasonRequired: false, transaction: "client action (proposed, origin plan, library alignment) + audit + outbox + idempotency", auditAction: "portal_strategy_added", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    required(issues, "strategyId", input.strategyId);
+    return issues;
+  } },
+  "portal.strategy.propose": { key: "portal.strategy.propose", label: "Propose a custom action in the client portal", principal: "portal", permission: "portal.plan", reasonRequired: false, transaction: "client proposal (pending, off the plan) + audit + outbox + idempotency", auditAction: "portal_strategy_proposed", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    required(issues, "title", input.title);
+    if (typeof input.title === "string" && input.title.trim().length > 200) issues.push({ field: "title", code: "TOO_LONG", message: "Keep the action to 200 characters; say more in the description." });
+    if (!oneOf(input.scope, strategyScopes)) issues.push({ field: "scope", code: "INVALID", message: "Choose what the action is mainly about." });
+    if (input.note !== undefined && (typeof input.note !== "string" || input.note.length > 2000)) issues.push({ field: "note", code: "TOO_LONG", message: "Keep the description to 2,000 characters." });
+    return issues;
+  } },
+  "portal.strategy.update": { key: "portal.strategy.update", label: "Update an action in the client portal", principal: "portal", permission: "portal.plan", reasonRequired: false, transaction: "versioned client action (owner, or the owner's date, status and progress) + audit + outbox + idempotency", auditAction: "portal_strategy_updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientStrategyId", input.clientStrategyId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    // Only the client's half of an action crosses: staff fields are refused by name rather than silently dropped.
+    for (const field of ["srsRequirementIds", "includeInReport", "notes", "title", "scope", "controlLevel", "category", "estimate"]) {
+      if ((input as Record<string, unknown>)[field] !== undefined) issues.push({ field, code: "STAFF_ONLY_FIELD", message: "That is set by your adviser, not in the portal." });
+    }
+    if (input.status !== undefined && !oneOf(input.status, strategyStatuses)) issues.push({ field: "status", code: "INVALID", message: "That is not a status an action can have." });
+    if (input.progressPct !== undefined && (!Number.isInteger(input.progressPct) || input.progressPct < 0 || input.progressPct > 100)) {
+      issues.push({ field: "progressPct", code: "INVALID", message: "Progress must be a whole percentage from 0 to 100." });
+    }
+    if (input.targetDate !== undefined && input.targetDate !== null && !isoDate(input.targetDate)) {
+      issues.push({ field: "targetDate", code: "INVALID", message: "Enter the target date as dd/mm/yyyy." });
+    }
+    if (input.ownerContactId === undefined && input.targetDate === undefined && input.status === undefined && input.progressPct === undefined) {
+      issues.push({ field: "clientStrategyId", code: "NOTHING_TO_SAVE", message: "Nothing has changed." });
+    }
+    return issues;
+  } },
   "scope.row.reactivate": { key: "scope.row.reactivate", label: "Reactivate a scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "reactivation + audit + outbox + idempotency", auditAction: "scope_row_reactivated", validate: (input, context) => scopeRowStateIssues(input, context, false) },
   "scope.row.calculate": { key: "scope.row.calculate", label: "Calculate scope row", permission: "scoperow.edit", reasonRequired: false, transaction: "factor validation + numeric calculation + lineage", auditAction: "scope_row_calculated", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "scope.review.approve": { key: "scope.review.approve", label: "Approve scope rows", permission: "snapshot.review", reasonRequired: false, transaction: "scope rows + review history", auditAction: "scope_rows_approved", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); if (!input.rowIds.length) issues.push({ field: "rowIds", code: "REQUIRED", message: "Select at least one scope row." }); if (!positive(input.expectedReviewVersion)) issues.push({ field: "expectedReviewVersion", code: "INVALID", message: "Expected review version must be positive." }); return issues; } },
@@ -2753,6 +2819,40 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     // it from the plan is a deliberate, reasoned act rather than a tidy-up.
     required(issues, "reason", input.reason);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // Actions A2, R2/R3: staff rule on a client's proposal, and may copy an approved one into the library.
+  "client.strategy.proposal.approve": { key: "client.strategy.proposal.approve", label: "Approve a client's proposed action", permission: "strategy.manage", reasonRequired: false, transaction: "proposal decided (approved) + agreed on the plan + SRS alignment + audit + outbox + idempotency", auditAction: "client_strategy_proposal_approved", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientStrategyId", input.clientStrategyId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    required(issues, "title", input.title);
+    if (!oneOf(input.scope, strategyScopes)) issues.push({ field: "scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
+    if (!oneOf(input.controlLevel, strategyControlLevels)) issues.push({ field: "controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
+    // It joins the plan, so it advances something the client discloses — the same rule as every action on a plan.
+    if (!Array.isArray(input.srsRequirementIds) || input.srsRequirementIds.length === 0) {
+      issues.push({ field: "srsRequirementIds", code: "REQUIRED", message: "Align this action to at least one UK SRS requirement." });
+    }
+    if (typeof input.includeInReport !== "boolean") issues.push({ field: "includeInReport", code: "REQUIRED", message: "Say whether it appears in the client's reports." });
+    if (input.targetDate !== undefined && input.targetDate !== null && !isoDate(input.targetDate)) {
+      issues.push({ field: "targetDate", code: "INVALID", message: "Enter the target date as dd/mm/yyyy." });
+    }
+    return issues;
+  } },
+  "client.strategy.proposal.decline": { key: "client.strategy.proposal.decline", label: "Decline a client's proposed action", permission: "strategy.manage", reasonRequired: true, transaction: "proposal decided (declined, with the reason the client sees) + audit + outbox + idempotency", auditAction: "client_strategy_proposal_declined", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "clientStrategyId", input.clientStrategyId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    // The client is shown this, so it is said to them — not left blank behind "not taken forward".
+    required(issues, "reason", input.reason);
+    if (typeof input.reason === "string" && input.reason.length > 2000) issues.push({ field: "reason", code: "TOO_LONG", message: "Keep the reason to 2,000 characters." });
+    return issues;
+  } },
+  "strategy.library.promote": { key: "strategy.library.promote", label: "Add a client's approved action to the library", permission: "admin.lookups", reasonRequired: false, transaction: "catalogue strategy copied from an approved client proposal (once) + lever allocation + default SRS alignment + audit + outbox + idempotency", auditAction: "reduction_strategy_promoted", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientStrategyId", input.clientStrategyId);
+    required(issues, "key", input.key);
+    if (!Array.isArray(input.leverIds)) issues.push({ field: "leverIds", code: "INVALID", message: "Choose the levers it sits under." });
     return issues;
   } },
   "srs.assessment.start": { key: "srs.assessment.start", label: "Start an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment stamped with the active framework version + optional NZI pre-fill + audit + outbox + idempotency", auditAction: "srs_assessment_started", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); return issues; } },

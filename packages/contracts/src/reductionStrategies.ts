@@ -98,6 +98,50 @@ export const strategyOriginLabels: Record<StrategyOrigin, string> = {
   plan: "Added by NZI", srs_gap: "From a UK SRS gap", client_proposal: "Proposed by the client",
 };
 
+/**
+ * A client's proposal (A2, R2): pending until staff decide it, then approved (a real plan action, agreed) or declined —
+ * with the reason the client is shown. Decided once (0188).
+ */
+export const strategyProposalStates = ["pending", "approved", "declined"] as const;
+export type StrategyProposalState = (typeof strategyProposalStates)[number];
+export type StrategyProposal = {
+  state: StrategyProposalState;
+  /** What the client wrote about it — theirs, shown back to them. Never the consultant's `notes`. */
+  note: string;
+  /** Why it was not taken forward, as the client sees it. Only when declined. */
+  decisionReason: string | null;
+  /** The day it was proposed (created), and the day it was decided — dates only, never who (NZC-110). */
+  proposedOn: string;
+  decidedOn: string | null;
+};
+
+/**
+ * Whether an action is **on the plan** (A2): active, and — for a client's proposal — approved. A proposal still waiting
+ * for staff, or one they declined, is not part of the plan the client agreed: it lives in the proposals queue (CRM) and
+ * under "Your proposals" (portal), and nothing that reads the plan counts it.
+ */
+export const strategyOnPlan = (strategy: Pick<ClientStrategy, "active" | "proposal">): boolean =>
+  strategy.active && (strategy.proposal === null || strategy.proposal.state === "approved");
+
+/** A client's proposal waiting for staff to decide it — the CRM's queue. */
+export const strategyAwaitingDecision = (strategy: Pick<ClientStrategy, "active" | "proposal">): boolean =>
+  strategy.active && strategy.proposal?.state === "pending";
+
+/**
+ * The moves the action's **owner** may make from the portal (A2, R4): A1's ladder, narrowed to the owner's half. Staff
+ * own Proposed → Agreed and Declined; the owner drives the work — starting it, pausing it, finishing it, reopening it.
+ * So a client never agrees their own action, never declines one, and never moves one that is still a proposal or
+ * already declined.
+ */
+const clientMoveTargets: readonly StrategyStatus[] = ["in_progress", "complete", "on_hold"];
+const clientMoveSources: readonly StrategyStatus[] = ["agreed", "in_progress", "complete", "on_hold"];
+export const strategyClientTransitionAllowed = (from: StrategyStatus, to: StrategyStatus): boolean =>
+  from === to || (clientMoveSources.includes(from) && clientMoveTargets.includes(to) && strategyTransitionAllowed(from, to));
+
+/** What the owner's status select offers: where it is, then where the owner may take it. */
+export const strategyClientNextStatuses = (from: StrategyStatus): StrategyStatus[] =>
+  strategyStatuses.filter((status) => strategyClientTransitionAllowed(from, status));
+
 /** The order of work: what is live, then what is next, then what is waiting, then what is behind you. */
 const statusRank: Record<StrategyStatus, number> = { in_progress: 0, agreed: 1, proposed: 2, on_hold: 3, complete: 4, declined: 5 };
 
@@ -160,6 +204,8 @@ export type ClientStrategy = {
   /** Where it came from (R6, R7), and for an SRS-gap action, the requirement it bridges. */
   origin: StrategyOrigin;
   originSrsRequirementId: string | null;
+  /** A2: for a client's proposal (origin `client_proposal`), its decision — null on every other action. */
+  proposal: StrategyProposal | null;
   targetDate: string | null;
   progressPct: number;
   notes: string;

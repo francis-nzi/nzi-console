@@ -21,6 +21,11 @@ export type PortalFeature =
   // NEXT_PUBLIC_FEATURE_PORTAL, in the dashboard and in render.yaml in the same change (#503). While it is off the records
   // path is the client's data entry; once on, the records path stops taking new entries, so there is no gap either way.
   | "portal-data"
+  // Actions A2: the client's hand in their own plan — add from the library, propose a custom action, nominate owners, and
+  // (as an action's owner) move its date, progress and status. Dark by absence: declared here only, not in render.yaml, as
+  // portal-shell below; Francis adds the token in the dashboard. Off, the plan reads exactly as before and every write
+  // route is 404.
+  | "portal-plan-participation"
   // The portal shell (BUILD-portal-shell-lookandfeel): MOCKUP-client-portal.html's left-rail app shell as the portal chrome, with
   // the views in its main pane — in the client portal and in the staff preview. Dark by absence: declared here only, not in
   // render.yaml (#503/#505); Francis adds the token in the dashboard. Off, the portal is exactly as before.

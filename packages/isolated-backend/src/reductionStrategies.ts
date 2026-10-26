@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { Lever, LibraryStrategy, StrategyScope, StrategyControlLevel, StrategyStatus, StrategyOrigin, ClientStrategy, CommandContext, CommandInputMap, StrategyEstimate } from "@nzi/contracts";
-import { resolveEstimateTco2e, strategyNextStatuses, strategyStatusLabels, strategyTransitionAllowed } from "@nzi/contracts";
+import type { Lever, LibraryStrategy, StrategyScope, StrategyControlLevel, StrategyStatus, StrategyOrigin, StrategyProposalState, ClientStrategy, CommandContext, CommandInputMap, StrategyEstimate } from "@nzi/contracts";
+import { londonDayOf, resolveEstimateTco2e, strategyNextStatuses, strategyStatusLabels, strategyTransitionAllowed } from "@nzi/contracts";
 import { getBenchmarkInForce } from "./clientTargetRecords";
 import { dateOnlyOrNull } from "./dates";
 import { VersionConflictError } from "./errors";
@@ -79,6 +79,8 @@ type ClientStrategyRow = {
   bespoke_control_level: string | null; bespoke_icon_key: string | null;
   status: string; legacy_owner_text: string; owner_contact_id: string | null; owner_contact_name: string | null;
   origin: string; origin_srs_requirement_id: string | null;
+  proposal_state: string | null; proposal_note: string; proposal_decision_reason: string | null;
+  created_at: Date | string; proposal_decided_at: Date | string | null;
   target_date: Date | string | null; progress_pct: number;
   notes: string; active: boolean; version: number;
   estimate_amount: string | null; estimate_unit: string | null; estimate_scope: string | null;
@@ -112,6 +114,11 @@ const mapClientStrategy = (row: ClientStrategyRow): ClientStrategy => ({
   owner: row.owner_contact_id !== null ? row.owner_contact_name ?? "" : row.legacy_owner_text,
   ownerContactId: row.owner_contact_id,
   origin: row.origin as StrategyOrigin, originSrsRequirementId: row.origin_srs_requirement_id,
+  // A2: the decision on a client's proposal — dates, never who decided (NZC-110).
+  proposal: (row.proposal_state ?? null) === null ? null : {
+    state: row.proposal_state as StrategyProposalState, note: row.proposal_note, decisionReason: row.proposal_decision_reason,
+    proposedOn: londonDayOf(row.created_at), decidedOn: (row.proposal_decided_at ?? null) === null ? null : londonDayOf(row.proposal_decided_at!),
+  },
   targetDate: dateOnlyOrNull(row.target_date), progressPct: row.progress_pct,
   notes: row.notes, active: row.active, version: row.version,
   estimate: mapEstimate(row),
@@ -144,6 +151,7 @@ export async function listClientStrategies(db: Queryable, clientId: string): Pro
     `SELECT a.client_strategy_id, a.client_id, a.strategy_id, a.bespoke_title, a.bespoke_scope, a.bespoke_category,
             a.bespoke_control_level, a.bespoke_icon_key, a.status, a.legacy_owner_text, a.owner_contact_id,
             oc.full_name AS owner_contact_name, a.origin, a.origin_srs_requirement_id, a.target_date, a.progress_pct,
+            a.proposal_state, a.proposal_note, a.proposal_decision_reason, a.created_at, a.proposal_decided_at,
             a.notes, a.active, a.version, a.include_in_report,
             a.estimate_amount::text, a.estimate_unit, a.estimate_scope, a.estimate_tco2e_per_year::text,
             a.estimate_assumptions, a.estimate_confidence, a.estimate_source, a.estimate_source_version,
@@ -171,7 +179,7 @@ export async function listClientStrategies(db: Queryable, clientId: string): Pro
  * a withdrawn one may stay where it already was but is not newly allocated, as a withdrawn strategy is not newly
  * assigned. Returns the allocation as saved, sorted, for the audit trail.
  */
-async function setStrategyLevers(db: Queryable, organisationId: string, strategyId: string, leverIds: readonly string[]): Promise<string[]> {
+export async function setStrategyLevers(db: Queryable, organisationId: string, strategyId: string, leverIds: readonly string[]): Promise<string[]> {
   const wanted = [...new Set(leverIds.map((id) => id.trim()).filter(Boolean))].sort();
   const known = await db.query<{ lever_id: string; active: boolean; held: boolean }>(
     `SELECT l.lever_id, l.active,
@@ -378,7 +386,7 @@ export function deactivateLibraryStrategy(pool: PoolLike, input: CommandInputMap
  * a DEFERRED constraint trigger: an immediate check would fire between these two statements,
  * when the strategy exists and its alignments do not.
  */
-async function setStrategyAlignment(db: Queryable, input: {
+export async function setStrategyAlignment(db: Queryable, input: {
   organisationId: string; clientStrategyId: string; requirementIds: readonly string[];
 }): Promise<void> {
   await db.query(
@@ -415,7 +423,7 @@ async function setStrategyAlignment(db: Queryable, input: {
  * (it runs through `client_id`); saying it here names the problem instead of a constraint. A contact who has since
  * become inactive may stay as an existing owner — the check is on choosing one.
  */
-async function assertOwnerContact(db: Queryable, organisationId: string, clientId: string, contactId: string): Promise<void> {
+export async function assertOwnerContact(db: Queryable, organisationId: string, clientId: string, contactId: string): Promise<void> {
   const contact = (await db.query<{ client_id: string; status: string }>(
     `SELECT client_id, status FROM nzi_console.client_contacts WHERE organisation_id = $1 AND contact_id = $2`, [organisationId, contactId])).rows[0];
   if (!contact || contact.client_id !== clientId) {
@@ -518,14 +526,18 @@ export type UpdateStrategyResult = {
 
 export function updateClientStrategy(pool: PoolLike, input: CommandInputMap["client.strategy.update"], context: CommandContext): Promise<StoredOutcome<UpdateStrategyResult>> {
   return runPostgresCommand(pool, "client.strategy.update", input, context, async (db) => {
-    const current = await db.query<{ version: number; active: boolean; client_id: string; status: StrategyStatus; progress_pct: number; owner_contact_id: string | null; target_date: Date | string | null; include_in_report: boolean }>(
-      `SELECT version, active, client_id, status, progress_pct, owner_contact_id, target_date, include_in_report FROM nzi_console.client_strategies
+    const current = await db.query<{ version: number; active: boolean; client_id: string; status: StrategyStatus; progress_pct: number; owner_contact_id: string | null; target_date: Date | string | null; include_in_report: boolean; proposal_state: string | null }>(
+      `SELECT version, active, client_id, status, progress_pct, owner_contact_id, target_date, include_in_report, proposal_state FROM nzi_console.client_strategies
        WHERE organisation_id=$1 AND client_strategy_id=$2 FOR UPDATE`,
       [context.organisationId, input.clientStrategyId]);
     const action = current.rows[0];
     if (!action) throw new CommandValidationError([{ field: "clientStrategyId", code: "NOT_FOUND", message: "That action does not exist." }]);
     if (action.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, action.version);
     if (!action.active) throw new CommandValidationError([{ field: "clientStrategyId", code: "REMOVED", message: "That action has been removed from the plan." }]);
+    // A2: a client's proposal is decided in the proposals queue, once — not edited onto the plan around that decision.
+    if (action.proposal_state === "pending" || action.proposal_state === "declined") {
+      throw new CommandValidationError([{ field: "clientStrategyId", code: "PROPOSAL_UNDECIDED", message: action.proposal_state === "pending" ? "This is a client's proposal — approve or decline it first." : "This client proposal was declined; it is not on the plan." }]);
+    }
 
     // The ladder (A1, R3), checked against the status held under the row lock — not the one the form last saw.
     const status = input.status as StrategyStatus;

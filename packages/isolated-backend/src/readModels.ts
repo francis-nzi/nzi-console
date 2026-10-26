@@ -349,7 +349,11 @@ export type ClientWorkspaceReadModel = {
    * Both travel together because the library drawer has to mark what is already assigned,
    * and a plan whose levers were fetched separately could disagree with itself mid-render.
    */
-  strategies: { levers: Lever[]; library: LibraryStrategy[]; plan: ClientStrategy[] };
+  /**
+   * `plan` is the plan (removed actions included, as A1 shows them); A2: a client's proposal joins it only once approved.
+   * `proposals` is the queue — active client proposals still pending, and the declined ones, newest first.
+   */
+  strategies: { levers: Lever[]; library: LibraryStrategy[]; plan: ClientStrategy[]; proposals: ClientStrategy[] };
   /** The intensity metrics this client has defined — Employees and Turnover always, plus its own. */
   intensityMetrics: IntensityMetricDefinition[];
   /** Phase 1b (0158) — the client's intensity targets in force, one per metric, shown beside net zero. */
@@ -477,7 +481,11 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     messages,
     files,
     srs: { framework: srsFramework, assessments: srsAssessments },
-    strategies: { levers, library: libraryStrategies, plan: clientStrategies },
+    strategies: {
+      levers, library: libraryStrategies,
+      plan: clientStrategies.filter((strategy) => strategy.proposal === null || strategy.proposal.state === "approved"),
+      proposals: clientStrategies.filter((strategy) => strategy.active && strategy.proposal !== null && strategy.proposal.state !== "approved").reverse(),
+    },
     intensityMetrics,
     intensityTargets,
     reportingTemplate,
