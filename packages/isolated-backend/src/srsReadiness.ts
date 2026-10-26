@@ -4,7 +4,7 @@
 // keep meaning what they meant when the framework moves. Reassessment is a new assessment,
 // which is what gives readiness a trend.
 import { randomUUID } from "node:crypto";
-import { prefillFromNzi, type CommandContext, type CommandInputMap, type SrsNziFacts } from "@nzi/contracts";
+import { prefillFromNzi, todayInLondon, type CommandContext, type CommandInputMap, type SrsNziFacts } from "@nzi/contracts";
 import { getSrsFramework } from "./srsReadinessRecords";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
@@ -34,10 +34,12 @@ export function startSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.a
     }
 
     const assessmentId = randomUUID();
+    // Dated when it is opened; its assessed date is set only when it is completed (S1, R3).
+    const startedOn = todayInLondon();
     await db.query(
-      `INSERT INTO nzi_console.srs_assessments (organisation_id,assessment_id,client_id,framework_id,framework_version,status,assessed_on,assessed_by,notes,version)
+      `INSERT INTO nzi_console.srs_assessments (organisation_id,assessment_id,client_id,framework_id,framework_version,status,started_on,assessed_by,notes,version)
        VALUES ($1,$2,$3,$4,$5,'draft',$6,$7,$8,1)`,
-      [context.organisationId, assessmentId, input.clientId, framework.frameworkId, framework.version, input.assessedOn, context.actorId, input.notes ?? ""]);
+      [context.organisationId, assessmentId, input.clientId, framework.frameworkId, framework.version, startedOn, context.actorId, input.notes ?? ""]);
 
     let prefilled = 0;
     if (input.prefillFromNziData) {
@@ -55,7 +57,7 @@ export function startSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.a
     return {
       data: { assessmentId, clientId: input.clientId, frameworkId: framework.frameworkId, frameworkVersion: framework.version, prefilled },
       entityType: "srs_assessment", entityId: assessmentId, topic: "srs.assessment.started",
-      after: { clientId: input.clientId, frameworkId: framework.frameworkId, frameworkVersion: framework.version, assessedOn: input.assessedOn, prefilled },
+      after: { clientId: input.clientId, frameworkId: framework.frameworkId, frameworkVersion: framework.version, startedOn, prefilled },
     };
   });
 }
@@ -65,12 +67,22 @@ export type SetSrsItemResult = { assessmentId: string; requirementId: string; ve
 /** Answer one requirement. The assessment must still be a draft — a completed one is a record. */
 export function setSrsAssessmentItem(pool: PoolLike, input: CommandInputMap["srs.assessment.item.set"], context: CommandContext): Promise<StoredOutcome<SetSrsItemResult>> {
   return runPostgresCommand(pool, "srs.assessment.item.set", input, context, async (db) => {
-    const assessment = await db.query<{ status: "draft" | "complete"; framework_id: string }>(
-      `SELECT status,framework_id FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND assessment_id=$2`,
+    const assessment = await db.query<{ status: "draft" | "complete"; framework_id: string; client_id: string }>(
+      `SELECT status,framework_id,client_id FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND assessment_id=$2`,
       [context.organisationId, input.assessmentId]);
     const header = assessment.rows[0];
     if (!header) throw new CommandValidationError([{ field: "assessmentId", code: "NOT_FOUND", message: "That assessment does not exist." }]);
     if (header.status !== "draft") throw new CommandValidationError([{ field: "assessmentId", code: "ASSESSMENT_COMPLETE", message: "This assessment is complete. Start a reassessment to record a new position." }]);
+
+    // The gap→action link (S1, R7) names an action on this client's plan, still on it — the Actions spine (A1). The
+    // foreign key (0187) holds that it exists; this holds that it is theirs.
+    if (input.linkedActionId) {
+      const action = (await db.query<{ client_id: string; active: boolean }>(
+        `SELECT client_id, active FROM nzi_console.client_strategies WHERE organisation_id=$1 AND client_strategy_id=$2`,
+        [context.organisationId, input.linkedActionId])).rows[0];
+      if (!action || action.client_id !== header.client_id) throw new CommandValidationError([{ field: "linkedActionId", code: "NOT_THIS_CLIENTS", message: "The linked action must be on this client's plan." }]);
+      if (!action.active) throw new CommandValidationError([{ field: "linkedActionId", code: "REMOVED", message: "That action has been removed from the plan." }]);
+    }
 
     // The requirement has to belong to the framework this assessment was made against.
     const requirement = await db.query<{ requirement_id: string }>(
@@ -109,7 +121,7 @@ export function setSrsAssessmentItem(pool: PoolLike, input: CommandInputMap["srs
   });
 }
 
-export type CompleteSrsAssessmentResult = { assessmentId: string; version: number; assessed: number; total: number };
+export type CompleteSrsAssessmentResult = { assessmentId: string; version: number; assessed: number; total: number; assessedOn: string };
 
 /** Close the assessment. It stays readable, and the next reassessment starts a new one. */
 export function completeSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.assessment.complete"], context: CommandContext): Promise<StoredOutcome<CompleteSrsAssessmentResult>> {
@@ -122,20 +134,30 @@ export function completeSrsAssessment(pool: PoolLike, input: CommandInputMap["sr
     if (row.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, row.version);
     if (row.status === "complete") throw new CommandValidationError([{ field: "assessmentId", code: "ASSESSMENT_COMPLETE", message: "This assessment is already complete." }]);
 
+    // Complete means every active requirement of its framework has been addressed (S1, R3) — "Not started" is an
+    // answer; no answer is not. Counted against the framework the assessment was made against, not the one in force.
     const counts = await db.query<{ assessed: string; total: string }>(
-      `SELECT count(i.maturity)::text AS assessed,
-              (SELECT count(*)::text FROM nzi_console.srs_requirements r WHERE r.organisation_id=$1 AND r.framework_id=$3 AND r.active) AS total
-       FROM nzi_console.srs_assessment_items i WHERE i.organisation_id=$1 AND i.assessment_id=$2`,
+      `SELECT count(*) FILTER (WHERE i.maturity IS NOT NULL)::text AS assessed, count(*)::text AS total
+         FROM nzi_console.srs_requirements r
+         LEFT JOIN nzi_console.srs_assessment_items i ON (i.organisation_id, i.assessment_id, i.requirement_id) = (r.organisation_id, $2, r.requirement_id)
+        WHERE r.organisation_id=$1 AND r.framework_id=$3 AND r.active`,
       [context.organisationId, input.assessmentId, row.framework_id]);
+    const assessed = Number(counts.rows[0]?.assessed ?? 0), total = Number(counts.rows[0]?.total ?? 0);
+    if (assessed < total || total === 0) {
+      throw new CommandValidationError([{ field: "assessmentId", code: "INCOMPLETE", message: `${total - assessed} of ${total} requirements are not yet addressed. An assessment is complete when every requirement has a maturity.` }]);
+    }
 
+    // The assessed date is the day it was completed.
+    const assessedOn = todayInLondon();
     const saved = await db.query<{ version: number }>(
-      `UPDATE nzi_console.srs_assessments SET status='complete',completed_at=now(),updated_at=now(),version=version+1
-       WHERE organisation_id=$1 AND assessment_id=$2 RETURNING version`, [context.organisationId, input.assessmentId]);
+      `UPDATE nzi_console.srs_assessments SET status='complete',assessed_on=$3,completed_at=now(),updated_at=now(),version=version+1
+       WHERE organisation_id=$1 AND assessment_id=$2 RETURNING version`, [context.organisationId, input.assessmentId, assessedOn]);
 
     return {
-      data: { assessmentId: input.assessmentId, version: saved.rows[0]!.version, assessed: Number(counts.rows[0]?.assessed ?? 0), total: Number(counts.rows[0]?.total ?? 0) },
+      // `data` is the audit event's after_json.
+      data: { assessmentId: input.assessmentId, version: saved.rows[0]!.version, assessed, total, assessedOn },
       entityType: "srs_assessment", entityId: input.assessmentId, topic: "srs.assessment.completed",
-      before: { status: "draft" }, after: { status: "complete", assessed: Number(counts.rows[0]?.assessed ?? 0) },
+      before: { status: "draft" },
     };
   });
 }

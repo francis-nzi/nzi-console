@@ -144,7 +144,9 @@ describe("the portal readiness statement", () => {
   });
 
   it("shows only a completed assessment, never a draft's provisional scoring", () => {
-    assert.match(model, /entry\.status === "complete"/);
+    // S1: one shared guard — complete and dated — used by the portal and the report alike.
+    assert.match(model, /latestAssessed\(assessments\)/);
+    assert.match(read("packages/contracts/src/srsReadiness.ts"), /assessment\.status === "complete" && assessment\.assessedOn !== null/);
     assert.match(model, /Your readiness assessment is in progress/);
   });
 

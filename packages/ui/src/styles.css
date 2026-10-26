@@ -2034,6 +2034,17 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-mitem.excluded .k{background:var(--a-muted-bg);color:var(--a-ink-3)}
 .nz-a-mitem.excluded input:not([type=checkbox]){color:var(--a-ink-3)}
 .nz-a-catbar{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+/* SRS framework (S1): the versions strip, the draft's actions, a ladder step in the wording drawer. */
+.nz-a-srs-versions{display:grid;gap:6px;margin:0 0 14px}
+.nz-a-srs-version{padding:8px 12px;border:1px solid var(--a-line,#E3E8E6);border-radius:8px;font-size:12.5px;background:#fff}
+.nz-a-srs-version.draft{border-style:dashed}
+.nz-a-srs-status{display:inline-block;margin-left:6px;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:650;background:var(--paper,#F4F6F5);color:var(--t2)}
+.nz-a-srs-status.active{background:var(--mint,#DFF5E9);color:var(--pine,#0B7A4B)}
+.nz-a-srs-status.draft{background:#FFF8E8;color:#8A5A00}
+.nz-a-srs-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px}
+.nz-a-srs-publish{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-left:auto;font-size:12.5px}
+.nz-a-srs-publish input{margin-left:6px}
+.nz-a-srs-step{padding:10px 0;border-bottom:1px solid var(--a-line,#E3E8E6)}
 /* A checkbox group in an admin drawer (Action library: a strategy's levers). */
 .nz-a-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px 14px;margin:0 0 14px;padding:10px 12px;border:1px solid var(--a-line,#E3E8E6);border-radius:8px}
 .nz-a-checks legend{padding:0 4px;font-size:11.5px;font-weight:650;color:var(--t2)}

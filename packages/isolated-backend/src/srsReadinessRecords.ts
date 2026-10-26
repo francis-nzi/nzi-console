@@ -53,14 +53,15 @@ export async function getSrsFramework(db: Queryable, frameworkId?: string): Prom
 
 type AssessmentRow = {
   assessment_id: string; client_id: string; framework_id: string; framework_version: number;
-  status: "draft" | "complete"; assessed_on: Date | string; assessed_by: string; completed_at: Date | string | null;
+  status: "draft" | "complete"; started_on: Date | string; assessed_on: Date | string | null; assessed_by: string; completed_at: Date | string | null;
   notes: string; version: number; sector_key: string | null; benchmark_percentile: string | null; benchmark_source: string | null;
 };
-const ASSESSMENT_COLUMNS = `assessment_id,client_id,framework_id,framework_version,status,assessed_on,assessed_by,completed_at,notes,version,sector_key,benchmark_percentile::text,benchmark_source`;
+const ASSESSMENT_COLUMNS = `assessment_id,client_id,framework_id,framework_version,status,started_on,assessed_on,assessed_by,completed_at,notes,version,sector_key,benchmark_percentile::text,benchmark_source`;
 
+/** Newest first: an assessment in progress by when it was opened, a completed one by when it was assessed (S1, R3). */
 export async function listSrsAssessments(db: Queryable, clientId: string): Promise<SrsAssessment[]> {
   const { rows } = await db.query<AssessmentRow>(
-    `SELECT ${ASSESSMENT_COLUMNS} FROM nzi_console.srs_assessments WHERE client_id=$1 ORDER BY assessed_on DESC, assessment_id DESC`, [clientId]);
+    `SELECT ${ASSESSMENT_COLUMNS} FROM nzi_console.srs_assessments WHERE client_id=$1 ORDER BY coalesce(assessed_on, started_on) DESC, assessment_id DESC`, [clientId]);
   if (rows.length === 0) return [];
   const items = await db.query<{ assessment_id: string; requirement_id: string; maturity: number | null; source: "entered" | "auto"; evidence_kind: "document" | "data" | "note" | null; evidence_ref: string | null; evidence_note: string; owner: string; due_date: Date | string | null; linked_action_id: string | null; version: number }>(
     `SELECT assessment_id,requirement_id,maturity,source,evidence_kind,evidence_ref,evidence_note,owner,due_date,linked_action_id,version FROM nzi_console.srs_assessment_items WHERE assessment_id = ANY($1::text[])`,
@@ -77,7 +78,7 @@ export async function listSrsAssessments(db: Queryable, clientId: string): Promi
   }
   return rows.map((row) => ({
     assessmentId: row.assessment_id, clientId: row.client_id, frameworkId: row.framework_id, frameworkVersion: row.framework_version,
-    status: row.status, assessedOn: dateOnlyValue(row.assessed_on)!, assessedBy: row.assessed_by,
+    status: row.status, startedOn: dateOnlyValue(row.started_on)!, assessedOn: dateOnlyValue(row.assessed_on), assessedBy: row.assessed_by,
     completedAt: row.completed_at === null ? null : iso(row.completed_at), notes: row.notes, version: row.version,
     sectorKey: row.sector_key,
     benchmarkPercentile: row.benchmark_percentile === null ? null : Number(row.benchmark_percentile),

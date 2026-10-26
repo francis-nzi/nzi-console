@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { postBrowserCommand } from "@nzi/api-client";
 import { CRP_RESOLVER_VERSION, RENDERER_VERSION, SrsGapHeatmap, SrsMaturityBullets, SrsPillarRadar, SrsReadinessTrend, TOKENS_VERSION } from "@nzi/charts";
 import { GatedButton, InfoTip } from "@nzi/ui";
 import {
   benchmark as resolveBenchmark, evidenceCoverage, gaps as resolveGaps, maturityLabel,
-  orderedRequirements, overallReadiness, pillarReadiness, readinessTrend, standardReadiness,
+  orderedRequirements, overallReadiness, pillarReadiness, readinessTrend, srsCompletion, standardReadiness,
   strategiesBySrsRequirement, strategyStatusLabels,
   type ClientStrategy, type SrsAssessment, type SrsFramework, type SrsMaturity,
 } from "@nzi/contracts";
@@ -27,10 +28,12 @@ import type { SrsDrawerRequest } from "./srsDrawers";
  * means scope, and borrowing it for "how ready" would make two different things look alike.
  */
 
-export function SrsArea({ workspace, access, onDrawer }: {
+export function SrsArea({ workspace, access, onDrawer, onSaved }: {
   workspace: ClientWorkspaceReadModel;
   access: EditAccess;
   onDrawer: (request: SrsDrawerRequest) => void;
+  /** A command from the area itself (completing the assessment) — the workspace's notice and refresh. */
+  onSaved: (text: string) => void;
 }) {
   const { framework, assessments } = workspace.srs;
   // The one being worked on, else the most recent record.
@@ -44,7 +47,7 @@ export function SrsArea({ workspace, access, onDrawer }: {
   }
   if (!current) return <SrsEmpty framework={framework} access={access} onDrawer={onDrawer} />;
 
-  return <SrsDashboard workspace={workspace} framework={framework} assessment={current} assessments={assessments} access={access} onDrawer={onDrawer} />;
+  return <SrsDashboard workspace={workspace} framework={framework} assessment={current} assessments={assessments} access={access} onDrawer={onDrawer} onSaved={onSaved} />;
 }
 
 function SrsEmpty({ framework, access, onDrawer }: { framework: SrsFramework; access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void }) {
@@ -70,21 +73,34 @@ function StartButton({ access, onDrawer, label }: { access: EditAccess; onDrawer
     onClick={() => onDrawer({ kind: "srs-start" })}>{label}</GatedButton>;
 }
 
-function SrsDashboard({ workspace, framework, assessment, assessments, access, onDrawer }: {
+function SrsDashboard({ workspace, framework, assessment, assessments, access, onDrawer, onSaved }: {
   workspace: ClientWorkspaceReadModel;
   framework: SrsFramework;
   assessment: SrsAssessment;
   assessments: SrsAssessment[];
   access: EditAccess;
   onDrawer: (request: SrsDrawerRequest) => void;
+  onSaved: (text: string) => void;
 }) {
   const { client } = workspace;
+  const [completing, setCompleting] = useState(false);
+  const [completeError, setCompleteError] = useState<string | null>(null);
+  async function complete() {
+    setCompleting(true); setCompleteError(null);
+    const result = await postBrowserCommand<{ assessedOn: string }>(`/api/isolated/srs-assessments/${encodeURIComponent(assessment.assessmentId)}`,
+      { expectedVersion: assessment.version }, crypto.randomUUID());
+    setCompleting(false);
+    if (result.state !== "success") { setCompleteError(result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.message); return; }
+    onSaved(`Assessment complete — assessed ${formatDate(result.data.assessedOn)}.`);
+  }
   const overall = useMemo(() => overallReadiness(framework, assessment.items), [framework, assessment]);
   const pillars = useMemo(() => pillarReadiness(framework, assessment.items), [framework, assessment]);
   const standards = useMemo(() => standardReadiness(framework, assessment.items), [framework, assessment]);
   const coverage = useMemo(() => evidenceCoverage(framework, assessment.items), [framework, assessment]);
   const gaps = useMemo(() => resolveGaps(framework, assessment.items), [framework, assessment]);
-  const trend = useMemo(() => readinessTrend(framework, assessments.filter((entry) => entry.status === "complete" || entry.assessmentId === assessment.assessmentId)), [framework, assessments, assessment]);
+  // Completed assessments only (S1, R3): one still in progress is not a position the client was assessed at.
+  const trend = useMemo(() => readinessTrend(framework, assessments), [framework, assessments]);
+  const completion = useMemo(() => srsCompletion(framework, assessment.items), [framework, assessment]);
   // The reverse of the alignment each strategy carries: requirement → what this client is
   // doing about it. Derived from the plan already in the workspace, so it cannot disagree
   // with the Reduction Strategies area next door.
@@ -98,7 +114,7 @@ function SrsDashboard({ workspace, framework, assessment, assessments, access, o
   const itemsByRequirement = new Map(assessment.items.map((item) => [item.requirementId, item]));
 
   const provenance = {
-    jobId: client.id, dataHash: "", factorSets: [], generatedAt: assessment.assessedOn,
+    jobId: client.id, dataHash: "", factorSets: [], generatedAt: assessment.assessedOn ?? assessment.startedOn,
     reviewedSnapshotId: assessment.assessmentId, resolverVersion: CRP_RESOLVER_VERSION,
     tokensVersion: TOKENS_VERSION, rendererVersion: RENDERER_VERSION,
   };
@@ -111,13 +127,25 @@ function SrsDashboard({ workspace, framework, assessment, assessments, access, o
 
   return <>
     <div className="nz-cw-vhead"><div><div className="eyebrow">Disclosure</div><h2>UK SRS Readiness</h2></div><span style={{ flex: 1 }} />
-      <span className="nz-st need">{assessment.status === "draft" ? "In progress" : "Complete"}</span>
-      <GatedButton className="nz-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
-        reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-assess", assessment })}>
-        {assessment.status === "draft" ? "Continue assessment" : "Reassess"}
-      </GatedButton>
+      <span className={assessment.status === "draft" ? "nz-st need" : "nz-st done"}>{assessment.status === "draft" ? `In progress · ${completion.addressed} of ${completion.total} addressed` : "Assessed"}</span>
+      {assessment.status === "draft"
+        ? <>
+          <GatedButton className="nz-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
+            reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-assess", assessment })}>Continue assessment</GatedButton>
+          {/* Dated on completion (S1, R3): it can be completed only once every requirement is addressed. */}
+          <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || !completion.ready || completing}
+            blockedReason={access.state !== "allowed" ? access.reason
+              : !completion.ready ? `${completion.total - completion.addressed} of ${completion.total} requirements still to address — an assessment is complete when every one has a maturity.` : undefined}
+            reasonClassName="hint nz-gated-reason" onClick={() => void complete()}>{completing ? "Completing…" : "Complete assessment"}</GatedButton>
+        </>
+        // A completed assessment is a record; reassessing starts a new one, which is what gives readiness a trend.
+        : <GatedButton className="nz-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
+          reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-start" })}>Reassess</GatedButton>}
     </div>
-    <p className="nz-cw-vsub">{client.name} · assessed {formatDate(assessment.assessedOn)} · consultant-led by {assessment.assessedBy} · measured against {framework.label} version {assessment.frameworkVersion}.</p>
+    {completeError ? <div className="nz-banner warn" role="alert">{completeError}</div> : null}
+    <p className="nz-cw-vsub">{client.name} · {assessment.assessedOn
+      ? <>assessed {formatDate(assessment.assessedOn)}</>
+      : <>started {formatDate(assessment.startedOn)} · not yet assessed — it is dated when every requirement is addressed</>} · consultant-led by {assessment.assessedBy} · measured against {framework.label} version {assessment.frameworkVersion}.</p>
 
     {/* The headline: a level and a number, with the confidence behind it. */}
     <section className="nz-panel nz-srs-hero">

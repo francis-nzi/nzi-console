@@ -66,7 +66,13 @@ export type SrsAssessment = {
   /** Stamped at creation: what this assessment was measured against. */
   frameworkVersion: number;
   status: "draft" | "complete";
-  assessedOn: string;
+  /** When it was opened (S1, R3). */
+  startedOn: string;
+  /**
+   * When it was **completed** — every requirement addressed (S1, R3). Null while in progress: an assessment is not
+   * "assessed" until it is complete, and nothing shows an assessed date for one that is not.
+   */
+  assessedOn: string | null;
   assessedBy: string;
   completedAt: string | null;
   notes: string;
@@ -389,13 +395,39 @@ export function prefillFromNzi(framework: SrsFramework, facts: SrsNziFacts): Srs
 
 /* ── Trend ──────────────────────────────────────────────────────────────────────────── */
 
-/** Overall readiness across reassessments, oldest first — the renewal story. */
+/**
+ * Overall readiness across reassessments, oldest first — the renewal story. **Completed assessments only** (S1, R3):
+ * a point on the trend is a position the client was assessed at, and one still in progress is not that yet.
+ */
 export function readinessTrend(framework: SrsFramework, assessments: readonly SrsAssessment[]): Array<{ assessmentId: string; label: string; value: number }> {
-  return [...assessments]
+  return assessments
+    .filter((assessment): assessment is SrsAssessment & { assessedOn: string } => assessment.status === "complete" && assessment.assessedOn !== null)
     .sort((a, b) => a.assessedOn.localeCompare(b.assessedOn))
     .map((assessment) => ({
       assessmentId: assessment.assessmentId,
       label: assessment.assessedOn.slice(0, 7),
       value: overallReadiness(framework, assessment.items).percent,
     }));
+}
+
+/* ── Completion (S1, R3) ────────────────────────────────────────────────────────────── */
+
+/** A completed assessment — the only kind with an assessed date, and the only kind a client or a report is shown. */
+export type SrsAssessedAssessment = SrsAssessment & { status: "complete"; assessedOn: string };
+export const isAssessed = (assessment: SrsAssessment): assessment is SrsAssessedAssessment =>
+  assessment.status === "complete" && assessment.assessedOn !== null;
+/** The latest completed assessment of a list in the read order (newest first), or null — never one in progress. */
+export const latestAssessed = (assessments: readonly SrsAssessment[]): SrsAssessedAssessment | null => assessments.find(isAssessed) ?? null;
+
+/**
+ * How far an assessment is from being complete: every **active** requirement of its framework needs a maturity —
+ * "Not started" (0) is an answer; no answer is not. `missing` lists what is left, in the order a person works.
+ */
+export type SrsCompletion = { addressed: number; total: number; missing: SrsRequirement[]; ready: boolean };
+
+export function srsCompletion(framework: SrsFramework, items: readonly SrsAssessmentItem[]): SrsCompletion {
+  const answered = new Set(items.filter((item) => item.maturity !== null).map((item) => item.requirementId));
+  const requirements = orderedRequirements(framework).filter((requirement) => requirement.active);
+  const missing = requirements.filter((requirement) => !answered.has(requirement.id));
+  return { addressed: requirements.length - missing.length, total: requirements.length, missing, ready: requirements.length > 0 && missing.length === 0 };
 }
