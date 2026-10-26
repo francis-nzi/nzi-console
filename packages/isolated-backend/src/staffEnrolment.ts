@@ -2,6 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { PoolLike, Queryable } from "./postgres";
 import { withAuthTransaction, withTenantWrite } from "./postgres";
 import { decryptTotpSecret, encryptTotpSecret, generateTotpSecret, hashPassword, verifyTotp } from "./credentials";
+import { issueRecoveryCodes } from "./mfaRecovery";
 
 /**
  * Staff self-enrolment (0129): an operator issues a single-use invitation for a member of an organisation; the person
@@ -203,10 +204,13 @@ export async function startStaffEnrolment(
  * Step 2: a code from the authenticator. Only now is the credential written — enabled, at the member's work address —
  * and the invitation consumed, its secrets moved rather than kept. A wrong code is counted and audited, and the count
  * is committed even though the call fails; the fifth revokes the invitation.
+ *
+ * With the credential, a set of MFA recovery codes (4-2, R7) is issued in the same transaction and returned once, for the
+ * person to keep: their way back from a lost authenticator.
  */
 export async function completeStaffEnrolment(
   pool: PoolLike, input: { token: string; code: string }, encryptionKey: string, now = new Date(),
-): Promise<{ enrolled: true }> {
+): Promise<{ enrolled: true; recoveryCodes: string[] }> {
   const outcome = await withAuthTransaction(pool, "write", async (db) => {
     const invitation = await openInvitation(db, input.token, now);
     if (!invitation.setup_started_at || !invitation.pending_totp_ciphertext) throw new StaffEnrolmentError();
@@ -256,9 +260,10 @@ export async function completeStaffEnrolment(
               pending_totp_ciphertext=NULL, pending_totp_iv=NULL, pending_totp_tag=NULL
         WHERE organisation_id=$1 AND invitation_id=$2`, [invitation.organisation_id, invitation.invitation_id, now.toISOString()]);
     await audit(db, { ...base, action: "staff.enrolment.complete", after: { failedCodeAttempts: invitation.failed_code_attempts } });
-    return "enrolled" as const;
+    const recoveryCodes = await issueRecoveryCodes(db, { organisationId: invitation.organisation_id, principal: "staff", subjectId: invitation.user_id }, now);
+    return { recoveryCodes };
   });
   if (outcome === "locked") throw new StaffEnrolmentError("Too many incorrect codes. This link no longer works; ask an administrator for a new one.");
   if (outcome === "rejected") throw new StaffEnrolmentError("The authenticator code is incorrect.");
-  return { enrolled: true };
+  return { enrolled: true, recoveryCodes: outcome.recoveryCodes };
 }

@@ -217,4 +217,12 @@ export {
   type EmailRequest, type EmailDispatch, type EmailGate, type EmailTransport, type EmailOutcome, type OutboundEmail,
 } from "./email";
 export { sendTemplatedEmail, TemplatedEmailError, type TemplatedEmailRequest } from "./templatedEmail";
+export {
+  requestPasswordReset, completePasswordReset, resetLink, PasswordResetError, RESET_TTL_MINUTES, MAX_RESET_REQUESTS_PER_HOUR,
+  MIN_RESET_PASSWORD, type ResetPrincipal,
+} from "./passwordReset";
+export {
+  issueRecoveryCodes, useRecoveryCode, regenerateRecoveryCodes, countRecoveryCodes, looksLikeRecoveryCode, normaliseRecoveryCode,
+  RecoveryCodeError, RECOVERY_CODE_COUNT, LOW_RECOVERY_CODES, type RecoveryPrincipal,
+} from "./mfaRecovery";
 export { previewDeclaredFactor, type DeclaredFactorPreview, type ResolutionEntry } from "./declarativeResolution";

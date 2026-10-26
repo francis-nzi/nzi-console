@@ -422,6 +422,19 @@ jobs:
       # imported row as the import's; and the rewritten wording renders and queues under the registry's token.
       - name: The staff invitation's link token is renamed in saved wording, and every row still sends
         run: npx tsx --test packages/isolated-backend/tests/staffInviteTokenMigrationReal.test.ts
+      # 0181, email phase 4-1: forgot password for staff and portal — a link only for an enabled sign-in on an active account,
+      # nothing written otherwise; hashed, an hour, single-use, superseded by a newer one, refused across sign-ins and
+      # organisations; completing sets the password, clears lockout and ends every session and half-finished sign-in; three
+      # links an hour; audited without the token, password or address; the email under the isolation gate.
+      - name: Password reset by email is single-use, an hour, unenumerable, and signs the account out everywhere
+        run: npx tsx --test packages/isolated-backend/tests/passwordResetReal.test.ts
+      # 0182, email phase 4-2: MFA recovery codes issued at staff and portal enrolment (hashed, shown once), each accepted
+      # once in place of the authenticator inside the sign-in's attempt limit, regenerated only with the authenticator, the
+      # old set revoked, audited without a code; the portal access invitation emailed by default for seven days, a link to
+      # copy on request, an unqueueable email issuing nothing, and an accept step with a five-code limit, an audit trail,
+      # sessions ended and recovery codes issued.
+      - name: Recovery codes stand in for a lost authenticator, and the portal invitation arrives by email
+        run: npx tsx --test packages/isolated-backend/tests/mfaRecoveryPortalInviteReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

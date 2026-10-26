@@ -137,7 +137,7 @@ describe("portal writes that audit through jsonb_build_object, against real Post
   // ── Invitations (portalInvitations.ts) ───────────────────────────────────────────────────────────────
 
   it("createPortalInvitation invites a new user and audits it", async () => {
-    const result = await createPortalInvitation(database.pool, staff, { clientId: CLIENT, email: "invitee@example.invalid", displayName: "Invitee" });
+    const result = await createPortalInvitation(database.pool, staff, { clientId: CLIENT, email: "invitee@example.invalid", displayName: "Invitee", consoleOrigin: "https://console.example.test" });
     const after = await audit("portal.invitation.create", result.portalUserId);
     assert.equal(after.invitationId, result.invitationId);
     assert.equal(after.clientId, CLIENT);
@@ -155,7 +155,7 @@ describe("portal writes that audit through jsonb_build_object, against real Post
       `INSERT INTO nzi_console.portal_sessions (organisation_id,session_id,portal_user_id,client_id,expires_at)
        VALUES ($1,'session-recover','portal-recover',$2,now() + interval '1 day')`, [ORG, CLIENT]);
 
-    const result = await createPortalRecoveryInvitation(database.pool, staff, { portalUserId: "portal-recover" });
+    const result = await createPortalRecoveryInvitation(database.pool, staff, { portalUserId: "portal-recover", consoleOrigin: "https://console.example.test" });
 
     const credential = await db.query<{ enabled: boolean }>(
       `SELECT enabled FROM nzi_console.portal_credentials WHERE portal_user_id='portal-recover'`);
