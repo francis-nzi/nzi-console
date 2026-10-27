@@ -14,6 +14,7 @@ import {
   spendCategoryOf,
 } from "@nzi/contracts";
 import { parseDelimited } from "./csvReader";
+import { SpendSuggestionCard } from "./SpendSuggestionCard";
 import {
   applyMapping,
   autoMapColumns,
@@ -194,7 +195,13 @@ export function SpendImportPanel({
                       <tr key={review.rowNumber}>
                         <td>{review.rowNumber}</td>
                         <td className="nz-import-routing">{review.routing ? <><b>{spendCategoryOf(review.routing.categoryCode)?.name ?? review.routing.categoryCode}</b> <span className="muted">({review.routing.categoryCode})</span>
-                          <div className="nz-hint">{review.routing.by === "residual" ? "Not in this client's map — PG&S residual" : `This client's map · by ${review.routing.by === "gl" ? "GL code" : "description"}`}{review.routing.vatApplies ? "" : " · no VAT"}</div></> : <span className="muted">—</span>}</td>
+                          <div className="nz-hint">{review.routing.by === "residual" ? "Not in this client's map — PG&S residual" : `This client's map · by ${review.routing.by === "gl" ? "GL code" : "description"}`}{review.routing.vatApplies ? "" : " · no VAT"}</div>
+                          {/* D2 R5: for a line the map does not know, an AI suggestion — confirmed into the map by a person, then the
+                              preview is run again so the line routes by it. Never applied by itself. */}
+                          {review.routing.by === "residual" ? (() => {
+                            const source = resolvedRows.find((entry) => entry.rowNumber === review.rowNumber);
+                            return source ? <SpendSuggestionCard jobId={jobId} line={{ glCode: source.glCode, description: source.description }} mode="confirm" onConfirmed={() => void runPreflight()} /> : null;
+                          })() : null}</> : <span className="muted">—</span>}</td>
                         <td><span className={`nz-st ${review.status === "accepted" ? "done" : review.status === "blocked" ? "nof" : "est"}`}>{review.status}</span></td>
                         <td>{review.issues.length === 0 ? <span className="muted">—</span> : review.issues.map((issue) => <div key={issue.code} className="nz-hint" style={{ color: issue.severity === "blocker" ? "#B23B2E" : "#8A6410" }} role="note">{issue.message}</div>)}</td>
                       </tr>

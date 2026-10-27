@@ -343,6 +343,11 @@ jobs:
       # and teaches the map, so the same GL code routes there on the next job; the map is admin.lookups's, versioned, archived.
       - name: The allocation map routes spend to its proper category, and learns from a move at review
         run: npx tsx --test packages/isolated-backend/tests/dataEntryD2Real.test.ts
+      # Data entry D2 (R5): an AI suggestion for an unmapped spend line — asked with the GL code and normalised description only (the
+      # client's name taken out), grounded, stored labelled and pending, audited by reference; it never writes the map — a person's
+      # confirmation, or a move at review that uses it, does.
+      - name: AI suggestions for unmapped spend lines are labelled, never applied, and confirmed by a person
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD2SuggestionsReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked

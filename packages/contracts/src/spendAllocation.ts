@@ -22,6 +22,8 @@ export const SPEND_ALLOCATION_SOURCES = ["admin", "reallocation", "suggestion-co
 export type SpendAllocationSource = (typeof SPEND_ALLOCATION_SOURCES)[number];
 
 export const SPEND_ALLOCATION_KEY_MAX = 200;
+/** D2 R5: an AI suggestion's reason — one short, figure-free sentence. */
+export const SPEND_SUGGESTION_REASON_MAX = 240;
 
 /**
  * The categories VAT does not apply to (R6): Investments — pensions, financial services. Every other category defaults to VAT

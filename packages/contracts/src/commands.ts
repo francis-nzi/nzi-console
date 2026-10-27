@@ -35,7 +35,7 @@ import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBas
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
 import { isReminderLead, STRATEGY_REMINDER_MAX_LEAD_DAYS } from "./strategyReminders";
 import { entryBasisUnitIssue, isEntryBasis, type EntryBasis } from "./entryBasis";
-import { SPEND_ALLOCATION_KEY_KINDS, SPEND_ALLOCATION_KEY_MAX, spendAllocationFieldIssues, type SpendAllocationKeyKind } from "./spendAllocation";
+import { SPEND_ALLOCATION_KEY_KINDS, SPEND_ALLOCATION_KEY_MAX, SPEND_SUGGESTION_REASON_MAX, spendAllocationFieldIssues, type SpendAllocationKeyKind } from "./spendAllocation";
 import { groundSrsSuggestion, SRS_SUGGESTION_LIMITS } from "./srsBridge";
 import { readinessReportTemplates } from "./readinessReportTemplates";
 import { intensityDividers, intensityUnitKinds, isIntensityIconKey, monetaryKindIssue, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
@@ -167,6 +167,9 @@ export type CommandKey =
   | "spend_allocation.archive"
   | "spend_allocation.reinstate"
   | "scope.row.reallocate"
+  | "spend_allocation.suggestion.record"
+  | "spend_allocation.suggestion.confirm"
+  | "spend_allocation.suggestion.dismiss"
   | "bd_stage.create"
   | "bd_stage.update"
   | "bd_stage.deactivate"
@@ -962,7 +965,13 @@ export type CommandInputMap = {
   "spend_allocation.archive": { allocationId: string; expectedVersion: number };
   "spend_allocation.reinstate": { allocationId: string; expectedVersion: number };
   // D2 R4: move a spend line to the category it belongs in, at review; the move teaches the client's map.
-  "scope.row.reallocate": { jobId: string; rowId: string; expectedVersion: number; categoryCode: string; datasetId?: string | null; factorId?: string | null };
+  "scope.row.reallocate": { jobId: string; rowId: string; expectedVersion: number; categoryCode: string; datasetId?: string | null; factorId?: string | null;
+    /** D2 R5: the AI suggestion the move uses, if any — the move confirms it when it lands where the suggestion said. */
+    suggestionId?: string | null };
+  // D2 R5: an AI suggestion for a line the client's map does not know — stored labelled, never applied; a person confirms or dismisses it.
+  "spend_allocation.suggestion.record": { jobId: string; keyKind: SpendAllocationKeyKind; key: string; categoryCode: string; reason: string; model: string; promptSha256: string };
+  "spend_allocation.suggestion.confirm": { jobId: string; suggestionId: string; expectedVersion: number; categoryCode: string };
+  "spend_allocation.suggestion.dismiss": { jobId: string; suggestionId: string; expectedVersion: number };
   // The BD funnel (admin Phase F2; ruled phaseF plan). admin.lookups; a stage's key set once.
   "bd_stage.create": BdStageEditableFields & { stageKey: string };
   "bd_stage.update": BdStageEditableFields & { stageId: string; expectedVersion: number };
@@ -2536,6 +2545,31 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     if (typeof input.categoryCode !== "string" || !emissionCategoryTaxonomy.some((entry) => entry.code === input.categoryCode)) issues.push({ field: "categoryCode", code: "INVALID", message: "Choose the category this line belongs in." });
     if ((input.datasetId ?? null) === null ? (input.factorId ?? null) !== null : !input.factorId) issues.push({ field: "factorId", code: "PAIRED", message: "A spend factor names its dataset and its factor, or neither." });
+    return issues;
+  } },
+  // D2 R5: the AI suggestion for an unmapped line, on S3's terms. Recording it is staff's (scoperow.edit), audited by reference — the
+  // model and the hash of the prompt, never the prompt or the reply. Confirming it is a person's decision, and writes the map.
+  "spend_allocation.suggestion.record": { key: "spend_allocation.suggestion.record", label: "Record an AI suggestion for a spend line", permission: "scoperow.edit", reasonRequired: false, transaction: "suggestion + audit (by reference) + outbox + idempotency", auditAction: "spend_allocation.suggestion_recorded", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId); required(issues, "model", input.model);
+    if (!SPEND_ALLOCATION_KEY_KINDS.includes(input.keyKind)) issues.push({ field: "keyKind", code: "INVALID", message: "A line is matched by its GL code or by its description." });
+    if (typeof input.key !== "string" || !input.key.trim() || input.key.length > SPEND_ALLOCATION_KEY_MAX) issues.push({ field: "key", code: "INVALID", message: "The GL code or description is required." });
+    if (!emissionCategoryTaxonomy.some((entry) => entry.code === input.categoryCode)) issues.push({ field: "categoryCode", code: "INVALID", message: "A suggestion names a category in the emission taxonomy." });
+    if (typeof input.reason !== "string" || input.reason.length > SPEND_SUGGESTION_REASON_MAX || /\d/.test(input.reason)) issues.push({ field: "reason", code: "INVALID", message: "A suggestion's reason is short and carries no figure." });
+    if (typeof input.promptSha256 !== "string" || !/^[0-9a-f]{64}$/.test(input.promptSha256)) issues.push({ field: "promptSha256", code: "INVALID", message: "The prompt is named by its SHA-256." });
+    return issues;
+  } },
+  "spend_allocation.suggestion.confirm": { key: "spend_allocation.suggestion.confirm", label: "Confirm an AI suggestion into the client's map", permission: "scoperow.edit", reasonRequired: false, transaction: "suggestion + map entry + audit + outbox + idempotency", auditAction: "spend_allocation.suggestion_confirmed", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId); required(issues, "suggestionId", input.suggestionId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (!emissionCategoryTaxonomy.some((entry) => entry.code === input.categoryCode)) issues.push({ field: "categoryCode", code: "INVALID", message: "Choose the category this line belongs in." });
+    return issues;
+  } },
+  "spend_allocation.suggestion.dismiss": { key: "spend_allocation.suggestion.dismiss", label: "Dismiss an AI suggestion", permission: "scoperow.edit", reasonRequired: false, transaction: "suggestion + audit + outbox + idempotency", auditAction: "spend_allocation.suggestion_dismissed", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId); required(issues, "suggestionId", input.suggestionId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
   // The BD funnel (admin Phase F2). admin.lookups; the key set once; the last active stage stays.

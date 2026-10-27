@@ -240,6 +240,10 @@ export {
   listClientSpendAllocations, createSpendAllocation, updateSpendAllocation, archiveSpendAllocation, reinstateSpendAllocation, learnSpendAllocation,
   reallocateScopeRow, activeSpendAllocations, activeSpendAllocationsForJob, listSpendAllocationClients, listSpendFactors, type SpendAllocationResult, type ReallocateResult,
 } from "./spendAllocation";
+export {
+  anthropicSpendSuggestionModel, spendSuggestionRequest, generateSpendSuggestion, recordSpendAllocationSuggestion, confirmSpendAllocationSuggestion,
+  dismissSpendAllocationSuggestion, type SpendSuggestionModel, type SpendSuggestionRecorded, type SpendSuggestionConfirmed,
+} from "./spendAllocationSuggestions";
 export { recordClientEntryBasisChoice } from "./entryBasisChoices";
 export {
   readStaffSignature, updateOwnStaffSignature, emailPersonForMember, StaffSignatureError, type StaffSignatureRecord, type SignatureMember,
@@ -258,7 +262,7 @@ export {
   type BridgeGapResult, type ExportReportResult, type RecordSuggestionsResult, type WithdrawSuggestionResult,
 } from "./srsBridging";
 export {
-  anthropicSrsSuggestionModel, DEFAULT_SRS_SUGGESTION_MODEL, generateSrsGapSuggestions, srsPromptSha256, srsSuggestionInputFor,
+  anthropicSrsSuggestionModel, anthropicStructuredModel, DEFAULT_SRS_SUGGESTION_MODEL, generateSrsGapSuggestions, srsPromptSha256, srsSuggestionInputFor,
   type SrsSuggestionModel, type SrsSuggestionRun,
 } from "./srsSuggestions";
 export { getSrsReport, type SrsReportReadModel } from "./srsReport";

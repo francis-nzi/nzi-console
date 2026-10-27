@@ -77,6 +77,9 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   // Phase 3a (0161): which client sites the job reports on — a decision about the report's scope, not a measurement of the
   // period; moving the period does not change what it says (the site's own in-service dates still decide the boundary).
   job_site_inclusions: { periodBound: false, why: "which of the client's sites the job reports on — a scope decision, not data for the period" },
+  // Data entry D2 (0193): an AI suggestion of where a GL code or description belongs — about the client's chart of accounts, not
+  // a measurement of the period; the job only records where it was asked.
+  spend_allocation_suggestions: { periodBound: false, why: "a suggested category for a ledger line — about the client's chart of accounts, not the period" },
 };
 
 /** Every table with a foreign key to `jobs`, with the columns that hold the job's organisation and id. */
