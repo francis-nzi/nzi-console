@@ -8,6 +8,7 @@ import {
   normaliseRegistration,
   resolveVehicleFactor,
   vehicleClassOf,
+  vehicleSizeBasis,
   type Queryable,
   type VehicleSpec,
 } from "../src/index";
@@ -231,5 +232,44 @@ describe("resolveVehicleFactor", () => {
 
   it("returns null when no factor row matches", async () => {
     assert.equal(await resolveVehicleFactor(db([]), "job-a", spec({ fuelType: "DIESEL" })), null);
+  });
+
+  // DVLA lookup fix (27 Oct): the ordering itself is proved against Postgres in vehicleLookupBandReal; here, what is asked.
+  const asked = async (vehicle: VehicleSpec) => {
+    let params: unknown[] = [];
+    await resolveVehicleFactor({ query: async (_sql: string, values?: unknown[]) => { params = values ?? []; return { rows: [] as never[] }; } } as Queryable, "job-a", vehicle);
+    return params.slice(-3) as [string | null, string | null, string[]];
+  };
+  it("asks for the vehicle's own band first, then the Average band, and rules out the other bands", async () => {
+    assert.deepEqual(await asked(spec({ typeApproval: "M1", fuelType: "DIESEL", engineCapacity: 1995 })),
+      ["\\mmedium car\\M", "\\maverage car\\M", ["\\msmall car\\M", "\\mlarge car\\M"]]);
+    assert.deepEqual(await asked(spec({ typeApproval: "N1", fuelType: "DIESEL", revenueWeight: 1500 })),
+      ["\\mclass ii\\M", "\\maverage\\M", ["\\mclass i\\M", "\\mclass iii\\M"]]);
+    assert.deepEqual(await asked(spec({ typeApproval: "M1", fuelType: "PETROL", engineCapacity: null })),
+      ["\\maverage car\\M", "\\maverage car\\M", ["\\msmall car\\M", "\\mmedium car\\M", "\\mlarge car\\M"]], "an unmeasured car is the Average band");
+  });
+  it("an unbanded vehicle (an HGV) asks for no band and rules none out — today's match", async () => {
+    assert.deepEqual(await asked(spec({ typeApproval: "N3", fuelType: "DIESEL", revenueWeight: 18000 })), [null, null, []]);
+  });
+  it("reports the band the matched label named", async () => {
+    const one = (fit: number) => resolveVehicleFactor(db([{ factor_id: "f", dataset_id: "d", label: "x", activity_unit: "miles", fit }]), "job-a",
+      spec({ typeApproval: "M1", fuelType: "DIESEL", engineCapacity: 1995 }));
+    assert.equal((await one(0))?.band, "medium");
+    assert.equal((await one(1))?.band, "average");
+    assert.equal((await one(2))?.band, null);
+  });
+});
+
+describe("vehicleSizeBasis — what the band was read from, for the person confirming it", () => {
+  it("a car's engine size, a van's revenue weight", () => {
+    assert.equal(vehicleSizeBasis(spec({ typeApproval: "M1", engineCapacity: 1995 })), "Size read from its 1,995 cc engine");
+    assert.equal(vehicleSizeBasis(spec({ typeApproval: "N1", revenueWeight: 3100 })), "Size read from its 3,100 kg revenue weight");
+  });
+  it("says when the DVLA gave no measurement and the Average band stands", () => {
+    assert.equal(vehicleSizeBasis(spec({ typeApproval: "M1", engineCapacity: null })), "No engine size from the DVLA, so the Average band");
+    assert.equal(vehicleSizeBasis(spec({ typeApproval: "N1", revenueWeight: null })), "No revenue weight from the DVLA, so the Average band");
+  });
+  it("is null for a vehicle that is not banded", () => {
+    assert.equal(vehicleSizeBasis(spec({ typeApproval: "N3", revenueWeight: 18000 })), null);
   });
 });

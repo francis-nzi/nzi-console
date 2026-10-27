@@ -78,6 +78,7 @@ export function PortalCategoryEntry({
         // Carried to the draft, and on to acceptance, so the entry is re-resolved from what the lookup said (F3).
         attributes: body.attributes ?? null,
         classification: body.classification ?? null,
+        sizeBasis: body.sizeBasis ?? null,
       };
     } catch {
       return { ok: false, message: "Vehicle lookup failed — enter it manually." };

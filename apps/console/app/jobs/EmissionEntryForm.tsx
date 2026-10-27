@@ -25,6 +25,7 @@ import {
   type EntryFactorOption,
   type EntryMode,
   type RegistrationLookupOutcome,
+  vehicleLookupPatch,
 } from "./emissionEntryModel";
 
 export * from "./emissionEntryModel";
@@ -172,15 +173,9 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
       setLookup({ state: "error", message: "Vehicle lookup failed — enter it manually." });
     }
   };
+  // Activity takes the suggested factor's label (type · size · fuel), never the make — see vehicleLookupPatch.
   const applyLookup = (result: Extract<RegistrationLookupOutcome, { ok: true }>) => {
-    patch({
-      activity: [result.make, result.fuelType].filter(Boolean).join(" · ") || draft.activity,
-      factorId: result.factorId ?? draft.factorId,
-      // Carried to the write so it can resolve from what the lookup said (F3).
-      assertedVehicleAttributes: result.attributes ?? null,
-      unit: (result.factorId ? factors.find(option => option.id === result.factorId)?.unit : undefined) ?? draft.unit,
-      manualMode: false,
-    });
+    patch(vehicleLookupPatch(draft, result, factors, declared));
     setLookup({ state: "idle" });
   };
 
@@ -240,6 +235,9 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     <b>{[lookup.result.make, lookup.result.fuelType, lookup.result.year].filter(Boolean).join(" · ") || "Vehicle found"}</b>
                     {/* JW-11: what the vehicle is in the factor library's terms ("Small car · Petrol"), else its class. */}
                     {" — "}{lookup.result.classification ?? lookup.result.suggestedClass ?? "vehicle"}
+                    {/* The band and what it was read from, so a wrong size is visible before it is used. */}
+                    {lookup.result.sizeBasis ? <div className="nz-hint nz-lookup-size">{lookup.result.sizeBasis}
+                      {audience === "crm" ? " — not right? Pick another size from the activities below." : "."}</div> : null}
                     {audience === "crm" && lookup.result.factorLabel ? <div className="nz-hint">Suggested factor: {lookup.result.factorLabel}</div> : null}
                     {audience === "crm" && !lookup.result.factorLabel ? <div className="nz-hint">No factor matched — pick one below.</div> : null}
                     <div style={{ display: "flex", gap: 8, marginTop: 6 }}>

@@ -30,6 +30,8 @@ export type ResolvedVehicleFactor = {
   unit: string;
   scope: "1";
   vehicleClass: string;
+  /** The size band the matched label names: the vehicle's own, "average" when v7's fallback answered, null when unbanded. */
+  band: VehicleBand | null;
 };
 
 export type VehicleLookupResult =
@@ -133,6 +135,33 @@ export function classifyVehicle(vehicle: VehicleSpec): VehicleClassification {
   return { category: `${vehicleClass}|${band}|${fuel}`, fallbackCategory: `${vehicleClass}|average|${fuel}`, label };
 }
 
+/**
+ * What the size band was read from, for the person confirming it (DVLA lookup fix, 27 Oct): "Size read from its 1,995 cc
+ * engine", "… its 3,100 kg revenue weight", or that the DVLA gave neither and the Average band stands. Null when unbanded.
+ */
+export function vehicleSizeBasis(vehicle: VehicleSpec): string | null {
+  const vehicleClass = vehicleClassOf(vehicle);
+  const count = (value: number) => value.toLocaleString("en-GB");
+  if (vehicleClass === "car") {
+    return bandOf(vehicle.engineCapacity, CAR_BANDS_PETROL)
+      ? `Size read from its ${count(vehicle.engineCapacity!)} cc engine` : "No engine size from the DVLA, so the Average band";
+  }
+  if (vehicleClass === "van") {
+    return bandOf(vehicle.revenueWeight, VAN_BANDS)
+      ? `Size read from its ${count(vehicle.revenueWeight!)} kg revenue weight` : "No revenue weight from the DVLA, so the Average band";
+  }
+  return null;
+}
+
+/**
+ * Each band as a factor label names it, in the library's own words ("Medium car", "Class II (1.305 to 1.74 tonnes)",
+ * "Average (up to 3.5 tonnes)"): case-insensitive whole-word patterns, so Class I never matches Class II.
+ */
+const BAND_PATTERNS: Record<"car" | "van", Partial<Record<VehicleBand, string>>> = {
+  car: { small: "\\msmall car\\M", medium: "\\mmedium car\\M", large: "\\mlarge car\\M", average: "\\maverage car\\M" },
+  van: { "class-i": "\\mclass i\\M", "class-ii": "\\mclass ii\\M", "class-iii": "\\mclass iii\\M", average: "\\maverage\\M" },
+};
+
 const STUB_VEHICLES: readonly Omit<VehicleSpec, "yearOfManufacture">[] = [
   { make: "Ford", fuelType: "DIESEL", engineCapacity: 1995, revenueWeight: 3100, co2Emissions: 158, wheelplan: "2 AXLE RIGID BODY", typeApproval: "N1" },
   { make: "Volkswagen", fuelType: "PETROL", engineCapacity: 1390, revenueWeight: null, co2Emissions: 121, wheelplan: "2 AXLE RIGID BODY", typeApproval: "M1" },
@@ -220,6 +249,11 @@ export async function lookupVehicleByRegistration(
  * Best-effort match of a looked-up vehicle to a Scope 1 factor already selected
  * for the job — fuel keyword + a vehicle-class term in the factor label. Returns
  * null when nothing matches (the UI falls back to the manual factor picker).
+ *
+ * The size band (DVLA lookup fix, 27 Oct): a banded car or van matches the label naming its own band first, then the
+ * Average band's (v7's fallback, as 0160 declares it), then a label naming no band at all — never another band's, so a
+ * medium diesel car is not given the small car because its label is shorter. An HGV, a motorbike or an unclassified
+ * vehicle has no band and matches as it always has.
  */
 export async function resolveVehicleFactor(
   db: Queryable,
@@ -237,19 +271,29 @@ export async function resolveVehicleFactor(
     motorbike: ["motorbike", "motorcycle"],
   };
   const terms = classTerms[vehicleClass] ?? ["car"];
-  const { rows } = await db.query<{ factor_id: string; dataset_id: string; label: string; activity_unit: string }>(
-    `SELECT f.factor_id, f.dataset_id, f.label, f.activity_unit
+  const category = classifyVehicle(vehicle).category;
+  const band = (category?.split("|")[1] ?? null) as VehicleBand | null;
+  const patterns = band && (vehicleClass === "car" || vehicleClass === "van") ? BAND_PATTERNS[vehicleClass] : {};
+  const own = band ? patterns[band] ?? null : null;
+  const others = Object.entries(patterns).filter(([key]) => key !== band && key !== "average").map(([, pattern]) => pattern);
+  const at = terms.length + 3;
+  const { rows } = await db.query<{ factor_id: string; dataset_id: string; label: string; activity_unit: string; fit: number }>(
+    `SELECT f.factor_id, f.dataset_id, f.label, f.activity_unit,
+            CASE WHEN f.label ~* $${at} THEN 0 WHEN f.label ~* $${at + 1} THEN 1 ELSE 2 END AS fit
        FROM nzi_console.job_dataset_selections s
        JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id)
       WHERE s.job_id=$1 AND f.active=true AND '1'=ANY(f.scopes)
         AND f.label ILIKE '%'||$2||'%'
         AND (${terms.map((_, index) => `f.label ILIKE '%'||$${index + 3}||'%'`).join(" OR ")})
-      ORDER BY length(f.label)
+        AND NOT (f.label ~* ANY($${at + 2}::text[]))
+      ORDER BY fit, length(f.label)
       LIMIT 1`,
-    [jobId, fuel, ...terms],
+    [jobId, fuel, ...terms, own, patterns.average ?? null, others],
   );
   const row = rows[0];
+  const fit = Number(row?.fit);
   return row
-    ? { factorId: row.factor_id, datasetId: row.dataset_id, label: row.label, unit: row.activity_unit, scope: "1", vehicleClass }
+    ? { factorId: row.factor_id, datasetId: row.dataset_id, label: row.label, unit: row.activity_unit, scope: "1", vehicleClass,
+      band: fit === 0 ? band : fit === 1 ? "average" : null }
     : null;
 }
