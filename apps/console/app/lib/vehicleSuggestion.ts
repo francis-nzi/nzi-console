@@ -1,4 +1,4 @@
-import { classifyVehicle, previewDeclaredFactor, resolveVehicleFactor, vehicleAttributes, type Queryable, type VehicleSpec } from "@nzi/isolated-backend";
+import { classifyVehicle, previewDeclaredFactor, resolveVehicleFactor, vehicleAttributes, vehicleSizeBasis, type Queryable, type VehicleSpec } from "@nzi/isolated-backend";
 
 /** What the vehicle lookup tells the form: the suggested factor, and the attributes to carry to the write. */
 export type VehicleSuggestion = {
@@ -6,6 +6,8 @@ export type VehicleSuggestion = {
   attributes: { source: "dvla" | "stub"; fuel: string | null; vehicleClass: string | null; category: string | null; fallbackCategory: string | null };
   /** JW-11: what the vehicle is, in the factor library's own terms ("Small car · Petrol"), or null when not banded. */
   classification: string | null;
+  /** What the size band was read from ("1,995 cc engine"), so the person confirming it can see it and override it. */
+  sizeBasis: string | null;
 };
 
 /**
@@ -27,18 +29,19 @@ export async function suggestVehicleFactor(
   const banded = classifyVehicle(vehicle);
   const attributes = { source, fuel: derived.fuel ?? null, vehicleClass: derived.class ?? null,
     category: banded.category, fallbackCategory: banded.fallbackCategory };
+  const described = { classification: banded.label, sizeBasis: banded.category ? vehicleSizeBasis(vehicle) : null };
   if (categoryCode && scope) {
     const preview = await previewDeclaredFactor(db, organisationId, jobId,
       { scope, unit: null, supplySource: null, assertedVehicleAttributes: attributes }, categoryCode);
     if (preview.enabled) {
       const declared = preview.declared;
-      return { attributes, classification: banded.label, factor: declared
+      return { attributes, ...described, factor: declared
         ? { factorId: declared.factorId, datasetId: declared.datasetId, label: declared.label, unit: declared.unit, resolvedBy: "declared" }
         : null };
     }
   }
   const matched = await resolveVehicleFactor(db, jobId, vehicle);
-  return { attributes, classification: banded.label, factor: matched
+  return { attributes, ...described, factor: matched
     ? { factorId: matched.factorId, datasetId: matched.datasetId, label: matched.label, unit: matched.unit, resolvedBy: "label-match" }
     : null };
 }

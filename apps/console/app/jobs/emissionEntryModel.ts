@@ -66,6 +66,8 @@ export type RegistrationLookupOutcome =
       attributes?: LookupVehicleAttributes | null;
       /** JW-11: what the vehicle is in the factor library's terms ("Small car · Petrol"), when it is a banded car or van. */
       classification?: string | null;
+      /** What the size band was read from ("1,995 cc engine"), shown so the person can check it and pick another size. */
+      sizeBasis?: string | null;
       factorLabel?: string | null;
     }
   | { ok: false; message: string };
@@ -313,6 +315,32 @@ export function matchFactorByActivity(
   const needle = activity.trim().toLowerCase();
   if (!needle) return null;
   return factors.find((option) => option.label.trim().toLowerCase() === needle) ?? null;
+}
+
+/**
+ * What "Use this" on a vehicle lookup writes into the entry (DVLA lookup fix, 27 Oct). Activity is the factor-matching
+ * field, so it takes the suggested factor's own label — type · size · fuel, in the library's words, the string a pick
+ * would set — with that factor and its unit. Make and fuel are the vehicle's detail ("Make · model · fuel"), never the
+ * Activity, which no factor is named. With no suggestion among this entry's factors (the portal, whose bucket decides;
+ * or nothing matched) Activity and the factor are left for the picker. The plate is untouched: it stays the lookup's.
+ */
+export function vehicleLookupPatch(
+  draft: Pick<EmissionEntryDraft, "unit" | "manualDetail" | "factorOverrideReason">,
+  result: Extract<RegistrationLookupOutcome, { ok: true }>,
+  factors: readonly EntryFactorOption[],
+  declared: Pick<DeclaredOption, "optionId"> | null,
+): Partial<EmissionEntryDraft> {
+  const detail = [result.make, result.fuelType].filter(Boolean).join(" · ");
+  const base: Partial<EmissionEntryDraft> = {
+    manualDetail: detail || draft.manualDetail,
+    // Carried to the write so it can resolve from what the lookup said (F3).
+    assertedVehicleAttributes: result.attributes ?? null,
+    manualMode: false,
+  };
+  const option = result.factorId ? factors.find((candidate) => candidate.id === result.factorId) : undefined;
+  if (!option) return base;
+  return { ...base, activity: option.label, factorId: option.id, unit: option.unit ?? draft.unit,
+    factorOverrideReason: declared && option.id === declared.optionId ? "" : draft.factorOverrideReason };
 }
 
 /** JW-9 — the line an entry is held to, in the form and at the write: a real factor; the quantity can wait. */

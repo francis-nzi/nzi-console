@@ -329,6 +329,10 @@ jobs:
       # vehicles stay a person's pick.
       - name: A looked-up car or van resolves to its banded per-mile factor, with the Average band as fallback
         run: npx tsx --test packages/isolated-backend/tests/vehicleBandedRulesReal.test.ts
+      # The DVLA lookup fix (27 Oct): the label match a switched-off category uses resolves the size too — own band, then
+      # Average, never another band's — and "Use this" puts that factor's label in Activity, which the save gate accepts.
+      - name: The DVLA lookup's label match resolves type · size · fuel, never a neighbouring band
+        run: npx tsx --test packages/isolated-backend/tests/vehicleLookupBandReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked

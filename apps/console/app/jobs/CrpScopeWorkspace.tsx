@@ -406,6 +406,7 @@ export function CrpScopeWorkspace({
         factorLabel: body.factor?.label ?? null,
         attributes: body.attributes ?? null,
         classification: body.classification ?? null,
+        sizeBasis: body.sizeBasis ?? null,
       };
     } catch {
       return { ok: false, message: "Vehicle lookup failed — enter it manually." };

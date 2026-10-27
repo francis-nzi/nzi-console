@@ -566,6 +566,10 @@ describe("wiring characterisation — today's paths against the declarative reso
  * Since 2c company vehicles resolve declaratively and the ILIKE is retired for them (H6), so their plated diesel in
  * litres (was D1) and the probe's petrol and hybrid plates (was D4) are identical: both sides are the declared
  * answer or a person's pick. Business travel and commuting are unchanged — still off, still the ILIKE.
+ *
+ * **The DVLA lookup fix (27 Oct) moved the probe's plated petrol car in 3.6 / 3.7 (D4) to identical:** the ILIKE now
+ * matches the vehicle's size band (its own, then Average, never another band's), and the stub's small petrol car has
+ * neither in the probe, so where it used to suggest the medium car it declines — as the declarative side does.
  */
 const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = (() => {
   const ledger: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = {};
@@ -585,10 +589,12 @@ const LEDGER: Record<string, "D1" | "D2" | "D3" | "D4" | "D5" | "D6" | "D7"> = (
       if (dataset === "probe") ledger[`probe:${category}:no-plate-petrol-litres`] = "D5";
       ledger[`${dataset}:${category}:no-plate-diesel-litres`] = "D5";
       if (dataset === "probe") {
+        // The petrol car moved to identical with the DVLA lookup fix (27 Oct): the stub's is a 1,390 cc small car, and
+        // the ILIKE now matches its size — the probe has no small or Average petrol car, so it declines rather than
+        // suggest "Medium car — Petrol", and both sides leave it to a person. The 1,598 cc hybrid is a medium car,
+        // which the probe has, so it stays D4.
         if (category !== "1.company-vehicles") {
-          for (const name of ["petrolCar", "hybridCar"]) {
-            for (const unit of ["litres", "km"]) ledger[`probe:${category}:plate-${name}-${unit}`] = "D4";
-          }
+          for (const unit of ["litres", "km"]) ledger[`probe:${category}:plate-hybridCar-${unit}`] = "D4";
         }
         ledger[`probe:${category}:no-plate-diesel-car-km`] = "D5";
       }
