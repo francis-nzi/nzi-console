@@ -236,6 +236,10 @@ export {
   type DueReminderScan, type ReminderSettingsResult, type StrategyReminders,
 } from "./dueReminders";
 export { listEntryBasisDefaults, readJobEntryBasis, updateEntryBasisDefault, type EntryBasisDefaultResult } from "./entryBasis";
+export {
+  listClientSpendAllocations, createSpendAllocation, updateSpendAllocation, archiveSpendAllocation, reinstateSpendAllocation, learnSpendAllocation,
+  reallocateScopeRow, activeSpendAllocations, activeSpendAllocationsForJob, listSpendAllocationClients, listSpendFactors, type SpendAllocationResult, type ReallocateResult,
+} from "./spendAllocation";
 export { recordClientEntryBasisChoice } from "./entryBasisChoices";
 export {
   readStaffSignature, updateOwnStaffSignature, emailPersonForMember, StaffSignatureError, type StaffSignatureRecord, type SignatureMember,

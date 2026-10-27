@@ -145,7 +145,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
           <div className="nz-pdv-drawer-h"><span className="nz-eyebrow">{adding.name}</span><h2>Add an entry</h2></div>
           <EmissionEntryForm key={adding.code} spec={specs[adding.code] ?? null} category={adding} audience="portal" portalDirect
             site={{ id: site?.id ?? null, label: site?.name ?? "No particular site" }}
-            factors={optionsFor(adding)} declared={declaredOptionFor(preview?.code === adding.code ? preview.result : null, optionsFor(adding))} entryBasis={entryBasis}
+            factors={optionsFor(adding)} declared={declaredOptionFor(preview?.code === adding.code ? preview.result : null, optionsFor(adding))} entryBasis={entryBasis} allFactors={refs}
             units={specs[adding.code]?.units ?? []} reportingMonths={view.reportingMonths}
             spendCategories={view.purchasedGoodsCategories} busy={busy} error={formError}
             onCancel={() => setAdding(null)} onSubmit={(draft) => saveNew(adding, draft)} />

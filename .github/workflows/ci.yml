@@ -338,6 +338,11 @@ jobs:
       # is remembered per client, and the per-category default is admin.settings's, versioned and audited.
       - name: Spend on any category with a spend factor, the basis remembered, the default an audited Admin setting
         run: npx tsx --test packages/isolated-backend/tests/dataEntryD1Real.test.ts
+      # Data entry D2: a client's allocation map routes a spend line to its proper category — GL code, else description, else the
+      # PG&S residual — on import (filed and synced there, spend-basis); VAT-applies from the map; a reviewer's move re-files the line
+      # and teaches the map, so the same GL code routes there on the next job; the map is admin.lookups's, versioned, archived.
+      - name: The allocation map routes spend to its proper category, and learns from a move at review
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD2Real.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked
