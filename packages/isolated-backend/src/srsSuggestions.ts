@@ -23,8 +23,9 @@ import { getSrsFramework } from "./srsReadinessRecords";
  * produces.
  *
  * The model sits behind `SrsSuggestionModel` so the rules are testable without a key; the real adapter uses the official
- * Anthropic SDK, with structured output (the schema), adaptive thinking at low effort (a short, grounded task) and the
- * server-side refusal fallback. The API key is passed in at the composition edge, never read here.
+ * Anthropic SDK, with structured output (the schema), adaptive thinking at low effort (a short, grounded task) and — on
+ * the models that have it — the server-side refusal fallback. The API key is passed in at the composition edge, never read
+ * here.
  */
 
 export type SrsSuggestionModel = {
@@ -34,20 +35,31 @@ export type SrsSuggestionModel = {
   suggest(prompt: { system: string; user: string }): Promise<{ kind: "reply"; body: unknown } | { kind: "refused" }>;
 };
 
-/** The current Opus — a short task, so effort is kept low rather than the model changed. */
-export const DEFAULT_SRS_SUGGESTION_MODEL = "claude-opus-5-5";
+/**
+ * Sonnet (27 Oct, Francis): a short, grounded task, done at a fraction of Opus's cost — and the same Sonnet the help→ask
+ * adapter defaults to, so the two stay consistent. Effort stays low.
+ */
+export const DEFAULT_SRS_SUGGESTION_MODEL = "claude-sonnet-5";
+
+/**
+ * The models documented with safety classifiers and the server-side refusal fallback (Fable 5.x, Opus 5.x, Sonnet 5.5).
+ * Claude Sonnet 5 is not among them: it has no classifier refusals to fall back from, and the docs do not say it accepts the
+ * `fallbacks` parameter — so it is sent only where it is documented, never on a guess that could fail every request.
+ * A refusal is still handled the same way on every model (no ideas, never a guess).
+ */
+const SERVER_SIDE_FALLBACK_MODELS: ReadonlySet<string> = new Set(["claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
 
 export function anthropicSrsSuggestionModel(config: { apiKey: string; model?: string; client?: Anthropic }): SrsSuggestionModel {
   const model = config.model ?? DEFAULT_SRS_SUGGESTION_MODEL;
   const client = config.client ?? new Anthropic({ apiKey: config.apiKey });
+  const fallback = SERVER_SIDE_FALLBACK_MODELS.has(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {};
   return {
     id: model,
     async suggest(prompt) {
       const response = await client.beta.messages.create({
         model,
         max_tokens: 16000,
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
+        ...fallback,
         // The fixed instructions cache; the client's details arrive as data in the user turn.
         system: [{ type: "text", text: prompt.system, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: prompt.user }],

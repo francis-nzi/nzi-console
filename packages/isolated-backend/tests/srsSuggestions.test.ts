@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { SrsSuggestionInput } from "@nzi/contracts";
+import { DEFAULT_ANSWER_MODEL } from "../src/answerModel";
 import { anthropicSrsSuggestionModel, DEFAULT_SRS_SUGGESTION_MODEL, generateSrsGapSuggestions, srsPromptSha256, type SrsSuggestionModel } from "../src/srsSuggestions";
 
 /**
  * SRS S3 — the AI ideas, without a key: the generator keeps only grounded ideas and names its request by SHA-256; the SDK
- * adapter asks the current Opus for the schema's shape at low effort with the server-side refusal fallback, sends the
+ * adapter asks Sonnet for the schema's shape at low effort (the refusal fallback only where documented), sends the
  * fixed instructions as a cached system block and the client's details as data, and treats a refusal as no ideas.
  */
 
@@ -32,7 +33,7 @@ describe("AI ideas for a gap — the generator and the adapter", () => {
     assert.equal(run.refusedByModel, false);
   });
 
-  it("asks the current Opus for the schema at low effort, with the refusal fallback and the instructions cached", async () => {
+  it("asks Sonnet for the schema at low effort, with the instructions cached — the same Sonnet as help→ask", async () => {
     const calls: Array<Record<string, unknown>> = [];
     const client = { beta: { messages: { create: async (body: Record<string, unknown>) => {
       calls.push(body);
@@ -40,12 +41,19 @@ describe("AI ideas for a gap — the generator and the adapter", () => {
     } } } } as unknown as Anthropic;
     const model = anthropicSrsSuggestionModel({ apiKey: "unused", client });
     assert.equal(model.id, DEFAULT_SRS_SUGGESTION_MODEL);
-    assert.equal(DEFAULT_SRS_SUGGESTION_MODEL, "claude-opus-5-5");
+    assert.equal(DEFAULT_SRS_SUGGESTION_MODEL, "claude-sonnet-5");
+    assert.equal(DEFAULT_SRS_SUGGESTION_MODEL, DEFAULT_ANSWER_MODEL, "one Sonnet for both AI paths");
     await generateSrsGapSuggestions(model, input);
     const body = calls[0]!;
-    assert.equal(body.model, "claude-opus-5-5");
-    assert.deepEqual(body.betas, ["server-side-fallback-2026-07-01"]);
-    assert.equal(body.fallbacks, "default");
+    assert.equal(body.model, "claude-sonnet-5");
+    // Sonnet 5 has no classifier refusals and is not documented for the server-side fallback: the parameter is not sent.
+    assert.ok(!("fallbacks" in body) && !("betas" in body), "no fallback parameter on a model not documented for it");
+    // The models that have it still get it — the gate, both ways.
+    const opusCalls: Array<Record<string, unknown>> = [];
+    const opus = anthropicSrsSuggestionModel({ apiKey: "unused", model: "claude-opus-5-5",
+      client: { beta: { messages: { create: async (sent: Record<string, unknown>) => { opusCalls.push(sent); return { stop_reason: "end_turn", content: [{ type: "text", text: "{\"suggestions\":[]}" }] }; } } } } as unknown as Anthropic });
+    await generateSrsGapSuggestions(opus, input);
+    assert.deepEqual([opusCalls[0]!.betas, opusCalls[0]!.fallbacks], [["server-side-fallback-2026-07-01"], "default"]);
     assert.deepEqual((body.output_config as { effort: string }).effort, "low");
     assert.equal(((body.output_config as { format: { type: string } }).format).type, "json_schema");
     assert.ok(!("temperature" in body) && !("thinking" in body), "no sampling or thinking settings the model rejects");
