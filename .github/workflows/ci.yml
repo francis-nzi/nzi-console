@@ -333,6 +333,11 @@ jobs:
       # Average, never another band's — and "Use this" puts that factor's label in Activity, which the save gate accepts.
       - name: The DVLA lookup's label match resolves type · size · fuel, never a neighbouring band
         run: npx tsx --test packages/isolated-backend/tests/vehicleLookupBandReal.test.ts
+      # Data entry D1: a spend entry records under any category with a spend factor — a currency against a currency-priced
+      # factor, spend-based, calculated as PG&S's are — money against an activity factor is still refused, the drawer's basis
+      # is remembered per client, and the per-category default is admin.settings's, versioned and audited.
+      - name: Spend on any category with a spend factor, the basis remembered, the default an audited Admin setting
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD1Real.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked

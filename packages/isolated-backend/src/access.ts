@@ -165,6 +165,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "message_template.create": organisation,
   "message_template.update": organisation,
   "admin.reminders.update": organisation,
+  "admin.entryBasis.update": organisation,
   "message_template.deactivate": organisation,
   "message_template.reinstate": organisation,
   "bd_stage.create": organisation,

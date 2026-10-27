@@ -45,6 +45,8 @@ import { defaultReportSectionPlan, normaliseReportPlanKeys, type ReportNarrative
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
 import { isPortalProfileKey, isPortalProfileValue, isPortalScope } from "@nzi/contracts";
+import { isCurrencyUnit } from "@nzi/contracts";
+import { recordClientEntryBasisChoice } from "./entryBasisChoices";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { resolveReportNarrative } from "./reportNarrative";
 import { insertClientContact } from "./clientContactRecords";
@@ -980,9 +982,20 @@ async function reconcileUnitWithFactor(
     return { quantity: input.quantity, unit: entered, conversion: null };
   }
 
+  const factor = await db.query<{ activity_unit: string }>(
+    `SELECT activity_unit FROM nzi_console.emission_factors
+      WHERE organisation_id = $1 AND dataset_id = $2 AND factor_id = $3`,
+    [organisationId, input.datasetId, input.factorId]);
+  const activityUnit = factor.rows[0]?.activity_unit ?? null;
+
   // The spec's own answer first, when the category declares one. Skipped only for a re-ingested v7 row recorded in a unit
   // today's form does not offer (the re-ingest's gated allowance); the factor's own check below still applies.
-  if (input.categoryCode && !input.skipFieldUnits) {
+  // Data entry D1 (R2): and for a **spend** entry — money recorded in a currency against a factor priced per that currency.
+  // The spec's units are the category's activity units; spend is the other basis, which any category with a spend factor may
+  // hold, so it is not asked to be one of them. Only a currency against a currency-priced factor is spend: a currency against
+  // an activity factor is still refused below, as it always was.
+  const spendBasis = isCurrencyUnit(entered) && activityUnit !== null && isCurrencyUnit(activityUnit);
+  if (input.categoryCode && !input.skipFieldUnits && !spendBasis) {
     const spec = await db.query<{ accepted_units: string[] | null }>(
       `SELECT accepted_units FROM nzi_console.input_spec_fields
         WHERE category_code = $1 AND field_key = 'unit' AND active`, [input.categoryCode]);
@@ -995,11 +1008,6 @@ async function reconcileUnitWithFactor(
     }
   }
 
-  const factor = await db.query<{ activity_unit: string }>(
-    `SELECT activity_unit FROM nzi_console.emission_factors
-      WHERE organisation_id = $1 AND dataset_id = $2 AND factor_id = $3`,
-    [organisationId, input.datasetId, input.factorId]);
-  const activityUnit = factor.rows[0]?.activity_unit ?? null;
   // No such factor is the factor guard's business, not this one's; it reports a clearer error.
   if (activityUnit === null) return { quantity: input.quantity, unit: entered, conversion: null };
 
@@ -1772,10 +1780,13 @@ export function scopeRowCreateHandler(input: CommandInputMap["scope.row.create"]
           declared.filedSuffixCode,
         ],
       );
+      // Data entry D1 (R4): an entry made in the drawer states its basis; that is now the client's last choice for the
+      // category, which their next drawer opens on. Seeding and the re-ingest state none, so they never move it.
+      if (input.entryBasis && categoryCode) await recordClientEntryBasisChoice(db, context.organisationId, input.jobId, categoryCode, input.entryBasis, context.actorId);
       return {
         // The command's data becomes the audit event's after_json, so an assisted entry carries
         // what was proposed and what the person changed — structured, never the raw text (NZC-111).
-        data: { rowId, jobId: input.jobId, version: 1, ...(input.assistRecord ? { assist: input.assistRecord } : {}) },
+        data: { rowId, jobId: input.jobId, version: 1, ...(input.assistRecord ? { assist: input.assistRecord } : {}), ...(input.entryBasis ? { entryBasis: input.entryBasis } : {}) },
         entityType: "scope_row",
         entityId: rowId,
         topic: "scope.row.created",

@@ -4,7 +4,7 @@
 // the CRP workspace and the client portal are provably the same capture process
 // (the portal is a constrained mirror — same order, fewer fields).
 import type { EmissionCategory, ScopeQualityTier, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
-import { scopeMeta } from "@nzi/contracts";
+import { entryBasisOfUnit, isCurrencyUnit, scopeMeta, type EntryBasis } from "@nzi/contracts";
 import { defaultPortalFactorId } from "../portal/portalFactorDefault";
 
 export type EntryAudience = "crm" | "portal";
@@ -35,6 +35,13 @@ export type EmissionEntryDraft = {
   note: string;
   monthlyOpen: boolean;
   monthly: Record<string, string>;
+  /**
+   * Data entry D1: how the entry is measured — activity or spend — the drawer's first decision. Absent on a draft that predates
+   * the toggle, which then reads as its category's native basis (`draftBasis`), so every caller that never set it is unchanged.
+   */
+  basis?: EntryBasis;
+  /** D1 (R3): the currency a spend entry is recorded in — its unit. Spend only. */
+  currency?: string;
 };
 
 export type EntryFactorOption = { id: string; label: string; unit?: string; isClientFactor?: boolean;
@@ -126,6 +133,71 @@ export const isRegistrationKind = (category: EmissionCategory): boolean =>
 
 export const isSpendKind = (category: EmissionCategory): boolean =>
   category.kind === "spend";
+
+/** The basis a category's governed spec is laid out for: spend for the spend kinds (3.1, 3.2, 3.15), activity for the rest. */
+export const nativeEntryBasis = (category: EmissionCategory): EntryBasis => (isSpendKind(category) ? "spend" : "activity");
+
+/** The draft's basis: the one it was given, else its category's native one (a draft from before the toggle). */
+export const draftBasis = (draft: Pick<EmissionEntryDraft, "basis">, category: EmissionCategory): EntryBasis =>
+  draft.basis ?? nativeEntryBasis(category);
+
+/** D1 (R2): a spend factor is one priced per a currency. The category's options split into the two bases on that alone. */
+export const isSpendFactor = (option: { unit?: string }): boolean => isCurrencyUnit(option.unit);
+
+/** The options one basis may pick from: spend factors in the chosen currency (any, when none is chosen yet), or activity factors. */
+export function factorsForBasis<T extends { unit?: string }>(options: readonly T[], basis: EntryBasis, currency?: string | null): T[] {
+  return options.filter((option) => basis === "spend"
+    ? isSpendFactor(option) && (!currency || option.unit === currency)
+    : !isSpendFactor(option));
+}
+
+/** The currencies the category's spend factors are priced in — the ones a spend entry can be recorded in and still be priced. */
+export const spendCurrencies = (options: readonly { unit?: string }[]): string[] =>
+  [...new Set(options.filter(isSpendFactor).map((option) => option.unit!.trim()))].sort();
+
+/** A fresh spend entry's currency (R3): the client's, where a spend factor is priced in it; else the first that is; else the client's. */
+export function openingCurrency(options: readonly { unit?: string }[], clientCurrency: string | null | undefined): string {
+  const available = spendCurrencies(options);
+  const wanted = clientCurrency?.trim() || "GBP";
+  return available.includes(wanted) ? wanted : available[0] ?? wanted;
+}
+
+/**
+ * D1 (R1): the spec's fields, laid out for the basis the drawer is on. The spec seeds each category for its native basis (0093:
+ * "kind and spend are resolved at seed time"); this lays the same fields out for the other one, so **only the basis block
+ * changes** and the common fields — site, the monthly period, notes, quality, documents, lineage — keep their place and order.
+ *
+ * At the native basis it returns the spec's fields untouched, so the 160 pinned renders are exactly as before.
+ *
+ * - **Spend on an activity category:** the registration finder, usage type and supply answer belong to the activity, so they go;
+ *   the quantity reads as the spend value; the spend details (GL code) join the block after it.
+ * - **Activity on a spend category:** the spend details go and the quantity reads as a quantity, in the factor's unit.
+ */
+const ACTIVITY_ONLY_FIELDS = new Set(["registrationFinder", "usageType", "supplySource"]);
+export function fieldsForBasis<T extends { key: string; label: string; control: string; hint?: string }>(
+  fields: readonly T[], category: EmissionCategory, basis: EntryBasis,
+): T[] {
+  if (basis === nativeEntryBasis(category)) return [...fields];
+  if (basis === "spend") {
+    const laid: T[] = [];
+    for (const field of fields) {
+      if (ACTIVITY_ONLY_FIELDS.has(field.key)) continue;
+      if (field.key === "activity") { laid.push({ ...field, label: "Supplier / description", hint: `Search ${category.name}'s spend factors, or describe the spend.` }); continue; }
+      if (field.key === "quantity") {
+        laid.push({ ...field, label: "Spend value" });
+        laid.push({ ...field, key: "spendDetails", control: "spend-group", label: "Spend details", hint: "GL / nominal code for this line." });
+        continue;
+      }
+      laid.push(field);
+    }
+    return laid;
+  }
+  return fields
+    .filter((field) => field.key !== "spendDetails")
+    .map((field) => field.key === "quantity" ? { ...field, label: "Quantity" }
+      : field.key === "activity" ? { ...field, label: "Activity / source", hint: `Search ${category.name}'s activity factors.` }
+      : field);
+}
 
 /**
  * DA5 (NZC-061) — the per-row entry unit list. Miles were missing, so vehicles
@@ -379,7 +451,7 @@ export function searchActivityOptions<T extends { label: string }>(options: read
  * The portal keeps its own capture rules; nothing here applies to it.
  */
 export function quickAddSaveIssue(
-  draft: Pick<EmissionEntryDraft, "activity" | "factorId">,
+  draft: Pick<EmissionEntryDraft, "activity" | "factorId" | "basis">,
   options: readonly { id: string; label: string }[],
   category: EmissionCategory,
   audience: EntryAudience,
@@ -387,7 +459,8 @@ export function quickAddSaveIssue(
   if (audience !== "crm") return null;
   if (!options.some((option) => option.id === draft.factorId)) return ENTRY_FACTOR_REQUIRED;
   const text = draft.activity.trim();
-  if (text && !isSpendKind(category) && !options.some((option) => option.label.trim().toLowerCase() === text.toLowerCase())) {
+  // A spend entry's text is its supplier or description, not a factor's name (D1: by the draft's basis, not the category's kind).
+  if (text && draftBasis(draft, category) !== "spend" && !options.some((option) => option.label.trim().toLowerCase() === text.toLowerCase())) {
     return `“${text}” isn't one of ${category.name}'s activities — pick one from the list.`;
   }
   return null;
@@ -411,7 +484,7 @@ export function emissionEntryDraftToScopeRow(
   factors: EntryFactorRef[],
   reportingMonths: string[],
 ): ScopeRowWriteFields {
-  const spend = isSpendKind(category);
+  const spend = draftBasis(draft, category) === "spend";
   const factor = factors.find((option) => option.id === draft.factorId) ?? null;
   const isClient = factor?.factorSource === "client";
   const monthly = draft.monthlyOpen
@@ -441,10 +514,14 @@ export function emissionEntryDraftToScopeRow(
     factorOverrideReason: draft.factorOverrideReason.trim() || null,
     // What the lookup said, asserted at capture; the write resolves from it and records it as such (F3).
     assertedVehicleAttributes: draft.assertedVehicleAttributes ?? null,
-    purchasedGoodsCategoryId: spend ? draft.spendCategoryId || null : null,
+    // A PG&S sub-category is PG&S's own (the write refuses one off 3.1), so a spend entry elsewhere carries none.
+    purchasedGoodsCategoryId: spend && category.code === "3.1" ? draft.spendCategoryId || null : null,
     purchasedGoodsCategoryLabel: null,
     quantity: parseEntryNumber(draft.quantity),
-    unit: spend ? "GBP" : draft.unit.trim() || null,
+    // D1 (R3): a spend entry is recorded in its currency — GBP unless the drawer chose another.
+    unit: spend ? draft.currency?.trim() || "GBP" : draft.unit.trim() || null,
+    // D1: said only by a drawer that has the toggle, and checked against the unit at the write.
+    ...(draft.basis ? { entryBasis: draft.basis } : {}),
     monthlyActivity: monthly,
     datasetId: isClient ? null : factor?.datasetId ?? null,
     // The factor's own id — never the option key, which no factor has (see entryFactorRefsFor).
@@ -469,6 +546,9 @@ export function scopeRowToEmissionEntryDraft(
   return {
     title: row.sourceLabel,
     activity: row.sourceLabel,
+    // D1: a row's basis is its unit's — a currency is spend — and a spend row's currency is that unit.
+    ...(entryBasisOfUnit(row.unit) ? { basis: entryBasisOfUnit(row.unit)! } : {}),
+    ...(entryBasisOfUnit(row.unit) === "spend" ? { currency: row.unit!.trim() } : {}),
     quantity: row.quantity == null ? "" : String(row.quantity),
     unit: row.unit ?? "",
     registration: row.assetIdentifier ?? "",

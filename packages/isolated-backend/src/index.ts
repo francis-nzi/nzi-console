@@ -235,6 +235,8 @@ export {
   readReminderSettings, updateReminderSettings, scanDueReminders, listStrategyReminderStatuses, strategyReminderStatuses, DUE_REMINDER_ACTOR,
   type DueReminderScan, type ReminderSettingsResult, type StrategyReminders,
 } from "./dueReminders";
+export { listEntryBasisDefaults, readJobEntryBasis, updateEntryBasisDefault, type EntryBasisDefaultResult } from "./entryBasis";
+export { recordClientEntryBasisChoice } from "./entryBasisChoices";
 export {
   readStaffSignature, updateOwnStaffSignature, emailPersonForMember, StaffSignatureError, type StaffSignatureRecord, type SignatureMember,
 } from "./staffSignature";

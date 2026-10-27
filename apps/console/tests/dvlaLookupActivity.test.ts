@@ -112,7 +112,7 @@ describe("R2/R3 — no suggestion leaves Activity for the picker", () => {
 describe("the wiring", () => {
   it("the form applies the shared patch and no longer joins make and fuel into Activity", () => {
     const form = source("app/jobs/EmissionEntryForm.tsx");
-    assert.match(form, /patch\(vehicleLookupPatch\(draft, result, factors, declared\)\)/);
+    assert.match(form, /patch\(vehicleLookupPatch\(draft, result, basisFactors, declared\)\)/);
     assert.ok(!/activity:\s*\[result\.make/.test(form), "make + fuel is not written into Activity");
   });
 

@@ -183,6 +183,8 @@ export function PortalCategoryEntry({
         onSubmit={draft => submitDraft(draft, true)}
         onSaveDraft={draft => submitDraft(draft, false)}
         onLookupRegistration={portalLookup}
+        // D1 (R5): the authorised source already says activity or spend; the toggle shows it, and the bucket flow is unchanged.
+        basisLocked={bucket.entryKind === "spend" ? "spend" : "activity"}
       />
       <div className="nz-panel" style={{ marginTop: 12, padding: 0 }}>
         <table className="nz-tbl">

@@ -5,14 +5,22 @@
 // on the category kind, the portal a constrained mirror that never shows the
 // factor / quality / confidence / lineage fields. Endpoint wiring is the caller's
 // job (UX1b CRP accordion, UX1d portal accordion) — this component is presentational.
-import { type FormEvent, useEffect, useId, useMemo, useState } from "react";
-import { renderInputSpec, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS, type InputSpecCategory } from "@nzi/contracts";
+import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  ENTRY_BASES, ENTRY_BASIS_LABEL, openingEntryBasis, openingEntryBasisSource, renderInputSpec, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS,
+  type EntryBasis, type InputSpecCategory, type JobEntryBasis,
+} from "@nzi/contracts";
 import type { EmissionCategory } from "@nzi/contracts";
 import {
+  draftBasis,
   emissionEntryActions,
+  factorsForBasis,
+  fieldsForBasis,
   isRegistrationKind,
-  isSpendKind,
+  isSpendFactor,
   matchFactorByActivity,
+  openingCurrency,
+  spendCurrencies,
   quickAddSaveIssue,
   factorOptionText,
   searchActivityOptions,
@@ -79,7 +87,32 @@ export type EmissionEntryFormProps = {
    * staged record — one action, and the hint says so.
    */
   portalDirect?: boolean;
+  /**
+   * Data entry D1 (R4): the job's basis settings — the organisation's default per category, this client's last choice per
+   * category, and the client's currency. A fresh entry opens on the client's choice, else the default, else the seed (PG&S =
+   * Spend, the rest Activity). Fetched as the drawer opens, so it may arrive after the first render; it moves the toggle only
+   * until somebody touches it.
+   */
+  entryBasis?: JobEntryBasis | null;
+  /**
+   * D1 (R5): a basis the caller fixes — the portal's bucket flow, whose authorised source already says activity or spend. The
+   * toggle still shows, on that basis, with the other disabled; nothing about the bucket flow changes.
+   */
+  basisLocked?: EntryBasis;
 };
+
+/** The fields that belong to a basis (D1, R1): set aside when the toggle moves off it, restored when it comes back. */
+const BASIS_BLOCK_FIELDS = [
+  "activity", "quantity", "unit", "factorId", "factorOverrideReason", "registration", "manualMode", "manualDetail", "usageTypeId",
+  "supplySource", "assertedVehicleAttributes", "vatPercent", "glCode", "spendCategoryId", "currency", "qualityTier",
+] as const satisfies ReadonlyArray<keyof EmissionEntryDraft>;
+type BasisBlock = Pick<EmissionEntryDraft, (typeof BASIS_BLOCK_FIELDS)[number]>;
+
+/** Why the drawer opened where it did (R4) — said once, until the toggle is moved. */
+const openingBasisNote = (source: "client" | "organisation" | "seed", basis: EntryBasis, audience: EntryAudience): string =>
+  source === "client"
+    ? `Opened on ${ENTRY_BASIS_LABEL[basis]} — ${audience === "portal" ? "how you last recorded" : "how this client last recorded"} an entry here.`
+    : `Opened on ${ENTRY_BASIS_LABEL[basis]} — the default for this category.`;
 
 const QUALITY_TIERS = ["Measured", "Estimated", "Spend-based", "Survey"] as const;
 const DATA_CONFIDENCE = ["H — High", "M — Medium", "L — Low"] as const;
@@ -122,12 +155,67 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const { spec, category, audience, site, factors, units, reportingMonths, spendCategories = [], entry, lineage = [], provenance = [], leanCapture = false } = props;
   const mode: EntryMode = entry ? "existing" : "new";
   const lean = leanCapture && audience === "crm" && mode === "new";
-  const [draft, setDraft] = useState<EmissionEntryDraft>(() => blankDraft(units, entry, lean));
-  const declared = mode === "new" ? props.declared ?? null : null;
+  // D1 (R1, R2): Spend can be chosen where the category has a spend factor — one priced per a currency — among its options.
+  const spendAvailable = props.basisLocked === "spend" || factors.some(isSpendFactor);
+  const openingFor = (settings: JobEntryBasis | null | undefined): EntryBasis => props.basisLocked ?? openingEntryBasis({
+    categoryCode: category.code, clientChoice: settings?.choices[category.code], organisationDefault: settings?.defaults[category.code], spendAvailable });
+  // A new block for a basis: empty, in the client's currency for spend, the declared factor for activity, and the quality tier
+  // spend implies (staff only — the portal never sets one).
+  const freshBlock = (basis: EntryBasis, current: EmissionEntryDraft): BasisBlock => ({
+    activity: "", quantity: "", unit: basis === "spend" ? "" : units[0] ?? "", factorId: "", factorOverrideReason: "", registration: "",
+    manualMode: false, manualDetail: "", usageTypeId: current.usageTypeId === undefined ? undefined : "", supplySource: "",
+    assertedVehicleAttributes: null, vatPercent: "", glCode: "", spendCategoryId: "",
+    currency: basis === "spend" ? openingCurrency(factors, props.entryBasis?.currency) : undefined,
+    qualityTier: basis === "spend" && audience === "crm" ? "Spend-based" : lean ? "" : QUALITY_TIERS[0],
+  });
+  const [draft, setDraft] = useState<EmissionEntryDraft>(() => {
+    const seeded = blankDraft(units, entry, lean);
+    if (entry) return { ...seeded, basis: props.basisLocked ?? draftBasis(seeded, category) };
+    const basis = openingFor(props.entryBasis);
+    return basis === "spend" ? { ...seeded, ...freshBlock("spend", seeded), basis } : { ...seeded, basis };
+  });
+  const basis = draftBasis(draft, category);
+  const spend = basis === "spend";
+  // Whether a person has moved the toggle; until then the job's settings (which may arrive late) decide where it sits.
+  const basisTouched = useRef(mode === "existing");
+  const stashed = useRef<Partial<Record<EntryBasis, BasisBlock>>>({});
+  const declaredAny = mode === "new" ? props.declared ?? null : null;
+  // The declared factor is an activity factor (or, on a spend category, a spend one): it applies on its own basis only.
+  const declared = declaredAny && isSpendFactor({ unit: declaredAny.unit }) === spend ? declaredAny : null;
   const [localError, setLocalError] = useState("");
   // The preview arrives after the form opens. It fills an empty choice only — never one a person already made.
-  useEffect(() => { if (declared) setDraft(current => seedWithDeclared(current, declared)); }, [declared]);
+  useEffect(() => {
+    if (declaredAny) setDraft(current => (isSpendFactor({ unit: declaredAny.unit }) === (draftBasis(current, category) === "spend") ? seedWithDeclared(current, declaredAny) : current));
+  }, [declaredAny, category]);
   const divergent = needsOverrideReason(draft, declared);
+
+  // D1 (R1): only the basis block swaps. What was entered on the basis being left is set aside, and comes back if the toggle
+  // does; site, period, notes and the rest of the entry are not touched.
+  const switchBasis = (next: EntryBasis, chosen = true) => {
+    if (chosen) basisTouched.current = true;
+    setDraft(current => {
+      const from = draftBasis(current, category);
+      if (from === next) return current;
+      stashed.current[from] = Object.fromEntries(BASIS_BLOCK_FIELDS.map(key => [key, current[key]])) as BasisBlock;
+      const block = stashed.current[next] ?? freshBlock(next, current);
+      const restored = { ...current, ...block, basis: next };
+      return next === "activity" && declaredAny && !isSpendFactor({ unit: declaredAny.unit }) ? seedWithDeclared(restored, declaredAny) : restored;
+    });
+    setLookup({ state: "idle" });
+    setSearchOpen(false);
+  };
+  // The job's settings arrive after the drawer opens: they place the toggle until somebody moves it, and Spend is never kept
+  // where the options say it cannot be chosen.
+  useEffect(() => {
+    if (mode !== "new" || props.basisLocked) return;
+    if (!basisTouched.current) switchBasis(openingFor(props.entryBasis), false);
+    else if (!spendAvailable && draftBasis(draft, category) === "spend") switchBasis("activity", false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.entryBasis, spendAvailable]);
+  // The options this basis may pick from: spend factors in the entry's currency, or activity factors. A locked basis (the
+  // portal's bucket) keeps its authorised list exactly as it was.
+  const basisFactors = props.basisLocked ? factors : factorsForBasis(factors, basis, spend ? draft.currency : null);
+  const currencies = [...new Set([...spendCurrencies(factors), ...(draft.currency ? [draft.currency] : [])])];
   const [lookup, setLookup] = useState<
     | { state: "idle" }
     | { state: "loading" }
@@ -139,11 +227,11 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   // The fields are read from the governed spec (NZC-102), not built in code. `spec` is loaded
   // server-side and passed down; when it is absent the form renders nothing rather than falling
   // back to a second definition — a fallback would be the dual source this migration removes.
+  // D1: laid out for the basis the toggle is on — the spec's own layout at the category's native basis (fieldsForBasis).
   const fields = useMemo(
-    () => (spec ? renderInputSpec(spec, audience, mode, leanCapture) : []),
-    [spec, audience, mode, leanCapture]);
+    () => (spec ? fieldsForBasis(renderInputSpec(spec, audience, mode, leanCapture), category, basis) : []),
+    [spec, audience, mode, leanCapture, category, basis]);
   const actions = useMemo(() => emissionEntryActions(audience, mode, props.portalDirect === true), [audience, mode, props.portalDirect]);
-  const spend = isSpendKind(category);
   const reg = isRegistrationKind(category);
   const scopedTo = `Scope ${category.scope} · ${category.name}`;
 
@@ -151,12 +239,13 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   // Suggestions show as soon as the box has focus (JW-13) — the first few of the category's options, narrowed as you type.
-  const searchResults = searchActivityOptions(factors, draft.activity);
+  const searchResults = searchActivityOptions(basisFactors, draft.activity);
   // CRM only: the portal's options are its bucket's, and an empty bucket is the consultant's to fix, not the client's.
   const noFactors = audience === "crm" && factors.length === 0;
-  // A pick is the only way an activity is accepted: it sets the activity, its factor and that factor's unit.
+  // A pick is the only way an activity is accepted: it sets the activity, its factor and that factor's unit (on spend, the
+  // factor's currency is the entry's).
   const pickActivity = (option: (typeof factors)[number]) => {
-    patch({ activity: option.label, factorId: option.id, unit: option.unit ?? draft.unit,
+    patch({ activity: option.label, factorId: option.id, ...(spend ? { currency: option.unit ?? draft.currency } : { unit: option.unit ?? draft.unit }),
       factorOverrideReason: declared && option.id === declared.optionId ? "" : draft.factorOverrideReason });
     setSearchOpen(false);
   };
@@ -175,7 +264,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   };
   // Activity takes the suggested factor's label (type · size · fuel), never the make — see vehicleLookupPatch.
   const applyLookup = (result: Extract<RegistrationLookupOutcome, { ok: true }>) => {
-    patch(vehicleLookupPatch(draft, result, factors, declared));
+    patch(vehicleLookupPatch(draft, result, basisFactors, declared));
     setLookup({ state: "idle" });
   };
 
@@ -187,7 +276,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
       return;
     }
     // JW-9 — a CRM entry needs a real factor (the quantity may wait) and typed text is never saved as an activity.
-    const issue = key === "save" || key === "saveDraft" ? quickAddSaveIssue(draft, factors, category, audience) : null;
+    const issue = key === "save" || key === "saveDraft" ? quickAddSaveIssue(draft, basisFactors, category, audience) : null;
     if (issue) { setLocalError(issue); return; }
     setLocalError("");
     if (key === "submit") return void props.onSubmit(draft);
@@ -206,6 +295,25 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
     <form className="nz-ef" aria-label={`${category.name} — ${mode === "new" ? "new entry" : entry?.title ?? "entry"}`} onSubmit={onFormSubmit}>
       {props.error || localError ? <div className="nz-banner warn" role="alert">{props.error || localError}</div> : null}
       {props.notice ? <div className="nz-banner ok" role="status">{props.notice}</div> : null}
+
+      {/* D1 (R1): the first decision on every drawer. Only the basis block below it swaps. */}
+      <div className="nz-ef-basis">
+        <span className="nz-eyebrow" id={`${listId}-basis`}>How is this measured?</span>
+        <div className="nz-seg" role="radiogroup" aria-labelledby={`${listId}-basis`}>
+          {ENTRY_BASES.map(option => (
+            <button key={option} type="button" role="radio" aria-checked={basis === option} className={basis === option ? `on ${option}` : option}
+              disabled={props.busy || (props.basisLocked ? option !== props.basisLocked : option === "spend" && !spendAvailable)}
+              onClick={() => switchBasis(option)}>{ENTRY_BASIS_LABEL[option]}</button>
+          ))}
+        </div>
+        {props.basisLocked ? <span className="nz-hint">This source is recorded as {ENTRY_BASIS_LABEL[props.basisLocked].toLowerCase()}.</span>
+          : !spendAvailable ? <span className="nz-hint nz-ef-basis-note">Spend isn&rsquo;t available here: no spend factor is {audience === "crm" ? `selected for ${category.name} in this job's datasets` : `offered for ${category.name}`}.</span>
+          : spend ? <span className="nz-hint">Spend value, currency and VAT — priced with a spend factor.</span>
+          : <span className="nz-hint">Physical units — no currency, no VAT.</span>}
+        {mode === "new" && !props.basisLocked && !basisTouched.current && props.entryBasis ? (
+          <span className="nz-hint nz-ef-basis-source">{openingBasisNote(openingEntryBasisSource({ clientChoice: props.entryBasis.choices[category.code], organisationDefault: props.entryBasis.defaults[category.code] }), basis, audience)}</span>
+        ) : null}
+      </div>
 
       {fields.map(field => {
         switch (field.control) {
@@ -287,9 +395,10 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                       // matched factor also fixes the unit (its dataset activity
                       // unit) — the user never picks it.
                       if (lean) {
-                        const matched = matchFactorByActivity(activity, factors);
+                        const matched = matchFactorByActivity(activity, basisFactors);
                         // An activity that names no factor keeps the declared one rather than clearing it (Stop 2b).
-                        patch({ activity, factorId: matched?.id ?? declared?.optionId ?? "", unit: matched?.unit ?? declared?.unit ?? draft.unit });
+                        // A spend entry's unit is its currency, so a match on spend leaves the unit alone.
+                        patch({ activity, factorId: matched?.id ?? declared?.optionId ?? "", ...(spend ? {} : { unit: matched?.unit ?? declared?.unit ?? draft.unit }) });
                       } else patch({ activity });
                     }} />
                 </label>
@@ -304,7 +413,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                   </div>
                 ) : searchOpen ? (
                   <ul className="nz-template-results" id={listId} role="listbox">
-                    {searchResults.length === 0 ? <li className="nz-template-empty">No {category.name} activity matches “{draft.activity.trim()}”.</li> : null}
+                    {searchResults.length === 0 ? <li className="nz-template-empty">No {category.name} {spend ? "spend factor" : "activity"} matches “{draft.activity.trim()}”.</li> : null}
                     {searchResults.map((option, index) => (
                       <li key={option.id}>
                         <button type="button" role="option" aria-selected={index === highlighted} className={index === highlighted ? "on" : ""}
@@ -324,18 +433,38 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
             );
 
           case "number":
-            return field.key === "quantity" ? (
+            // D1 (R3): on spend, the value is money — its currency and a single VAT % sit with it, and nowhere on activity.
+            return field.key === "quantity" && spend ? (
+              <div key={field.key} className="nz-ef-spend">
+                <div className="nz-ef-two">
+                  <label className="nz-fl">{field.label}
+                    <input className="nz-inp" inputMode="decimal" value={draft.quantity} placeholder="e.g. 4,100"
+                      onChange={event => patch({ quantity: event.target.value })} />
+                  </label>
+                  <label className="nz-fl">Currency
+                    <select className="nz-sel" value={draft.currency ?? ""} aria-label="Currency"
+                      onChange={event => {
+                        const currency = event.target.value;
+                        // A factor priced in another currency cannot price this entry: it is cleared, never converted (FX is D3).
+                        const kept = basisFactors.find(option => option.id === draft.factorId)?.unit === currency;
+                        patch({ currency, ...(kept ? {} : { factorId: "" }) });
+                      }}>
+                      {(currencies.length ? currencies : ["GBP"]).map(code => <option key={code} value={code}>{code}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <label className="nz-fl">VAT %
+                  <input className="nz-inp" inputMode="decimal" value={draft.vatPercent} placeholder="20"
+                    onChange={event => patch({ vatPercent: event.target.value })} />
+                </label>
+              </div>
+            ) : field.key === "quantity" ? (
               <div key={field.key} className="nz-ef-two">
                 <label className="nz-fl">{field.label}
-                  <input className="nz-inp" inputMode="decimal" value={draft.quantity} placeholder={spend ? "e.g. 4,100" : "e.g. 12,400"}
+                  <input className="nz-inp" inputMode="decimal" value={draft.quantity} placeholder="e.g. 12,400"
                     onChange={event => patch({ quantity: event.target.value })} />
                 </label>
-                {spend ? (
-                  <label className="nz-fl">VAT %
-                    <input className="nz-inp" inputMode="decimal" value={draft.vatPercent} placeholder="20"
-                      onChange={event => patch({ vatPercent: event.target.value })} />
-                  </label>
-                ) : audience === "crm" ? (
+                {audience === "crm" ? (
                   <label className="nz-fl">Unit <span className="muted">· from the factor</span>
                     <input className="nz-inp" readOnly value={draft.unit || ""} placeholder="set by the emission factor"
                       aria-label="Unit — set by the selected emission factor" />
@@ -387,16 +516,19 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
             return (
               <fieldset key={field.key} style={{ border: 0, padding: 0, margin: 0 }}>
                 <span className="nz-eyebrow">{field.label}</span>
-                <div className="nz-ef-two">
+                <div className={category.code === "3.1" ? "nz-ef-two" : undefined}>
                   <label className="nz-fl">GL / nominal code
                     <input className="nz-inp" value={draft.glCode} placeholder="5200" onChange={event => patch({ glCode: event.target.value })} />
                   </label>
-                  <label className="nz-fl">{audience === "portal" ? "Category (authorised)" : "PG&S category"}
-                    <select className="nz-sel" value={draft.spendCategoryId} onChange={event => patch({ spendCategoryId: event.target.value })}>
-                      <option value="">Select a category</option>
-                      {spendCategories.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
-                    </select>
-                  </label>
+                  {/* A PG&S sub-category is PG&S's own: the write refuses one on any other category (D1, R2). */}
+                  {category.code === "3.1" ? (
+                    <label className="nz-fl">{audience === "portal" ? "Category (authorised)" : "PG&S category"}
+                      <select className="nz-sel" value={draft.spendCategoryId} onChange={event => patch({ spendCategoryId: event.target.value })}>
+                        <option value="">Select a category</option>
+                        {spendCategories.map(option => <option key={option.id} value={option.id}>{option.name}</option>)}
+                      </select>
+                    </label>
+                  ) : null}
                 </div>
                 <span className="nz-hint">{field.hint}</span>
               </fieldset>
@@ -408,11 +540,12 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                 <select className="nz-sel" value={draft.factorId} onChange={event => {
                   const id = event.target.value;
                   // Back on the declared factor, a reason given for leaving it no longer applies.
-                  patch({ factorId: id, unit: factors.find(option => option.id === id)?.unit ?? draft.unit,
+                  const unit = basisFactors.find(option => option.id === id)?.unit;
+                  patch({ factorId: id, ...(spend ? { currency: unit ?? draft.currency } : { unit: unit ?? draft.unit }),
                     factorOverrideReason: declared && id === declared.optionId ? "" : draft.factorOverrideReason });
                 }}>
                   <option value="">Select a factor</option>
-                  {factors.map(option => <option key={option.id} value={option.id}>{factorOptionText(option)}{option.provenance ? ` — ${option.provenance}${option.preferred ? " (preferred)" : ""}` : ""}</option>)}
+                  {basisFactors.map(option => <option key={option.id} value={option.id}>{factorOptionText(option)}{option.provenance ? ` — ${option.provenance}${option.preferred ? " (preferred)" : ""}` : ""}</option>)}
                   {/* A client factor is staff's to choose: never offered in the portal (the write refuses one too). */}
                   {audience === "crm" ? <option value={CLIENT_FACTOR_OPTION}>Client factor (EPD)…</option> : null}
                 </select>
@@ -431,7 +564,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
           // confirmation only. It is refined/overridden in the row's evidence
           // panel after saving, not picked here.
           case "factor-review": {
-            const matched = factors.find(option => option.id === draft.factorId) ?? null;
+            const matched = basisFactors.find(option => option.id === draft.factorId) ?? null;
             return (
               <div key={field.key} className="nz-ef-factor-review">
                 <span className="nz-eyebrow">{field.label}</span>
