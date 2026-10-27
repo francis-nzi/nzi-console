@@ -115,6 +115,7 @@ export * from "./datasetSources";
 export * from "./trainingWorkflow";
 export * from "./reductionStrategies";
 export * from "./strategyReminders";
+export * from "./entryBasis";
 export * from "./reportComposition";
 export * from "./reportChartBasis";
 export * from "./reportingIntensity";

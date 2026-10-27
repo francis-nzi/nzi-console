@@ -64,6 +64,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     group: "Carbon data",
     items: [
+      { id: "data-entry", label: "Data entry", icon: "sliders", href: "/admin/data-entry", capability: "admin.settings",
+        description: "Whether each category's add-entry drawer opens on Activity or Spend — PG&S on Spend and the rest on Activity unless set here. A client's own last choice overrides it for them." },
       { id: "factor-library", label: "Factor library", icon: "atom", href: "/admin/factor-library", phase: "G",
         description: "The emission-factor library — already imported — gains curation, dataset archiving and factor-variant management." },
       { id: "custom-factors", label: "Custom factors", icon: "sliders", href: "/admin/custom-factors", phase: "G",

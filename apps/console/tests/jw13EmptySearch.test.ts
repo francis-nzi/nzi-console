@@ -29,6 +29,6 @@ describe("JW-13 — the empty activity search explains itself", () => {
   });
 
   it("leaves the JW-9 save rule alone — a real factor is still required", () => {
-    assert.ok(form.includes("quickAddSaveIssue(draft, factors, category, audience)"));
+    assert.ok(form.includes("quickAddSaveIssue(draft, basisFactors, category, audience)"));
   });
 });

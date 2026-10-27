@@ -743,6 +743,14 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-ef-sitebanner .chip{display:inline-flex;align-items:center;gap:5px;margin-left:6px;padding:2px 8px;border-radius:999px;background:#fff;border:1px solid #BEE7D3;color:var(--pine);font-size:10.5px;font-weight:600}
 .nz-ef-reg{display:flex;gap:8px;align-items:flex-end}
 .nz-ef-reg .nz-fl{flex:1}
+/* Data entry D1: the Activity | Spend toggle, first on every drawer, and the spend block (value, currency, VAT). */
+.nz-ef-basis{display:flex;flex-direction:column;gap:6px}
+.nz-ef-basis .nz-seg{display:flex;margin-left:0}
+.nz-ef-basis .nz-seg button{flex:1;justify-content:center}
+.nz-ef-basis .nz-seg button.on.activity{box-shadow:inset 0 -2px 0 #0B7A4B,0 1px 3px rgba(11,27,43,.12)}
+.nz-ef-basis .nz-seg button.on.spend{box-shadow:inset 0 -2px 0 #B07A00,0 1px 3px rgba(11,27,43,.12)}
+.nz-ef-basis .nz-seg button:disabled{opacity:.55;cursor:not-allowed}
+.nz-ef-spend{display:flex;flex-direction:column;gap:10px}
 .nz-plate{width:100%;height:38px;border:2px solid var(--midnight);border-radius:8px;background:#FFDE00;color:var(--midnight);font-family:inherit;font-weight:800;letter-spacing:.09em;text-transform:uppercase;text-align:center;font-size:15px;padding:0 10px}
 .nz-plate::placeholder{color:#8A7A00}
 .nz-ef-manual-link{font-size:11px;color:var(--pine)}
@@ -1992,6 +2000,17 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-reminders{margin:0 0 16px}.nz-a-reminders .nz-a-panel-title .nz-a-badge{margin-left:auto}
 .nz-a-reminders-b{display:grid;gap:12px;padding:14px 18px}.nz-a-reminders-b .nz-a-hint{margin:0}
 .nz-a-reminders-b .nz-a-sub-record-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+/* Data entry D1 (admin): the default basis per category. */
+.nz-a-basis-group{padding:4px 18px 10px}
+.nz-a-basis-scope{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--a-ink-3);padding:12px 0 6px}
+.nz-a-basis-row{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--a-line-2)}
+.nz-a-basis-name{display:flex;flex-direction:column;gap:2px;min-width:0}
+.nz-a-basis-name .nz-a-mono{font-size:11px;color:var(--a-ink-3)}
+.nz-a-basis-state{font-size:11.5px;color:var(--a-ink-3)}
+.nz-a-basis .nz-a-seg{align-self:center}
+.nz-a-basis-ro{padding:10px 18px 0;margin:0}
+.nz-a-basis>.nz-a-error,.nz-a-basis>.nz-a-notice{margin:12px 18px 0}
+@media(max-width:560px){.nz-a-basis-row{grid-template-columns:1fr auto}.nz-a-basis-row .nz-a-seg{grid-column:1/-1;justify-self:start}}
 .nz-a-link-row{padding:12px 18px;border-bottom:1px solid var(--a-line-2)}
 .nz-a-link-row:last-child{border-bottom:0}
 .nz-a-link-row .top{display:flex;justify-content:space-between;gap:10px;font-size:13px}

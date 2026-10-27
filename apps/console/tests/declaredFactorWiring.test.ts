@@ -20,7 +20,8 @@ describe("the declared factor reaches the capture form through the shared functi
     const formSource = read("EmissionEntryForm.tsx");
     assert.ok(formSource.includes("seedWithDeclared("), "the form does not seed through seedWithDeclared");
     assert.ok(formSource.includes("needsOverrideReason("), "the form does not check divergence through needsOverrideReason");
-    assert.ok(/const declared = mode === "new" \? props\.declared \?\? null : null;/.test(formSource),
+    // D1: the preview is read once, for a new entry only, as `declaredAny`; `declared` is then narrowed to the basis on screen.
+    assert.ok(/const declaredAny = mode === "new" \? props\.declared \?\? null : null;/.test(formSource),
       "the preview applies to more than a new entry — an existing row's factor would be re-seeded");
   });
 

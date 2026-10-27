@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Collapsible, Drawer } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
-import type { ApplicableCategory, InputSpecCategory, ScopeRowReadModel } from "@nzi/contracts";
+import type { ApplicableCategory, InputSpecCategory, JobEntryBasis, ScopeRowReadModel } from "@nzi/contracts";
 import type { PortalDataView as View, PortalScopeRow } from "@nzi/isolated-backend";
 import { CrpDataEntryAccordion } from "../../../../jobs/CrpDataEntryAccordion";
 import { EmissionsSummary } from "../../../../jobs/EmissionsSummary";
@@ -64,6 +64,15 @@ export function PortalDataView({ jobId }: { jobId: string }) {
       .then((response) => (response.ok ? response.json() : null)).then((result) => { if (live) setPreview(result ? { code: adding.code, result } : null); }).catch(() => { if (live) setPreview(null); });
     return () => { live = false; };
   }, [adding, base]);
+  // Data entry D1 (R4): the basis each category opens on for this client — their last choice, else the default — and their currency.
+  const [entryBasis, setEntryBasis] = useState<JobEntryBasis | null>(null);
+  useEffect(() => {
+    if (!adding || surface.readOnly) return;
+    let live = true;
+    void fetch(`${base}/entry-basis`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null)).then((result) => { if (live) setEntryBasis(result); }).catch(() => { if (live) setEntryBasis(null); });
+    return () => { live = false; };
+  }, [adding, base, surface.readOnly]);
 
   if (load.state === "loading") return <div className="nz-portal-state loading" role="status"><i>↻</i><div><b>Loading your data</b><span>Reading this job&apos;s categories and entries…</span></div></div>;
   if (load.state === "failed") return <div className="nz-portal-state failed" role="alert"><i>!</i><div><b>Your data is temporarily unavailable</b><span>Nothing has been assumed about your entries.</span><button className="nz-btn" onClick={() => void refresh()}>Try again</button></div></div>;
@@ -136,7 +145,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
           <div className="nz-pdv-drawer-h"><span className="nz-eyebrow">{adding.name}</span><h2>Add an entry</h2></div>
           <EmissionEntryForm key={adding.code} spec={specs[adding.code] ?? null} category={adding} audience="portal" portalDirect
             site={{ id: site?.id ?? null, label: site?.name ?? "No particular site" }}
-            factors={optionsFor(adding)} declared={declaredOptionFor(preview?.code === adding.code ? preview.result : null, optionsFor(adding))}
+            factors={optionsFor(adding)} declared={declaredOptionFor(preview?.code === adding.code ? preview.result : null, optionsFor(adding))} entryBasis={entryBasis}
             units={specs[adding.code]?.units ?? []} reportingMonths={view.reportingMonths}
             spendCategories={view.purchasedGoodsCategories} busy={busy} error={formError}
             onCancel={() => setAdding(null)} onSubmit={(draft) => saveNew(adding, draft)} />

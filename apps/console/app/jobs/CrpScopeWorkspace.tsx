@@ -5,7 +5,7 @@ import { LogTimeButton } from "./JobTimePanel";
 import { JobReportLink } from "./JobReportLink";
 import { JobReportStudioLink } from "./JobReportStudioLink";
 import type { ReactNode } from "react";
-import type { InputSpecCategory } from "@nzi/contracts";
+import type { InputSpecCategory, JobEntryBasis } from "@nzi/contracts";
 import { useRouter } from "next/navigation";
 import {
   patchBrowserCommand,
@@ -264,6 +264,18 @@ export function CrpScopeWorkspace({
   // is what will be committed. A preview that cannot be fetched leaves the form as it was: the write still fills
   // or refuses on its own, so a missing preview can hide a convenience but never change a number.
   const [declaredPreview,setDeclaredPreview]=useState<{category:string;preview:DeclaredFactorPreviewResult}|null>(null);
+  // Data entry D1 (R4): what the drawer opens on — the organisation default and this client's last choice per category, and the
+  // client's currency. Read as each drawer opens (a save can change the choice); unread, the drawer opens on the seed.
+  const [entryBasis,setEntryBasis]=useState<JobEntryBasis|null>(null);
+  useEffect(()=>{
+    if(!addingCategory)return;
+    let live=true;
+    fetch(`/api/isolated/jobs/${job.header.id}/entry-basis`,{cache:"no-store"})
+      .then(response=>response.ok?response.json():null)
+      .then(basis=>{if(live)setEntryBasis(basis);})
+      .catch(()=>{if(live)setEntryBasis(null);});
+    return()=>{live=false;};
+  },[addingCategory,job.header.id]);
   useEffect(()=>{
     if(!addingCategory)return;
     let live=true;
@@ -452,6 +464,7 @@ export function CrpScopeWorkspace({
         site={{ id: siteId, label: siteId === null ? "Unallocated" : siteLabel }}
         factors={quickAddOptions}
         declared={declaredOption}
+        entryBasis={entryBasis}
         units={specs[addingCategory.code]?.units ?? []}
         reportingMonths={spendReportingMonths}
         spendCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
