@@ -115,7 +115,8 @@ export function PortalReductionPlan({model:provided}:{model?:PortalStrategiesRea
     </div></section>:null}
 
     <section className="nz-panel"><div className="nz-card-b">
-      <span className="nz-eyebrow">Decarbonisation plan</span>
+      {/* One name per area (27 Oct): this is "Your reduction plan"; the job's qualitative tracker is "Spheres of influence". */}
+      <span className="nz-eyebrow">Your reduction plan</span>
       <h2 style={{margin:"2px 0 8px",fontSize:16}}>{model.total} action{model.total===1?"":"s"} on your plan</h2>
       <p className="sub" style={{marginTop:0}}>
         {interactive

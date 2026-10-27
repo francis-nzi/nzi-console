@@ -22,9 +22,9 @@ export function PortalActionTrackerPanel({ jobId }: { jobId: string }) {
       const response = await fetch(`${surface.api}/jobs/${jobId}/actions`, { cache: "no-store" });
       if (await surface.sessionEnded(response)) return;
       const body: unknown = await response.json();
-      if (!response.ok || !isPortalActionTracker(body)) throw new Error("Your action tracker could not be verified.");
+      if (!response.ok || !isPortalActionTracker(body)) throw new Error("Your spheres of influence could not be verified.");
       setState({ kind: "ready", tracker: body });
-    } catch (error) { setState({ kind: "failed", message: error instanceof Error ? error.message : "Your action tracker could not be loaded." }); }
+    } catch (error) { setState({ kind: "failed", message: error instanceof Error ? error.message : "Your spheres of influence could not be loaded." }); }
   }, [jobId, surface]);
   useEffect(() => { void load(); }, [load]);
 
@@ -50,12 +50,12 @@ export function PortalActionTrackerPanel({ jobId }: { jobId: string }) {
     finally { setBusy(false); }
   };
 
-  if (state.kind === "loading") return <section className="nz-action-tracker-state" role="status"><b>Loading your action tracker</b><span>Reading client-managed engagement actions…</span></section>;
-  if (state.kind === "failed") return <section className="nz-action-tracker-state failed" role="alert"><b>Action tracker unavailable</b><span>{state.message}</span><button className="nz-btn" onClick={() => void load()}>Try again</button></section>;
+  if (state.kind === "loading") return <section className="nz-action-tracker-state" role="status"><b>Loading your spheres of influence</b><span>Reading client-managed engagement actions…</span></section>;
+  if (state.kind === "failed") return <section className="nz-action-tracker-state failed" role="alert"><b>Spheres of influence unavailable</b><span>{state.message}</span><button className="nz-btn" onClick={() => void load()}>Try again</button></section>;
 
   return <section className="nz-action-tracker" aria-labelledby="action-tracker-title">
     <header>
-      <div><span className="nz-eyebrow">Client-managed engagement plan</span><h2 id="action-tracker-title">Spheres of Influence action tracker</h2><p>Track delivery of qualitative actions across the 24 recognised levers. Progress percentages describe completion of your actions only; they are not emissions reductions.</p></div>
+      <div><span className="nz-eyebrow">Client-managed engagement plan</span><h2 id="action-tracker-title">Spheres of influence</h2><p>Track delivery of qualitative actions across the 24 recognised levers. Progress percentages describe completion of your actions only; they are not emissions reductions.</p></div>
       <span className="nz-engagement-badge">Engagement data · not assured emissions</span>
     </header>
 
