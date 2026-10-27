@@ -33,6 +33,8 @@ import {
 } from "./strategyProjection";
 import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBasis, type ContactConsentDecision, type ContactConsentState } from "./contactConsent";
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
+import { groundSrsSuggestion, SRS_SUGGESTION_LIMITS } from "./srsBridge";
+import { readinessReportTemplates } from "./readinessReportTemplates";
 import { intensityDividers, intensityUnitKinds, isIntensityIconKey, monetaryKindIssue, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
 import { REPORTING_TEMPLATE_LABEL_MAX, REPORTING_TEMPLATE_MAX_LINES, reportingTemplateCategoryScope, type ReportingTemplateLineInput } from "./reportingTemplate";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
@@ -197,6 +199,10 @@ export type CommandKey =
   | "srs.assessment.start"
   | "srs.assessment.item.set"
   | "srs.assessment.complete"
+  | "srs.gap.suggestions.record"
+  | "srs.gap.suggestion.withdraw"
+  | "srs.gap.bridge"
+  | "srs.report.export"
   | "srs.framework.draft.create"
   | "srs.framework.requirement.upsert"
   | "srs.framework.maturity.update"
@@ -1029,6 +1035,15 @@ export type CommandInputMap = {
     owner?: string; dueDate?: string | null; linkedActionId?: string | null; expectedVersion: number;
   };
   "srs.assessment.complete": { assessmentId: string; expectedVersion: number };
+  /**
+   * SRS S3. `srs.gap.suggestions.record`: AI ideas for one gap, already grounded (no figure, no claim), with the model that
+   * answered and the SHA-256 of the exact prompt — the request by reference, never its text. `srs.gap.bridge`: one source —
+   * a library action, or the consultant's own words (optionally from a stored idea) — becomes an `srs_gap` action on the plan.
+   */
+  "srs.gap.suggestions.record": { assessmentId: string; requirementId: string; suggestions: Array<{ title: string; how: string }>; model: string; promptSha256: string };
+  "srs.gap.suggestion.withdraw": { assessmentId: string; suggestionId: string };
+  "srs.gap.bridge": { assessmentId: string; requirementId: string; strategyId?: string; suggestionId?: string; bespoke?: { title: string; scope: string; controlLevel: string; category?: string }; status?: string; includeInReport?: boolean };
+  "srs.report.export": { assessmentId: string; templateKey: string };
   /** S1, R1: a new framework version, as a draft copied from the one in force. One draft at a time. */
   "srs.framework.draft.create": { label?: string; notes?: string };
   /** Add a requirement to the draft, or change one: wording, help, weight, target, order — or retire it (`active: false`). */
@@ -2866,6 +2881,53 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (input.evidenceKind != null && !text(input.evidenceRef) && !text(input.evidenceNote)) issues.push({ field: "evidenceNote", code: "REQUIRED", message: "Evidence needs a reference or a note." });
     if (input.dueDate != null && !isoDate(input.dueDate)) issues.push({ field: "dueDate", code: "INVALID", message: "Enter the due date as dd/mm/yyyy." });
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  // SRS S3: bridging a gap — the library first, AI second — and the report export. All under srs.manage, all audited.
+  "srs.gap.suggestions.record": { key: "srs.gap.suggestions.record", label: "Record AI ideas for a readiness gap", permission: "srs.manage", reasonRequired: false, transaction: "ideas stored as shown (the previous ones withdrawn) + audit by prompt reference + outbox + idempotency", auditAction: "srs_gap_suggestions_recorded", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "assessmentId", input.assessmentId);
+    required(issues, "requirementId", input.requirementId);
+    required(issues, "model", input.model);
+    if (typeof input.promptSha256 !== "string" || !/^[0-9a-f]{64}$/.test(input.promptSha256)) issues.push({ field: "promptSha256", code: "INVALID", message: "The prompt reference is a SHA-256." });
+    if (!Array.isArray(input.suggestions) || input.suggestions.length > SRS_SUGGESTION_LIMITS.count) {
+      issues.push({ field: "suggestions", code: "INVALID", message: `Up to ${SRS_SUGGESTION_LIMITS.count} ideas.` });
+    } else {
+      // The same discipline the generator applied, said again where they are stored: action-shaped, no figure, no claim.
+      input.suggestions.forEach((suggestion, index) => {
+        const verdict = groundSrsSuggestion(suggestion);
+        if (!verdict.ok) issues.push({ field: `suggestions.${index}`, code: "UNGROUNDED", message: `That idea cannot be shown (${verdict.reason}).` });
+      });
+    }
+    return issues;
+  } },
+  "srs.gap.suggestion.withdraw": { key: "srs.gap.suggestion.withdraw", label: "Withdraw an AI idea from a readiness gap", permission: "srs.manage", reasonRequired: false, transaction: "idea withdrawn (never deleted) + audit + outbox + idempotency", auditAction: "srs_gap_suggestion_withdrawn", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "assessmentId", input.assessmentId);
+    required(issues, "suggestionId", input.suggestionId);
+    return issues;
+  } },
+  "srs.gap.bridge": { key: "srs.gap.bridge", label: "Bridge a readiness gap with an action", permission: "srs.manage", reasonRequired: false, transaction: "srs_gap action on the plan (origin + requirement, aligned) + the assessment's link where it can take one + audit + outbox + idempotency", auditAction: "srs_gap_bridged", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "assessmentId", input.assessmentId);
+    required(issues, "requirementId", input.requirementId);
+    // Exactly one shape: a library action, or an action in the consultant's words — which may start from an AI idea
+    // (`suggestionId`, recorded as where it came from). An idea alone is not an action: a person settles its scope.
+    const fromLibrary = typeof input.strategyId === "string" && input.strategyId.trim() !== "";
+    if (fromLibrary === Boolean(input.bespoke)) issues.push({ field: "strategyId", code: "INVALID", message: "Bridge with one library action, or one action of your own." });
+    if (input.suggestionId !== undefined && !input.bespoke) issues.push({ field: "suggestionId", code: "INVALID", message: "An idea becomes an action in your own words." });
+    if (input.bespoke) {
+      required(issues, "bespoke.title", input.bespoke.title);
+      if (!oneOf(input.bespoke.scope, strategyScopes)) issues.push({ field: "bespoke.scope", code: "INVALID", message: "Scope must be 1, 2, 3 or governance." });
+      if (!oneOf(input.bespoke.controlLevel, strategyControlLevels)) issues.push({ field: "bespoke.controlLevel", code: "INVALID", message: "Choose how much of this the client controls." });
+    }
+    if (input.status !== undefined && input.status !== "proposed" && input.status !== "agreed") issues.push({ field: "status", code: "INVALID", message: "A bridging action starts as Proposed, or Agreed if the client has already agreed it." });
+    return issues;
+  } },
+  "srs.report.export": { key: "srs.report.export", label: "Export a UK SRS readiness report", permission: "srs.manage", reasonRequired: false, transaction: "audit of the export (the completed assessment, the template and its version) + outbox + idempotency", auditAction: "srs_report_exported", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "assessmentId", input.assessmentId);
+    if (!readinessReportTemplates[input.templateKey]) issues.push({ field: "templateKey", code: "UNKNOWN_TEMPLATE", message: "That report template does not exist." });
     return issues;
   } },
   "srs.assessment.complete": { key: "srs.assessment.complete", label: "Complete an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment status + completion stamp + audit + outbox + idempotency", auditAction: "srs_assessment_completed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "assessmentId", input.assessmentId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },

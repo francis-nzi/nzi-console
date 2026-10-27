@@ -1,0 +1,50 @@
+/* SRS S3 — the readiness report: on screen as a document, and in print as A4 pages. Tokens only; the ladder's colours come
+   from the chart components themselves (explicit hex, so the print matches the screen). */
+.nzsr-page{background:var(--paper);min-height:100vh;padding:20px 16px 48px}
+.nzsr-toolbar{display:flex;align-items:center;gap:10px;max-width:900px;margin:0 auto 14px}
+.nzsr-toolbar .sp{flex:1}
+.nzsr-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.nzsr{max-width:900px;margin:0 auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:40px 44px;color:var(--t1);font-size:13px;line-height:1.55}
+.nzsr-cover{border-bottom:2px solid var(--pine);padding-bottom:22px;margin-bottom:8px}
+.nzsr-kicker{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--pine)}
+.nzsr-cover h1{font-size:28px;margin:10px 0 4px;letter-spacing:-.01em}
+.nzsr-client{font-size:18px;font-weight:600}
+.nzsr-strap{color:var(--t2);margin:10px 0 14px;max-width:62ch}
+.nzsr-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(200px,100%),1fr));gap:8px 18px;margin:0}
+.nzsr-facts dt{font-size:11px;color:var(--t3)}.nzsr-facts dd{margin:0;font-weight:600}
+.nzsr-disclaimer{font-size:11.5px;color:var(--t2);margin-top:12px}
+.nzsr-section{padding:22px 0;border-top:1px solid var(--line2)}
+.nzsr-section h2{font-size:17px;margin:0 0 6px}
+.nzsr-intro{color:var(--t2);margin:0 0 12px}
+.nzsr-hero{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;margin-bottom:8px}
+.nzsr-hero .v{font-size:40px;font-weight:800;letter-spacing:-.02em}
+.nzsr-hero .v small{font-size:16px;font-weight:600;color:var(--t3);margin-left:3px}
+.nzsr-dials{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(150px,100%),1fr));gap:10px;justify-items:center;margin-bottom:6px}
+.nzsr-dials svg,.nzsr-two svg,.nzsr-heatmap svg,.nzsr-trend svg{max-width:100%;height:auto}
+.nzsr-two{display:flex;flex-wrap:wrap;gap:18px;align-items:center}
+.nzsr-two>.nz-srs-tablewrap,.nzsr-two>.nz-srs-table{flex:1;min-width:min(240px,100%)}
+.nzsr-gaps h3{font-size:13.5px;margin:12px 0 4px}
+.nzsr-gap{padding:7px 0;border-bottom:1px solid var(--line2)}
+.nzsr-gap .hd{display:flex;gap:8px;flex-wrap:wrap;align-items:baseline}
+.nzsr-gap .lv{margin-left:auto;color:var(--t3);font-size:11.5px}
+.nzsr-gap ul{margin:4px 0 0;padding-left:18px}.nzsr-gap .st{color:var(--t3);font-size:11.5px}
+.nzsr-gap .none{margin:4px 0 0;color:var(--t2);font-style:italic}
+.nzsr-future{background:var(--paper);border:1px dashed var(--line);border-radius:10px;padding:12px 14px;color:var(--t2)}
+.nzsr-provenance{font-size:11px;color:var(--t3)}
+.nzsr-foot{margin-top:24px;padding-top:12px;border-top:1px solid var(--line);font-size:11px;color:var(--t3)}
+@media (max-width:720px){.nzsr{padding:22px 16px}}
+
+@page{size:A4;margin:16mm 14mm 18mm}
+@media print{
+  .nzsr-page{background:none;padding:0}
+  .nzsr-toolbar{display:none!important}
+  .nzsr{border:0;border-radius:0;padding:0;max-width:none;font-size:11pt}
+  .nzsr-cover{min-height:auto}
+  /* Each section starts a page and flows on; a chart, a table row and a gap stay whole; a heading never ends a page. */
+  .nzsr-section{break-before:page;border-top:0}
+  .nzsr-section h2{break-after:avoid}
+  .nzsr-gap,.nz-srs-table tr,svg{break-inside:avoid}
+  .nz-srs-table thead{display:table-header-group}
+  /* The provenance line closes the document; a fixed footer would print over the content of every page. */
+  .nzsr-foot{break-inside:avoid}
+}

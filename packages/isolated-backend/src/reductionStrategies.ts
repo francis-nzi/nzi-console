@@ -437,7 +437,7 @@ export async function assertOwnerContact(db: Queryable, organisationId: string, 
  * requirement, never the caller, as the alignment is. Where the id appears in more than one framework version, the one
  * in force wins, then the newest.
  */
-async function gapRequirement(db: Queryable, organisationId: string, requirementId: string): Promise<{ frameworkId: string; requirementId: string }> {
+export async function gapRequirement(db: Queryable, organisationId: string, requirementId: string): Promise<{ frameworkId: string; requirementId: string }> {
   const found = (await db.query<{ framework_id: string }>(
     `SELECT r.framework_id FROM nzi_console.srs_requirements r
        JOIN nzi_console.srs_frameworks f ON (f.organisation_id, f.framework_id) = (r.organisation_id, r.framework_id)

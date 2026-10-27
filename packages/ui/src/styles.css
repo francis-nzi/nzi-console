@@ -1115,6 +1115,20 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-srs-qlist button{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;width:100%;border:0;border-bottom:1px solid var(--line2);background:none;padding:8px 2px;font:inherit;font-size:12.5px;text-align:left;color:var(--t1);cursor:pointer}
 .nz-srs-qlist button:hover{background:var(--paper)}
 .nz-srs-qlist .s{white-space:nowrap;font-size:12px}
+/* SRS S3 — bridging a gap: the library first, AI ideas second (always labelled), your own action third. */
+.nz-bridge-sec{padding:12px 0;border-bottom:1px solid var(--line2)}
+.nz-bridge-sec h4{margin:0 0 4px;font-size:13px;display:flex;align-items:center;gap:6px}
+.nz-bridge-sec p,.nz-bridge-sec .sub,.nz-bridge-sec .hint{font-size:12.5px;line-height:1.45;margin:2px 0 6px}
+.nz-bridge-sec .nz-lib-item .nm{font-size:13px}
+.nz-bridge-sec .nz-lib-item{align-items:flex-start}
+.nz-bridge-idea-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.nz-ai-tag{background:var(--mint);color:var(--pine);font-weight:700;letter-spacing:.04em}
+.nz-srs-bridge-btn{margin-top:4px;white-space:normal;text-align:left}
+.nz-portal-ideas{margin-top:6px;border-left:3px solid var(--mint);padding:4px 0 4px 10px}
+.nz-portal-ideas .l{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--pine)}
+.nz-portal-ideas ul{list-style:none;margin:4px 0 0;padding:0;display:grid;gap:6px}
+.nz-portal-ideas li b{font-size:12.5px}
+.nz-portal-ideas li p{margin:2px 0 0;font-size:12px;color:var(--t2)}
 @media (max-width:720px){
   .nz-srs-headline{grid-template-columns:minmax(0,1fr)}
   .nz-srs-qlist button{grid-template-columns:auto minmax(0,1fr)}

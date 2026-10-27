@@ -3,6 +3,7 @@ import {
   type ReportSrsRoadmap, type SrsDashboardModel,
 } from "@nzi/contracts";
 import { listClientStrategies } from "./reductionStrategies";
+import { listSrsGapSuggestions, srsFrameworksFor } from "./srsBridging";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import type { Queryable } from "./postgres";
 
@@ -70,6 +71,12 @@ export type PortalReadinessReadModel =
      * link field by field (NZC-110). The CRM dashboard renders the same model, so the client sees the same pictures.
      */
     dashboard: SrsDashboardModel;
+    /**
+     * SRS S3 (R2): ideas from AI for the gaps in this assessment, as staff left them shown — labelled as AI in the portal,
+     * examples to discuss, never applied. Only the requirement, the idea and its words cross: never who asked for it, the
+     * model, or the prompt reference.
+     */
+    ideas: Array<{ requirementId: string; title: string; how: string }>;
   };
 
 export async function getPortalClientReadiness(
@@ -95,6 +102,13 @@ export async function getPortalClientReadiness(
     };
   }
 
+  // S3 (from the S2 review): each assessment read against the framework version it was made against.
+  const frameworks = await srsFrameworksFor(db, assessments);
+  const dashboard = srsPortalDashboard(framework, assessments, { frameworks })!;
+  const gapIds = new Set(dashboard.requirements.filter((requirement) => requirement.gap).map((requirement) => requirement.id));
+  const ideas = (await listSrsGapSuggestions(db, input.clientId))
+    .filter((idea) => idea.assessmentId === dashboard.assessment.id && gapIds.has(idea.requirementId))
+    .map((idea) => ({ requirementId: idea.requirementId, title: idea.title, how: idea.how }));
   const overall = overallReadiness(framework, assessment.items);
   const pillars = pillarReadiness(framework, assessment.items);
   const coverage = evidenceCoverage(framework, assessment.items);
@@ -134,7 +148,8 @@ export async function getPortalClientReadiness(
     // The same population as the report's roadmap (A1): marked for the report and agreed or beyond.
     roadmap: composeSrsRoadmap(framework, assessment.items, plan.filter(strategyIsReportable)),
     evidenced: { count: coverage.evidenced, total: coverage.total },
-    dashboard: srsPortalDashboard(framework, assessments)!,
+    dashboard,
+    ideas,
   };
 }
 

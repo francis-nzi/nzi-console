@@ -79,7 +79,7 @@ describe("SRS readiness", () => {
     assert.doesNotMatch(area, /values: \[\s*\d+\s*,/, "no hard-coded series");
     assert.doesNotMatch(area, /@nzi\/mock-data/, "no mock data");
     // Figures come from the shared resolver: the area reads `srsDashboard`, which reads S1's rollups.
-    assert.match(area, /srsDashboard\(framework, assessment, assessments, \{ standardKey \}\)/);
+    assert.match(area, /srsDashboard\(framework, assessment, assessments, \{ standardKey, frameworks \}\)/);
     assert.match(read("packages/contracts/src/srsDashboard.ts"), /overallReadiness\(scoped[\s\S]*pillarReadiness\(scoped/);
   });
 
@@ -112,17 +112,20 @@ describe("what a requirement is being addressed by", () => {
     // Once a decoy with no foreign key behind it; S1 (0187) gave it one, to client_strategies, as the S3 hook. The
     // register reads it only by resolving it to a strategy on this client's plan and naming it — never "a link exists".
     assert.match(read("packages/isolated-backend/migrations/0187_srs_framework_versions_and_completion.sql"), /srs_assessment_items_linked_action_fk[\s\S]*REFERENCES nzi_console\.client_strategies/);
-    assert.match(area, /requirement\.linkedActionId \? actions\.get\(requirement\.linkedActionId\)/);
-    assert.match(area, /On the plan: <b>\{linked\.title\}<\/b>/);
+    // S3: resolved through `srsBridgedBy` — the action written from the gap (srs_gap naming it), or the one the item links.
+    assert.match(area, /srsBridgedBy\(requirement\.id, plan, requirement\.linkedActionId \?\? null\)/);
+    assert.match(read("packages/contracts/src/srsBridge.ts"), /action\.origin === "srs_gap" && action\.originSrsRequirementId === requirementId\) \|\| action\.id === linkedActionId/);
+    assert.match(area, /Bridged by <b>\{action\.title\}<\/b>/);
     assert.doesNotMatch(area, /" · linked action"/, "nor renders the old roadmap string");
     assert.doesNotMatch(area, /"Linked action"/, "nor the register's old version");
   });
 
   it("says honestly when nothing addresses a requirement", () => {
     assert.match(area, /No strategy yet/, "an unaddressed requirement says so");
-    // S2: an unaddressed gap in the register offers the S3 hook by name, and creates nothing.
+    // S3: an unbridged gap offers the bridge by name; the area itself writes nothing — the drawer does, through srs.gap.bridge.
     assert.match(area, /Bridge this gap/);
-    assert.doesNotMatch(area, /srs\.gap|createBridging|\/api\/isolated\/actions/, "no creation path in S2");
+    assert.match(area, /onDrawer\(\{ kind: "srs-bridge", assessment, requirementId: requirement\.id \}\)/);
+    assert.doesNotMatch(area, /\/gaps\/|createBridging|\/api\/isolated\/actions/, "no creation path in the area itself");
   });
 
   it("leaves the column in place — dropping it is a separate migration", () => {
@@ -196,20 +199,22 @@ describe("the portal readiness statement", () => {
     assert.doesNotMatch(portal, /\.owner\b/, "the view never reaches for an owner");
   });
 
-  it("is read-only — no mutation path and no control implying one", () => {
+  it("is read-only, but for sending an AI idea to the adviser as the client's own proposal", () => {
+    // `\\b`, not `\b`: in a template literal the latter is a backspace and the regex could never match.
     for (const method of ["POST", "PATCH", "PUT", "DELETE"]) {
-      assert.doesNotMatch(route, new RegExp(`export async function ${method}\b`), method);
+      assert.doesNotMatch(route, new RegExp(`export async function ${method}\\b`), method);
     }
     assert.match(route, /withTenantRead/);
     assert.match(route, /user\.clientId/);
     assert.doesNotMatch(route, /params|searchParams/, "the client is the session's own");
-    // S2: the questions open in drawers, so there are buttons — but each only opens, closes or switches a view. Nothing
-    // in the view sends anything: no command helper, and its one fetch is the GET above.
-    for (const write of ["postBrowserCommand", "putBrowserCommand", "patchBrowserCommand", "method:"]) {
-      assert.ok(!portal.includes(write), `the view never writes (${write})`);
-    }
+    // S2: the questions open in drawers, so there are buttons that open, close or switch a view. S3: one write — an AI
+    // idea sent to the adviser as the client's own proposal, through A2's route, only in their own session with plan
+    // participation on. Nothing else is sent, and nothing changes the assessment.
+    for (const write of ["putBrowserCommand", "patchBrowserCommand", "method:"]) assert.ok(!portal.includes(write), `the view never writes (${write})`);
+    assert.deepEqual(portal.match(/postBrowserCommand\("[^"]+"/g), ['postBrowserCommand("/api/portal/strategies/proposals"']);
+    assert.match(portal, /const canPropose=provided===undefined&&portalFeatureEnabled\("portal-plan-participation"\);/);
     for (const handler of portal.match(/onClick=\{[^}]*\}/g) ?? []) {
-      assert.match(handler, /setOpenId|setDialsAs|onClose|onOpen/, `a button only opens or switches a view: ${handler}`);
+      assert.match(handler, /setOpenId|setDialsAs|onClose|onOpen|propose\(idea\)/, `a button only opens, switches or proposes: ${handler}`);
     }
     for (const verb of ["postBrowserCommand", "patchBrowserCommand", "INSERT", "UPDATE "]) {
       assert.ok(!model.includes(verb), `the read model must not write (${verb})`);
@@ -220,7 +225,7 @@ describe("the portal readiness statement", () => {
     // SRS S2: the same dial and radar components the CRM dashboard draws, from the same model.
     for (const chart of ["SrsDial", "SrsMeter", "SrsRadar", "SrsPillarTable", "SrsScaleKey"]) assert.match(portal, new RegExp(`<${chart}\\b`), chart);
     assert.match(portal, /from "@nzi\/charts"/);
-    assert.match(model, /dashboard: srsPortalDashboard\(framework, assessments\)/);
+    assert.match(model, /const dashboard = srsPortalDashboard\(framework, assessments, \{ frameworks \}\)!;/);
   });
 
   it("sits with the plan, so the page reads as one story", () => {

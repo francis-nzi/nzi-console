@@ -5,8 +5,8 @@ import { postBrowserCommand } from "@nzi/api-client";
 import { SrsDial, SrsHeatmap, SrsMeter, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
 import { GatedButton, InfoTip } from "@nzi/ui";
 import {
-  gaps as resolveGaps, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
-  type ClientStrategy, type SrsAssessment, type SrsDashboardModel, type SrsDashboardRequirement, type SrsFramework,
+  gaps as resolveGaps, srsBridgedBy, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
+  type ClientStrategy, type SrsAssessment, type SrsDashboardModel, type SrsDashboardRequirement, type SrsFramework, type SrsGapSuggestion,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
@@ -95,10 +95,11 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   const toggle = (key: string) => setShowTable((now) => ({ ...now, [key]: !now[key] }));
 
   const assessment = assessments.find((entry) => entry.assessmentId === assessmentId) ?? current;
-  const model = useMemo(() => srsDashboard(framework, assessment, assessments, { standardKey }), [framework, assessment, assessments, standardKey]);
+  // S3 (from the S2 review): each assessment read against the framework version it was made against.
+  const frameworks = useMemo(() => new Map(workspace.srs.frameworks.map((version) => [version.frameworkId, version])), [workspace.srs.frameworks]);
+  const model = useMemo(() => srsDashboard(framework, assessment, assessments, { standardKey, frameworks }), [framework, assessment, assessments, standardKey, frameworks]);
   const provisional = model.assessment.provisional;
   const strategiesByRequirement = useMemo(() => strategiesBySrsRequirement(workspace.strategies.plan), [workspace.strategies.plan]);
-  const actions = useMemo(() => new Map(workspace.strategies.plan.map((strategy) => [strategy.id, strategy])), [workspace.strategies.plan]);
   const gaps = useMemo(() => resolveGaps(framework, assessment.items).filter((gap) => !standardKey || gap.requirement.standardKey === standardKey), [framework, assessment, standardKey]);
 
   const [completing, setCompleting] = useState(false);
@@ -132,6 +133,10 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
         // A completed assessment is a record; reassessing starts a new one, which is what gives readiness a trend.
         : <GatedButton className="nz-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
           reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-start" })}>Reassess</GatedButton>}
+      {/* S3, R5: the report — from the latest completed assessment, as the UK SRS template draws it. */}
+      {assessments.some((entry) => entry.status === "complete")
+        ? <a className="nz-btn" href={`/clients/${encodeURIComponent(client.id)}/srs-report?template=uk-srs${model.assessment.assessedOn ? `&assessment=${encodeURIComponent(model.assessment.id)}` : ""}`}>Readiness report (PDF)</a>
+        : null}
     </div>
     {completeError ? <div className="nz-banner warn" role="alert">{completeError}</div> : null}
     <p className="nz-cw-vsub">{client.name} · {model.assessment.assessedOn
@@ -281,7 +286,8 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       </div>
     </div>
 
-    <SrsRegister model={model} assessment={assessment} framework={framework} access={access} onDrawer={onDrawer} strategiesByRequirement={strategiesByRequirement} actions={actions} />
+    <SrsRegister model={model} assessment={assessment} framework={framework} access={access} onDrawer={onDrawer} strategiesByRequirement={strategiesByRequirement}
+      plan={workspace.strategies.plan} suggestions={workspace.srs.suggestions} />
   </>;
 }
 
@@ -334,12 +340,13 @@ type SortKey = "order" | "code" | "maturity" | "gap" | "due";
 
 /**
  * R6: the register — every requirement with its score, evidence, owner and due, sortable: the always-available non-chart
- * view, and the heatmap's table. Its last column is the **gap→action hook** S1 modelled: the action on the plan where
- * one is linked, else the strategies that advance it, else "Bridge this gap" — which S3 wires (no creation here).
+ * view, and the heatmap's table. Its last column is the **gap→action hook** (S3, R1): what bridges the gap — an action
+ * written from it (`srs_gap`, naming the requirement) or the one the assessment links — else the strategies that advance
+ * it; and on an unbridged gap, **Bridge this gap**: the library's aligned actions first, AI ideas second, or your own.
  */
-function SrsRegister({ model, assessment, framework, access, onDrawer, strategiesByRequirement, actions }: {
+function SrsRegister({ model, assessment, framework, access, onDrawer, strategiesByRequirement, plan, suggestions }: {
   model: SrsDashboardModel; assessment: SrsAssessment; framework: SrsFramework; access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void;
-  strategiesByRequirement: Map<string, ClientStrategy[]>; actions: Map<string, ClientStrategy>;
+  strategiesByRequirement: Map<string, ClientStrategy[]>; plan: readonly ClientStrategy[]; suggestions: readonly SrsGapSuggestion[];
 }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "order", dir: 1 });
   const order = new Map(model.requirements.map((requirement, index) => [requirement.id, index]));
@@ -365,8 +372,9 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, strategie
         <thead><tr>{header("code", "Requirement")}<th scope="col">Pillar</th>{header("maturity", "Maturity")}<th scope="col">Target</th><th scope="col">Evidence</th><th scope="col">Owner</th>{header("due", "Due")}{header("gap", "Gap → action")}<th /></tr></thead>
         <tbody>
           {sorted.map((requirement) => {
-            const linked = requirement.linkedActionId ? actions.get(requirement.linkedActionId) ?? null : null;
-            const aligned = strategiesByRequirement.get(requirement.id) ?? [];
+            const bridged = srsBridgedBy(requirement.id, plan, requirement.linkedActionId ?? null);
+            const aligned = (strategiesByRequirement.get(requirement.id) ?? []).filter((strategy) => !bridged.some((action) => action.id === strategy.id));
+            const ideas = suggestions.filter((idea) => idea.assessmentId === assessment.assessmentId && idea.requirementId === requirement.id).length;
             const frameworkRequirement = framework.requirements.find((entry) => entry.id === requirement.id) ?? null;
             const item = assessment.items.find((entry) => entry.requirementId === requirement.id) ?? null;
             return <tr key={requirement.id}>
@@ -379,11 +387,15 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, strategie
               <td>{requirement.evidence ? <span title={requirement.evidence.note}>{requirement.evidence.kind} · {(requirement.evidence.ref ?? requirement.evidence.note).slice(0, 40)}</span> : <span className="up">none</span>}</td>
               <td>{requirement.owner || <span className="muted">—</span>}</td>
               <td>{requirement.dueDate ? formatDate(requirement.dueDate) : <span className="muted">—</span>}</td>
-              <td>{linked
-                ? <a className="nz-srs-hook" href="?area=strategies">On the plan: <b>{linked.title}</b> <span className="muted">{strategyStatusLabels[linked.status]}</span></a>
-                : aligned.length > 0 ? <AlignedStrategies strategies={aligned} />
-                  : requirement.gap ? <span className="nz-srs-bridge" title="S3 creates a bridging action from the Actions library here; until then, add one on the Reduction strategies plan.">Bridge this gap · from the Actions library (coming)</span>
-                    : <span className="muted">—</span>}</td>
+              <td>
+                {bridged.map((action) => <a key={action.id} className="nz-srs-hook" href="?area=strategies">Bridged by <b>{action.title}</b> <span className="muted">{strategyStatusLabels[action.status]}</span></a>)}
+                {aligned.length > 0 ? <AlignedStrategies strategies={aligned} /> : null}
+                {requirement.gap && bridged.length === 0
+                  ? <GatedButton className="nz-btn sm nz-srs-bridge-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
+                    reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-bridge", assessment, requirementId: requirement.id })}>
+                    Bridge this gap{ideas > 0 ? ` · ${ideas} AI idea${ideas === 1 ? "" : "s"}` : ""}</GatedButton>
+                  : bridged.length === 0 && aligned.length === 0 ? <span className="muted">—</span> : null}
+              </td>
               <td style={{ textAlign: "right" }}>
                 {frameworkRequirement ? <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || !editable}
                   blockedReason={access.state !== "allowed" ? access.reason : !editable ? "This assessment is complete — start a reassessment to change it." : undefined}
