@@ -119,6 +119,7 @@ export * from "./entryBasis";
 export * from "./spendAllocation";
 export * from "./spendAllocationSuggestion";
 export * from "./spendCurrency";
+export * from "./spendCarryForward";
 export * from "./reportComposition";
 export * from "./reportChartBasis";
 export * from "./reportingIntensity";

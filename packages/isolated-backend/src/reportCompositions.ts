@@ -390,6 +390,8 @@ export async function composeReport(db: Queryable, input: {
       snapshot: input.snapshot as unknown as ChartBasisSnapshot,
       scope: context.scope,
       comparison: isReportGap(emissions) ? null : emissions.comparison ?? null,
+      // D3 (R5): the whole client's year-on-year, cut to the reporting grain (baseline + current + up to four prior years).
+      baselineYear: context.baselineYear,
     }),
     // B1 (`composed@3`): the sources, named by dataset id and frozen; and the audit appendix, cut to this report's scope.
     ...withSources(composeReportSources(input.snapshot)),

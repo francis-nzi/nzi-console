@@ -4,6 +4,7 @@ import { postBrowserCommand, putBrowserCommand } from "@nzi/api-client";
 import { InfoTip } from "@nzi/ui";
 import {
   IMPORT_MAX_ROWS,
+  importWritableCount,
   SPEND_IMPORT_FIELDS,
   SPEND_IMPORT_FIELD_LABELS,
   type FactorOption,
@@ -27,7 +28,7 @@ import { buildSpendImportTemplateCsv, spendImportTemplateFilename } from "./spen
 
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
 type Preflight =
-  | { kind: "preview"; reviews: ImportRowReview[]; summary: { total: number; accepted: number; advisory: number; blocked: number } }
+  | { kind: "preview"; reviews: ImportRowReview[]; summary: { total: number; accepted: number; advisory: number; blocked: number; alreadyImported?: number } }
   | { kind: "blocked"; reason: string; message: string };
 
 export function SpendImportPanel({
@@ -103,15 +104,17 @@ export function SpendImportPanel({
   async function commit() {
     if (busy || preflight?.kind !== "preview") return;
     setBusy("commit");
-    const result = await postBrowserCommand<{ batchId: string; created: number; blocked: number }>(`/api/isolated/jobs/${jobId}/spend-import/commit`, { rows: resolvedRows }, crypto.randomUUID());
+    const result = await postBrowserCommand<{ batchId: string; created: number; filled?: number; alreadyImported?: number; blocked: number }>(`/api/isolated/jobs/${jobId}/spend-import/commit`, { rows: resolvedRows }, crypto.randomUUID());
     setBusy("");
     if (result.state !== "success") {
       notice({ kind: "warn", text: result.state === "validation_failed" ? result.issues.map((issue) => issue.message).join(" ") : result.message });
       return;
     }
-    setCommitted({ batchId: result.data.batchId, created: result.data.created });
+    const filled = result.data.filled ?? 0, already = result.data.alreadyImported ?? 0;
+    setCommitted({ batchId: result.data.batchId, created: result.data.created + filled });
     setPreflight(null); setHeaders([]); setDataRows([]); setRaw("");
-    notice({ kind: "ok", text: `${result.data.created} spend row${result.data.created === 1 ? "" : "s"} imported as pending sources. Sync and review them from the register.` });
+    // D3 (R2, R4): what the import did — new lines, carried-forward lines filled, and lines already here (not imported again).
+    notice({ kind: "ok", text: `${result.data.created} spend row${result.data.created === 1 ? "" : "s"} imported as pending sources${filled ? `, ${filled} carried-forward line${filled === 1 ? "" : "s"} filled` : ""}${already ? `; ${already} already on this job, not imported again` : ""}. Sync and review them from the register.` });
   }
 
   async function voidBatch() {
@@ -184,7 +187,7 @@ export function SpendImportPanel({
           {preflight?.kind === "blocked" ? <div className="nz-banner warn" role="alert" style={{ marginTop: 12 }}>{preflight.message}</div> : null}
           {preflight?.kind === "preview" ? (
             <>
-              <div className="nz-sect">Preview <span className="muted">{preflight.summary.accepted} ready · {preflight.summary.advisory} advisory · {preflight.summary.blocked} blocked</span></div>
+              <div className="nz-sect">Preview <span className="muted">{preflight.summary.accepted} ready · {preflight.summary.advisory} advisory · {preflight.summary.blocked} blocked{preflight.summary.alreadyImported ? ` · ${preflight.summary.alreadyImported} already on this job` : ""}</span></div>
               <div style={{ overflowX: "auto" }}>
                 <table className="nz-tbl">
                   {/* D2 (R2): where each line will be filed, and why — never re-filed out of sight. A line in the wrong place is moved at
@@ -202,7 +205,10 @@ export function SpendImportPanel({
                             const source = resolvedRows.find((entry) => entry.rowNumber === review.rowNumber);
                             return source ? <SpendSuggestionCard jobId={jobId} line={{ glCode: source.glCode, description: source.description }} mode="confirm" onConfirmed={() => void runPreflight()} /> : null;
                           })() : null}</> : <span className="muted">—</span>}</td>
-                        <td><span className={`nz-st ${review.status === "accepted" ? "done" : review.status === "blocked" ? "nof" : "est"}`}>{review.status}</span></td>
+                        <td><span className={`nz-st ${review.status === "accepted" ? "done" : review.status === "blocked" ? "nof" : "est"}`}>{review.status}</span>
+                          {/* D3 (R2, R4): what the import does with the line, read from the job first. */}
+                          {review.reconciliation?.kind === "fills-carried" ? <div className="nz-hint nz-import-recon">Fills the line carried forward for its GL code</div>
+                            : review.reconciliation?.kind === "already-imported" ? <div className="nz-hint nz-import-recon">Already on this job — not imported again</div> : null}</td>
                         <td>{review.issues.length === 0 ? <span className="muted">—</span> : review.issues.map((issue) => <div key={issue.code} className="nz-hint" style={{ color: issue.severity === "blocker" ? "#B23B2E" : "#8A6410" }} role="note">{issue.message}</div>)}</td>
                       </tr>
                     ))}
@@ -210,8 +216,8 @@ export function SpendImportPanel({
                 </table>
               </div>
               <div className="nz-config-actions" style={{ marginTop: 12 }}>
-                <button type="button" className="nz-btn pri" disabled={busy !== "" || preflight.summary.accepted + preflight.summary.advisory === 0} onClick={() => void commit()}>
-                  {busy === "commit" ? "Importing…" : `Import ${preflight.summary.accepted + preflight.summary.advisory} row${preflight.summary.accepted + preflight.summary.advisory === 1 ? "" : "s"}`}
+                <button type="button" className="nz-btn pri" disabled={busy !== "" || importWritableCount(preflight.summary) === 0} onClick={() => void commit()}>
+                  {busy === "commit" ? "Importing…" : `Import ${importWritableCount(preflight.summary)} row${importWritableCount(preflight.summary) === 1 ? "" : "s"}`}
                 </button>
               </div>
             </>

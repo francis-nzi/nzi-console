@@ -353,6 +353,12 @@ jobs:
       # the emissions — it only expresses money in the client's currency.
       - name: Local-first currency, and an FX rate that never enters the emissions
         run: npx tsx --test packages/isolated-backend/tests/dataEntryD3CurrencyReal.test.ts
+      # Data entry D3 (R2–R6), on a September year-end: an import's window is the job's financial year and it reconciles by
+      # reading first (no duplicate across years or on re-import); the prior-job pick is stored, never recomputed; carry-forward
+      # is by GL code and a re-import fills the carried line; a category's lines read across the five-year grain; reopen after
+      # review is a request to the CRM, sent as a message, and the CRM reopens by editing.
+      - name: Financial-year imports, a stored carry-forward basis, GL carry-forward, five years and reopen-by-request
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD3CarryReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked

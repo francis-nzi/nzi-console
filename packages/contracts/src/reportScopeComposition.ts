@@ -5,6 +5,7 @@
 import type { ReportScope } from "./reportScope";
 import { withUsage } from "./reportLabelResolution";
 import type { ReportComparisonColumn, ReportEmissionsComparison, ReportSiteEmissions } from "./reportComposition";
+import { reportingGrainYears } from "./dataAssurance";
 
 export type ScopedMeasurement = {
   scope: string; tco2e: number; siteId?: string | null; siteLabel?: string | null; sourceLabel?: string | null; reportLabel?: string | null;
@@ -95,7 +96,12 @@ export function composeScopedComparison(input: {
 }): ReportEmissionsComparison {
   const earlier = input.history.filter((period) => period.year < input.currentYear).sort((a, b) => a.year - b.year);
   const baseline = input.baselineYear !== null && input.baselineYear < input.currentYear ? earlier.find((period) => period.year === input.baselineYear) ?? null : null;
-  const previous = [...earlier].reverse().find((period) => period !== baseline) ?? null;
+  // D3 (R5): the universal grain — the baseline, then up to four prior periods after it (the most recent is "Previous"), then the
+  // current period. The same `reportingGrainYears` the QA trend reads.
+  // In a baseline year (the baseline at or after the current year) the baseline alone: no prior column.
+  const baselineYearNow = input.baselineYear !== null && input.baselineYear >= input.currentYear;
+  const priors = baselineYearNow ? [] : reportingGrainYears(earlier.filter((period) => period !== baseline && (!baseline || period.year > baseline.year)), input.currentYear, null);
+  const previous = priors[priors.length - 1] ?? null;
   const periods: Array<{ column: ReportComparisonColumn; rows: ScopedHistoryPeriod["rows"] | null; sitesKnown?: boolean }> = [];
   const notes: string[] = [];
   const attributable = (period: ScopedHistoryPeriod) => {
@@ -104,7 +110,11 @@ export function composeScopedComparison(input: {
     return null;
   };
   if (baseline) periods.push({ column: { key: "baseline", year: baseline.year, label: `Baseline (FY${baseline.year})` }, rows: attributable(baseline), sitesKnown: baseline.sitesKnown });
-  if (previous && (!baseline || previous.year > baseline.year)) periods.push({ column: { key: "previous", year: previous.year, label: `Previous (FY${previous.year})` }, rows: attributable(previous), sitesKnown: previous.sitesKnown });
+  for (const prior of priors) {
+    periods.push(prior === previous
+      ? { column: { key: "previous", year: prior.year, label: `Previous (FY${prior.year})` }, rows: attributable(prior), sitesKnown: prior.sitesKnown }
+      : { column: { key: `earlier-${prior.year}`, year: prior.year, label: `FY${prior.year}` }, rows: attributable(prior), sitesKnown: prior.sitesKnown });
+  }
   periods.push({ column: { key: "current", year: input.currentYear, label: `Current (FY${input.currentYear})` }, rows: input.current.map((row) => ({ siteId: row.siteId ?? null, scope: row.scope, ...(row.scopeCode ? { scopeCode: row.scopeCode } : {}), tco2e: row.tco2e })), sitesKnown: true });
   const selected = input.scope.kind === "sites" ? new Set(input.scope.siteIds) : null;
   const inScope = (rows: ScopedHistoryPeriod["rows"]) => selected ? rows.filter((row) => row.siteId !== null && selected.has(row.siteId)) : rows;

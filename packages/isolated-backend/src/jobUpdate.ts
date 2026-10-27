@@ -63,6 +63,8 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   portal_tracker_actions: { periodBound: true, why: "actions tracked against the period's report" },
   // Data entry D3 (0194): the CRM's average FX rate over the reporting period — a different period is a different average.
   job_site_fx_rates: { periodBound: true, why: "the average FX rate over the reporting period" },
+  // Data entry D3 (0195): the prior job this job's carried lines came from — chosen as the year before this period.
+  job_carry_forward_basis: { periodBound: true, why: "the prior period this job's carried-forward lines came from" },
   // Kept in step by this command, or not about the period.
   job_emissions_config: { periodBound: false, why: "the window itself — moved by this command (J2)" },
   job_dataset_selections: { periodBound: false, why: "re-derived by this command (J2)" },
@@ -82,6 +84,8 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   // Data entry D2 (0193): an AI suggestion of where a GL code or description belongs — about the client's chart of accounts, not
   // a measurement of the period; the job only records where it was asked.
   spend_allocation_suggestions: { periodBound: false, why: "a suggested category for a ledger line — about the client's chart of accounts, not the period" },
+  // Data entry D3 (0195): a client's request to reopen a reviewed entry — a message in the job's workflow, not data for the period.
+  scope_row_reopen_requests: { periodBound: false, why: "a client's request to reopen an entry — workflow, not data for the period" },
 };
 
 /** Every table with a foreign key to `jobs`, with the columns that hold the job's organisation and id. */

@@ -5,9 +5,10 @@ import {
   encodeImportIdentity,
   type SpendImportIdentity,
 } from "@nzi/contracts";
-import { dateOnly, dateOnlyOrNull } from "./dates";
+import { dateOnly } from "./dates";
 import type { PoolLike, Queryable } from "./postgres";
 import { withTenantRead } from "./postgres";
+import { spendImportWindow } from "./spendImport";
 
 // The current spend template schema. Bump when the template's columns / identity
 // block change so an old download is rejected at preflight (NZC-036).
@@ -50,32 +51,33 @@ type JobIdentityRow = {
   client_name: string;
   reporting_year: number | null;
   start_date: Date | string;
-  reporting_from: Date | string | null;
-  reporting_to: Date | string | null;
 };
 
+/**
+ * The identity a spend template carries. Its window is `spendImportWindow` — the one `loadSpendImportContext` reads, so the two
+ * cannot disagree (NZC-115) — and since D3 (R2) it is never the calendar year: a job with no reporting period has no identity, and
+ * no template, until its period is set.
+ */
 export async function buildSpendImportIdentity(db: Queryable, organisationId: string, jobId: string): Promise<SpendImportIdentity | null> {
   const { rows } = await db.query<JobIdentityRow>(
-    `SELECT j.job_number,j.title,c.name AS client_name,j.reporting_year,j.start_date,cfg.reporting_from,cfg.reporting_to
+    `SELECT j.job_number,j.title,c.name AS client_name,j.reporting_year,j.start_date
        FROM nzi_console.jobs j
        JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id)
-       LEFT JOIN nzi_console.job_emissions_config cfg ON (cfg.organisation_id,cfg.job_id)=(j.organisation_id,j.job_id)
       WHERE j.organisation_id=$1 AND j.job_id=$2 AND j.job_family='crp'`,
     [organisationId, jobId],
   );
   const row = rows[0];
   if (!row) return null;
-  const reportingYear = row.reporting_year ?? Number(dateOnly(row.start_date).slice(0, 4));
+  const window = await spendImportWindow(db, organisationId, jobId);
+  if (!window) return null;
   return {
     jobId,
     jobNumber: row.job_number,
     clientName: row.client_name,
     jobName: row.title,
-    reportingYear,
-    // The same days, read the same way, as `loadSpendImportContext` reads them — because
-    // `commitSpendImport` compares the two and refuses the import when they differ (NZC-115).
-    reportingFrom: dateOnlyOrNull(row.reporting_from) ?? `${reportingYear}-01-01`,
-    reportingTo: dateOnlyOrNull(row.reporting_to) ?? `${reportingYear}-12-31`,
+    reportingYear: row.reporting_year ?? Number(dateOnly(row.start_date).slice(0, 4)),
+    reportingFrom: window.from,
+    reportingTo: window.to,
     domain: "spend",
     templateVersion: SPEND_IMPORT_TEMPLATE_VERSION,
   };

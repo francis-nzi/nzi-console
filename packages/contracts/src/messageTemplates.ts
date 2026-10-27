@@ -307,6 +307,44 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
     },
     htmlPart: true,
   },
+  {
+    // Data entry D3 (R6): reopen after submit is a request to the CRM, never a self-serve recall.
+    key: "portal.data.reopen-request",
+    label: "Client portal — a client asks to reopen a reviewed entry",
+    purpose: "To the CRM (the job's owner, else the client's adviser) when a client asks, from the portal, to reopen an entry that has been reviewed. The client's reason stays on the job, not in the email; the CRM reopens the entry by editing it.",
+    channel: "email",
+    sendSite: "The portal's Ask to reopen on a reviewed entry: portalReopenRequests.ts → requestScopeRowReopen(), through sendTemplatedEmail",
+    // No token for the reason (as the portal's own messages, design R10): it is the client's words about their data, read on the job.
+    tokens: [
+      { name: "firstName", description: "The CRM's first name — or \"there\" when their record has no name", sample: "Sam" },
+      { name: "clientName", description: "The client whose entry it is", sample: "Example Manufacturing Ltd" },
+      { name: "jobNumber", description: "The job the entry is on", sample: "J000612" },
+      { name: "entryLabel", description: "The entry, as its row is labelled", sample: "Office supplies" },
+      { name: "requestedBy", description: "The portal user who asked", sample: "Grace Example" },
+      { name: "jobLink", description: "A link to the job in the console, where the request and its reason are (sign-in still required)", sample: "https://console.example.test/jobs/job-1", required: true, kind: "url" },
+    ],
+    builtIn: {
+      subject: "{{clientName}} asks to reopen an entry on {{jobNumber}}",
+      body: [
+        "Hello {{firstName}},",
+        "",
+        "{{requestedBy}} at {{clientName}} has asked to reopen an entry on {{jobNumber}} that has already been reviewed:",
+        "",
+        "{{entryLabel}}",
+        "",
+        "Their reason is on the job. To reopen it, edit the entry — it returns to pending for review:",
+        "{{jobLink}}",
+      ].join("\n"),
+      html: [
+        "<p>Hello {{firstName}},</p>",
+        "<p>{{requestedBy}} at <b>{{clientName}}</b> has asked to reopen an entry on {{jobNumber}} that has already been reviewed:</p>",
+        "<p><b>{{entryLabel}}</b></p>",
+        "<p>Their reason is on the job. To reopen it, edit the entry — it returns to pending for review.</p>",
+        `<a class="cta" href="{{jobLink}}">Open the job</a>`,
+      ].join("\n"),
+    },
+    htmlPart: true,
+  },
 ];
 
 export const messageTemplateDefinition = (key: string): MessageTemplateDefinition | undefined =>

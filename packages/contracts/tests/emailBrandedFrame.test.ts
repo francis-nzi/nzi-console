@@ -37,7 +37,7 @@ describe("the house signature, on every templated email (R1)", () => {
 
   it("closes every built-in HTML message with the company, both logos at absolute https URLs, the website and the GDPR block", () => {
     // A3: the reminder to an action's owner joins them — sent in the same frame.
-    assert.deepEqual(HTML_KEYS, ["strategy.reminder.approaching", "staff.invitation", "portal.access.invite", "password.reset.staff", "password.reset.portal", "message.notification"]);
+    assert.deepEqual(HTML_KEYS, ["strategy.reminder.approaching", "staff.invitation", "portal.access.invite", "password.reset.staff", "password.reset.portal", "message.notification", "portal.data.reopen-request"]);
     for (const key of HTML_KEYS) {
       const { html } = render(key, brand);
       assert.match(html, /<p style="[^"]*font-weight:bold">Net Zero International<\/p>/, `${key}: the company`);

@@ -10,6 +10,7 @@
 import type { ReportChartBasis, ReportEmissionsComparison } from "./reportComposition";
 import type { ReportScope } from "./reportScope";
 import { withoutCurrencyDenominator } from "./reportingIntensity";
+import { reportingGrainYears } from "./dataAssurance";
 
 type SnapshotRow = Record<string, unknown> & { scope: string; tco2e: number };
 
@@ -48,8 +49,17 @@ const withoutEditor = (target: Record<string, unknown>): Record<string, unknown>
   return figures;
 };
 
-export function composeReportChartBasis(input: { snapshot: ChartBasisSnapshot; scope: ReportScope; comparison?: ReportEmissionsComparison | null }): ReportChartBasis {
+export function composeReportChartBasis(input: {
+  snapshot: ChartBasisSnapshot; scope: ReportScope; comparison?: ReportEmissionsComparison | null;
+  /**
+   * D3 (R5): given (the compose path always gives it, null for no baseline), the whole client's year-on-year is cut to the
+   * reporting grain — baseline + current + up to four prior years — as the comparison table is. Absent: every year, as before.
+   */
+  baselineYear?: number | null;
+}): ReportChartBasis {
   const { snapshot, scope } = input;
+  const years = snapshot.annualComparison ?? [];
+  const annual = input.baselineYear === undefined ? years : reportingGrainYears(years, snapshot.reportingYear, input.baselineYear);
   const sites = scope.kind === "sites" ? new Set(scope.siteIds) : null;
   const rows = sites ? snapshot.measurements.filter((row) => typeof row.siteId === "string" && sites.has(row.siteId)) : snapshot.measurements;
   return {
@@ -62,7 +72,7 @@ export function composeReportChartBasis(input: { snapshot: ChartBasisSnapshot; s
     intensityTarget: sites || !snapshot.intensityTarget ? null : withoutCurrencyDenominator(withoutEditor(snapshot.intensityTarget), rows),
     annualComparison: sites
       ? scopedAnnualComparison(input.comparison)
-      : (snapshot.annualComparison ?? []).map((year) => ({ year: year.year, values: year.values.map((value) => ({ scope: scopeOf(value.scope), value: value.value })) })),
+      : annual.map((year) => ({ year: year.year, values: year.values.map((value) => ({ scope: scopeOf(value.scope), value: value.value })) })),
     measurements: rows.map(chartRow),
   };
 }

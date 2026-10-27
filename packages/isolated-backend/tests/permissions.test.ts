@@ -124,8 +124,8 @@ describe("the permission matrix (NZC-022)", () => {
       } else assert.ok(isCapability(definition.permission), definition.key);
     }
     assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.principal === "portal").map((definition) => definition.key).sort(),
-      ["portal.scope.row.create", "portal.scope.row.deactivate", "portal.scope.row.update", "portal.strategy.add", "portal.strategy.propose", "portal.strategy.update"],
-      "only the client's three data-entry writes and three plan writes are portal commands");
+      ["portal.scope.row.create", "portal.scope.row.deactivate", "portal.scope.row.reopen.request", "portal.scope.row.update", "portal.strategy.add", "portal.strategy.propose", "portal.strategy.update"],
+      "only the client's three data-entry writes, their request to reopen a reviewed entry (D3 R6) and three plan writes are portal commands");
     // And the staff side of A2 names enum capabilities: the plan's, and the library's for promotion.
     assert.deepEqual(["client.strategy.proposal.approve", "client.strategy.proposal.decline", "strategy.library.promote"].map((key) => commandDefinitions[key as keyof typeof commandDefinitions].permission),
       ["strategy.manage", "strategy.manage", "admin.lookups"]);
