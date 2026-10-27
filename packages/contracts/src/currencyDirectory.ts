@@ -25,6 +25,12 @@ const BEFORE_READ: Readonly<Record<string, string>> = { GBP: "£", EUR: "€", U
 const normalise = (code: string) => code.trim().toUpperCase();
 const indexed = (entries: readonly CurrencyDirectoryEntry[]) => new Map(entries.map((entry) => [normalise(entry.code), entry]));
 
+/** The currencies a picker offers (D3): the organisation's set as read, else the three D3c shipped. */
+export function currencyDirectoryEntries(): CurrencyDirectoryEntry[] {
+  if (current) return [...current.values()].sort((a, b) => a.code.localeCompare(b.code));
+  return Object.entries(BEFORE_READ).map(([code, symbol]) => ({ code, name: code, symbol }));
+}
+
 /** Register the organisation's set (the console's provider). `null` clears it. */
 export function setCurrencyDirectory(entries: readonly CurrencyDirectoryEntry[] | null): void {
   current = entries === null ? null : indexed(entries);

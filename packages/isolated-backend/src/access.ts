@@ -174,6 +174,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "spend_allocation.suggestion.record": job,
   "spend_allocation.suggestion.confirm": job,
   "spend_allocation.suggestion.dismiss": job,
+  "job.site.fx.set": job,
   "message_template.deactivate": organisation,
   "message_template.reinstate": organisation,
   "bd_stage.create": organisation,

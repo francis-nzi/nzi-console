@@ -31,7 +31,7 @@ export async function listEntryBasisDefaults(db: Queryable, organisationId: stri
  * currency. Read with the job's own tenant; a job not found reads as nothing chosen, in GBP — the drawer then opens on the seed.
  */
 export async function readJobEntryBasis(db: Queryable, organisationId: string, jobId: string): Promise<JobEntryBasis> {
-  const [defaults, choices, client, allocations] = await Promise.all([
+  const [defaults, choices, client, allocations, sites] = await Promise.all([
     db.query<{ category_code: string; default_basis: string }>(
       `SELECT category_code, default_basis FROM nzi_console.organisation_entry_basis_defaults WHERE organisation_id = $1`, [organisationId]),
     db.query<{ category_code: string; basis: string }>(
@@ -42,6 +42,10 @@ export async function readJobEntryBasis(db: Queryable, organisationId: string, j
       `SELECT cl.currency FROM nzi_console.jobs j JOIN nzi_console.clients cl ON (cl.organisation_id, cl.client_id) = (j.organisation_id, j.client_id)
         WHERE j.organisation_id = $1 AND j.job_id = $2`, [organisationId, jobId]),
     activeSpendAllocationsForJob(db, organisationId, jobId),
+    // D3 (R1): the sites that spend in a currency of their own — a spend line at one is captured in it.
+    db.query<{ site_id: string; currency: string }>(
+      `SELECT s.site_id, s.currency FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = (s.organisation_id, s.client_id)
+        WHERE j.organisation_id = $1 AND j.job_id = $2 AND s.currency IS NOT NULL`, [organisationId, jobId]),
   ]);
   const byCategory = (rows: Array<{ category_code: string; value: string }>) =>
     Object.fromEntries(rows.filter((row) => isEntryBasis(row.value)).map((row) => [row.category_code, row.value as EntryBasis]));
@@ -50,6 +54,7 @@ export async function readJobEntryBasis(db: Queryable, organisationId: string, j
     choices: byCategory(choices.rows.map((row) => ({ category_code: row.category_code, value: row.basis }))),
     currency: client.rows[0]?.currency?.trim() || "GBP",
     allocations,
+    siteCurrencies: Object.fromEntries(sites.rows.map((row) => [row.site_id, row.currency])),
   };
 }
 

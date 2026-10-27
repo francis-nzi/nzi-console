@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GatedButton } from "@nzi/ui";
 import { postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
-import { isoCountryName, SITE_ADDRESS_MAX_LINES, siteFloorAreaForPeriod, siteIsInReportingBoundary, siteLifecycleStatus, type ClientSiteReadModel } from "@nzi/contracts";
+import { currencyDirectoryEntries, isoCountryName, SITE_ADDRESS_MAX_LINES, siteFloorAreaForPeriod, siteIsInReportingBoundary, siteLifecycleStatus, type ClientSiteReadModel } from "@nzi/contracts";
 import type { ClientReportingPeriod } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
 import { CountrySelect } from "../../lib/CountrySelect";
@@ -153,6 +153,8 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
   const [lines, setLines] = useState<string[]>(() => [...heldLines, ...Array<string>(Math.max(0, 3 - heldLines.length)).fill("")].slice(0, SITE_ADDRESS_MAX_LINES));
   const [postcode, setPostcode] = useState(site?.postcode ?? "");
   const [country, setCountry] = useState<string | null>(site?.country ?? null);
+  // Data entry D3 (R1): the currency the site spends in — blank is the client's. Spend there is captured and priced in it.
+  const [currency, setCurrency] = useState<string>(site?.currency ?? "");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const keys = useRef<Record<string, string>>({});
@@ -186,8 +188,9 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
   })();
   const boundary = !(lifecycle === "vacated" && !draftVacated) ? boundaryStatement({ inServiceFrom: draftStart, vacatedEffective: draftVacated }, periods) : null;
 
-  const address = { addressLines: lines.map((line) => line.trim()).filter(Boolean), postcode: postcode.trim() || null, country };
-  const addressChanged = !site || JSON.stringify(address.addressLines) !== JSON.stringify(site.addressLines ?? []) || address.postcode !== (site.postcode ?? null) || country !== (site.country ?? null);
+  const address = { addressLines: lines.map((line) => line.trim()).filter(Boolean), postcode: postcode.trim() || null, country, currency: currency || null };
+  const addressChanged = !site || JSON.stringify(address.addressLines) !== JSON.stringify(site.addressLines ?? []) || address.postcode !== (site.postcode ?? null) || country !== (site.country ?? null)
+    || address.currency !== (site.currency ?? null);
 
   function steps(): Step[] {
     if (!site) return [{ name: "create", path: `/api/isolated/clients/${encodeURIComponent(clientId)}/sites`, input: { name: name.trim(), inServiceFrom: draftStart, isRegisteredOffice: registered, floorAreaM2: floor, ...address } }];
@@ -272,6 +275,14 @@ export function SiteForm({ clientId, site, sites, periods, access, onClose, onSa
         <CountrySelect label="Country" value={country} onChange={setCountry} />
       </div>
       <span className="nz-hint">The postcode and country locate the site on the map; only those two are sent to the geocoder.</span>
+      <label className="nz-fl"><span>Currency</span>
+        <select className="nz-sel" value={currency} aria-label="Site currency" onChange={(event) => setCurrency(event.target.value)}>
+          <option value="">The client&rsquo;s currency</option>
+          {currencyDirectoryEntries().map((entry) => <option key={entry.code} value={entry.code}>{entry.code} — {entry.name}</option>)}
+          {currency && !currencyDirectoryEntries().some((entry) => entry.code === currency) ? <option value={currency}>{currency}</option> : null}
+        </select>
+      </label>
+      <span className="nz-hint">Spend at this site is entered and priced in its own currency — with the country&rsquo;s spend factors, never converted. The job sets an FX rate only to show money in the client&rsquo;s currency.</span>
 
       {site && access.state === "allowed" ? <div className="nz-fl" style={{ marginTop: 14 }}><span>Archive</span>
         {site.isRegisteredOffice

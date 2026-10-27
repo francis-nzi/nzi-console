@@ -348,6 +348,11 @@ jobs:
       # confirmation, or a move at review that uses it, does.
       - name: AI suggestions for unmapped spend lines are labelled, never applied, and confirmed by a person
         run: npx tsx --test packages/isolated-backend/tests/dataEntryD2SuggestionsReal.test.ts
+      # Data entry D3 (R1, R7): a site spends in its own currency; a spend line there is captured in it and priced by a factor in
+      # that currency (emissions = local spend x local factor); the job's per-site FX rate is versioned and audited, and never moves
+      # the emissions — it only expresses money in the client's currency.
+      - name: Local-first currency, and an FX rate that never enters the emissions
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD3CurrencyReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked

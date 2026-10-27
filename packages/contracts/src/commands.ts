@@ -34,7 +34,8 @@ import {
 import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBasis, type ContactConsentDecision, type ContactConsentState } from "./contactConsent";
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
 import { isReminderLead, STRATEGY_REMINDER_MAX_LEAD_DAYS } from "./strategyReminders";
-import { entryBasisUnitIssue, isEntryBasis, type EntryBasis } from "./entryBasis";
+import { entryBasisUnitIssue, isCurrencyUnit, isEntryBasis, type EntryBasis } from "./entryBasis";
+import { isFxRate } from "./spendCurrency";
 import { SPEND_ALLOCATION_KEY_KINDS, SPEND_ALLOCATION_KEY_MAX, SPEND_SUGGESTION_REASON_MAX, spendAllocationFieldIssues, type SpendAllocationKeyKind } from "./spendAllocation";
 import { groundSrsSuggestion, SRS_SUGGESTION_LIMITS } from "./srsBridge";
 import { readinessReportTemplates } from "./readinessReportTemplates";
@@ -170,6 +171,7 @@ export type CommandKey =
   | "spend_allocation.suggestion.record"
   | "spend_allocation.suggestion.confirm"
   | "spend_allocation.suggestion.dismiss"
+  | "job.site.fx.set"
   | "bd_stage.create"
   | "bd_stage.update"
   | "bd_stage.deactivate"
@@ -972,6 +974,8 @@ export type CommandInputMap = {
   "spend_allocation.suggestion.record": { jobId: string; keyKind: SpendAllocationKeyKind; key: string; categoryCode: string; reason: string; model: string; promptSha256: string };
   "spend_allocation.suggestion.confirm": { jobId: string; suggestionId: string; expectedVersion: number; categoryCode: string };
   "spend_allocation.suggestion.dismiss": { jobId: string; suggestionId: string; expectedVersion: number };
+  // D3 R1: a job's FX rate for one site — the CRM's average for the reporting period, from the site's currency to the client's.
+  "job.site.fx.set": { jobId: string; siteId: string; rate: number; expectedVersion?: number | null };
   // The BD funnel (admin Phase F2; ruled phaseF plan). admin.lookups; a stage's key set once.
   "bd_stage.create": BdStageEditableFields & { stageKey: string };
   "bd_stage.update": BdStageEditableFields & { stageId: string; expectedVersion: number };
@@ -1236,13 +1240,16 @@ const timeEntryIssues = (issues: CommandIssue[], input: { workDate: string; minu
   if (input.note != null && (typeof input.note !== "string" || input.note.length > TIME_ENTRY_NOTE_MAX)) issues.push({ field: "note", code: "INVALID", message: `A note is ${TIME_ENTRY_NOTE_MAX} characters or fewer.` });
 };
 /** CLIENT-11: a site's structured address — up to four lines, a postcode or zip, and an ISO 3166-1 alpha-2 country. */
-export type SiteAddressFields = { addressLines?: string[]; postcode?: string | null; country?: string | null };
+export type SiteAddressFields = { addressLines?: string[]; postcode?: string | null; country?: string | null;
+  /** Data entry D3 (R1): the ISO-4217 currency the site spends in. Absent keeps what the site holds; null is the client's currency. */
+  currency?: string | null };
 export const SITE_ADDRESS_MAX_LINES = 4;
 const siteAddressIssues = (input: SiteAddressFields) => {
   const issues: CommandIssue[] = [];
   if (input.addressLines !== undefined && (!Array.isArray(input.addressLines) || input.addressLines.length > SITE_ADDRESS_MAX_LINES || input.addressLines.some((line) => typeof line !== "string" || line.length > 200))) issues.push({ field: "addressLines", code: "INVALID", message: `Up to ${SITE_ADDRESS_MAX_LINES} address lines, each 200 characters or fewer.` });
   if (input.postcode != null && (typeof input.postcode !== "string" || input.postcode.trim().length > 20)) issues.push({ field: "postcode", code: "INVALID", message: "The postcode or zip is 20 characters or fewer." });
   if (input.country != null && !isIsoCountryCode(input.country)) issues.push({ field: "country", code: "INVALID", message: "Choose the country from the list." });
+  if (input.currency != null && (typeof input.currency !== "string" || !isCurrencyUnit(input.currency))) issues.push({ field: "currency", code: "INVALID", message: "A site's currency is an ISO code such as GBP or EUR." });
   return issues;
 };
 /** CLIENT-04: where coordinates came from, and how precise they are. Geocoding sends a postcode and a country only. */
@@ -2570,6 +2577,15 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, false);
     required(issues, "jobId", input.jobId); required(issues, "suggestionId", input.suggestionId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // D3 R1/R7: the FX rate a job expresses a site's money in the client's currency by — never used in the emissions. Staff's, as the
+  // job's dataset choice is (scoperow.edit); versioned per job and site; a rate, not personal data, so audited in full.
+  "job.site.fx.set": { key: "job.site.fx.set", label: "Set a site's FX rate for a job", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned rate + audit + outbox + idempotency", auditAction: "job_site_fx_rate_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId); required(issues, "siteId", input.siteId);
+    if (!isFxRate(input.rate)) issues.push({ field: "rate", code: "INVALID", message: "The rate is a positive number: how many of the client's currency one unit of the site's is worth." });
+    if (input.expectedVersion !== undefined && input.expectedVersion !== null && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
   // The BD funnel (admin Phase F2). admin.lookups; the key set once; the last active stage stays.
