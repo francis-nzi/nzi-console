@@ -1556,6 +1556,8 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-deadline{font-size:11px;font-weight:700;letter-spacing:.02em;white-space:nowrap}
 .nz-deadline.soon{color:#8A6100}
 .nz-deadline.late{color:var(--danger)}
+/* A3: the owner's reminder under an action — quiet when it is on course, the danger ink when it cannot go. */
+.nz-reminder-line{font-size:12px}.nz-reminder-line.blocked{color:var(--danger);font-weight:600}
 .nz-deadline-list{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:3px;font-size:12.5px}
 .nz-deadline-list li{line-height:1.45}
 
@@ -1986,6 +1988,10 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-panel-title{display:flex;align-items:center;gap:9px;padding:14px 18px;border-bottom:1px solid var(--a-line-2)}
 .nz-a-panel-title h2{font-size:14px}
 .nz-a-panel-title .nz-a-hint{margin:0 0 0 auto}
+/* Actions A3: the reminder settings card above the message templates. */
+.nz-a-reminders{margin:0 0 16px}.nz-a-reminders .nz-a-panel-title .nz-a-badge{margin-left:auto}
+.nz-a-reminders-b{display:grid;gap:12px;padding:14px 18px}.nz-a-reminders-b .nz-a-hint{margin:0}
+.nz-a-reminders-b .nz-a-sub-record-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
 .nz-a-link-row{padding:12px 18px;border-bottom:1px solid var(--a-line-2)}
 .nz-a-link-row:last-child{border-bottom:0}
 .nz-a-link-row .top{display:flex;justify-content:space-between;gap:10px;font-size:13px}

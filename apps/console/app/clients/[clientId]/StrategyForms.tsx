@@ -5,7 +5,7 @@ import { Collapsible, GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
 import { StrategyEstimateFields } from "./StrategyEstimateFields";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  requirementsByPillar,
+  isReminderLead, requirementsByPillar, STRATEGY_REMINDER_MAX_LEAD_DAYS,
   strategyProgressForStatus, strategyScopeLabel, strategyScopes, strategyControlLevelLabels, strategyControlLevels,
   strategyNextStatuses, strategyOriginLabels, strategyStatusForProgress, strategyStatusLabels,
   type ClientContactReadModel, type Lever, type SrsFramework, type StrategyLibraryEntry, type StrategyScope, type StrategyControlLevel, type StrategyStatus, type ClientStrategy, type LibraryStrategy, type TargetBenchmark,
@@ -357,12 +357,14 @@ export function StrategyBespokeForm({ clientId, framework, contacts, access, onC
   </>;
 }
 
-export function StrategyEditForm({ action, framework, contacts, benchmark, libraryDefault, access, onClose, onSaved }: {
+export function StrategyEditForm({ action, framework, contacts, benchmark, libraryDefault, reminderDefaultLeadDays, access, onClose, onSaved }: {
   action: ClientStrategy; framework: SrsFramework | null; contacts: readonly ClientContactReadModel[];
   /** The baseline a percentage estimate resolves against — the target pathway's own. */
   benchmark: TargetBenchmark | null;
   /** The catalogue entry this strategy came from, so its modelled figure can seed the form. */
   libraryDefault: LibraryStrategy | null;
+  /** A3: the organisation's default reminder lead, shown as what a blank lead means. Null: the settings could not be read. */
+  reminderDefaultLeadDays: number | null;
   access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const [status, setStatus] = useState<StrategyStatus>(action.status);
@@ -372,6 +374,8 @@ export function StrategyEditForm({ action, framework, contacts, benchmark, libra
   const [notes, setNotes] = useState(action.notes);
   const [srsRequirementIds, setSrsRequirementIds] = useState<string[]>([...action.srsRequirementIds]);
   const [includeInReport, setIncludeInReport] = useState(action.includeInReport);
+  // A3 (R1): blank is the organisation's default; a number is this action's own.
+  const [reminderLead, setReminderLead] = useState(action.reminderLeadDays === null ? "" : String(action.reminderLeadDays));
   const [removing, setRemoving] = useState(false);
   const [reason, setReason] = useState("");
   const [pending, setPending] = useState(false);
@@ -383,11 +387,15 @@ export function StrategyEditForm({ action, framework, contacts, benchmark, libra
   const chooseProgress = (next: number) => { setProgressPct(next); setStatus(strategyStatusForProgress(next, status)); };
 
   async function save() {
+    const reminderLeadDays = reminderLead.trim() === "" ? null : Number(reminderLead);
+    if (reminderLeadDays !== null && !isReminderLead(reminderLeadDays)) {
+      setError(`The reminder is a whole number of days before the target date, from 0 to ${STRATEGY_REMINDER_MAX_LEAD_DAYS} — or blank for the default.`); return;
+    }
     setPending(true); setError(null);
     const result = await patchBrowserCommand<{ version: number }>(
       `/api/isolated/clients/${encodeURIComponent(action.clientId)}/strategies`,
       { clientStrategyId: action.id, expectedVersion: action.version, status, ownerContactId: ownerContactId || null, targetDate: targetDate || null, progressPct, notes,
-        srsRequirementIds, includeInReport },
+        srsRequirementIds, includeInReport, reminderLeadDays },
       crypto.randomUUID());
     setPending(false);
     if (result.state !== "success") { setError(errorText(result)); return; }
@@ -429,6 +437,11 @@ export function StrategyEditForm({ action, framework, contacts, benchmark, libra
         <label className="nz-fl"><span>{status === "complete" ? "Completed" : "Target date"}</span>
           <input className="nz-inp" type="date" value={targetDate} onChange={(event) => setTargetDate(event.target.value)} /></label>
       </div>
+      <label className="nz-fl"><span>Remind the owner — days before the target date</span>
+        <input className="nz-inp" type="number" inputMode="numeric" min={0} max={STRATEGY_REMINDER_MAX_LEAD_DAYS} step={1} value={reminderLead}
+          placeholder={reminderDefaultLeadDays === null ? "the default" : `${reminderDefaultLeadDays} (the default)`}
+          onChange={(event) => setReminderLead(event.target.value)} />
+        <small className="hint">Blank uses the organisation&rsquo;s default. Once per target date, by email, to the owner — while the action is Agreed or In progress.</small></label>
       <label className="nz-fl"><span>Notes</span>
         <textarea className="nz-notes" rows={3} value={notes} onChange={(event) => setNotes(event.target.value)} /></label>
 

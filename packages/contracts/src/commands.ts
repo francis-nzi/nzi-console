@@ -33,6 +33,7 @@ import {
 } from "./strategyProjection";
 import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBasis, type ContactConsentDecision, type ContactConsentState } from "./contactConsent";
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
+import { isReminderLead, STRATEGY_REMINDER_MAX_LEAD_DAYS } from "./strategyReminders";
 import { groundSrsSuggestion, SRS_SUGGESTION_LIMITS } from "./srsBridge";
 import { readinessReportTemplates } from "./readinessReportTemplates";
 import { intensityDividers, intensityUnitKinds, isIntensityIconKey, monetaryKindIssue, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
@@ -157,6 +158,7 @@ export type CommandKey =
   | "message_template.update"
   | "message_template.deactivate"
   | "message_template.reinstate"
+  | "admin.reminders.update"
   | "bd_stage.create"
   | "bd_stage.update"
   | "bd_stage.deactivate"
@@ -937,6 +939,8 @@ export type CommandInputMap = {
   "message_template.update": { templateKey: string; expectedVersion: number; subject: string; body: string; html?: string | null };
   "message_template.deactivate": { templateKey: string; expectedVersion: number };
   "message_template.reinstate": { templateKey: string; expectedVersion: number };
+  // Actions A3 (R6): the reminder master switch and default lead, beside the message templates. Absent version: the first save.
+  "admin.reminders.update": { enabled: boolean; defaultLeadDays: number; expectedVersion?: number | null };
   // The BD funnel (admin Phase F2; ruled phaseF plan). admin.lookups; a stage's key set once.
   "bd_stage.create": BdStageEditableFields & { stageKey: string };
   "bd_stage.update": BdStageEditableFields & { stageId: string; expectedVersion: number };
@@ -976,7 +980,9 @@ export type CommandInputMap = {
    */
   "client.strategy.assign": { clientId: string; strategyId?: string; bespoke?: { title: string; scope: string; category?: string; controlLevel: string; iconKey?: string }; srsRequirementIds: string[]; ownerContactId?: string | null; status?: string; origin?: string; originSrsRequirementId?: string; targetDate?: string | null; notes?: string };
   /** `ownerContactId`: absent leaves the owner as it is; null clears it. `status` must be a legal move from the current one. */
-  "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; ownerContactId?: string | null; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean };
+  "client.strategy.update": { clientStrategyId: string; expectedVersion: number; status: string; ownerContactId?: string | null; targetDate?: string | null; progressPct: number; notes?: string; srsRequirementIds: string[]; includeInReport: boolean;
+    /** A3 (R1): days before the target date the owner is reminded. Absent leaves it; null goes back to the organisation's default. */
+    reminderLeadDays?: number | null };
   "client.strategy.remove": { clientStrategyId: string; expectedVersion: number; reason: string };
   /**
    * A2, R2: staff decide a client's proposal. Approving makes it a real plan action, Agreed, aligned to what it advances,
@@ -2458,6 +2464,14 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
+  // Actions A3 (R6): beside the message templates, under the same capability. Settings, not personal data: audited in full.
+  "admin.reminders.update": { key: "admin.reminders.update", label: "Turn reminders on or off, and set the default lead", permission: "admin.templates", reasonRequired: false, transaction: "versioned settings + audit + outbox + idempotency", auditAction: "reminder_settings_updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    if (typeof input.enabled !== "boolean") issues.push({ field: "enabled", code: "INVALID", message: "Reminders are on or off." });
+    if (!isReminderLead(input.defaultLeadDays)) issues.push({ field: "defaultLeadDays", code: "INVALID", message: `The default lead is a whole number of days, from 0 to ${STRATEGY_REMINDER_MAX_LEAD_DAYS}.` });
+    if (input.expectedVersion !== undefined && input.expectedVersion !== null && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
   // The BD funnel (admin Phase F2). admin.lookups; the key set once; the last active stage stays.
   "bd_stage.create": { key: "bd_stage.create", label: "Add a funnel stage", permission: "admin.lookups", reasonRequired: false, transaction: "funnel stage + audit + outbox + idempotency", auditAction: "bd_stage.created", validate: (input, context) => {
     const issues = baseIssues(context, false);
@@ -2693,6 +2707,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     }
     if (input.targetDate !== undefined && input.targetDate !== null && !isoDate(input.targetDate)) {
       issues.push({ field: "targetDate", code: "INVALID", message: "Enter the target date as dd/mm/yyyy." });
+    }
+    if (input.reminderLeadDays !== undefined && input.reminderLeadDays !== null && !isReminderLead(input.reminderLeadDays)) {
+      issues.push({ field: "reminderLeadDays", code: "INVALID", message: `The reminder is a whole number of days before the target date, from 0 to ${STRATEGY_REMINDER_MAX_LEAD_DAYS} — or blank for the organisation's default.` });
     }
     return issues;
   } },

@@ -26,6 +26,9 @@ const TICK_TABLES: Array<[string, string]> = [
   ["strategy_automation_log", "SELECT"], ["strategy_automation_log", "INSERT"], ["strategy_automation_log", "UPDATE"],
   ["transactional_outbox", "SELECT"], ["transactional_outbox", "INSERT"], ["transactional_outbox", "UPDATE"],
   ["email_messages", "SELECT"], ["email_messages", "UPDATE"],
+  // Actions A3 (0190): the reminder switch, the sent-marker, and the enqueue into email_messages with its audit event.
+  ["organisation_reminder_settings", "SELECT"], ["strategy_due_reminders", "SELECT"], ["strategy_due_reminders", "INSERT"],
+  ["email_messages", "INSERT"], ["audit_events", "INSERT"],
 ];
 
 function resend(): typeof fetch & { posted: string[] } {
@@ -52,6 +55,8 @@ describe("the reminder worker's tick, as nzi_console_worker", { skip: TEST_DATAB
     await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [ORG]);
     await q(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
     await q(`INSERT INTO nzi_console.clients (organisation_id, client_id, name, status) VALUES ($1, 'client-t', 'Tick Client Ltd', 'active')`, [ORG]);
+    // Reminders are off until an admin turns them on (A3, 0190): this tick is about a running reminder scan.
+    await q(`INSERT INTO nzi_console.organisation_reminder_settings (organisation_id, enabled, updated_by) VALUES ($1, true, 'tester')`, [ORG]);
     await q(`INSERT INTO nzi_console.client_contacts (organisation_id, contact_id, client_id, full_name, email, status, email_consent, created_by, updated_by)
       VALUES ($1, 'contact-t', 'client-t', 'Dana Reid', 'dana@client.example', 'active', 'granted', 'tester', 'tester')`, [ORG]);
     const [library] = await q<{ strategy_id: string }>(

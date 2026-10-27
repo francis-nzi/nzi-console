@@ -164,6 +164,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "supplier_item.rate.set": organisation,
   "message_template.create": organisation,
   "message_template.update": organisation,
+  "admin.reminders.update": organisation,
   "message_template.deactivate": organisation,
   "message_template.reinstate": organisation,
   "bd_stage.create": organisation,

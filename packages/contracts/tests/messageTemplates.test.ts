@@ -36,17 +36,9 @@ describe("the registry", () => {
 });
 
 describe("the built-in wording is what the send-sites sent before F1, word for word", () => {
-  // Frozen from reminderMessage() as it stood before F1 (captured, not retyped).
-  it("the approaching reminder, with an owner and without (no name → \"there\")", () => {
-    assert.deepEqual(reminder("approaching", "Sam Owner", "Grace Hopper"), {
-      subject: "Switch to LED lighting — target date approaching (30/11/2026)",
-      body: "Hello Grace,\n\nThe target date for this action in Acme Ltd's reduction plan is 30/11/2026.\n\nAction: Switch to LED lighting\nOwner: Sam Owner\nTarget date: 30/11/2026\n\nIf the date needs to move, or it is already done, let your consultant know.\n\nYou can see your full plan in your client portal.\n\n— NZ Insights Pro",
-    });
-    assert.deepEqual(reminder("approaching", "  ", ""), {
-      subject: "Switch to LED lighting — target date approaching (30/11/2026)",
-      body: "Hello there,\n\nThe target date for this action in Acme Ltd's reduction plan is 30/11/2026.\n\nAction: Switch to LED lighting\nTarget date: 30/11/2026\n\nIf the date needs to move, or it is already done, let your consultant know.\n\nYou can see your full plan in your client portal.\n\n— NZ Insights Pro",
-    });
-  });
+  // The approaching key was re-pointed by Actions A3 (27 Oct): it is now the owner's reminder before the target date, and its
+  // built-in wording is A3's (dueReminders.test.ts). Its pre-A3 tokens are all still declared, so an organisation's wording
+  // saved against them still renders — that is pinned there too.
 
   it("the overdue reminder, with an owner and without", () => {
     assert.deepEqual(reminder("overdue", "Sam Owner", "Alan Turing"), {

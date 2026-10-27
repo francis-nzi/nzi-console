@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import {
-  reminderMessage, reminderRecipients, remindersDue, reminderTemplateKey, strategyDeadline, reminderKindFor,
+  DUE_REMINDER_TEMPLATE_KEY, reminderMessage, reminderRecipients, remindersDue, reminderTemplateKey, strategyDeadline, reminderKindFor,
   type ClientContactLike, type MessageContent, type ReminderKind,
 } from "@nzi/contracts";
 import { listClientStrategies } from "./reductionStrategies";
+import { readReminderSettings, scanDueReminders, type DueReminderScan } from "./dueReminders";
 import { deliverEmail, EMAIL_SEND_TOPIC, type EmailDispatch } from "./email";
 import { mailDelivery, type MailDelivery, type Mailer } from "./mailer";
 import { readActiveMessageTemplate } from "./messageTemplates";
@@ -53,6 +54,8 @@ export type ReminderRunSummary = {
   delivery: MailDelivery;
   /** `email.send` rows, counted apart: `sent`/`suppressed`/`failed` above are reminders. */
   emails: { sent: number; stubbed: number; retried: number; failed: number };
+  /** Of those `email.send` rows delivered, the A3 due-date reminders (R8: the tick reports them sent as well as enqueued). */
+  dueReminderEmails: { sent: number; stubbed: number };
 };
 
 type ReminderPayload = {
@@ -194,6 +197,7 @@ export async function drainOutbox(db: Queryable, input: {
 
   let sent = 0, suppressed = 0, failed = 0, skipped = 0;
   const emails = { sent: 0, stubbed: 0, retried: 0, failed: 0 };
+  const dueReminderEmails = { sent: 0, stubbed: 0 };
 
   for (const row of pending.rows) {
     if (row.topic === EMAIL_SEND_TOPIC && input.email !== undefined) {
@@ -201,7 +205,13 @@ export async function drainOutbox(db: Queryable, input: {
       const outcome = typeof emailMessageId === "string"
         ? await deliverEmail(db, { organisationId: input.organisationId, emailMessageId, dispatch: input.email })
         : "stale";
-      if (outcome === "sent" || outcome === "stubbed") { emails[outcome] += 1; await settle(db, input.organisationId, row.outbox_id, "sent"); }
+      if (outcome === "sent" || outcome === "stubbed") {
+        emails[outcome] += 1;
+        const { rows: [message] } = await db.query<{ template_code: string | null }>(
+          `SELECT template_code FROM nzi_console.email_messages WHERE organisation_id = $1 AND email_message_id = $2`, [input.organisationId, emailMessageId]);
+        if (message?.template_code === DUE_REMINDER_TEMPLATE_KEY) dueReminderEmails[outcome] += 1;
+        await settle(db, input.organisationId, row.outbox_id, "sent");
+      }
       // Already resolved by an earlier delivery of this row, or no such message: nothing was sent now.
       else if (outcome === "stale") { skipped += 1; await settle(db, input.organisationId, row.outbox_id, "skipped"); }
       else {
@@ -247,7 +257,7 @@ export async function drainOutbox(db: Queryable, input: {
     }
   }
 
-  return { sent, suppressed, failed, skipped, delivery: input.delivery, emails };
+  return { sent, suppressed, failed, skipped, delivery: input.delivery, emails, dueReminderEmails };
 }
 
 const settle = (db: Queryable, organisationId: string, outboxId: string, state: "sent" | "skipped") =>
@@ -273,6 +283,8 @@ async function deliverReminder(db: Queryable, input: {
   // Re-sending here is precisely the failure the claim exists to prevent.
   if (claim === undefined) return "stale";
   if (claim.state === "sent" || claim.state === "suppressed") return "stale";
+  // A3 took the reminder before a date to the owner's due-date scan. A claim queued here before that is not sent as well.
+  if (input.payload.kind === "approaching") return await markStale(db, input, "superseded by the owner's due-date reminder (A3)");
 
   // Re-derive against live state. A strategy completed, removed or re-dated since the scan
   // is not owed a reminder, and saying otherwise would be telling a client they are late
@@ -360,7 +372,13 @@ export async function clientsWithPlans(db: Queryable): Promise<string[]> {
 export type TickPart<T> = { ok: true; summary: T } | { ok: false; error: string };
 export type WorkerTickSummary = {
   emails: TickPart<ReminderRunSummary["emails"]>;
-  reminders: TickPart<Omit<ReminderRunSummary, "emails">>;
+  /**
+   * Actions A3: the owner's reminder before the due date — owed, enqueued and blocked by this tick's scan, and `sent`: those
+   * the email part delivered (or stubbed) this tick, enqueued by an earlier one. `sent` is null when the email part failed.
+   */
+  dueReminders: TickPart<DueReminderScan & { sent: ReminderRunSummary["dueReminderEmails"] | null }>;
+  /** The overdue reminder to consenting contacts (3b). `off`: the Admin master switch is off, so nothing was scanned or sent. */
+  reminders: TickPart<Omit<ReminderRunSummary, "emails" | "dueReminderEmails"> & { off?: true }>;
 };
 
 const partOf = async <T>(work: () => Promise<T>): Promise<TickPart<T>> => {
@@ -369,22 +387,28 @@ const partOf = async <T>(work: () => Promise<T>): Promise<TickPart<T>> => {
 };
 
 /**
- * One tick of the worker, in two transactions that cannot sink each other (BUILD-fix-worker-tick-permission).
+ * One tick of the worker, in three transactions that cannot sink each other (BUILD-fix-worker-tick-permission; A3, R8).
  *
  * **Email first, on its own.** The `email.send` drain reads only the outbox and `email_messages`, so nothing reminder-side —
  * a plan query, a missing grant, a bad strategy row — can stop it or roll back what it sent. Before this the drain ran after
  * the reminder scan in one transaction, so a failing scan meant no email ever left.
  *
- * **Then the reminders**: the scan and the drain of every non-email row, together as before (a claim and its enqueue are one
- * fact). Their failure is reported, and the next tick tries again.
+ * **Then the due-date reminders (A3)**: the scan enqueues `email.send` rows and marks them, in its own transaction, and
+ * sends nothing — the email drain above delivers them on the next tick. Scan and send are never one transaction.
  *
- * Each part's outcome is returned for the tick's log line; neither throws.
+ * **Then the overdue reminders (3b)**: their scan and the drain of every non-email row, together as before (a claim and its
+ * enqueue are one fact).
+ *
+ * The Admin master switch (R6) governs both reminder parts: off, neither scans and no reminder is sent. Each part's outcome
+ * is returned for the tick's log line; none throws.
  */
 export async function runWorkerTick(pool: PoolLike, input: {
   organisationId: string;
   today: string;
   mailer: Mailer;
   email: EmailDispatch;
+  /** The console's own address, for the portal link in a due-date reminder (`NZI_ISOLATED_API_URL`). */
+  consoleOrigin?: string;
   env?: Parameters<typeof mailDelivery>[0];
   windowDays?: number;
   limit?: number;
@@ -392,18 +416,27 @@ export async function runWorkerTick(pool: PoolLike, input: {
   const delivery = mailDelivery(input.env ?? {
     mailMode: process.env.NZI_MAIL_MODE, appEnv: process.env.NEXT_PUBLIC_APP_ENV, boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
   });
-  const emails = await partOf(async () => (await withTenantWorker(pool, input.organisationId, (db) => drainOutbox(db, {
+  const drained = await partOf(() => withTenantWorker(pool, input.organisationId, (db) => drainOutbox(db, {
     organisationId: input.organisationId, today: input.today, mailer: input.mailer, delivery,
     email: input.email, only: "email", limit: input.limit,
-  }))).emails);
-  // No email dispatch here: email.send rows are the part above's, and this drain leaves them be.
-  const reminders = await partOf(async () => {
-    const { emails: _emails, ...rest } = await withTenantWorker(pool, input.organisationId, (db) => runReminderTick(db, {
+  })));
+  const emails: WorkerTickSummary["emails"] = drained.ok ? { ok: true, summary: drained.summary.emails } : drained;
+  const scanned = await partOf(() => withTenantWorker(pool, input.organisationId, (db) => scanDueReminders(db, {
+    organisationId: input.organisationId, today: input.today, consoleOrigin: input.consoleOrigin,
+  })));
+  const dueReminders: WorkerTickSummary["dueReminders"] = scanned.ok
+    ? { ok: true, summary: { ...scanned.summary, sent: drained.ok ? drained.summary.dueReminderEmails : null } } : scanned;
+  // No email dispatch here: email.send rows are the first part's, and this drain leaves them be.
+  const reminders = await partOf(async () => withTenantWorker(pool, input.organisationId, async (db) => {
+    if (!(await readReminderSettings(db, input.organisationId)).enabled) {
+      return { scanned: 0, claimed: 0, sent: 0, suppressed: 0, failed: 0, skipped: 0, delivery, off: true as const };
+    }
+    const { emails: _emails, dueReminderEmails: _dueReminderEmails, ...rest } = await runReminderTick(db, {
       organisationId: input.organisationId, today: input.today, mailer: input.mailer, env: input.env, windowDays: input.windowDays, limit: input.limit,
-    }));
+    });
     return rest;
-  });
-  return { emails, reminders };
+  }));
+  return { emails, dueReminders, reminders };
 }
 
 export async function runReminderTick(db: Queryable, input: {

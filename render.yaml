@@ -128,7 +128,12 @@ services:
   # With RESEND_API_KEY unset every send is recorded as stubbed and nothing leaves. With it
   # set, the isolated boundary narrows rather than opens: it sends ONLY to @netzero.international
   # (ISOLATED_RECIPIENT_DOMAINS in email.ts, a code constant so it cannot be widened from the
-  # dashboard) and stubs every other recipient. Reminders are unaffected and still never sent.
+  # dashboard) and stubs every other recipient. The overdue reminders (above) are unaffected
+  # and still never sent.
+  #
+  # Actions A3's due-date reminders to an action's owner are queued as `email.send` — so they
+  # take that same gate: an owner outside @netzero.international is stubbed here, never mailed.
+  # Admin's reminder switch (off until an admin turns it on) governs both kinds of reminder.
   - type: worker
     name: nzi-console-reminders
     runtime: node
@@ -158,6 +163,11 @@ services:
       # strategy_automation_log's unique index is what stops a second send.
       - key: NZI_REMINDER_TICK_SECONDS
         value: "900"
+      # The console's own address, the same as the console service's: Actions A3's due-date reminders link the owner to
+      # their plan in the portal here. Absent, the reminder scan refuses (and says so in the tick's log) rather than send
+      # a reminder that cannot say where to update the action.
+      - key: NZI_ISOLATED_API_URL
+        value: https://nzi-pro-api-prod.onrender.com
       # Deliberately ABSENT rather than set to a false-y value: mailDelivery() requires the
       # exact string "send", so an unset variable is the suppressing default. Adding it here
       # would be the one edit that could put mail on the wire, and it must never be made on

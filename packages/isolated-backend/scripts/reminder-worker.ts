@@ -76,16 +76,21 @@ async function main() {
   while (!stopping) {
     try {
       // Email and reminders in their own transactions, email first: a reminder-side failure is reported, never fatal to email.
-      const { emails, reminders } = await runWorkerTick(pool, { organisationId, today: londonToday(), mailer, email, env: {
-        mailMode: process.env.NZI_MAIL_MODE,
-        appEnv: process.env.NEXT_PUBLIC_APP_ENV,
-        boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
-      } });
+      // A3's due-date reminders link to the portal at the console's own address — the same variable the console uses.
+      const { emails, dueReminders, reminders } = await runWorkerTick(pool, { organisationId, today: londonToday(), mailer, email,
+        consoleOrigin: process.env.NZI_ISOLATED_API_URL, env: {
+          mailMode: process.env.NZI_MAIL_MODE,
+          appEnv: process.env.NEXT_PUBLIC_APP_ENV,
+          boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
+        } });
+      // Counts only: no address, name or action title reaches the log.
       log("tick.complete", {
         emails: emails.ok ? emails.summary : { failed: emails.error },
+        dueReminders: dueReminders.ok ? dueReminders.summary : { failed: dueReminders.error },
         reminders: reminders.ok
-          ? { scanned: reminders.summary.scanned, claimed: reminders.summary.claimed, sent: reminders.summary.sent,
-            suppressed: reminders.summary.suppressed, failed: reminders.summary.failed, skipped: reminders.summary.skipped }
+          ? reminders.summary.off ? { off: true }
+            : { scanned: reminders.summary.scanned, claimed: reminders.summary.claimed, sent: reminders.summary.sent,
+              suppressed: reminders.summary.suppressed, failed: reminders.summary.failed, skipped: reminders.summary.skipped }
           : { failed: reminders.error },
       });
     } catch (error) {

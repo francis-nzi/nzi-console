@@ -491,6 +491,14 @@ jobs:
       # a completed assessment only, with no staff field, note or person; exports and AI calls audited by reference.
       - name: Readiness gaps bridged, AI ideas grounded and labelled, and the readiness report from a completed assessment
         run: npx tsx --test packages/isolated-backend/tests/srsS3Real.test.ts
+      # 0190 (Actions A3): run as nzi_console_worker, the reminder scan enqueues into the existing outbox — an email.send row,
+      # its email_messages row, the sent-marker and an audit event by reference — and sends nothing; the existing email drain
+      # sends it next tick, in the house frame signed by the client's adviser, the isolation gate still stubbing an off-domain
+      # owner. Owed at due − lead (default 7, an action's own lead honoured); Agreed / In progress only; once per action per
+      # date, re-armed by a moved date; no owner, address or consent → counted, surfaced, not burned; Admin's switch off →
+      # nothing; a failing scan writes nothing and leaves the drain unharmed; the worker reads the brand columns, not the profile.
+      - name: Due-date reminders to an action's owner, once per date, through the existing email pipe
+        run: npx tsx --test packages/isolated-backend/tests/dueRemindersReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

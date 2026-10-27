@@ -5,8 +5,8 @@ import { GatedButton, NziIcon, type NziIconKey } from "@nzi/ui";
 import {
   strategyDeadline, strategyDeadlineSignals, strategyDeadlineSummary, strategyReminderWindowDays,
   strategyIsReportable, strategyLeverCoverage, strategyLibrary, strategyOriginLabels, strategyPlanByLever, strategyPlanSummary, strategyScopeLabel,
-  strategyStatusLabels, strategiesWithoutLever,
-  type ClientStrategy, type Lever, type StrategyDeadline, type StrategyStatus,
+  strategyReminderStatusLabel, strategyStatusLabels, strategiesWithoutLever,
+  type ClientStrategy, type Lever, type StrategyDeadline, type StrategyReminderStatus, type StrategyStatus,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
@@ -45,7 +45,7 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
   access: EditAccess;
   onDrawer: (request: StrategyDrawerRequest) => void;
 }) {
-  const { levers, library, plan, proposals } = workspace.strategies;
+  const { levers, library, plan, proposals, reminders } = workspace.strategies;
   const summary = strategyPlanSummary(plan);
   const groups = strategyPlanByLever(plan, levers);
   const unallocated = strategiesWithoutLever(plan, levers);
@@ -155,6 +155,10 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
       : <>
         <div className="nz-toolbar nz-strategy-toolbar">
           <span className="hint">{groupKeys.length} lever group{groupKeys.length === 1 ? "" : "s"}</span>
+          {/* A3: whether owners are reminded at all — set in Admin, beside the message templates. */}
+          {reminders ? <span className="hint">· Owner reminders {reminders.settings.enabled
+            ? `on, ${reminders.settings.defaultLeadDays} day${reminders.settings.defaultLeadDays === 1 ? "" : "s"} before unless an action sets its own`
+            : "off"}</span> : null}
           <span className="sp" />
           <button type="button" className="nz-btn sm" onClick={() => setCollapsed(new Set())}>Open all</button>
           <button type="button" className="nz-btn sm" onClick={() => setCollapsed(new Set(groupKeys))}>Collapse all</button>
@@ -163,7 +167,7 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
         {groups.map((group) => <LeverGroup key={group.lever.id}
           lever={group.lever} strategies={group.strategies}
           collapsed={collapsed.has(group.lever.id)} onToggle={() => toggle(group.lever.id)}
-          codes={codes} today={today} access={access} onDrawer={onDrawer} />)}
+          codes={codes} today={today} access={access} onDrawer={onDrawer} reminders={reminders} />)}
 
         {/* A strategy whose only lever was withdrawn still belongs to the plan the client
             agreed. Shown in its own group rather than silently dropped from a grouped view. */}
@@ -171,7 +175,7 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
           lever={{ id: "__unallocated", key: "unallocated", title: "Not yet allocated to a lever", iconKey: "target", ordering: 999, active: true }}
           strategies={unallocated}
           collapsed={collapsed.has("__unallocated")} onToggle={() => toggle("__unallocated")}
-          codes={codes} today={today} access={access} onDrawer={onDrawer} /> : null}
+          codes={codes} today={today} access={access} onDrawer={onDrawer} reminders={reminders} /> : null}
       </>}
 
     <p className="nz-maps">
@@ -219,9 +223,10 @@ function ProposalsQueue({ proposals, access, onDrawer }: { proposals: readonly C
   </section>;
 }
 
-function LeverGroup({ lever, strategies, collapsed, onToggle, codes, today, access, onDrawer }: {
+function LeverGroup({ lever, strategies, collapsed, onToggle, codes, today, access, onDrawer, reminders }: {
   lever: Lever; strategies: ClientStrategy[]; collapsed: boolean; onToggle: () => void;
   codes: ReadonlyMap<string, string>; today: string; access: EditAccess; onDrawer: (request: StrategyDrawerRequest) => void;
+  reminders: Reminders;
 }) {
   const bodyId = `lever-body-${lever.id}`;
   return <section className={collapsed ? "nz-panel nz-lever collapsed" : "nz-panel nz-lever"}>
@@ -237,13 +242,15 @@ function LeverGroup({ lever, strategies, collapsed, onToggle, codes, today, acce
       <span className="cnt">· {strategies.length} {strategies.length === 1 ? "strategy" : "strategies"}</span>
     </button>
     <div className="nz-lever-body" id={bodyId} hidden={collapsed}>
-      {strategies.map((strategy) => <StrategyRow key={strategy.id} strategy={strategy} codes={codes} today={today} access={access} onDrawer={onDrawer} />)}
+      {strategies.map((strategy) => <StrategyRow key={strategy.id} strategy={strategy} codes={codes} today={today} access={access} onDrawer={onDrawer}
+        reminder={reminders?.statuses[strategy.id] ?? null} />)}
     </div>
   </section>;
 }
 
-function StrategyRow({ strategy, codes, today, access, onDrawer }: {
+function StrategyRow({ strategy, codes, today, access, onDrawer, reminder }: {
   strategy: ClientStrategy; codes: ReadonlyMap<string, string>; today: string; access: EditAccess; onDrawer: (request: StrategyDrawerRequest) => void;
+  reminder: StrategyReminderStatus | null;
 }) {
   const parts = [strategy.category, strategy.owner, targetText(strategy)].filter((part) => part !== "");
   // Codes the framework still knows. A requirement retired from the framework leaves the
@@ -266,6 +273,7 @@ function StrategyRow({ strategy, codes, today, access, onDrawer }: {
           ? <span className="nz-tag" style={{ marginLeft: 6 }}>not shown to client</span> : null}
         <DeadlineFlag deadline={strategyDeadline(strategy, today)} />
       </div>
+      <ReminderLine status={reminder} />
     </div>
     <div className="nz-action-state">
       <StatusPill status={strategy.status} />
@@ -278,6 +286,19 @@ function StrategyRow({ strategy, codes, today, access, onDrawer }: {
       blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason"
       onClick={() => onDrawer({ kind: "strategy-edit", strategy })}>Edit</GatedButton>
   </div>;
+}
+
+type Reminders = ClientWorkspaceReadModel["strategies"]["reminders"];
+
+/**
+ * A3 (R3): the owner's reminder, in a line — only where there is something to say: sent, coming, or blocked. An action
+ * that cannot remind for an ordinary reason (no date, not live) says nothing; a reminder that is owed but cannot go says
+ * why, so it is put right rather than silently dropped.
+ */
+function ReminderLine({ status }: { status: StrategyReminderStatus | null }) {
+  if (status === null || status.state === "off" || status.state === "none") return null;
+  const blocked = (status.state === "due" || status.state === "scheduled") && status.blocked !== null;
+  return <div className={blocked ? "sub nz-reminder-line blocked" : "sub nz-reminder-line"}>{strategyReminderStatusLabel(status)}</div>;
 }
 
 /**

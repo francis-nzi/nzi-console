@@ -60,6 +60,23 @@ export type OrganisationProfileView = {
   version: number; updatedAt: string; updatedBy: string; provenance: "v7" | "console";
 };
 
+/** The six fields the house email signature is drawn from (`emailBrandFor`). */
+export type EmailBrandProfile = Pick<OrganisationProfileFields, "legalName" | "displayName" | "websiteUrl" | "emailLogoUrl" | "emailBadgeUrl" | "emailConfidentialityNotice">;
+
+/**
+ * Only what an email's signature needs — and only the columns 0190 lets the reminder worker read, so the console and the
+ * worker render a templated email through the same code. Null: no profile, and the signature's built-in defaults apply.
+ */
+export async function readEmailBrandProfile(db: Queryable, organisationId: string): Promise<EmailBrandProfile | null> {
+  const { rows: [row] } = await db.query<{ legal_name: string | null; display_name: string | null; website_url: string | null; email_logo_url: string | null; email_badge_url: string | null; email_confidentiality_notice: string | null }>(
+    `SELECT legal_name, display_name, website_url, email_logo_url, email_badge_url, email_confidentiality_notice
+       FROM nzi_console.organisation_profiles WHERE organisation_id = $1`, [organisationId]);
+  return row ? {
+    legalName: row.legal_name, displayName: row.display_name, websiteUrl: row.website_url,
+    emailLogoUrl: row.email_logo_url, emailBadgeUrl: row.email_badge_url, emailConfidentialityNotice: row.email_confidentiality_notice,
+  } : null;
+}
+
 export async function readOrganisationProfile(db: Queryable, organisationId: string): Promise<OrganisationProfileView | null> {
   // Not joined to `organisations`: the application role cannot read it, and 0142 provisioned display_name from its name.
   const { rows: [row] } = await db.query<ProfileRow>(`SELECT ${PROFILE_COLUMNS} FROM nzi_console.organisation_profiles WHERE organisation_id = $1`, [organisationId]);
