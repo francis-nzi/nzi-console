@@ -9,7 +9,7 @@ const contact = (over: Partial<ClientContactLike> = {}): ClientContactLike =>
 const strategy = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "client-a", leverIds: [], srsRequirementIds: ["req-1"], includeInReport: true,
   strategyId: null, title: id, scope: "2", category: "Energy", controlLevel: "direct_control",
-  iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, proposal: null, targetDate: null, progressPct: 0,
+  iconKey: "energy", status: "agreed", owner: "", ownerContactId: null, origin: "plan", originSrsRequirementId: null, proposal: null, reminderLeadDays: null, targetDate: null, progressPct: 0,
   notes: "", active: true, version: 1, estimate: null, ...over,
 });
 
@@ -72,12 +72,12 @@ describe("what a reminder says", () => {
   });
 
   it("names no organisation it cannot read — the worker has no grant on the profile (D3b)", () => {
-    for (const kind of ["approaching", "overdue"] as const) {
-      const { body } = message(kind, kind === "overdue" ? "2026-09-01" : "2026-09-20");
-      assert.match(body, /your consultant/);
-      assert.match(body, /your client portal/);
-      assert.ok(!/\bNZI\b/.test(body), "no hard-coded organisation name");
-    }
+    // The overdue reminder only: the one before a date is A3's, sent through sendTemplatedEmail, whose house signature names
+    // the organisation from the brand columns 0190 lets the worker read (dueReminders.test.ts).
+    const { body } = message("overdue", "2026-09-01");
+    assert.match(body, /your consultant/);
+    assert.match(body, /your client portal/);
+    assert.ok(!/\bNZI\b/.test(body), "no hard-coded organisation name");
   });
 
   it("greets the person, and copes when the name is one word", () => {
@@ -98,6 +98,10 @@ describe("what is owed", () => {
     // deadline branch would let a moved date reuse a spent claim.
     const due = remindersDue([strategy("s1", { targetDate: "2026-09-01" })], "2026-09-14");
     assert.deepEqual(due, [{ clientStrategyId: "s1", kind: "overdue", targetDate: "2026-09-01" }]);
+  });
+
+  it("raises no reminder before a date: that one is the owner's, from the due-date scan (A3)", () => {
+    assert.deepEqual(remindersDue([strategy("soon", { targetDate: "2026-09-20" })], "2026-09-14"), []);
   });
 
   it("owes nothing for undated, complete, removed or far-off strategies", () => {

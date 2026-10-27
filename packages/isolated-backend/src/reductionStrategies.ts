@@ -81,7 +81,7 @@ type ClientStrategyRow = {
   origin: string; origin_srs_requirement_id: string | null;
   proposal_state: string | null; proposal_note: string; proposal_decision_reason: string | null;
   created_at: Date | string; proposal_decided_at: Date | string | null;
-  target_date: Date | string | null; progress_pct: number;
+  target_date: Date | string | null; reminder_lead_days: number | null; progress_pct: number;
   notes: string; active: boolean; version: number;
   estimate_amount: string | null; estimate_unit: string | null; estimate_scope: string | null;
   estimate_tco2e_per_year: string | null; estimate_assumptions: string; estimate_confidence: string | null;
@@ -119,7 +119,7 @@ const mapClientStrategy = (row: ClientStrategyRow): ClientStrategy => ({
     state: row.proposal_state as StrategyProposalState, note: row.proposal_note, decisionReason: row.proposal_decision_reason,
     proposedOn: londonDayOf(row.created_at), decidedOn: (row.proposal_decided_at ?? null) === null ? null : londonDayOf(row.proposal_decided_at!),
   },
-  targetDate: dateOnlyOrNull(row.target_date), progressPct: row.progress_pct,
+  targetDate: dateOnlyOrNull(row.target_date), reminderLeadDays: row.reminder_lead_days ?? null, progressPct: row.progress_pct,
   notes: row.notes, active: row.active, version: row.version,
   estimate: mapEstimate(row),
 });
@@ -150,7 +150,7 @@ export async function listClientStrategies(db: Queryable, clientId: string): Pro
   const result = await db.query<ClientStrategyRow>(
     `SELECT a.client_strategy_id, a.client_id, a.strategy_id, a.bespoke_title, a.bespoke_scope, a.bespoke_category,
             a.bespoke_control_level, a.bespoke_icon_key, a.status, a.legacy_owner_text, a.owner_contact_id,
-            oc.full_name AS owner_contact_name, a.origin, a.origin_srs_requirement_id, a.target_date, a.progress_pct,
+            oc.full_name AS owner_contact_name, a.origin, a.origin_srs_requirement_id, a.target_date, a.reminder_lead_days, a.progress_pct,
             a.proposal_state, a.proposal_note, a.proposal_decision_reason, a.created_at, a.proposal_decided_at,
             a.notes, a.active, a.version, a.include_in_report,
             a.estimate_amount::text, a.estimate_unit, a.estimate_scope, a.estimate_tco2e_per_year::text,
@@ -522,12 +522,13 @@ export type UpdateStrategyResult = {
   clientStrategyId: string; version: number;
   /** The state as saved — the audit event's after_json (A1). */
   status: StrategyStatus; progressPct: number; ownerContactId: string | null; targetDate: string | null; includeInReport: boolean;
+  reminderLeadDays: number | null;
 };
 
 export function updateClientStrategy(pool: PoolLike, input: CommandInputMap["client.strategy.update"], context: CommandContext): Promise<StoredOutcome<UpdateStrategyResult>> {
   return runPostgresCommand(pool, "client.strategy.update", input, context, async (db) => {
-    const current = await db.query<{ version: number; active: boolean; client_id: string; status: StrategyStatus; progress_pct: number; owner_contact_id: string | null; target_date: Date | string | null; include_in_report: boolean; proposal_state: string | null }>(
-      `SELECT version, active, client_id, status, progress_pct, owner_contact_id, target_date, include_in_report, proposal_state FROM nzi_console.client_strategies
+    const current = await db.query<{ version: number; active: boolean; client_id: string; status: StrategyStatus; progress_pct: number; owner_contact_id: string | null; target_date: Date | string | null; include_in_report: boolean; proposal_state: string | null; reminder_lead_days: number | null }>(
+      `SELECT version, active, client_id, status, progress_pct, owner_contact_id, target_date, include_in_report, proposal_state, reminder_lead_days FROM nzi_console.client_strategies
        WHERE organisation_id=$1 AND client_strategy_id=$2 FOR UPDATE`,
       [context.organisationId, input.clientStrategyId]);
     const action = current.rows[0];
@@ -554,24 +555,26 @@ export function updateClientStrategy(pool: PoolLike, input: CommandInputMap["cli
     const ownerChanges = input.ownerContactId !== undefined && (input.ownerContactId?.trim() || null) !== action.owner_contact_id;
     const ownerContactId = input.ownerContactId === undefined ? action.owner_contact_id : input.ownerContactId?.trim() || null;
     if (ownerChanges && ownerContactId) await assertOwnerContact(db, context.organisationId, action.client_id, ownerContactId);
+    // A3 (R1): the reminder lead — absent leaves it; null goes back to the organisation's default.
+    const reminderLeadDays = input.reminderLeadDays === undefined ? action.reminder_lead_days : input.reminderLeadDays;
 
     const saved = await db.query<{ version: number }>(
       `UPDATE nzi_console.client_strategies
-       SET status=$3, owner_contact_id=$4, target_date=$5, progress_pct=$6, notes=$7, include_in_report=$9,
+       SET status=$3, owner_contact_id=$4, target_date=$5, progress_pct=$6, notes=$7, include_in_report=$9, reminder_lead_days=$10,
            legacy_owner_text = CASE WHEN $4::text IS NOT NULL THEN '' ELSE legacy_owner_text END,
            version=version+1, updated_at=now(), updated_by=$8
        WHERE organisation_id=$1 AND client_strategy_id=$2 RETURNING version`,
       [context.organisationId, input.clientStrategyId, status, ownerContactId,
-        input.targetDate ?? null, input.progressPct, input.notes?.trim() ?? "", context.actorId, input.includeInReport]);
+        input.targetDate ?? null, input.progressPct, input.notes?.trim() ?? "", context.actorId, input.includeInReport, reminderLeadDays]);
     await setStrategyAlignment(db, { organisationId: context.organisationId, clientStrategyId: input.clientStrategyId, requirementIds: input.srsRequirementIds });
     return {
       // The runner writes `data` as the audit event's after_json, so the new state travels here — ids and states only:
       // the owner is named by contact id, never by name (NZC-120).
       data: { clientStrategyId: input.clientStrategyId, version: saved.rows[0]!.version, status, progressPct: input.progressPct, ownerContactId,
-        targetDate: input.targetDate ?? null, includeInReport: input.includeInReport },
+        targetDate: input.targetDate ?? null, includeInReport: input.includeInReport, reminderLeadDays },
       entityType: "client_strategy", entityId: input.clientStrategyId, topic: "client.strategy.updated",
-      before: { status: action.status, progressPct: action.progress_pct, ownerContactId: action.owner_contact_id, targetDate: dateOnlyOrNull(action.target_date), includeInReport: action.include_in_report },
-      after: { status, progressPct: input.progressPct, ownerContactId, targetDate: input.targetDate ?? null, includeInReport: input.includeInReport },
+      before: { status: action.status, progressPct: action.progress_pct, ownerContactId: action.owner_contact_id, targetDate: dateOnlyOrNull(action.target_date), includeInReport: action.include_in_report, reminderLeadDays: action.reminder_lead_days },
+      after: { status, progressPct: input.progressPct, ownerContactId, targetDate: input.targetDate ?? null, includeInReport: input.includeInReport, reminderLeadDays },
     };
   });
 }

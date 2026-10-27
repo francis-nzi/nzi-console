@@ -232,6 +232,10 @@ export {
 } from "./email";
 export { sendTemplatedEmail, TemplatedEmailError, type TemplatedEmailRequest } from "./templatedEmail";
 export {
+  readReminderSettings, updateReminderSettings, scanDueReminders, listStrategyReminderStatuses, strategyReminderStatuses, DUE_REMINDER_ACTOR,
+  type DueReminderScan, type ReminderSettingsResult, type StrategyReminders,
+} from "./dueReminders";
+export {
   readStaffSignature, updateOwnStaffSignature, emailPersonForMember, StaffSignatureError, type StaffSignatureRecord, type SignatureMember,
 } from "./staffSignature";
 export {

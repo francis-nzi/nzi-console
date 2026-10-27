@@ -1,7 +1,7 @@
 import { emailBrandFor, messageContentFor, messageTemplateDefinition, renderEmailTemplate } from "@nzi/contracts";
 import { sendEmail, type EmailRequest } from "./email";
 import { readActiveMessageTemplate } from "./messageTemplates";
-import { readOrganisationProfile } from "./organisationSettings";
+import { readEmailBrandProfile } from "./organisationSettings";
 import { emailPersonForMember } from "./staffSignature";
 import type { Queryable } from "./postgres";
 
@@ -22,7 +22,9 @@ import type { Queryable } from "./postgres";
  * - **Then it is `sendEmail`**, with `templateCode` set: the same validation, queue, idempotency and isolation gate as
  *   phase 1 — on the isolated boundary a templated send to anyone outside the NZI domain is still stubbed.
  *
- * Run it in the caller's transaction, as the console's role: it reads the organisation profile, which the worker cannot.
+ * Run it in the caller's transaction. It reads only the profile's brand columns, the member's signature fields and the
+ * message templates — what the console's role reads, and since 0190 what the reminder worker's role may read too, so the
+ * worker's due-date reminders (A3) are rendered by this same code.
  */
 
 export class TemplatedEmailError extends Error {
@@ -46,9 +48,9 @@ export async function sendTemplatedEmail(db: Queryable, organisationId: string, 
   const definition = messageTemplateDefinition(input.templateCode);
   if (!definition) throw new TemplatedEmailError(`${input.templateCode} is not a message the console sends.`, ["UNKNOWN_TEMPLATE"]);
   const content = messageContentFor(definition, await readActiveMessageTemplate(db, definition.key));
-  const profile = await readOrganisationProfile(db, organisationId);
+  const profile = await readEmailBrandProfile(db, organisationId);
   const person = input.attributedTo ? await emailPersonForMember(db, input.attributedTo) : null;
-  const brand = { ...emailBrandFor(profile?.fields ?? null, input.consoleOrigin ?? null), person };
+  const brand = { ...emailBrandFor(profile, input.consoleOrigin ?? null), person };
   const rendered = renderEmailTemplate(definition, content, input.vars, { brand });
   // Names the template and the issue — never a value, since values are links and names.
   if (!rendered.ok) throw new TemplatedEmailError(`${definition.key} was not sent: ${rendered.issues.join(" ")}`, rendered.issues);

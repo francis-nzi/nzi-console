@@ -207,6 +207,8 @@ export type ClientStrategy = {
   /** A2: for a client's proposal (origin `client_proposal`), its decision — null on every other action. */
   proposal: StrategyProposal | null;
   targetDate: string | null;
+  /** A3 (R1): this action's reminder lead in days, or null for the organisation's default. */
+  reminderLeadDays: number | null;
   progressPct: number;
   notes: string;
   active: boolean;

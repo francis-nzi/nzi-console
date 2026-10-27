@@ -20,7 +20,7 @@ const library = (id: string, requirementIds: string[], over: Partial<LibraryStra
 const action = (id: string, over: Partial<ClientStrategy> = {}): ClientStrategy => ({
   id, clientId: "c1", leverIds: [], srsRequirementIds: [], includeInReport: true, strategyId: null, title: `Action ${id}`, scope: "governance",
   category: "", controlLevel: "direct_control", iconKey: "target", status: "proposed", owner: "", ownerContactId: null, origin: "plan",
-  originSrsRequirementId: null, proposal: null, targetDate: null, progressPct: 0, notes: "", active: true, version: 1, estimate: null, ...over,
+  originSrsRequirementId: null, proposal: null, reminderLeadDays: null, targetDate: null, progressPct: 0, notes: "", active: true, version: 1, estimate: null, ...over,
 });
 
 test("library candidates are the actions whose alignment names the requirement — never a keyword match", () => {

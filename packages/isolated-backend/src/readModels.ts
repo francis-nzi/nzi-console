@@ -4,6 +4,7 @@ import type {StaffRole} from "./auth";
 import { listClientContacts } from "./clientContactRecords";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import { listLevers, listLibraryStrategies, listClientStrategies } from "./reductionStrategies";
+import { strategyReminderStatuses, type StrategyReminders } from "./dueReminders";
 import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues } from "./intensityMetricRecords";
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
@@ -18,6 +19,7 @@ import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
 import { listAssuredPeriodSnapshots } from "./assuredPeriodSnapshots";
 import { DATASET_EDITION_SUFFIX, datasetDisplayLabel, datasetPreferenceRank, isPreferredDataset, resolveReportLabel, reportScopeLabel, type ReportScope } from "@nzi/contracts";
+import { todayInLondon } from "@nzi/contracts";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary } from "./siteBoundary";
 import { resolveJobReportedIntensity } from "./jobReportedIntensity";
 
@@ -358,7 +360,9 @@ export type ClientWorkspaceReadModel = {
    * `plan` is the plan (removed actions included, as A1 shows them); A2: a client's proposal joins it only once approved.
    * `proposals` is the queue — active client proposals still pending, and the declined ones, newest first.
    */
-  strategies: { levers: Lever[]; library: LibraryStrategy[]; plan: ClientStrategy[]; proposals: ClientStrategy[] };
+  strategies: { levers: Lever[]; library: LibraryStrategy[]; plan: ClientStrategy[]; proposals: ClientStrategy[];
+    /** A3: the reminder settings and each plan action's reminder status. Null: it could not be read (the plan still shows). */
+    reminders: StrategyReminders | null };
   /** The intensity metrics this client has defined — Employees and Turnover always, plus its own. */
   intensityMetrics: IntensityMetricDefinition[];
   /** Phase 1b (0158) — the client's intensity targets in force, one per metric, shown beside net zero. */
@@ -421,6 +425,9 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
   const libraryStrategies = await adjunct("strategies", [], listLibraryStrategies(db));
   const clientStrategies = await adjunct("strategies", [], listClientStrategies(db, clientId));
   const levers = await adjunct("strategies", [], listLevers(db));
+  // A3: each action's reminder — sent, when it will go, or why it cannot (R3). Soft: the plan shows without it.
+  const strategyReminders = await adjunct("strategies", null as StrategyReminders | null,
+    strategyReminderStatuses(db, { clientId, today: todayInLondon(), plan: clientStrategies }));
   // Soft: the Sites card lists them for unarchive; a read that fails shows none rather than taking the workspace down.
   const archivedSites = await db.query<{ site_id: string; name: string; version: number }>(
     `SELECT site_id, name, version FROM nzi_console.client_sites WHERE client_id = $1 AND archived = true ORDER BY lower(name), site_id`, [clientId])
@@ -492,6 +499,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
       levers, library: libraryStrategies,
       plan: clientStrategies.filter((strategy) => strategy.proposal === null || strategy.proposal.state === "approved"),
       proposals: clientStrategies.filter((strategy) => strategy.active && strategy.proposal !== null && strategy.proposal.state !== "approved").reverse(),
+      reminders: strategyReminders,
     },
     intensityMetrics,
     intensityTargets,

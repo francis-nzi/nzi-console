@@ -73,7 +73,8 @@ describe("the CRM's gate (staff)", () => {
   });
 
   it("keeps proposals out of the plan's counts — they have their own queue above it", () => {
-    assert.match(area, /const \{ levers, library, plan, proposals \} = workspace\.strategies;/);
+    // A3 reads the reminders from the same model; the plan and the proposals are still apart.
+    assert.match(area, /const \{ levers, library, plan, proposals, reminders \} = workspace\.strategies;/);
     assert.match(area, /\{proposals\.length > 0 \? <ProposalsQueue/);
   });
 });

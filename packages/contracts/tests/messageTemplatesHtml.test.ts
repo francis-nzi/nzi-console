@@ -53,11 +53,15 @@ describe("the transactional keys (R3)", () => {
     assert.match(entry.builtIn.body, /not in this email/);
   });
 
-  it("the reminders stay plain text: their send-site sends no HTML, so they have none to edit", () => {
-    for (const key of ["strategy.reminder.approaching", "strategy.reminder.overdue"]) {
-      assert.equal(definition(key).htmlPart, undefined, key);
-      assert.equal(definition(key).builtIn.html, undefined, key);
-    }
+  it("the overdue reminder stays plain text: its send-site sends no HTML, so it has none to edit", () => {
+    assert.equal(definition("strategy.reminder.overdue").htmlPart, undefined);
+    assert.equal(definition("strategy.reminder.overdue").builtIn.html, undefined);
+  });
+
+  it("the reminder before a date is sent as HTML and text (A3): it goes through sendTemplatedEmail, so it has an HTML body", () => {
+    const entry = definition("strategy.reminder.approaching");
+    assert.equal(entry.htmlPart, true);
+    assert.match(entry.builtIn.html!, /<a class="cta" href="\{\{actionsLink\}\}">/);
   });
 });
 

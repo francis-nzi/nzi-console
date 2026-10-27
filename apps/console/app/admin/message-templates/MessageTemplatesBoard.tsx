@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import {
@@ -24,7 +24,7 @@ type Editing = { allowed: true } | { allowed: false; reason: string };
 export type SenderReference = { name: string | null; email: string | null; footer: string | null; brand: EmailBrand };
 type Failure = Exclude<BrowserCommandResult<unknown>, { state: "success" }>;
 
-export function MessageTemplatesBoard({ templates, sender, editing }: { templates: MessageTemplateRow[]; sender: SenderReference; editing: Editing }) {
+export function MessageTemplatesBoard({ templates, sender, editing, reminders }: { templates: MessageTemplateRow[]; sender: SenderReference; editing: Editing; reminders?: ReactNode }) {
   const router = useRouter();
   const [open, setOpen] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -42,8 +42,9 @@ export function MessageTemplatesBoard({ templates, sender, editing }: { template
 
     <div className="nz-a-hint-strip">
       <span aria-hidden="true">i</span>
-      <div>A message can use only its own <b>tokens</b> — the values the console fills in when it sends, such as <span className="nz-a-mono">{"{{firstName}}"}</span>. The preview fills them with sample values, never a real client’s. Every message has a plain-text body; the sign-in, reset and portal messages also have an HTML body, and are sent with both.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
+      <div>A message can use only its own <b>tokens</b> — the values the console fills in when it sends, such as <span className="nz-a-mono">{"{{firstName}}"}</span>. The preview fills them with sample values, never a real client’s. Every message has a plain-text body; all but the overdue reminder also have an HTML body, and are sent with both.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
     </div>
+    {reminders}
     {notice ? <div className="nz-a-notice" role="status">{notice}</div> : null}
 
     <ul className="nz-a-sub-records" aria-label="Messages">

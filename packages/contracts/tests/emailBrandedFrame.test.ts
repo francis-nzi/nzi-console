@@ -36,7 +36,8 @@ describe("the house signature, on every templated email (R1)", () => {
   const brand = emailBrandFor(profile({ emailBadgeUrl: BADGE }), ORIGIN);
 
   it("closes every built-in HTML message with the company, both logos at absolute https URLs, the website and the GDPR block", () => {
-    assert.deepEqual(HTML_KEYS, ["staff.invitation", "portal.access.invite", "password.reset.staff", "password.reset.portal", "message.notification"]);
+    // A3: the reminder to an action's owner joins them — sent in the same frame.
+    assert.deepEqual(HTML_KEYS, ["strategy.reminder.approaching", "staff.invitation", "portal.access.invite", "password.reset.staff", "password.reset.portal", "message.notification"]);
     for (const key of HTML_KEYS) {
       const { html } = render(key, brand);
       assert.match(html, /<p style="[^"]*font-weight:bold">Net Zero International<\/p>/, `${key}: the company`);

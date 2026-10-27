@@ -73,29 +73,43 @@ const REMINDER_TOKENS: readonly MessageToken[] = [
 
 export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
   {
+    // Actions A3: re-pointed from the consenting-contacts reminder to the action's owner, on the reminder lead, through
+    // sendTemplatedEmail — so it is sent in the house frame, and signed by the client's adviser. Its tokens are the old
+    // ones plus the portal link, so wording an organisation saved before A3 still renders.
     key: "strategy.reminder.approaching",
-    label: "Reduction action — target date approaching",
-    purpose: "To a client's consenting contacts, as a reduction action's target date comes within the reminder window.",
+    label: "Reduction action — reminder to its owner before the target date",
+    purpose: "To the action's owner (a client contact who has consented to email), the reminder lead before its target date — 7 days unless Admin or the action sets another. Agreed and In progress actions only; once per target date.",
     channel: "email",
-    sendSite: "The strategy reminder worker (nzi-console-reminders): strategyReminderWorker.ts → reminderMessage()",
-    tokens: REMINDER_TOKENS,
+    sendSite: "The due-date reminder scan in the worker tick (Actions A3): dueReminders.ts → sendTemplatedEmail, attributed to the client's adviser",
+    tokens: [
+      ...REMINDER_TOKENS,
+      { name: "actionsLink", description: "A link to the plan in the client portal, where the owner updates the action (sign-in still required)", sample: "https://console.example.test/portal", kind: "url" },
+    ],
     builtIn: {
-      subject: "{{strategyTitle}} — target date approaching ({{targetDate}})",
+      subject: "{{strategyTitle}} — due {{targetDate}}",
       body: [
         "Hello {{firstName}},",
         "",
-        "The target date for this action in {{clientName}}'s reduction plan is {{targetDate}}.",
+        "You are the owner of this action in {{clientName}}'s reduction plan, and its target date is coming up.",
         "",
-        "Action: {{strategyTitle}}{{ownerLine}}",
+        "Action: {{strategyTitle}}",
         "Target date: {{targetDate}}",
         "",
-        "If the date needs to move, or it is already done, let your consultant know.",
+        "You can update its progress — or its date, if it needs to move — in your client portal:",
+        "{{actionsLink}}",
         "",
-        "You can see your full plan in your client portal.",
-        "",
-        "— NZ Insights Pro",
+        "If it is already done, mark it complete there, or let your adviser know.",
+      ].join("\n"),
+      html: [
+        "<p>Hello {{firstName}},</p>",
+        "<p>You are the owner of this action in <b>{{clientName}}</b>'s reduction plan, and its target date is coming up.</p>",
+        "<p><b>{{strategyTitle}}</b><br>Target date: {{targetDate}}</p>",
+        "<p>You can update its progress — or its date, if it needs to move — in your client portal.</p>",
+        `<a class="cta" href="{{actionsLink}}">Open your plan</a>`,
+        `<p style="${SMALL}">If it is already done, mark it complete there, or let your adviser know.</p>`,
       ].join("\n"),
     },
+    htmlPart: true,
   },
   {
     key: "strategy.reminder.overdue",
