@@ -24,7 +24,7 @@ import { formatDate, formatDateTime } from "../../../../lib/formatDate";
 import { formatQuantity, formatTonnes } from "../../../../lib/formatNumber";
 import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
 import { usePortalSurface } from "../../../portalSurface";
-import { historyEntry, isPortalDataView, mayDeactivate, portalQaGates, portalScopeRowFields, reviewLabel, rowDrawerSections, windowOpen } from "../../../data/portalDataView";
+import { historyEntry, isPortalDataView, mayAskToReopen, mayDeactivate, portalQaGates, portalScopeRowFields, reviewLabel, rowDrawerSections, windowOpen } from "../../../data/portalDataView";
 
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
@@ -185,6 +185,33 @@ export function PortalQaSection({ qa, profile, adviser }: { qa: View["qa"]; prof
   );
 }
 
+/**
+ * D3 (R6): reopen after review is a request, never a recall — the client says why, it goes to the CRM as a message, and the CRM
+ * reopens the entry by editing it. Once asked, the request is said here until the CRM acts.
+ */
+function ReopenRequest({ base, row, adviser, onSaved }: { base: string; row: PortalScopeRow; adviser: string; onSaved: (text: string) => Promise<void> }) {
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (row.reopenRequestedAt) {
+    return <section className="nz-pdv-sec" aria-label="Reopen requested"><h3>Reopen requested</h3>
+      <p className="muted">You asked {adviser} to reopen this entry on {formatDate(row.reopenRequestedAt.slice(0, 10))}. They will change it, or be in touch.</p></section>;
+  }
+  async function ask() {
+    setBusy(true); setError("");
+    const result = await postBrowserCommand(`${base}/reopen-request`, { expectedVersion: row.version, reason: reason.trim() }, crypto.randomUUID());
+    setBusy(false);
+    if (result.state === "success") await onSaved(`Your request to reopen this entry has been sent to ${adviser}.`);
+    else setError(errorText(result));
+  }
+  return <section className="nz-pdv-sec nz-pdv-reopen" aria-label="Ask to reopen this entry"><h3>Ask to reopen this entry</h3>
+    <p className="muted">This entry has been reviewed, so only {adviser} can change it. Say what needs to change and they will reopen it.</p>
+    <textarea className="nz-inp" rows={2} maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="What needs to change, and why" aria-label="Why this entry needs reopening" />
+    <button type="button" className="nz-btn" disabled={busy || !reason.trim()} onClick={() => void ask()}>{busy ? "Sending…" : "Ask to reopen"}</button>
+    {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
+  </section>;
+}
+
 /** One entry, as the client sees it: what it is, where and when; the profile's sections, read-only; changes; History. */
 export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, adviserInline = adviser, onSaved }: {
   jobId: string; row: PortalScopeRow; view: View; specs: Record<string, InputSpecCategory>; refs: ReturnType<typeof entryFactorRefsFor>;
@@ -257,6 +284,8 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
           entry={editDraft} busy={busy} error={error}
           onCancel={() => undefined} onSubmit={save} /></section>
         : <p className="muted nz-pdv-ro">{row.editable ? "Data entry isn't open just now, so this entry can't be changed." : `This entry can't be changed here. Ask ${adviserInline} if it needs to change.`}</p>}
+
+      {!surface.readOnly && open && mayAskToReopen(row) ? <ReopenRequest base={base} row={row} adviser={adviserInline} onSaved={onSaved} /> : null}
 
       {!surface.readOnly && mayDeactivate(view.profile, row, open) ? <section className="nz-pdv-sec" aria-label="Deactivate this entry"><h3>Deactivate this entry</h3>
         <textarea className="nz-inp" rows={2} maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Why it no longer applies" />

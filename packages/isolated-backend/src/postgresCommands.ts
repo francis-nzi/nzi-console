@@ -45,8 +45,10 @@ import { defaultReportSectionPlan, normaliseReportPlanKeys, type ReportNarrative
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
 import { isPortalProfileKey, isPortalProfileValue, isPortalScope } from "@nzi/contracts";
-import { isCurrencyUnit, rowScopeForCategory } from "@nzi/contracts";
+import { isCurrencyUnit, rowScopeForCategory, spendCarryKey } from "@nzi/contracts";
 import { recordClientEntryBasisChoice } from "./entryBasisChoices";
+import { fixCarryForwardBasis, storedCarryForwardBasis } from "./carryForwardBasis";
+import { resolveReopenRequestOnEdit } from "./portalReopenRequests";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { resolveReportNarrative } from "./reportNarrative";
 import { insertClientContact } from "./clientContactRecords";
@@ -1389,18 +1391,42 @@ export async function rollforwardSpendSources(pool:PoolLike,input:CommandInputMa
   const targetRes=await db.query<{client_id:string;reporting_year:number|null;start_date:Date|string}>(`SELECT client_id,reporting_year,start_date FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2`,[context.organisationId,input.jobId]),target=targetRes.rows[0]!;
   const targetYear=target.reporting_year??Number((target.start_date instanceof Date?target.start_date.toISOString():String(target.start_date)).slice(0,4));
   let priorJobId:string,priorJobNumber:string,priorYear:number;
-  if(input.fromJobId){
-    const fj=await db.query<{job_number:string;reporting_year:number}>(`SELECT job_number,coalesce(reporting_year,extract(year from start_date)::int) AS reporting_year FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 AND client_id=$3 AND job_family='crp' AND job_id<>$4 AND coalesce(reporting_year,extract(year from start_date)::int)<$5`,[context.organisationId,input.fromJobId,target.client_id,input.jobId,targetYear]);
+  // D3 (R3): the job's stored basis, when it has one, is the prior job — never recomputed. A named job is checked against it.
+  const stored=await storedCarryForwardBasis(db,input.jobId);
+  const named=input.fromJobId??stored?.priorJobId??null;
+  if(named){
+    const fj=await db.query<{job_number:string;reporting_year:number}>(`SELECT job_number,coalesce(reporting_year,extract(year from start_date)::int) AS reporting_year FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 AND client_id=$3 AND job_family='crp' AND job_id<>$4 AND coalesce(reporting_year,extract(year from start_date)::int)<$5`,[context.organisationId,named,target.client_id,input.jobId,targetYear]);
     if(!fj.rows[0])throw new CommandValidationError([{field:"fromJobId",code:"NOT_FOUND",message:"Source job must be a prior-year CRP job for the same client."}]);
-    priorJobId=input.fromJobId;priorJobNumber=fj.rows[0].job_number;priorYear=fj.rows[0].reporting_year;
+    priorJobId=named;priorJobNumber=fj.rows[0].job_number;priorYear=fj.rows[0].reporting_year;
   }else{
     const pj=await db.query<{job_id:string;job_number:string;reporting_year:number}>(`SELECT j.job_id,j.job_number,coalesce(j.reporting_year,extract(year from j.start_date)::int) AS reporting_year FROM nzi_console.jobs j WHERE j.organisation_id=$1 AND j.client_id=$2 AND j.job_family='crp' AND j.job_id<>$3 AND coalesce(j.reporting_year,extract(year from j.start_date)::int)<$4 AND EXISTS(SELECT 1 FROM nzi_console.job_emission_sources s WHERE s.organisation_id=j.organisation_id AND s.job_id=j.job_id AND s.source_type='spend' AND s.enabled=true) ORDER BY coalesce(j.reporting_year,extract(year from j.start_date)::int) DESC,j.sequence DESC LIMIT 1`,[context.organisationId,target.client_id,input.jobId,targetYear]);
     if(!pj.rows[0])throw new CommandValidationError([{field:"jobId",code:"NO_PRIOR_YEAR",message:"No prior-year CRP job with spend sources was found for this client."}]);
     priorJobId=pj.rows[0].job_id;priorJobNumber=pj.rows[0].job_number;priorYear=pj.rows[0].reporting_year;
   }
-  const priorSources=await db.query<{source_id:string;source_name:string;source_subtype:string|null;scope:string;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;unit:string|null;apply_pct:string;detail_json:unknown;notes:string|null}>(`SELECT s.source_id,s.source_name,s.source_subtype,s.scope,s.purchased_goods_category_id,s.dataset_id,s.factor_id,s.factor_source,s.client_factor_id,s.unit,s.apply_pct,s.detail_json,s.notes FROM nzi_console.job_emission_sources s WHERE s.organisation_id=$1 AND s.job_id=$2 AND s.source_type='spend' AND s.enabled=true AND NOT EXISTS(SELECT 1 FROM nzi_console.job_emission_sources rf WHERE rf.organisation_id=s.organisation_id AND rf.job_id=$3 AND rf.rolled_forward_from_source_id=s.source_id) ORDER BY lower(s.source_name),s.source_id`,[context.organisationId,priorJobId,input.jobId]);
+  await fixCarryForwardBasis(db,context,input.jobId,priorJobId,"fromJobId");
+  // D3 (R4): carried by GL code — else the normalised description, as the D2 map keys a line. The prior year's lines are grouped
+  // by that key and one line per key is carried (structure, never values): the largest of the year's lines under it names it. A
+  // key this job already holds — carried, imported or entered — is not carried again.
+  const priorSources=await db.query<{source_id:string;source_name:string;source_subtype:string|null;scope:string;category_code:string|null;site_id:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;quantity:string|null;unit:string|null;apply_pct:string;detail_json:unknown;notes:string|null}>(`SELECT s.source_id,s.source_name,s.source_subtype,s.scope,s.category_code,s.site_id,s.purchased_goods_category_id,s.dataset_id,s.factor_id,s.factor_source,s.client_factor_id,s.quantity,s.unit,s.apply_pct,s.detail_json,s.notes FROM nzi_console.job_emission_sources s WHERE s.organisation_id=$1 AND s.job_id=$2 AND s.source_type='spend' AND s.enabled=true ORDER BY lower(s.source_name),s.source_id`,[context.organisationId,priorJobId]);
+  const held=await db.query<{source_name:string;source_subtype:string|null;carry_key:string|null;rolled_forward_from_source_id:string|null}>(`SELECT source_name,source_subtype,carry_key,rolled_forward_from_source_id FROM nzi_console.job_emission_sources WHERE organisation_id=$1 AND job_id=$2 AND source_type='spend' AND voided_at IS NULL`,[context.organisationId,input.jobId]);
+  const heldKeys=new Set(held.rows.map(row=>row.carry_key??spendCarryKey({glCode:row.source_subtype,description:row.source_name})).filter((key):key is string=>key!==null));
+  const heldOrigins=new Set(held.rows.map(row=>row.rolled_forward_from_source_id).filter((id):id is string=>id!==null));
+  const groups=new Map<string,typeof priorSources.rows>();
+  for(const src of priorSources.rows){const key=spendCarryKey({glCode:src.source_subtype,description:src.source_name})??`source:${src.source_id}`;groups.set(key,[...(groups.get(key)??[]),src]);}
   let rolledForward=0,skipped=0;
-  for(const src of priorSources.rows){
+  for(const [groupKey,members] of groups){
+    const carryKey=groupKey.startsWith("source:")?null:groupKey;
+    // A line with neither a GL code nor a description to key it is carried as itself, once — as before D3.
+    if(carryKey?heldKeys.has(carryKey):heldOrigins.has(members[0]!.source_id)){skipped+=1;continue;}
+    const src=[...members].sort((a,b)=>Math.abs(Number(b.quantity??0))-Math.abs(Number(a.quantity??0)))[0]!;
+    // The site travels when every line under the key was at the same one, and it is still this job's (the client's, not archived,
+    // not left out) — the rule a carried row follows (ruled 6 Oct). Otherwise none: a GL code spread over sites is not one site's.
+    let siteId=members.every(member=>member.site_id===src.site_id)?src.site_id:null;
+    if(siteId){
+      await db.query(`SELECT 1 FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 FOR SHARE`,[context.organisationId,input.jobId]);
+      const site=await db.query(`SELECT 1 FROM nzi_console.client_sites s JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(s.organisation_id,s.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2 AND s.site_id=$3 AND NOT s.archived AND ${siteIncludedSql("j.job_id","s.site_id")}`,[context.organisationId,input.jobId,siteId]);
+      if(!site.rows[0])siteId=null;
+    }
     if(src.factor_source==="dataset"&&src.dataset_id){
       const selected=await db.query(`SELECT 1 FROM nzi_console.job_dataset_selections WHERE organisation_id=$1 AND job_id=$2 AND dataset_id=$3`,[context.organisationId,input.jobId,src.dataset_id]);
       if(!selected.rows[0]){
@@ -1416,7 +1442,7 @@ export async function rollforwardSpendSources(pool:PoolLike,input:CommandInputMa
     }
     const detail=src.detail_json&&typeof src.detail_json==="object"?{...src.detail_json as Record<string,unknown>,netValue:0}:src.detail_json;
     try{
-      await db.query(`INSERT INTO nzi_console.job_emission_sources(organisation_id,source_id,job_id,group_id,scope,source_type,source_subtype,site_id,source_name,asset_identifier,purchased_goods_category_id,dataset_id,factor_id,factor_source,client_factor_id,quantity,unit,apply_pct,data_source,data_confidence,monthly_activity_json,detail_json,notes,rolled_forward_from_source_id) VALUES($1,$2,$3,NULL,$4,'spend',$5,NULL,$6,NULL,$7,$8,$9,$10,$11,NULL,$12,$13,$14,NULL,'[]'::jsonb,$15::jsonb,$16,$17)`,[context.organisationId,randomUUID(),input.jobId,src.scope,src.source_subtype,src.source_name,categoryId,src.dataset_id,src.factor_id,src.factor_source,src.client_factor_id,src.unit,Number(src.apply_pct),`Rolled forward from ${priorJobNumber} · FY${priorYear}`,JSON.stringify(detail),src.notes,src.source_id]);
+      await db.query(`INSERT INTO nzi_console.job_emission_sources(organisation_id,source_id,job_id,group_id,scope,source_type,source_subtype,site_id,source_name,asset_identifier,purchased_goods_category_id,dataset_id,factor_id,factor_source,client_factor_id,quantity,unit,apply_pct,data_source,data_confidence,monthly_activity_json,detail_json,notes,rolled_forward_from_source_id,category_code,carry_key) VALUES($1,$2,$3,NULL,$4,'spend',$5,$18,$6,NULL,$7,$8,$9,$10,$11,NULL,$12,$13,$14,NULL,'[]'::jsonb,$15::jsonb,$16,$17,$19,$20)`,[context.organisationId,randomUUID(),input.jobId,src.scope,src.source_subtype,src.source_name,categoryId,src.dataset_id,src.factor_id,src.factor_source,src.client_factor_id,src.unit,Number(src.apply_pct),`Rolled forward from ${priorJobNumber} · FY${priorYear}`,JSON.stringify(detail),src.notes,src.source_id,siteId,src.category_code,carryKey]);
       rolledForward+=1;
     }catch(error){
       if(error&&typeof error==="object"&&"code" in error&&(error as {code?:string}).code==="23505"){skipped+=1;continue;}
@@ -1442,6 +1468,8 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
   const priorRes=await db.query<{job_number:string;reporting_year:number}>(`SELECT job_number,coalesce(reporting_year,extract(year from start_date)::int) AS reporting_year FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$2 AND client_id=(SELECT client_id FROM nzi_console.jobs WHERE organisation_id=$1 AND job_id=$3) AND job_family='crp'`,[context.organisationId,input.priorJobId,input.jobId]);
   const priorJob=priorRes.rows[0];
   if(!priorJob)throw new CommandValidationError([{field:"priorJobId",code:"NOT_FOUND",message:"Prior-year job was not found for this client."}]);
+  // D3 (R3): rows and spend lines carry forward from one prior job, stored the first time either does.
+  await fixCarryForwardBasis(db,context,input.jobId,input.priorJobId,"priorJobId");
   const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null;filed_suffix_code:string|null;prior_filed_suffix_code:string|null;factor_own_label:string|null}>(
     `SELECT scope_row_id,scope,source_label,report_label,asset_identifier,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text,
             -- Dedup slice 2 (0171): a new row carries the prior usage type only while it is still offered (a withdrawn one drops to null).
@@ -1523,7 +1551,7 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
   return{data:{rolledForward,skipped,createdRowIds,priorJobNumber:priorJob.job_number},entityType:"job",entityId:input.jobId,topic:"scope.rows.rolled_forward"};
 });}
 
-export async function commitSpendImport(pool:PoolLike,input:CommandInputMap["emission.source.import.commit"],context:CommandContext,secret:string|undefined):Promise<StoredOutcome<{batchId:string;created:number;blocked:number;advisory:number}>>{return runPostgresCommand(pool,"emission.source.import.commit",input,context,async db=>{
+export async function commitSpendImport(pool:PoolLike,input:CommandInputMap["emission.source.import.commit"],context:CommandContext,secret:string|undefined):Promise<StoredOutcome<{batchId:string;created:number;filled:number;alreadyImported:number;blocked:number;advisory:number}>>{return runPostgresCommand(pool,"emission.source.import.commit",input,context,async db=>{
   await requireCrpJob(db,context.organisationId,input.jobId);
   const verified=verifySpendImportToken(input.token,secret);
   if(!verified.ok)throw new CommandValidationError([{field:"token",code:verified.reason.toUpperCase().replace(/-/g,"_"),message:"The import template's identity could not be verified. Download a fresh template."}]);
@@ -1532,21 +1560,33 @@ export async function commitSpendImport(pool:PoolLike,input:CommandInputMap["emi
   if(!jobContext)throw new CommandValidationError([{field:"jobId",code:"NOT_CONFIGURED",message:"Configure the CRP reporting period before importing spend."}]);
   if(verified.identity.templateVersion!==SPEND_IMPORT_TEMPLATE_VERSION)throw new CommandValidationError([{field:"token",code:"STALE_TEMPLATE",message:`This template is version ${verified.identity.templateVersion}; the current version is ${SPEND_IMPORT_TEMPLATE_VERSION}.`}]);
   if(verified.identity.reportingFrom!==jobContext.reportingFrom||verified.identity.reportingTo!==jobContext.reportingTo)throw new CommandValidationError([{field:"token",code:"WRONG_PERIOD",message:"The template's reporting period no longer matches the job."}]);
+  // D3 (R2): reconciled by reading first — the review read the job's own lines (inside this transaction, under the command's
+  // idempotency) and says, line by line, whether it is new, fills a carried-forward line, or is already here.
   const reviews=reviewSpendImportRows(input.rows,jobContext);
   const batchId=randomUUID();
-  let created=0,blocked=0,advisory=0;
+  let created=0,filled=0,alreadyImported=0,blocked=0,advisory=0;
   for(let index=0;index<input.rows.length;index+=1){
     const review=reviews[index]!;
     if(review.status==="blocked"){blocked+=1;continue;}
+    if(review.reconciliation?.kind==="already-imported"){alreadyImported+=1;continue;}
     if(review.status==="advisory")advisory+=1;
     // D2 (R2): filed where the client's map routes it (its GL code, else its description; else the PG&S residual) — the same
     // routing the preview showed beside the line — as a spend-basis source the sync turns into a row in that category.
     const {row,routing}=routedImportRow(input.rows[index]!,jobContext.allocations);
     const detail={kind:"spend",netValue:row.netValue??0,vatPercent:row.vatPercent,glCode:row.glCode,category:"Imported",allocation:{categoryCode:routing.categoryCode,by:routing.by,allocationId:routing.allocationId}};
+    if(review.reconciliation?.kind==="fills-carried"){
+      // D3 (R4): the line carried forward for this GL code takes this year's figure — the carried line, not a second beside it. It
+      // keeps its identity and where it came from; everything this year's ledger says about it is the import's.
+      const sourceId=review.reconciliation.sourceId;
+      const updated=await db.query(`UPDATE nzi_console.job_emission_sources SET scope=$4,category_code=$5,source_subtype=$6,source_name=$7,asset_identifier=$8,purchased_goods_category_id=$9,dataset_id=$10,factor_id=$11,factor_source=$12,client_factor_id=$13,quantity=$14,unit='GBP',monthly_activity_json=$15::jsonb,detail_json=$16::jsonb,import_batch_id=$17,data_source='Spend import',version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND source_id=$3 AND quantity IS NULL AND voided_at IS NULL RETURNING source_id`,[context.organisationId,input.jobId,sourceId,rowScopeForCategory(routing.categoryCode),routing.categoryCode,row.glCode,row.description.trim(),row.invoiceDate,row.purchasedGoodsCategoryId,row.datasetId,row.factorSource==="dataset"?row.factorId:null,row.factorSource,row.factorSource==="client"?row.clientFactorId:null,row.netValue,JSON.stringify(row.monthly??[]),JSON.stringify({...detail,carriedForward:true}),batchId]);
+      if(updated.rows.length!==1)throw new CommandValidationError([{field:"rows",code:"CARRIED_LINE_CHANGED",message:"A carried-forward line changed while this import was running. Preview the file again."}]);
+      filled+=1;
+      continue;
+    }
     await db.query(`INSERT INTO nzi_console.job_emission_sources(organisation_id,source_id,job_id,group_id,scope,source_type,source_subtype,site_id,source_name,asset_identifier,purchased_goods_category_id,dataset_id,factor_id,factor_source,client_factor_id,quantity,unit,apply_pct,data_source,data_confidence,monthly_activity_json,detail_json,notes,import_batch_id,category_code) VALUES($1,$2,$3,NULL,$16,'spend',$4,NULL,$5,$6,$7,$8,$9,$10,$11,$12,'GBP',100,'Spend import',NULL,$13::jsonb,$14::jsonb,NULL,$15,$17)`,[context.organisationId,randomUUID(),input.jobId,row.glCode,row.description.trim(),row.invoiceDate,row.purchasedGoodsCategoryId,row.datasetId,row.factorSource==="dataset"?row.factorId:null,row.factorSource,row.factorSource==="client"?row.clientFactorId:null,row.netValue,JSON.stringify(row.monthly??[]),JSON.stringify(detail),batchId,rowScopeForCategory(routing.categoryCode),routing.categoryCode]);
     created+=1;
   }
-  return{data:{batchId,created,blocked,advisory},entityType:"job",entityId:input.jobId,topic:"spend.import.committed"};
+  return{data:{batchId,created,filled,alreadyImported,blocked,advisory},entityType:"job",entityId:input.jobId,topic:"spend.import.committed"};
 });}
 
 export async function saveClientImportMapping(pool:PoolLike,input:CommandInputMap["client.import.mapping.save"],context:CommandContext):Promise<StoredOutcome<{clientId:string;version:number}>>{return runPostgresCommand(pool,"client.import.mapping.save",input,context,async db=>{
@@ -1558,14 +1598,20 @@ export async function saveClientImportMapping(pool:PoolLike,input:CommandInputMa
 
 export async function voidSpendImportBatch(pool:PoolLike,input:CommandInputMap["emission.source.import.void"],context:CommandContext):Promise<StoredOutcome<{voided:number;skipped:number}>>{return runPostgresCommand(pool,"emission.source.import.void",input,context,async db=>{
   await requireCrpJob(db,context.organisationId,input.jobId);
-  const batch=await db.query<{source_id:string;review_status:string|null;scope_row_id:string|null}>(`SELECT s.source_id,s.review_status,r.scope_row_id FROM nzi_console.job_emission_sources s LEFT JOIN nzi_console.job_scope_rows r ON (r.organisation_id,r.source_id)=(s.organisation_id,s.source_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND s.import_batch_id=$3 AND s.voided_at IS NULL`,[context.organisationId,input.jobId,input.batchId]);
+  const batch=await db.query<{source_id:string;review_status:string|null;scope_row_id:string|null;carry_key:string|null}>(`SELECT s.source_id,s.review_status,r.scope_row_id,s.carry_key FROM nzi_console.job_emission_sources s LEFT JOIN nzi_console.job_scope_rows r ON (r.organisation_id,r.source_id)=(s.organisation_id,s.source_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND s.import_batch_id=$3 AND s.voided_at IS NULL`,[context.organisationId,input.jobId,input.batchId]);
   if(!batch.rows.length)throw new CommandValidationError([{field:"batchId",code:"NOT_FOUND",message:"No live rows were found for that import batch."}]);
-  const voidable=batch.rows.filter(row=>row.scope_row_id===null&&(row.review_status===null||row.review_status==="pending")).map(row=>row.source_id);
-  const skipped=batch.rows.length-voidable.length;
+  const undoable=batch.rows.filter(row=>row.scope_row_id===null&&(row.review_status===null||row.review_status==="pending"));
+  const skipped=batch.rows.length-undoable.length;
+  // D3 (R4): a carried-forward line the import filled is emptied again — its figure goes, the GL code's line stays for the next
+  // import — rather than voided with the lines the import added.
+  const voidable=undoable.filter(row=>!row.carry_key).map(row=>row.source_id),emptied=undoable.filter(row=>Boolean(row.carry_key)).map(row=>row.source_id);
   if(voidable.length){
     await db.query(`UPDATE nzi_console.job_emission_sources SET voided_at=now(),voided_by=$4,enabled=false,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND source_id=ANY($3::text[])`,[context.organisationId,input.jobId,voidable,context.actorId]);
   }
-  return{data:{voided:voidable.length,skipped},entityType:"job",entityId:input.jobId,topic:"spend.import.voided"};
+  if(emptied.length){
+    await db.query(`UPDATE nzi_console.job_emission_sources SET quantity=NULL,asset_identifier=NULL,monthly_activity_json='[]'::jsonb,detail_json=jsonb_set(detail_json,'{netValue}','0'::jsonb),import_batch_id=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND source_id=ANY($3::text[])`,[context.organisationId,input.jobId,emptied]);
+  }
+  return{data:{voided:voidable.length+emptied.length,skipped},entityType:"job",entityId:input.jobId,topic:"spend.import.voided"};
 });}
 
 export type CreateScopeRowResult = {
@@ -1801,6 +1847,8 @@ export type UpdateScopeRowResult = {
   rowId: string;
   jobId: string;
   version: number;
+  /** D3 (R6): the client's open request this staff edit answered — the reopen — when there was one. */
+  reopenedRequestId?: string;
 };
 export async function updateScopeRow(
   pool: PoolLike,
@@ -1897,11 +1945,14 @@ export function scopeRowUpdateHandler(input: CommandInputMap["scope.row.update"]
         ],
       );
       if (!updated.rows[0]) throw new VersionConflictError();
+      // D3 (R6): a staff edit is the CRM's reopen — the row is back to pending above — and answers the client's open request.
+      const reopenedRequestId = await resolveReopenRequestOnEdit(db, context, input.rowId);
       return {
         data: {
           rowId: input.rowId,
           jobId: input.jobId,
           version: updated.rows[0].version,
+          ...(reopenedRequestId ? { reopenedRequestId } : {}),
         },
         entityType: "scope_row",
         entityId: input.rowId,

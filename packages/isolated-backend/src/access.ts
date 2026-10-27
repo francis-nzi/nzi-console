@@ -65,6 +65,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "portal.scope.row.create": job,
   "portal.scope.row.update": job,
   "portal.scope.row.deactivate": job,
+  "portal.scope.row.reopen.request": job,
   // Actions A2: the client's own plan — the session's client, held to it in `authorizePortalCommand`.
   "portal.strategy.add": client,
   "portal.strategy.propose": client,

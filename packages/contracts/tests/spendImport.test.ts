@@ -80,10 +80,17 @@ describe("reviewSpendImportRow", () => {
     assert.deepEqual(codes, ["CATEGORY_UNRESOLVED", "DESCRIPTION_REQUIRED", "FACTOR_UNRESOLVED", "INVOICE_DATE_INVALID", "NET_VALUE_INVALID", "VAT_PERCENT_INVALID"]);
   });
 
-  it("treats out-of-period date, non-positive net and in-file duplicate as advisory (never blocks)", () => {
-    const review = reviewSpendImportRow({ ...goodRow, netValue: -5, invoiceDate: "2023-12-31" }, context, true);
+  it("treats non-positive net and in-file duplicate as advisory (never blocks)", () => {
+    const review = reviewSpendImportRow({ ...goodRow, netValue: -5 }, context, true);
     assert.equal(review.status, "advisory");
-    assert.deepEqual(review.issues.map((issue) => issue.code).sort(), ["DUPLICATE_IN_FILE", "INVOICE_DATE_OUTSIDE_PERIOD", "NON_POSITIVE_NET"]);
+    assert.deepEqual(review.issues.map((issue) => issue.code).sort(), ["DUPLICATE_IN_FILE", "NON_POSITIVE_NET"]);
+  });
+
+  it("D3 (R2): blocks an invoice dated outside the job's period — it belongs to another year's job, and would be counted twice", () => {
+    const review = reviewSpendImportRow({ ...goodRow, invoiceDate: "2023-12-31" }, context, false);
+    assert.equal(review.status, "blocked");
+    assert.deepEqual(review.issues.map((issue) => issue.code), ["INVOICE_DATE_OUTSIDE_PERIOD"]);
+    assert.match(review.issues[0]!.message, /another year's job/);
   });
 
   it("resolves a client factor by clientFactorId", () => {
@@ -99,7 +106,7 @@ describe("summariseImportReview / importRowStatus / spendImportRowKey", () => {
       reviewSpendImportRow({ ...goodRow, rowNumber: 2, netValue: -1 }, context, false),
       reviewSpendImportRow({ ...goodRow, rowNumber: 3, description: "" }, context, false),
     ];
-    assert.deepEqual(summariseImportReview(reviews), { total: 3, accepted: 1, advisory: 1, blocked: 1 });
+    assert.deepEqual(summariseImportReview(reviews), { total: 3, accepted: 1, advisory: 1, blocked: 1, alreadyImported: 0 });
   });
 
   it("blocker beats advisory", () => {

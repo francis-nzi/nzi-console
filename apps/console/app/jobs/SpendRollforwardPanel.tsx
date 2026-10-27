@@ -78,6 +78,9 @@ export function SpendRollforwardPanel({ jobId, notice }: { jobId: string; notice
         <>
           <p className="muted" style={{ fontSize: 13 }}>
             From <b>{preview.priorJob.number}</b> · FY{preview.priorJob.reportingYear}
+            {/* D3 (R3): the stored basis, or the candidate the first carry-forward will store. */}
+            {preview.priorJob.fixed ? " · this job's carry-forward basis, fixed when it first carried forward" : " · proposed — kept as this job's basis once you roll forward"}
+            {" · one line per GL code (or description where there is none)"}
             {moved > 0 ? <> · <span style={{ color: "#8A6410" }}>{moved} factor version{moved === 1 ? "" : "s"} moved since — flagged for re-review</span></> : null}
           </p>
           <div style={{ overflowX: "auto" }}>
@@ -94,7 +97,8 @@ export function SpendRollforwardPanel({ jobId, notice }: { jobId: string; notice
               <tbody>
                 {preview.lines.map((line) => (
                   <tr key={line.priorSourceId}>
-                    <td>{line.description}{line.glCode ? <div className="muted">GL {line.glCode}</div> : null}</td>
+                    <td>{line.description}{line.glCode ? <div className="muted">GL {line.glCode}</div> : null}
+                      {(line.priorLineCount ?? 1) > 1 ? <div className="nz-hint">{line.priorLineCount} lines last year under this {line.glCode ? "GL code" : "description"} — carried as one</div> : null}</td>
                     <td>{line.purchasedGoodsCategoryLabel ?? <span className="muted">— none —</span>}</td>
                     <td>{line.factorLabel ?? <span className="muted">No factor</span>}</td>
                     <td>

@@ -8,6 +8,7 @@
 
 import type { FactorSource, MonthlyActivitySlot } from "./commands";
 import type { SpendRouting } from "./spendAllocation";
+import type { SpendImportReconciliation } from "./spendCarryForward";
 
 export const SPEND_IMPORT_TOKEN_PREFIX = "nzi-spend-import.v1";
 export const IMPORT_MAX_ROWS = 10_000;
@@ -114,7 +115,10 @@ export type ImportRowIssueSeverity = "blocker" | "advisory";
 export const IMPORT_ROW_ISSUE_SEVERITY: Record<ImportRowIssueCode, ImportRowIssueSeverity> = {
   DESCRIPTION_REQUIRED: "blocker", NET_VALUE_INVALID: "blocker", VAT_PERCENT_INVALID: "blocker",
   INVOICE_DATE_INVALID: "blocker", CATEGORY_UNRESOLVED: "blocker", FACTOR_UNRESOLVED: "blocker",
-  INVOICE_DATE_OUTSIDE_PERIOD: "advisory", DUPLICATE_IN_FILE: "advisory", NON_POSITIVE_NET: "advisory",
+  // D3 (R2): the reporting period is the import's identity. An invoice dated outside it belongs to another year's job; let in
+  // here as well, the same ledger line is counted in two years — the duplicate the calendar-year fallback made possible.
+  INVOICE_DATE_OUTSIDE_PERIOD: "blocker", DUPLICATE_IN_FILE: "advisory", NON_POSITIVE_NET: "advisory",
+  // D3 (R2): said on the line, and the line is not imported again — reconciled by reading first (`reconcileSpendImport`).
   YOY_VARIANCE: "advisory", ALREADY_IMPORTED: "advisory",
   // D2: a line routed to a category its factor cannot price is held; VAT on a line whose category takes none is dropped, said aloud.
   FACTOR_NOT_IN_CATEGORY: "blocker", VAT_NOT_APPLICABLE: "advisory",
@@ -126,6 +130,8 @@ export type ImportRowReview = {
   rowNumber: number; status: ImportRowStatus; issues: ImportRowIssue[];
   /** D2 (R2): where the line will be filed, and why — the client's map, or the PG&S residual. Server-side; shown on every row. */
   routing?: SpendRouting;
+  /** D3 (R2, R4): what the import will do with the line, read from the job first — add it, fill a carried line, or nothing. */
+  reconciliation?: SpendImportReconciliation;
 };
 
 export function importRowIssue(code: ImportRowIssueCode, message: string): ImportRowIssue {
@@ -137,7 +143,11 @@ export function importRowStatus(issues: ImportRowIssue[]): ImportRowStatus {
   return issues.length > 0 ? "advisory" : "accepted";
 }
 
-export type ImportReviewSummary = { total: number; accepted: number; advisory: number; blocked: number };
+export type ImportReviewSummary = {
+  total: number; accepted: number; advisory: number; blocked: number;
+  /** D3 (R2): lines the job already holds — counted in `advisory`, never imported again. */
+  alreadyImported?: number;
+};
 
 export function summariseImportReview(reviews: ImportRowReview[]): ImportReviewSummary {
   return {
@@ -145,8 +155,12 @@ export function summariseImportReview(reviews: ImportRowReview[]): ImportReviewS
     accepted: reviews.filter((review) => review.status === "accepted").length,
     advisory: reviews.filter((review) => review.status === "advisory").length,
     blocked: reviews.filter((review) => review.status === "blocked").length,
+    alreadyImported: reviews.filter((review) => review.reconciliation?.kind === "already-imported").length,
   };
 }
+
+/** D3 (R2): how many lines an import will write — new lines and carried lines filled; never one the job already holds. */
+export const importWritableCount = (summary: ImportReviewSummary): number => summary.accepted + summary.advisory - (summary.alreadyImported ?? 0);
 
 /** File-local + job-context validation. Server-only checks (YoY, already-imported) are appended by the backend. */
 export type ImportRowContext = {
@@ -170,7 +184,9 @@ export function reviewSpendImportRow(row: SpendImportRow, context: ImportRowCont
   if (row.invoiceDate !== null) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(row.invoiceDate)) issues.push(importRowIssue("INVOICE_DATE_INVALID", "Invoice date is not a valid date."));
     else if (row.invoiceDate < context.reportingFrom || row.invoiceDate > context.reportingTo) {
-      issues.push(importRowIssue("INVOICE_DATE_OUTSIDE_PERIOD", "Invoice date is outside the reporting period."));
+      const day = (iso: string) => iso.split("-").reverse().join("/");
+      issues.push(importRowIssue("INVOICE_DATE_OUTSIDE_PERIOD",
+        `Invoice date is outside this job's reporting period (${day(context.reportingFrom)} to ${day(context.reportingTo)}), so it belongs to another year's job.`));
     }
   }
   if (requirePurchasedGoodsCategory && (row.purchasedGoodsCategoryId === null || !context.categoryIds.has(row.purchasedGoodsCategoryId))) {

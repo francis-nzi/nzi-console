@@ -14,6 +14,8 @@ describe("rollforwardScopeRows (NZC-063)", () => {
         if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
         if (sql.includes("SELECT job_family FROM")) return { rows: [{ job_family: "crp" }] };
         if (sql.includes("client_id=(SELECT client_id FROM")) return { rows: [{ job_number: "J000700", reporting_year: 2025 }] };
+        // D3 (R3): the carry-forward basis, stored on the first carry-forward and read back.
+        if (sql.includes("FROM nzi_console.job_carry_forward_basis b")) return { rows: [{ prior_job_id: "job-2025", job_number: "J000700", reporting_year: 2025 }] };
         if (sql.includes("AND NOT EXISTS(SELECT 1 FROM nzi_console.job_scope_rows rf")) {
           return { rows: [{ scope_row_id: "prior-row-1", scope: "1", source_label: "Fleet diesel", report_label: "Fleet diesel", asset_identifier: "AB12 CDE", site_id: "site-mcr", category_code: "1.company-vehicles", purchased_goods_category_id: null, dataset_id: "ds-2025", factor_id: "f-diesel", factor_version: "2025.1", factor_label: "Diesel — LGV", factor_source: "dataset", client_factor_id: null, is_custom_entry: false, apply_pct: "100", unit: "litres", column_text: null }] };
         }
@@ -49,6 +51,7 @@ describe("rollforwardScopeRows (NZC-063)", () => {
         if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
         if (sql.includes("SELECT job_family FROM")) return { rows: [{ job_family: "crp" }] };
         if (sql.includes("client_id=(SELECT client_id FROM")) return { rows: [{ job_number: "J000700", reporting_year: 2025 }] };
+        if (sql.includes("FROM nzi_console.job_carry_forward_basis b")) return { rows: [{ prior_job_id: "job-2025", job_number: "J000700", reporting_year: 2025 }] };
         if (sql.includes("AND NOT EXISTS(SELECT 1 FROM nzi_console.job_scope_rows rf")) return { rows: [] }; // already rolled forward → excluded
         return { rows: [] };
       },

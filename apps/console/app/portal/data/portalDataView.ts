@@ -71,6 +71,11 @@ export function portalQaGates(qa: ScopeQaReadiness, profile: PortalOfferedProfil
 export const mayDeactivate = (profile: PortalOfferedProfile, row: Pick<PortalScopeRow, "editable">, open: boolean) =>
   open && row.editable && profile.actions.includes("deactivate");
 
+/** D3 (R6): a reviewed entry the client made, live and counted — theirs to ask about, the CRM's to change. No self-recall. */
+export const mayAskToReopen = (row: Pick<PortalScopeRow, "editable" | "enabled" | "origin" | "reviewStatus" | "provenance">): boolean =>
+  !row.editable && row.enabled !== false && row.origin !== "migrated" && (row.reviewStatus === "approved" || row.reviewStatus === "rejected")
+  && (row.provenance as { capturedAs?: unknown }).capturedAs === "client-portal";
+
 /** A row's review state, in the client's words. */
 export function reviewLabel(row: Pick<PortalScopeRow, "reviewStatus" | "enabled">): string {
   if (row.enabled === false) return "Deactivated";
@@ -79,6 +84,8 @@ export function reviewLabel(row: Pick<PortalScopeRow, "reviewStatus" | "enabled"
 
 const ACTIONS: Record<string, string> = {
   portal_scope_row_created: "Entered", portal_scope_row_updated: "Changed", portal_scope_row_deactivated: "Deactivated",
+  // D3 (R6): the client's request to reopen a reviewed entry.
+  portal_scope_row_reopen_requested: "Asked to reopen",
   scope_row_created: "Entered", scope_row_updated: "Changed", scope_row_calculated: "Calculated", scope_row_reviewed: "Reviewed",
   scope_row_deactivated: "Deactivated", scope_row_reactivated: "Reactivated",
 };

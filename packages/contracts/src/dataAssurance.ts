@@ -22,11 +22,34 @@ import { crpScopeCategoryLabel } from "./commands";
 //    `job_family = 'crp'` and `reporting_year < current`, one per distinct year
 //    (latest `snapshot_version` wins — same rule the existing `annualComparison`
 //    query in `report.snapshot.create` uses). The trend takes the baseline year
-//    plus the three most recent prior years strictly between baseline and current.
+//    plus the `REPORTING_PRIOR_YEARS` (four) most recent prior years strictly
+//    between baseline and current — the universal reporting grain (D3 R5).
 //  - Current year   = the job's own `reporting_year`; its latest reviewed
 //    snapshot if one exists, else `live` (the unreviewed job figures).
 //
 // No new column on `jobs` — the chain is client + reporting-year sequence.
+
+/**
+ * Data entry D3 (R5): the universal reporting and QA grain — **baseline + current + up to four prior years**; in a baseline year,
+ * the baseline alone. Every multi-year view reads it from here — the QA trend, the line-by-line QA drawer and the report — so no
+ * category or section keeps a count of its own.
+ */
+export const REPORTING_PRIOR_YEARS = 4;
+
+/**
+ * The years a multi-year view shows, from the years it has (pure): the baseline year (when it is before the current year), up to
+ * `REPORTING_PRIOR_YEARS` most recent years strictly between the baseline and the current year, and the current year; ascending.
+ * A baseline at or after the current year is the current year — one column, nothing to compare.
+ */
+export function reportingGrainYears<T extends { year: number }>(entries: readonly T[], currentYear: number, baselineYear: number | null): T[] {
+  // A baseline year: the baseline alone — there is no earlier year to compare against.
+  if (baselineYear !== null && baselineYear >= currentYear) return entries.filter((entry) => entry.year === currentYear);
+  const baseline = baselineYear;
+  const priors = entries.filter((entry) => entry.year < currentYear && (baseline === null || entry.year > baseline))
+    .sort((a, b) => b.year - a.year).slice(0, REPORTING_PRIOR_YEARS);
+  const keep = new Set<T>([...priors, ...entries.filter((entry) => entry.year === currentYear || (baseline !== null && entry.year === baseline))]);
+  return entries.filter((entry) => keep.has(entry)).sort((a, b) => a.year - b.year);
+}
 
 export type ReportingChainSource = "reviewed-snapshot" | "live" | "none";
 
@@ -76,7 +99,7 @@ export function buildReportingChain(input: {
   /** The last day of the baseline period, when the client records one. */
   baselinePeriodEnd?: string | null;
 }): CrpReportingChain {
-  const priorYearCount = input.priorYearCount ?? 3;
+  const priorYearCount = input.priorYearCount ?? REPORTING_PRIOR_YEARS;
 
   /**
    * Keyed by period, falling back to the year (NZC-096). Two of a client's jobs can carry the same

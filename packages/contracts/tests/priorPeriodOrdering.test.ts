@@ -98,18 +98,19 @@ describe("a prior year is one whose period ended before this period started", ()
     assert.deepEqual(priors(result), [2025, 2026], "oldest period first");
   });
 
-  it("keeps at most the three most recent priors, chosen by period", () => {
+  it("keeps at most the four most recent priors, chosen by period (D3 R5)", () => {
     const result = chain({
       currentYear: 2027,
       currentPeriod: { from: "2026-10-01", to: "2027-09-30" },
       priorSnapshots: [
+        snap(2022, "2021-10-01", "2022-09-30"),
         snap(2023, "2022-10-01", "2023-09-30"),
         snap(2024, "2023-10-01", "2024-09-30"),
         snap(2025, "2024-10-01", "2025-09-30"),
         snap(2026, "2025-10-01", "2026-09-30"),
       ],
     });
-    assert.deepEqual(priors(result), [2024, 2025, 2026], "the three most recent by period, oldest first");
+    assert.deepEqual(priors(result), [2023, 2024, 2025, 2026], "the four most recent by period, oldest first");
   });
 });
 

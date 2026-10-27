@@ -64,6 +64,7 @@ import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import { ReallocateControl } from "./ReallocateControl";
 import { JobCurrencyPanel } from "./JobCurrencyPanel";
+import { ReopenRequestsBanner } from "./ReopenRequestsBanner";
 import {JobStageStepper,StageSection,StageFocusStrip,stageAnchorId,type StageStatus} from "./CrpStageSections";
 import {JobShellHeader,datasetsSummary,milestonesSummary,type JobShellDrawer,type JobShellSummary} from "./JobShellHeader";
 import {JobSitesDrawer} from "./JobSitesDrawer";
@@ -770,6 +771,8 @@ export function CrpScopeWorkspace({
           onSelect={setSiteId}
         />
       </div>
+      {/* D3 (R6): the client's requests to reopen a reviewed entry — the CRM reopens by editing it. */}
+      <ReopenRequestsBanner jobId={job.header.id} refreshKey={emissions} onOpenRow={setSelectedId} />
       {shellOn ? shellBody : stageSectionsOn ? stageBody : (
       <div className="nz-body">
         <section className="nz-command-hero">

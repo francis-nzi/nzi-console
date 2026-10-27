@@ -13,14 +13,14 @@ import {
 const snap = (year: number) => ({ year, snapshotId: `s-${year}`, dataHash: `sha256:${year}` });
 
 describe("buildReportingChain (DA1 / NZC-059)", () => {
-  it("orders baseline + three most recent priors + current, ascending", () => {
+  it("orders baseline + the four most recent priors + current, ascending (D3 R5: the universal grain)", () => {
     const chain = buildReportingChain({
-      jobId: "j", clientId: "c", currentYear: 2026, baselineYear: 2020,
-      priorSnapshots: [snap(2020), snap(2021), snap(2022), snap(2023), snap(2024), snap(2025)],
+      jobId: "j", clientId: "c", currentYear: 2026, baselineYear: 2019,
+      priorSnapshots: [snap(2019), snap(2020), snap(2021), snap(2022), snap(2023), snap(2024), snap(2025)],
       currentSnapshot: null,
     });
     assert.deepEqual(chain.entries.map((e) => [e.year, e.kind]), [
-      [2020, "baseline"], [2023, "prior"], [2024, "prior"], [2025, "prior"], [2026, "current"],
+      [2019, "baseline"], [2022, "prior"], [2023, "prior"], [2024, "prior"], [2025, "prior"], [2026, "current"],
     ]);
     assert.equal(chain.entries[0]!.source, "reviewed-snapshot");
     assert.equal(chain.entries.at(-1)!.source, "live");

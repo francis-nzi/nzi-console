@@ -86,12 +86,24 @@ describe("the template's period equals the job's period (NZC-115)", { skip: DATA
     // 1 January would fall back to the previous year.
     const bare = "job-no-year";
     await db.query(
-      `INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,start_date)
-       VALUES ($1,$2,$3,90,'crp','CRP','open','Data entry',NULL,'2026-01-01'::date)`, [ORG, bare, CLIENT]);
+      `INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,start_date,reporting_period_start,reporting_period_end)
+       VALUES ($1,$2,$3,90,'crp','CRP','open','Data entry',NULL,'2026-01-01'::date,'2026-01-01'::date,'2026-12-31'::date)`, [ORG, bare, CLIENT]);
     const identity = await buildSpendImportIdentity(db, ORG, bare);
     assert.equal(identity!.reportingYear, 2026, "the year the job starts in, not the one before it");
-    // With no emissions config the period falls back to that year, and both ends must agree with it.
-    assert.equal(identity!.reportingFrom, "2026-01-01");
-    assert.equal(identity!.reportingTo, "2026-12-31");
+    // With no emissions config the window is the job's own period, read the same way as the context reads it.
+    const context = await loadSpendImportContext(db, ORG, bare);
+    assert.deepEqual([identity!.reportingFrom, identity!.reportingTo], ["2026-01-01", "2026-12-31"]);
+    assert.deepEqual([context!.reportingFrom, context!.reportingTo], [identity!.reportingFrom, identity!.reportingTo]);
+  });
+
+  it("has no window — and no identity — for a job with neither an emissions window nor a reporting period (D3 R2: no calendar-year fallback)", async () => {
+    // Before D3 the identity fell back to 1 Jan–31 Dec here. For a client with a September year-end that window overlaps the
+    // next year's job by three months, and the same ledger line imported into both was counted twice.
+    const periodless = "job-no-period";
+    await db.query(
+      `INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,start_date)
+       VALUES ($1,$2,$3,91,'crp','CRP','open','Data entry',NULL,'2026-01-01'::date)`, [ORG, periodless, CLIENT]);
+    assert.equal(await buildSpendImportIdentity(db, ORG, periodless), null);
+    assert.equal(await loadSpendImportContext(db, ORG, periodless), null);
   });
 });

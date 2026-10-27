@@ -581,7 +581,11 @@ export type ReportSiteEmissions = {
   floorAreaM2?: number | null;
 };
 
-export type ReportComparisonColumn = { key: "baseline" | "previous" | "current"; year: number; label: string };
+/**
+ * A comparison column. D3 (R5): the grain is baseline + up to four prior periods + current — the most recent prior is `previous`
+ * as before; an older one is `earlier-<year>`. A composition frozen before D3 carries at most baseline, previous and current.
+ */
+export type ReportComparisonColumn = { key: "baseline" | "previous" | "current" | `earlier-${number}`; year: number; label: string };
 export type ReportEmissionsComparison = {
   columns: ReportComparisonColumn[];
   /** Per scope, a value per column — null where that period cannot be attributed to this scope's sites (said in `notes`). */

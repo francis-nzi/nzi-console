@@ -245,6 +245,14 @@ export {
   dismissSpendAllocationSuggestion, type SpendSuggestionModel, type SpendSuggestionRecorded, type SpendSuggestionConfirmed,
 } from "./spendAllocationSuggestions";
 export { readJobCurrencies, setJobSiteFxRate, type JobCurrencies, type JobSiteCurrency, type JobSiteFxResult } from "./jobSiteFx";
+// Data entry D3 (R3–R6).
+export { fixCarryForwardBasis, storedCarryForwardBasis, type CarryForwardBasis } from "./carryForwardBasis";
+export { readCategoryLineYears, type CategoryLineYears, type CategoryLineYearValue } from "./categoryLineYears";
+export {
+  ENTRY_NOT_REOPENABLE, ENTRY_STILL_EDITABLE, REOPEN_ALREADY_REQUESTED, REOPEN_REQUEST_TEMPLATE,
+  listOpenReopenRequests, openReopenRequestsByRow, requestScopeRowReopen, resolveReopenRequestOnEdit,
+  type OpenReopenRequest, type ReopenRequestResult,
+} from "./portalReopenRequests";
 export { recordClientEntryBasisChoice } from "./entryBasisChoices";
 export {
   readStaffSignature, updateOwnStaffSignature, emailPersonForMember, StaffSignatureError, type StaffSignatureRecord, type SignatureMember,

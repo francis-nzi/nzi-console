@@ -8,6 +8,7 @@ import { listScopeRowAuditEvents } from "./scopeRowHistory";
 import { getPortalDataEntryAccess, type PortalDataEntryAccess } from "./portalAccess";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 import { aggregateJobEmissions, type JobEmissions } from "./emissionsAggregation";
+import { openReopenRequestsByRow } from "./portalReopenRequests";
 
 /**
  * Portal data-entry phase 2 — the client enters data on the job's own scope rows (RULING-portal-dataentry-02; BUILD-portal-
@@ -43,7 +44,7 @@ export async function assertPortalJobAccess(db: Queryable, principal: Pick<Porta
   if (!held.rows[0]) throw new AuthorizationError("tenant", "This job is not available to your account.");
 }
 
-async function requireShownCategory(db: Queryable, clientId: string, row: { categoryCode?: string | null; scope: string }): Promise<void> {
+export async function requireShownCategory(db: Queryable, clientId: string, row: { categoryCode?: string | null; scope: string }): Promise<void> {
   const code = categoryOf(row);
   const gate = await clientCategoryGate(db, clientId);
   // Said without saying why: a hidden category is absent for the client, never "hidden" (NZC-110).
@@ -107,7 +108,11 @@ function withoutStaffIdentity(value: unknown): unknown {
 }
 
 /** A row as the client sees it: the CRM's own read model, with no staff identity, and whether the client may change it. */
-export type PortalScopeRow = Omit<ScopeRowReadModel, "reviewedBy" | "reviewerNote"> & { editable: boolean };
+export type PortalScopeRow = Omit<ScopeRowReadModel, "reviewedBy" | "reviewerNote"> & {
+  editable: boolean;
+  /** D3 (R6): when the client asked for this reviewed entry to be reopened, while that request is open; null otherwise. */
+  reopenRequestedAt?: string | null;
+};
 export function clientFacingScopeRow(row: ScopeRowReadModel): PortalScopeRow {
   const { reviewedBy: _reviewer, reviewerNote: _note, ...rest } = row as ScopeRowReadModel & { reviewedBy?: unknown; reviewerNote?: unknown };
   const capturedAs = (row.provenance as { capturedAs?: unknown }).capturedAs;
@@ -183,11 +188,12 @@ export async function assemblePortalDataView(db: Queryable, organisationId: stri
   const emissions = await aggregateJobEmissions(db, { organisationId, jobId, siteId: null, rowIds: visible });
   // The CRM's own QA readiness, over the same rows (polish fix 5): read-only status for the client's Review & QA section.
   const qa = await getScopeQaReadiness(db, jobId, visible);
+  const reopenRequested = await openReopenRequestsByRow(db, jobId);
   return {
     profile, access, emissions, qa,
     // The CRM's own server metrics (entry count, tCO₂e, completeness), for the categories the client sees — never recomputed.
     categories: { audience: "portal", includedScopes: crm.includedScopes.filter((scope) => categories.some((category) => category.scope === scope)), categories },
-    rows: rows.filter((row) => gate.shows(categoryOf(row), row.scope)).map(clientFacingScopeRow),
+    rows: rows.filter((row) => gate.shows(categoryOf(row), row.scope)).map((row) => ({ ...clientFacingScopeRow(row), reopenRequestedAt: reopenRequested.get(row.id) ?? null })),
     factors: factors.filter((factor) => factor.factorSource !== "client"),
     sites: sites.filter((site) => site.included !== false).map((site) => ({ id: site.id, name: site.name })),
     purchasedGoodsCategories: pgs, reportingMonths: months,

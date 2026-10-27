@@ -2027,6 +2027,19 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-fx-missing{color:#8A6410}
 .nz-fx-none{margin:10px 0 0}
 @media(max-width:640px){.nz-fx-row{grid-template-columns:1fr}}
+/* Data entry D3 (R2–R6): what an import does with a line; a category's lines across the years; reopen requests. */
+.nz-import-recon{color:var(--pine,#0B7A4B);margin-top:4px}
+.nz-lines-open{margin-left:6px;font-size:12px}
+.nz-lines-drawer{width:min(760px,96vw)}
+.nz-lines-scroll{overflow-x:auto;padding:0 16px}
+/* Inside .nz-assurance, whose trend table holds a 760px minimum; the drawer's own table fits the drawer and scrolls past it. */
+.nz-assurance .nz-tbl.nz-lines-tbl{min-width:0}
+.nz-lines-tbl td.num{white-space:nowrap}
+.nz-lines-tbl td:first-child{min-width:140px}
+.nz-reopen-requests{margin:10px 0}
+.nz-reopen-requests ul{margin:6px 0 0;padding-left:18px}
+.nz-pdv-reopen{display:flex;flex-direction:column;gap:8px}
+.nz-pdv-reopen .nz-btn{align-self:flex-start}
 /* Data entry D2 (R5): an AI suggestion, labelled and never applied. */
 .nz-ai-suggestion{display:flex;flex-direction:column;gap:5px;border:1px dashed #B07A00;background:#FFF8E8;border-radius:9px;padding:9px 11px;margin-top:6px}
 .nz-ai-badge{align-self:flex-start;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#7A5200;background:#FFE9B8;border-radius:999px;padding:2px 8px}

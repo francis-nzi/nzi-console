@@ -74,6 +74,7 @@ export type CommandKey =
   | "portal.scope.row.create"
   | "portal.scope.row.update"
   | "portal.scope.row.deactivate"
+  | "portal.scope.row.reopen.request"
   | "portal.strategy.add"
   | "portal.strategy.propose"
   | "portal.strategy.update"
@@ -767,6 +768,7 @@ export type CommandInputMap = {
   "portal.scope.row.update": { jobId: string; rowId: string; expectedVersion: number } & PortalScopeRowFields;
   /** Off by default (profile `deactivate`); the same row rule as update, with a reason as staff give one. */
   "portal.scope.row.deactivate": { jobId: string; rowId: string; expectedVersion: number };
+  "portal.scope.row.reopen.request": { jobId: string; rowId: string; expectedVersion: number; reason: string };
   /**
    * Actions A2: the client in their own plan. `clientId` is the portal session's client — set by the route, never read
    * from the request. Adding from the library lands Proposed (origin plan); a custom action lands as a pending proposal.
@@ -1219,6 +1221,8 @@ export const staffCapabilityOf = (key: CommandKey): Capability | null => {
 };
 export const isPortalCommand = (key: CommandKey): boolean => (commandDefinitions[key] as CommandDefinition).principal === "portal";
 const text = (value: unknown) => typeof value === "string" && value.trim().length > 0;
+/** D3 (R6): the longest reason a client may give for asking to reopen an entry (0195's CHECK). */
+export const REOPEN_REASON_MAX = 1000;
 const positive = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value > 0;
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): value is T => typeof value === "string" && allowed.includes(value as T);
 /**
@@ -1870,6 +1874,16 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "portal.scope.row.create": { key: "portal.scope.row.create", label: "Enter a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "scope row (pending, client-provenanced) + audit + outbox + idempotency", auditAction: "portal_scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...portalStaffOnlyIssues(input as Record<string, unknown>), ...scopeRowIssues({ ...input, qualityTier: null })]; required(issues, "jobId", input.jobId); required(issues, "categoryCode", input.categoryCode); return issues; } },
   "portal.scope.row.update": { key: "portal.scope.row.update", label: "Change a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "versioned scope row (back to pending) + audit + outbox + idempotency", auditAction: "portal_scope_row_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...portalStaffOnlyIssues(input as Record<string, unknown>), ...scopeRowIssues({ ...input, qualityTier: null })]; required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); required(issues, "categoryCode", input.categoryCode); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "portal.scope.row.deactivate": { key: "portal.scope.row.deactivate", label: "Deactivate a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: true, transaction: "deactivation (never deletion; figures kept) + audit + outbox + idempotency", auditAction: "portal_scope_row_deactivated", validate: (input, context) => scopeRowStateIssues(input, context, true) },
+  // Data entry D3 (R6): after review an entry is the CRM's to change; the client asks — the request, with their reason, goes to the
+  // CRM as a message. No self-serve recall: nothing about the entry changes until the CRM edits it.
+  "portal.scope.row.reopen.request": { key: "portal.scope.row.reopen.request", label: "Ask the CRM to reopen a reviewed entry in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "reopen request (open) + a message to the CRM + audit + outbox + idempotency", auditAction: "portal_scope_row_reopen_requested", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (!text(input.reason)) issues.push({ field: "reason", code: "REQUIRED", message: "Say what needs to change, so your adviser knows why to reopen it." });
+    else if (input.reason.trim().length > REOPEN_REASON_MAX) issues.push({ field: "reason", code: "TOO_LONG", message: `Keep it to ${REOPEN_REASON_MAX} characters.` });
+    return issues;
+  } },
   // Actions A2: the client's hand in their own plan. Portal commands, authorized by the portal session's own client — never a
   // job grant — and refused anything that is staff's to set (alignment, inclusion, the consultant's notes, agreeing).
   "portal.strategy.add": { key: "portal.strategy.add", label: "Add an action from the library in the client portal", principal: "portal", permission: "portal.plan", reasonRequired: false, transaction: "client action (proposed, origin plan, library alignment) + audit + outbox + idempotency", auditAction: "portal_strategy_added", validate: (input, context) => {
@@ -3260,9 +3274,15 @@ export type SpendRollforwardLine = {
   factorSource: FactorSource; factorLabel: string | null;
   pinnedFactorVersion: string | null; currentFactorVersion: string | null; factorVersionMoved: boolean;
   datasetInJobSelection: boolean; alreadyRolledForward: boolean;
+  /** D3 (R4): the line's carry key (GL code, else description) — one line per key is carried; null: a line with neither. */
+  carryKey?: string | null;
+  /** D3 (R4): how many of the prior year's lines share the key (the largest names it). */
+  priorLineCount?: number;
 };
+/** D3 (R3): `fixed` — the job's stored carry-forward basis; otherwise the proposed prior job, stored by the first carry-forward. */
+export type CarryForwardPriorJob = { id: string; number: string; reportingYear: number; fixed?: boolean };
 export type SpendRollforwardPreview = {
-  priorJob: { id: string; number: string; reportingYear: number } | null;
+  priorJob: CarryForwardPriorJob | null;
   lines: SpendRollforwardLine[];
 };
 
@@ -3278,6 +3298,6 @@ export type ScopeRowRollforwardLine = {
   datasetInJobSelection: boolean; alreadyRolledForward: boolean;
 };
 export type ScopeRowRollforwardPreview = {
-  priorJob: { id: string; number: string; reportingYear: number } | null;
+  priorJob: CarryForwardPriorJob | null;
   rows: ScopeRowRollforwardLine[];
 };

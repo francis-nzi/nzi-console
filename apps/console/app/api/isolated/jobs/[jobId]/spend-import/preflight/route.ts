@@ -15,8 +15,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     const body = (await request.json()) as { rows?: SpendImportRow[] };
     const rows = Array.isArray(body.rows) ? body.rows.slice(0, IMPORT_MAX_ROWS) : [];
     const issued = await issueSpendImportIdentity(isolatedPool(), organisationId, jobId, process.env.NZI_CONSOLE_SESSION_SECRET);
-    if (!issued) return Response.json({ kind: "blocked", reason: "job-not-found", message: "The job is not a configured CRP job." }, { status: 200 });
-    return Response.json(await previewSpendImport(isolatedPool(), organisationId, issued.identity, rows, SPEND_IMPORT_TEMPLATE_VERSION));
+    // In the `{ data }` envelope the panel's `postBrowserCommand` reads as success (D3: found driving the preview — a bare body
+    // was read as a failure, so the preview never showed).
+    if (!issued) return Response.json({ data: { kind: "blocked", reason: "job-not-found", message: "The job has no reporting period set, so nothing can be imported yet." } }, { status: 200 });
+    return Response.json({ data: await previewSpendImport(isolatedPool(), organisationId, issued.identity, rows, SPEND_IMPORT_TEMPLATE_VERSION) });
   } catch (error) {
     return commandFailure(error);
   }

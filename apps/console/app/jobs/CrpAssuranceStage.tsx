@@ -35,6 +35,7 @@ import {
 import { formatQuantity } from "../lib/formatNumber";
 import { useStaffMe } from "../lib/useEditAccess";
 import { filterAuditRows, filterGaps, worklistCounts, type GapFilter, type Worklist } from "./assuranceWorklist";
+import { CategoryLinesDrawer } from "./CategoryLinesDrawer";
 import { isSelfApproved, readIndependentApprovalRequired, snapshotActAccess } from "./snapshotApproval";
 
 type Tab = "trend" | "scope" | "site" | "audit" | "intensity";
@@ -112,6 +113,9 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
   const shownAuditRows = filterAuditRows(auditRows, gaps.gaps, worklist);
   const [drawerOpen, setDrawerOpen] = useState(true);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  // D3 (R5): the category whose lines are open across the years (one drawer at a time: the assurance drawer closes for it).
+  const [linesFor, setLinesFor] = useState<{ scopeCode: string; label: string } | null>(null);
+  const openLines = (category: { scopeCode: string; label: string }) => { setDrawerOpen(false); setLinesFor(category); };
   const openRowDetail = (rowId: string) => { setSelectedRowId(rowId); setDrawerOpen(true); };
   // The reopen toggle is conditionally rendered, so Drawer can't restore focus
   // to it — do it here once it re-mounts after a close (WCAG 2.4.3).
@@ -208,7 +212,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
                 const rowGaps = (gapsByScopeCode.get(category.scopeCode) ?? []).filter((gap) => !gap.resolved);
                 return <tr key={category.scopeCode} className={rowGaps.length ? "nz-flagged" : ""}>
                   <td>Scope {scope}</td>
-                  <td>{category.label}</td>
+                  <td>{category.label} <button type="button" className="lnk nz-lines-open" onClick={() => openLines(category)} aria-label={`${category.label}: lines across the years`}>Lines ›</button></td>
                   {trend.years.map((year) => (
                     <td key={year.year} className={`num${year.year === trend.baselineYear ? " bl" : year.kind === "current" ? " cur" : ""}`}>{fmt(valueFor(year, category.scopeCode))}</td>
                   ))}
@@ -343,6 +347,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
       onResolved={onReload}
       onEditRow={onGoToRow}
     />
+    <CategoryLinesDrawer jobId={jobId} category={linesFor} onClose={() => setLinesFor(null)} />
   </section>;
 }
 
