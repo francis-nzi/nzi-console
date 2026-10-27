@@ -62,6 +62,7 @@ import { useUsageTypes } from "./usageTypes";
 import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, ENTRY_FACTOR_REQUIRED, entryFactorRefsFor, entryHasFactor, optionsForCategory, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
+import { ReallocateControl } from "./ReallocateControl";
 import {JobStageStepper,StageSection,StageFocusStrip,stageAnchorId,type StageStatus} from "./CrpStageSections";
 import {JobShellHeader,datasetsSummary,milestonesSummary,type JobShellDrawer,type JobShellSummary} from "./JobShellHeader";
 import {JobSitesDrawer} from "./JobSitesDrawer";
@@ -465,6 +466,7 @@ export function CrpScopeWorkspace({
         factors={quickAddOptions}
         declared={declaredOption}
         entryBasis={entryBasis}
+        allFactors={entryFactorRefs}
         units={specs[addingCategory.code]?.units ?? []}
         reportingMonths={spendReportingMonths}
         spendCategories={purchasedGoodsCategories.map(category => ({ id: category.id, name: category.name }))}
@@ -1222,6 +1224,8 @@ function Editor({
   return (
     <div className="nz-rd">
       <RowStateControl jobId={jobId} row={row} notice={notice} onDiscarded={onDiscarded} onChanged={() => router.refresh()} />
+      {/* D2 (R4): a spend line moved at review re-files and teaches the client's map. */}
+      <ReallocateControl jobId={jobId} row={row} factors={factors} notice={notice} onMoved={() => router.refresh()} />
       <RowCalcBanner calculated={displayTco2e !== null} pending="Not calculated yet — edit the fields, then Save & calculate." done="Calculated evidence is available." />
 
       {/* The 7 key fields, always visible (item 2) — the frame the client portal's drawer shares. Quantity is the row's primary

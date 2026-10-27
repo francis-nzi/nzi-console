@@ -7,6 +7,7 @@
 // and `TextEncoder`/`TextDecoder` are available in both the browser and Node 20.
 
 import type { FactorSource, MonthlyActivitySlot } from "./commands";
+import type { SpendRouting } from "./spendAllocation";
 
 export const SPEND_IMPORT_TOKEN_PREFIX = "nzi-spend-import.v1";
 export const IMPORT_MAX_ROWS = 10_000;
@@ -105,7 +106,7 @@ export type ImportRowIssueCode =
   | "DESCRIPTION_REQUIRED" | "NET_VALUE_INVALID" | "VAT_PERCENT_INVALID"
   | "INVOICE_DATE_INVALID" | "CATEGORY_UNRESOLVED" | "FACTOR_UNRESOLVED"
   | "INVOICE_DATE_OUTSIDE_PERIOD" | "DUPLICATE_IN_FILE" | "NON_POSITIVE_NET"
-  | "YOY_VARIANCE" | "ALREADY_IMPORTED";
+  | "YOY_VARIANCE" | "ALREADY_IMPORTED" | "FACTOR_NOT_IN_CATEGORY" | "VAT_NOT_APPLICABLE";
 
 export type ImportRowIssueSeverity = "blocker" | "advisory";
 
@@ -115,11 +116,17 @@ export const IMPORT_ROW_ISSUE_SEVERITY: Record<ImportRowIssueCode, ImportRowIssu
   INVOICE_DATE_INVALID: "blocker", CATEGORY_UNRESOLVED: "blocker", FACTOR_UNRESOLVED: "blocker",
   INVOICE_DATE_OUTSIDE_PERIOD: "advisory", DUPLICATE_IN_FILE: "advisory", NON_POSITIVE_NET: "advisory",
   YOY_VARIANCE: "advisory", ALREADY_IMPORTED: "advisory",
+  // D2: a line routed to a category its factor cannot price is held; VAT on a line whose category takes none is dropped, said aloud.
+  FACTOR_NOT_IN_CATEGORY: "blocker", VAT_NOT_APPLICABLE: "advisory",
 };
 
 export type ImportRowIssue = { code: ImportRowIssueCode; severity: ImportRowIssueSeverity; message: string };
 export type ImportRowStatus = "accepted" | "advisory" | "blocked";
-export type ImportRowReview = { rowNumber: number; status: ImportRowStatus; issues: ImportRowIssue[] };
+export type ImportRowReview = {
+  rowNumber: number; status: ImportRowStatus; issues: ImportRowIssue[];
+  /** D2 (R2): where the line will be filed, and why — the client's map, or the PG&S residual. Server-side; shown on every row. */
+  routing?: SpendRouting;
+};
 
 export function importRowIssue(code: ImportRowIssueCode, message: string): ImportRowIssue {
   return { code, severity: IMPORT_ROW_ISSUE_SEVERITY[code], message };
@@ -150,7 +157,9 @@ export type ImportRowContext = {
   clientFactorIds: ReadonlySet<string>;
 };
 
-export function reviewSpendImportRow(row: SpendImportRow, context: ImportRowContext, duplicateInFile: boolean): ImportRowReview {
+export function reviewSpendImportRow(row: SpendImportRow, context: ImportRowContext, duplicateInFile: boolean,
+  /** D2: a PG&S sub-category is asked of a line filed in PG&S only — a line routed elsewhere has none. */
+  requirePurchasedGoodsCategory = true): ImportRowReview {
   const issues: ImportRowIssue[] = [];
   if (!row.description.trim()) issues.push(importRowIssue("DESCRIPTION_REQUIRED", "Description is required."));
   if (row.netValue === null || !Number.isFinite(row.netValue)) issues.push(importRowIssue("NET_VALUE_INVALID", "Net value must be a number."));
@@ -164,7 +173,7 @@ export function reviewSpendImportRow(row: SpendImportRow, context: ImportRowCont
       issues.push(importRowIssue("INVOICE_DATE_OUTSIDE_PERIOD", "Invoice date is outside the reporting period."));
     }
   }
-  if (row.purchasedGoodsCategoryId === null || !context.categoryIds.has(row.purchasedGoodsCategoryId)) {
+  if (requirePurchasedGoodsCategory && (row.purchasedGoodsCategoryId === null || !context.categoryIds.has(row.purchasedGoodsCategoryId))) {
     issues.push(importRowIssue("CATEGORY_UNRESOLVED", "Purchased-goods category is not one of the client's controlled categories."));
   }
   const factorResolved = row.factorSource === "client"

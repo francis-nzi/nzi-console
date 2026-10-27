@@ -7,6 +7,7 @@ import {
 import { VersionConflictError } from "./errors";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 import type { PoolLike, Queryable } from "./postgres";
+import { activeSpendAllocationsForJob } from "./spendAllocationReads";
 
 type DefaultRow = { category_code: string; default_basis: string; version: number };
 
@@ -30,7 +31,7 @@ export async function listEntryBasisDefaults(db: Queryable, organisationId: stri
  * currency. Read with the job's own tenant; a job not found reads as nothing chosen, in GBP — the drawer then opens on the seed.
  */
 export async function readJobEntryBasis(db: Queryable, organisationId: string, jobId: string): Promise<JobEntryBasis> {
-  const [defaults, choices, client] = await Promise.all([
+  const [defaults, choices, client, allocations] = await Promise.all([
     db.query<{ category_code: string; default_basis: string }>(
       `SELECT category_code, default_basis FROM nzi_console.organisation_entry_basis_defaults WHERE organisation_id = $1`, [organisationId]),
     db.query<{ category_code: string; basis: string }>(
@@ -40,6 +41,7 @@ export async function readJobEntryBasis(db: Queryable, organisationId: string, j
     db.query<{ currency: string | null }>(
       `SELECT cl.currency FROM nzi_console.jobs j JOIN nzi_console.clients cl ON (cl.organisation_id, cl.client_id) = (j.organisation_id, j.client_id)
         WHERE j.organisation_id = $1 AND j.job_id = $2`, [organisationId, jobId]),
+    activeSpendAllocationsForJob(db, organisationId, jobId),
   ]);
   const byCategory = (rows: Array<{ category_code: string; value: string }>) =>
     Object.fromEntries(rows.filter((row) => isEntryBasis(row.value)).map((row) => [row.category_code, row.value as EntryBasis]));
@@ -47,6 +49,7 @@ export async function readJobEntryBasis(db: Queryable, organisationId: string, j
     defaults: byCategory(defaults.rows.map((row) => ({ category_code: row.category_code, value: row.default_basis }))),
     choices: byCategory(choices.rows.map((row) => ({ category_code: row.category_code, value: row.basis }))),
     currency: client.rows[0]?.currency?.trim() || "GBP",
+    allocations,
   };
 }
 

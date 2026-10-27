@@ -35,6 +35,7 @@ import { contactConsentDecisions, isStaffRecordableBasis, type ContactConsentBas
 import { strategyScopes, strategyControlLevels, strategyStatuses } from "./reductionStrategies";
 import { isReminderLead, STRATEGY_REMINDER_MAX_LEAD_DAYS } from "./strategyReminders";
 import { entryBasisUnitIssue, isEntryBasis, type EntryBasis } from "./entryBasis";
+import { SPEND_ALLOCATION_KEY_KINDS, SPEND_ALLOCATION_KEY_MAX, spendAllocationFieldIssues, type SpendAllocationKeyKind } from "./spendAllocation";
 import { groundSrsSuggestion, SRS_SUGGESTION_LIMITS } from "./srsBridge";
 import { readinessReportTemplates } from "./readinessReportTemplates";
 import { intensityDividers, intensityUnitKinds, isIntensityIconKey, monetaryKindIssue, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
@@ -161,6 +162,11 @@ export type CommandKey =
   | "message_template.reinstate"
   | "admin.reminders.update"
   | "admin.entryBasis.update"
+  | "spend_allocation.create"
+  | "spend_allocation.update"
+  | "spend_allocation.archive"
+  | "spend_allocation.reinstate"
+  | "scope.row.reallocate"
   | "bd_stage.create"
   | "bd_stage.update"
   | "bd_stage.deactivate"
@@ -950,6 +956,13 @@ export type CommandInputMap = {
   // Actions A3 (R6): the reminder master switch and default lead, beside the message templates. Absent version: the first save.
   "admin.reminders.update": { enabled: boolean; defaultLeadDays: number; expectedVersion?: number | null };
   "admin.entryBasis.update": { categoryCode: string; defaultBasis: EntryBasis; expectedVersion?: number | null };
+  // Data entry D2: a client's allocation map — GL code (or description) → the category a spend line belongs in.
+  "spend_allocation.create": { clientId: string; keyKind: SpendAllocationKeyKind; key: string; targetCategoryCode: string; vatApplies: boolean; defaultDatasetId?: string | null; defaultFactorId?: string | null };
+  "spend_allocation.update": { allocationId: string; expectedVersion: number; targetCategoryCode: string; vatApplies: boolean; defaultDatasetId?: string | null; defaultFactorId?: string | null };
+  "spend_allocation.archive": { allocationId: string; expectedVersion: number };
+  "spend_allocation.reinstate": { allocationId: string; expectedVersion: number };
+  // D2 R4: move a spend line to the category it belongs in, at review; the move teaches the client's map.
+  "scope.row.reallocate": { jobId: string; rowId: string; expectedVersion: number; categoryCode: string; datasetId?: string | null; factorId?: string | null };
   // The BD funnel (admin Phase F2; ruled phaseF plan). admin.lookups; a stage's key set once.
   "bd_stage.create": BdStageEditableFields & { stageKey: string };
   "bd_stage.update": BdStageEditableFields & { stageId: string; expectedVersion: number };
@@ -2488,6 +2501,41 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (typeof input.categoryCode !== "string" || !emissionCategoryTaxonomy.some((entry) => entry.code === input.categoryCode)) issues.push({ field: "categoryCode", code: "INVALID", message: "Choose a category from the emission taxonomy." });
     if (!isEntryBasis(input.defaultBasis)) issues.push({ field: "defaultBasis", code: "INVALID", message: "A category's entries open on Activity or on Spend." });
     if (input.expectedVersion !== undefined && input.expectedVersion !== null && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // Data entry D2 (R1, R8): a client's allocation map, on the reference-data engine's terms — admin.lookups, versioned, archived
+  // never deleted, its key set once. Settings, not personal data: audited in full.
+  "spend_allocation.create": { key: "spend_allocation.create", label: "Map a GL code or description to a category", permission: "admin.lookups", reasonRequired: false, transaction: "map entry + audit + outbox + idempotency", auditAction: "spend_allocation.created", validate: (input, context) => {
+    const issues: CommandIssue[] = [...baseIssues(context, false), ...spendAllocationFieldIssues(input)];
+    required(issues, "clientId", input.clientId);
+    if (!SPEND_ALLOCATION_KEY_KINDS.includes(input.keyKind)) issues.push({ field: "keyKind", code: "INVALID", message: "A line is matched by its GL code or by its description." });
+    if (typeof input.key !== "string" || !input.key.trim() || input.key.trim().length > SPEND_ALLOCATION_KEY_MAX) issues.push({ field: "key", code: "INVALID", message: `The GL code or description is required, up to ${SPEND_ALLOCATION_KEY_MAX} characters.` });
+    return issues;
+  } },
+  "spend_allocation.update": { key: "spend_allocation.update", label: "Change where a mapped line goes", permission: "admin.lookups", reasonRequired: false, transaction: "versioned map entry + audit + outbox + idempotency", auditAction: "spend_allocation.updated", validate: (input, context) => {
+    const issues: CommandIssue[] = [...baseIssues(context, false), ...spendAllocationFieldIssues(input)];
+    required(issues, "allocationId", input.allocationId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "spend_allocation.archive": { key: "spend_allocation.archive", label: "Stop routing by a map entry", permission: "admin.lookups", reasonRequired: false, transaction: "archive + audit + outbox + idempotency", auditAction: "spend_allocation.archived", validate: (input, context) => {
+    const issues = baseIssues(context, false); required(issues, "allocationId", input.allocationId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "spend_allocation.reinstate": { key: "spend_allocation.reinstate", label: "Route by a map entry again", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "spend_allocation.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false); required(issues, "allocationId", input.allocationId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // D2 R4: a reviewer's move of a spend line, which also records the move in the client's map (the map learns). scoperow.edit,
+  // as any change to a row is; the map entry it writes is audited with it.
+  "scope.row.reallocate": { key: "scope.row.reallocate", label: "Move a spend line to another category", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned scope row + source + map entry + audit + outbox + idempotency", auditAction: "scope_row_reallocated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (typeof input.categoryCode !== "string" || !emissionCategoryTaxonomy.some((entry) => entry.code === input.categoryCode)) issues.push({ field: "categoryCode", code: "INVALID", message: "Choose the category this line belongs in." });
+    if ((input.datasetId ?? null) === null ? (input.factorId ?? null) !== null : !input.factorId) issues.push({ field: "factorId", code: "PAIRED", message: "A spend factor names its dataset and its factor, or neither." });
     return issues;
   } },
   // The BD funnel (admin Phase F2). admin.lookups; the key set once; the last active stage stays.

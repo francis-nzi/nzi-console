@@ -11,6 +11,7 @@ import {
   type PurchasedGoodsCategoryOption,
   type SpendImportColumnMap,
   type SpendImportField,
+  spendCategoryOf,
 } from "@nzi/contracts";
 import { parseDelimited } from "./csvReader";
 import {
@@ -185,11 +186,15 @@ export function SpendImportPanel({
               <div className="nz-sect">Preview <span className="muted">{preflight.summary.accepted} ready · {preflight.summary.advisory} advisory · {preflight.summary.blocked} blocked</span></div>
               <div style={{ overflowX: "auto" }}>
                 <table className="nz-tbl">
-                  <thead><tr><th>Row</th><th>Status</th><th>Notes</th></tr></thead>
+                  {/* D2 (R2): where each line will be filed, and why — never re-filed out of sight. A line in the wrong place is moved at
+                      review ("Move to another category"), which also teaches the client's map. */}
+                  <thead><tr><th>Row</th><th>Filed under</th><th>Status</th><th>Notes</th></tr></thead>
                   <tbody>
                     {preflight.reviews.map((review) => (
                       <tr key={review.rowNumber}>
                         <td>{review.rowNumber}</td>
+                        <td className="nz-import-routing">{review.routing ? <><b>{spendCategoryOf(review.routing.categoryCode)?.name ?? review.routing.categoryCode}</b> <span className="muted">({review.routing.categoryCode})</span>
+                          <div className="nz-hint">{review.routing.by === "residual" ? "Not in this client's map — PG&S residual" : `This client's map · by ${review.routing.by === "gl" ? "GL code" : "description"}`}{review.routing.vatApplies ? "" : " · no VAT"}</div></> : <span className="muted">—</span>}</td>
                         <td><span className={`nz-st ${review.status === "accepted" ? "done" : review.status === "blocked" ? "nof" : "est"}`}>{review.status}</span></td>
                         <td>{review.issues.length === 0 ? <span className="muted">—</span> : review.issues.map((issue) => <div key={issue.code} className="nz-hint" style={{ color: issue.severity === "blocker" ? "#B23B2E" : "#8A6410" }} role="note">{issue.message}</div>)}</td>
                       </tr>

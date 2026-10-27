@@ -4,7 +4,7 @@
 // the CRP workspace and the client portal are provably the same capture process
 // (the portal is a constrained mirror — same order, fewer fields).
 import type { EmissionCategory, ScopeQualityTier, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
-import { entryBasisOfUnit, isCurrencyUnit, scopeMeta, type EntryBasis } from "@nzi/contracts";
+import { entryBasisOfUnit, isCurrencyUnit, scopeMeta, spendCategoryOf, type EntryBasis } from "@nzi/contracts";
 import { defaultPortalFactorId } from "../portal/portalFactorDefault";
 
 export type EntryAudience = "crm" | "portal";
@@ -42,6 +42,11 @@ export type EmissionEntryDraft = {
   basis?: EntryBasis;
   /** D1 (R3): the currency a spend entry is recorded in — its unit. Spend only. */
   currency?: string;
+  /**
+   * D2 (R2): the category a spend line is filed under, when that is not the drawer's own — set by the client's allocation map
+   * (shown) or by a person's "allocate elsewhere". Absent: the drawer's category. Spend only.
+   */
+  allocateTo?: string;
 };
 
 export type EntryFactorOption = { id: string; label: string; unit?: string; isClientFactor?: boolean;
@@ -485,6 +490,8 @@ export function emissionEntryDraftToScopeRow(
   reportingMonths: string[],
 ): ScopeRowWriteFields {
   const spend = draftBasis(draft, category) === "spend";
+  // D2 (R2): a spend line is filed under the category its allocation names — the map's, or a person's "allocate elsewhere".
+  const filed = spend && draft.allocateTo ? spendCategoryOf(draft.allocateTo) ?? category : category;
   const factor = factors.find((option) => option.id === draft.factorId) ?? null;
   const isClient = factor?.factorSource === "client";
   const monthly = draft.monthlyOpen
@@ -496,8 +503,8 @@ export function emissionEntryDraftToScopeRow(
     spend && draft.vatPercent.trim() ? `VAT ${draft.vatPercent.trim()}%` : "",
   ].filter(Boolean);
   return {
-    scope: categoryRowScope(category),
-    categoryCode: category.code,
+    scope: categoryRowScope(filed),
+    categoryCode: filed.code,
     sourceLabel: label,
     reportLabel: label,
     assetIdentifier: draft.registration.trim() || null,
@@ -515,7 +522,7 @@ export function emissionEntryDraftToScopeRow(
     // What the lookup said, asserted at capture; the write resolves from it and records it as such (F3).
     assertedVehicleAttributes: draft.assertedVehicleAttributes ?? null,
     // A PG&S sub-category is PG&S's own (the write refuses one off 3.1), so a spend entry elsewhere carries none.
-    purchasedGoodsCategoryId: spend && category.code === "3.1" ? draft.spendCategoryId || null : null,
+    purchasedGoodsCategoryId: spend && filed.code === "3.1" ? draft.spendCategoryId || null : null,
     purchasedGoodsCategoryLabel: null,
     quantity: parseEntryNumber(draft.quantity),
     // D1 (R3): a spend entry is recorded in its currency — GBP unless the drawer chose another.

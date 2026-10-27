@@ -17,9 +17,9 @@ describe("Data entry D1 — the basis rules", () => {
     assert.ok(isCurrencyUnit("USD") && !isCurrencyUnit("gbp") && !isCurrencyUnit("kWh"));
   });
 
-  it("the seed: PG&S opens on Spend, every other category on Activity — 3.2 and 3.15 included (settled 27 Oct)", () => {
-    assert.equal(seededEntryBasis("3.1"), "spend");
-    for (const code of ["3.2", "3.15", "3.6", "1.company-vehicles", "2.purchased-electricity"]) assert.equal(seededEntryBasis(code), "activity", code);
+  it("the seed: PG&S, Capital Goods and Investments open on Spend (D2 R7); every other category on Activity", () => {
+    for (const code of ["3.1", "3.2", "3.15"]) assert.equal(seededEntryBasis(code), "spend", code);
+    for (const code of ["3.6", "3.5", "1.company-vehicles", "2.purchased-electricity"]) assert.equal(seededEntryBasis(code), "activity", code);
   });
 
   it("opens on the client's last choice, else the admin default, else the seed — never on Spend where it cannot be chosen", () => {

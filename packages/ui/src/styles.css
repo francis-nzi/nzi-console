@@ -2000,6 +2000,26 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-reminders{margin:0 0 16px}.nz-a-reminders .nz-a-panel-title .nz-a-badge{margin-left:auto}
 .nz-a-reminders-b{display:grid;gap:12px;padding:14px 18px}.nz-a-reminders-b .nz-a-hint{margin:0}
 .nz-a-reminders-b .nz-a-sub-record-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px}
+/* Data entry D2 (admin): a client's allocation map. */
+.nz-a-alloc .nz-a-panel-title{flex-wrap:wrap}
+.nz-a-alloc-client{margin-left:auto;min-width:220px;font-size:11.5px;font-weight:600;color:var(--a-ink-2)}
+.nz-a-alloc-pad{padding:12px 18px;margin:0}
+.nz-a-alloc>.nz-a-error,.nz-a-alloc>.nz-a-notice{margin:12px 18px 0}
+.nz-a-alloc-add{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;align-items:end;padding:14px 18px;border-bottom:1px solid var(--a-line-2)}
+.nz-a-alloc-add .nz-a-subhead{grid-column:1/-1;margin:0}
+.nz-a-alloc label.nz-a-field{display:flex;flex-direction:column;gap:5px;font-size:11.5px;font-weight:600;color:var(--a-ink-2)}
+.nz-a-alloc label.nz-a-check{flex-direction:row;align-items:center;gap:7px}
+.nz-a-alloc label.nz-a-check input{width:auto}
+.nz-a-alloc-list{padding:4px 18px 12px}
+.nz-a-alloc-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--a-line-2)}
+.nz-a-alloc-row.archived{opacity:.6}
+.nz-a-alloc-edit{grid-column:2/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;align-items:end}
+.nz-a-alloc-actions{display:flex;gap:6px;justify-content:flex-end}
+.nz-a-alloc-target .nz-a-mono{font-size:11px;color:var(--a-ink-3)}
+@media(max-width:640px){.nz-a-alloc-row{grid-template-columns:1fr}.nz-a-alloc-edit{grid-column:1}.nz-a-alloc-actions{justify-content:flex-start}}
+/* Data entry D2: where a spend line is filed, in the drawer; moving one at review. */
+.nz-ef-allocation{display:flex;flex-direction:column;gap:4px;width:100%;margin-top:10px}
+.nz-reallocate{display:flex;flex-direction:column;gap:8px;margin:8px 0}
 /* Data entry D1 (admin): the default basis per category. */
 .nz-a-basis-group{padding:4px 18px 10px}
 .nz-a-basis-scope{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--a-ink-3);padding:12px 0 6px}

@@ -12,11 +12,13 @@
  *
  * ## The default a drawer opens on
  *
- * The client's last choice for the category, else the organisation's admin default for it, else the seed: **PG&S (3.1) = Spend,
- * every other category = Activity** (settled 27 Oct). Spend is only ever opened on where a spend factor is available; the toggle
+ * The client's last choice for the category, else the organisation's admin default for it, else the seed: **the spend-native
+ * categories — PG&S (3.1), Capital Goods (3.2), Investments (3.15) — open on Spend, every other category on Activity** (settled
+ * 27 Oct; 3.2 and 3.15 added on the D1 review, D2 R7). Spend is only ever opened on where a spend factor is available; the toggle
  * still shows, with Spend disabled and a note, where none is (R1/R2).
  */
 import { CURRENCY_CODE_PATTERN } from "./adminCommercialLookups";
+import type { SpendAllocationEntry } from "./spendAllocation";
 
 export const ENTRY_BASES = ["activity", "spend"] as const;
 export type EntryBasis = (typeof ENTRY_BASES)[number];
@@ -34,8 +36,8 @@ export function entryBasisOfUnit(unit: string | null | undefined): EntryBasis | 
   return isCurrencyUnit(unit) ? "spend" : "activity";
 }
 
-/** The categories the seed opens on Spend (settled 27 Oct: PG&S only). Every other category's seed is Activity. */
-export const SEEDED_SPEND_CATEGORIES: readonly string[] = ["3.1"];
+/** The categories the seed opens on Spend: PG&S, and since D2 (R7) Capital Goods and Investments. Every other category's seed is Activity. */
+export const SEEDED_SPEND_CATEGORIES: readonly string[] = ["3.1", "3.2", "3.15"];
 
 export const seededEntryBasis = (categoryCode: string): EntryBasis => (SEEDED_SPEND_CATEGORIES.includes(categoryCode) ? "spend" : "activity");
 
@@ -61,6 +63,8 @@ export type JobEntryBasis = {
   choices: Record<string, EntryBasis>;
   /** The client's currency (clients.currency), which a fresh spend entry starts in (R3). */
   currency: string;
+  /** D2: the client's live allocation map, which routes a spend line the drawer is given to its proper category. */
+  allocations?: SpendAllocationEntry[];
 };
 
 /** One category's admin default as Admin lists it: the setting, if any, over the seed. */

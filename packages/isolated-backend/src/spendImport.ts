@@ -1,9 +1,15 @@
 import {
   importRowIssue,
+  importRowStatus,
   reviewSpendImportRow,
   spendImportRowKey,
   summariseImportReview,
+  routeSpendLine,
+  SPEND_RESIDUAL_CATEGORY,
+  spendCategoryOf,
   type ImportRowReview,
+  type SpendAllocationEntry,
+  type SpendRouting,
   type SpendImportIdentity,
   type SpendImportPreflightState,
   type SpendImportRow,
@@ -11,6 +17,7 @@ import {
 import { dateOnly } from "./dates";
 import type { PoolLike, Queryable } from "./postgres";
 import { withTenantRead } from "./postgres";
+import { activeSpendAllocationsForJob } from "./spendAllocationReads";
 
 export type SpendImportJobContext = {
   reportingFrom: string;
@@ -19,6 +26,11 @@ export type SpendImportJobContext = {
   factorIds: Set<string>;
   clientFactorIds: Set<string>;
   existingKeys: Set<string>; // description|net|gl of live (non-voided) spend sources on this job
+  /** D2: the client's live allocation map, which routes each line to its category. */
+  allocations: SpendAllocationEntry[];
+  /** D2: the scopes each selectable factor carries, so a line routed to a category its factor cannot price is held. */
+  factorScopes: Map<string, string[]>;
+  clientFactorScopes: Map<string, string>;
 };
 
 export async function loadSpendImportContext(db: Queryable, organisationId: string, jobId: string): Promise<SpendImportJobContext | null> {
@@ -32,12 +44,12 @@ export async function loadSpendImportContext(db: Queryable, organisationId: stri
     `SELECT c.category_id FROM nzi_console.purchased_goods_categories c JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(c.organisation_id,c.client_id) WHERE c.organisation_id=$1 AND j.job_id=$2`,
     [organisationId, jobId],
   );
-  const factors = await db.query<{ factor_id: string }>(
-    `SELECT f.factor_id FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND f.active=true`,
+  const factors = await db.query<{ factor_id: string; scopes: string[] }>(
+    `SELECT f.factor_id, f.scopes FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.organisation_id=$1 AND s.job_id=$2 AND f.active=true`,
     [organisationId, jobId],
   );
-  const clientFactors = await db.query<{ client_factor_id: string }>(
-    `SELECT cf.client_factor_id FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,
+  const clientFactors = await db.query<{ client_factor_id: string; scope: string }>(
+    `SELECT cf.client_factor_id, cf.scope FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,
     [organisationId, jobId],
   );
   const existing = await db.query<{ source_name: string; quantity: string | null; source_subtype: string | null }>(
@@ -52,25 +64,57 @@ export async function loadSpendImportContext(db: Queryable, organisationId: stri
     categoryIds: new Set(categories.rows.map((r) => r.category_id)),
     factorIds: new Set(factors.rows.map((r) => r.factor_id)),
     clientFactorIds: new Set(clientFactors.rows.map((r) => r.client_factor_id)),
+    allocations: await activeSpendAllocationsForJob(db, organisationId, jobId),
+    factorScopes: factors.rows.reduce((map, r) => map.set(r.factor_id, [...(map.get(r.factor_id) ?? []), ...r.scopes]), new Map<string, string[]>()),
+    clientFactorScopes: new Map(clientFactors.rows.map((r) => [r.client_factor_id, r.scope])),
     existingKeys: new Set(
       existing.rows.map((r) => spendImportRowKey({ description: r.source_name, netValue: r.quantity == null ? null : Number(r.quantity), glCode: r.source_subtype })),
     ),
   };
 }
 
-/** Server-authoritative row review — file-local + job context + the ALREADY_IMPORTED advisory. */
+/**
+ * D2 (R2): a line as it will be filed — routed by the client's map (its GL code, else its description; else the PG&S residual),
+ * priced with its own factor or, where it names none, the map entry's default spend factor. A PG&S sub-category travels only with a
+ * line filed in PG&S; VAT only with a line whose category takes it (R6).
+ */
+export function routedImportRow(row: SpendImportRow, allocations: readonly SpendAllocationEntry[]): { row: SpendImportRow; routing: SpendRouting } {
+  const routing = routeSpendLine(allocations, { glCode: row.glCode, description: row.description });
+  const useDefault = row.factorId === null && row.clientFactorId === null && routing.defaultFactorId !== null;
+  return {
+    routing,
+    row: {
+      ...row,
+      purchasedGoodsCategoryId: routing.categoryCode === SPEND_RESIDUAL_CATEGORY ? row.purchasedGoodsCategoryId : null,
+      vatPercent: routing.vatApplies ? row.vatPercent : null,
+      ...(useDefault ? { factorSource: "dataset" as const, factorId: routing.defaultFactorId, datasetId: routing.defaultDatasetId, clientFactorId: null } : {}),
+    },
+  };
+}
+
+/** Server-authoritative row review — file-local + job context + the ALREADY_IMPORTED advisory, on each line as D2 routes it. */
 export function reviewSpendImportRows(rows: SpendImportRow[], context: SpendImportJobContext): ImportRowReview[] {
   const counts = new Map<string, number>();
   for (const row of rows) {
     const key = spendImportRowKey(row);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
-  return rows.map((row) => {
-    const key = spendImportRowKey(row);
-    const review = reviewSpendImportRow(row, context, (counts.get(key) ?? 0) > 1);
+  return rows.map((original) => {
+    const key = spendImportRowKey(original);
+    const { row, routing } = routedImportRow(original, context.allocations);
+    const review: ImportRowReview = { ...reviewSpendImportRow(row, context, (counts.get(key) ?? 0) > 1, routing.categoryCode === SPEND_RESIDUAL_CATEGORY), routing };
+    const root = spendCategoryOf(routing.categoryCode)?.scope ?? "3";
+    const scopes = row.factorSource === "client" ? [context.clientFactorScopes.get(row.clientFactorId ?? "") ?? ""] : context.factorScopes.get(row.factorId ?? "") ?? [];
+    if (!review.issues.some((issue) => issue.code === "FACTOR_UNRESOLVED") && !scopes.some((tag) => tag.split(".")[0] === root)) {
+      review.issues.push(importRowIssue("FACTOR_NOT_IN_CATEGORY", `This line is filed in Scope ${root}, and its factor is not a Scope ${root} factor. Choose a spend factor for that category, or move the line.`));
+    }
+    if (!routing.vatApplies && original.vatPercent !== null && original.vatPercent > 0) {
+      review.issues.push(importRowIssue("VAT_NOT_APPLICABLE", "VAT does not apply to this line's category, so its VAT % is not recorded."));
+    }
+    review.status = importRowStatus(review.issues);
     if (context.existingKeys.has(key)) {
       review.issues.push(importRowIssue("ALREADY_IMPORTED", "A live spend source on this job already has this description, net value and GL code."));
-      if (review.status === "accepted") review.status = "advisory";
+      review.status = importRowStatus(review.issues);
     }
     return review;
   });

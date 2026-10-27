@@ -7,7 +7,8 @@
 // job (UX1b CRP accordion, UX1d portal accordion) — this component is presentational.
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  ENTRY_BASES, ENTRY_BASIS_LABEL, openingEntryBasis, openingEntryBasisSource, renderInputSpec, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS,
+  emissionCategoryTaxonomy, ENTRY_BASES, ENTRY_BASIS_LABEL, openingEntryBasis, openingEntryBasisSource, renderInputSpec, routeSpendLine,
+  spendCategoryOf, spendRoutingLabel, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS, vatAppliesByDefault,
   type EntryBasis, type InputSpecCategory, type JobEntryBasis,
 } from "@nzi/contracts";
 import type { EmissionCategory } from "@nzi/contracts";
@@ -99,12 +100,17 @@ export type EmissionEntryFormProps = {
    * toggle still shows, on that basis, with the other disabled; nothing about the bucket flow changes.
    */
   basisLocked?: EntryBasis;
+  /**
+   * D2 (R2): every factor the job offers, with its scope — so a spend line allocated to a category in another scope (fuel to
+   * Company Vehicles from a PG&S drawer) can be priced with a spend factor of that scope. Without it, allocation stays in scope.
+   */
+  allFactors?: Array<EntryFactorOption & { scope?: "1" | "2" | "3" }>;
 };
 
 /** The fields that belong to a basis (D1, R1): set aside when the toggle moves off it, restored when it comes back. */
 const BASIS_BLOCK_FIELDS = [
   "activity", "quantity", "unit", "factorId", "factorOverrideReason", "registration", "manualMode", "manualDetail", "usageTypeId",
-  "supplySource", "assertedVehicleAttributes", "vatPercent", "glCode", "spendCategoryId", "currency", "qualityTier",
+  "supplySource", "assertedVehicleAttributes", "vatPercent", "glCode", "spendCategoryId", "currency", "qualityTier", "allocateTo",
 ] as const satisfies ReadonlyArray<keyof EmissionEntryDraft>;
 type BasisBlock = Pick<EmissionEntryDraft, (typeof BASIS_BLOCK_FIELDS)[number]>;
 
@@ -214,8 +220,36 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   }, [props.entryBasis, spendAvailable]);
   // The options this basis may pick from: spend factors in the entry's currency, or activity factors. A locked basis (the
   // portal's bucket) keeps its authorised list exactly as it was.
-  const basisFactors = props.basisLocked ? factors : factorsForBasis(factors, basis, spend ? draft.currency : null);
-  const currencies = [...new Set([...spendCurrencies(factors), ...(draft.currency ? [draft.currency] : [])])];
+  // D2 (R2): where a spend line is filed. The client's map routes it by its GL code, else its description — shown, and applied
+  // until a person chooses otherwise ("allocate elsewhere"). An unmapped line stays in the drawer's own category: the person chose
+  // it. The bucket flow (locked) never moves a line.
+  const allocationTouched = useRef(false);
+  const mapRouting = spend && !props.basisLocked && props.entryBasis?.allocations?.length
+    ? routeSpendLine(props.entryBasis.allocations, { glCode: draft.glCode, description: draft.activity }) : null;
+  const mapped = mapRouting && mapRouting.by !== "residual" ? mapRouting : null;
+  const filedCode = spend && draft.allocateTo ? draft.allocateTo : category.code;
+  const filedCategory = spendCategoryOf(filedCode) ?? category;
+  const filedFactors = filedCode === category.code || !props.allFactors ? factors
+    : props.allFactors.filter(option => (option.scope ?? category.scope) === filedCategory.scope);
+  useEffect(() => {
+    if (!spend || props.basisLocked || allocationTouched.current) return;
+    const target = mapped && mapped.categoryCode !== category.code ? mapped.categoryCode : undefined;
+    if (target === draft.allocateTo) return;
+    setDraft(current => {
+      // The map's default spend factor fills an empty choice — never one a person already made.
+      const option = mapped?.defaultFactorId ? (props.allFactors ?? factors).find(entry => entry.id === `dataset:${mapped.defaultDatasetId}|${mapped.defaultFactorId}`) : undefined;
+      return { ...current, allocateTo: target, ...(option && !current.factorId ? { factorId: option.id, currency: option.unit ?? current.currency } : {}) };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapped?.categoryCode, mapped?.allocationId, spend]);
+  // R6: VAT-applies from the map entry that routed the line, else the category it is filed in (Investments takes none).
+  const vatApplies = mapped && mapped.categoryCode === filedCode ? mapped.vatApplies : vatAppliesByDefault(filedCode);
+  useEffect(() => { if (spend && !vatApplies && draft.vatPercent) setDraft(current => ({ ...current, vatPercent: "" })); }, [spend, vatApplies, draft.vatPercent]);
+  // The categories a spend line can be allocated to: those whose scope has a spend factor the job offers.
+  const allocatable = spend && !props.basisLocked ? emissionCategoryTaxonomy.filter(entry => entry.code === category.code
+    || (props.allFactors ?? factors).some(option => isSpendFactor(option) && ((option as { scope?: string }).scope ?? category.scope) === entry.scope)) : [];
+  const basisFactors = props.basisLocked ? factors : factorsForBasis(filedFactors, basis, spend ? draft.currency : null);
+  const currencies = [...new Set([...spendCurrencies(filedFactors), ...(draft.currency ? [draft.currency] : [])])];
   const [lookup, setLookup] = useState<
     | { state: "idle" }
     | { state: "loading" }
@@ -413,7 +447,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                   </div>
                 ) : searchOpen ? (
                   <ul className="nz-template-results" id={listId} role="listbox">
-                    {searchResults.length === 0 ? <li className="nz-template-empty">No {category.name} {spend ? "spend factor" : "activity"} matches “{draft.activity.trim()}”.</li> : null}
+                    {searchResults.length === 0 ? <li className="nz-template-empty">No {filedCategory.name} {spend ? "spend factor" : "activity"} matches “{draft.activity.trim()}”.</li> : null}
                     {searchResults.map((option, index) => (
                       <li key={option.id}>
                         <button type="button" role="option" aria-selected={index === highlighted} className={index === highlighted ? "on" : ""}
@@ -454,8 +488,10 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                   </label>
                 </div>
                 <label className="nz-fl">VAT %
-                  <input className="nz-inp" inputMode="decimal" value={draft.vatPercent} placeholder="20"
+                  <input className="nz-inp" inputMode="decimal" value={draft.vatPercent} placeholder={vatApplies ? "20" : "No VAT"} disabled={!vatApplies}
                     onChange={event => patch({ vatPercent: event.target.value })} />
+                  {/* D2 (R6): whether VAT applies is the map's or the category's; the client enters only the %. */}
+                  {!vatApplies ? <span className="nz-hint nz-ef-novat">VAT doesn&rsquo;t apply to {filedCategory.name}.</span> : null}
                 </label>
               </div>
             ) : field.key === "quantity" ? (
@@ -521,7 +557,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     <input className="nz-inp" value={draft.glCode} placeholder="5200" onChange={event => patch({ glCode: event.target.value })} />
                   </label>
                   {/* A PG&S sub-category is PG&S's own: the write refuses one on any other category (D1, R2). */}
-                  {category.code === "3.1" ? (
+                  {filedCode === "3.1" ? (
                     <label className="nz-fl">{audience === "portal" ? "Category (authorised)" : "PG&S category"}
                       <select className="nz-sel" value={draft.spendCategoryId} onChange={event => patch({ spendCategoryId: event.target.value })}>
                         <option value="">Select a category</option>
@@ -530,7 +566,28 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     </label>
                   ) : null}
                 </div>
-                <span className="nz-hint">{field.hint}</span>
+                {/* The spec's hint describes the drawer's own category; a line filed elsewhere gets the routing line below instead. */}
+                {filedCode === category.code ? <span className="nz-hint">{field.hint}</span> : null}
+                {/* D2 (R2): where the line is filed — the client's map's answer, shown; "allocate elsewhere" always open. */}
+                {allocatable.length > 1 ? (
+                  <label className="nz-fl nz-ef-allocation">Filed under
+                    <select className="nz-sel" value={filedCode} aria-label="Filed under"
+                      onChange={event => {
+                        allocationTouched.current = true;
+                        const next = event.target.value;
+                        const nextScope = spendCategoryOf(next)?.scope;
+                        // A factor that cannot price a line in the new scope is cleared, never carried somewhere it cannot price.
+                        const keeps = (props.allFactors ?? factors).find(option => option.id === draft.factorId);
+                        patch({ allocateTo: next === category.code ? undefined : next,
+                          ...(keeps && ((keeps as { scope?: string }).scope ?? category.scope) === nextScope ? {} : { factorId: "" }) });
+                      }}>
+                      {allocatable.map(entry => <option key={entry.code} value={entry.code}>{entry.name} ({entry.code}){entry.code === category.code ? " — this category" : ""}</option>)}
+                    </select>
+                    <span className="nz-hint nz-ef-routing">{mapped && mapped.categoryCode === filedCode && !allocationTouched.current
+                      ? `Allocated by ${spendRoutingLabel(mapped).split(" — ")[1]} — change it here if this line belongs elsewhere.`
+                      : filedCode === category.code ? "Filed in this category. Allocate it elsewhere if it belongs in another." : `Filed under ${filedCategory.name} instead of ${category.name}.`}</span>
+                  </label>
+                ) : null}
               </fieldset>
             );
 
