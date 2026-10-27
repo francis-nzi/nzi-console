@@ -184,7 +184,8 @@ function QuestionDrawer({requirement,onClose}:{requirement:SrsDashboardRequireme
     </div>
     <div className="nz-pdv-sec"><h3>Evidence</h3>
       {requirement.evidence
-        ?<p><b>{evidenceKind[requirement.evidence.kind]}</b>{requirement.evidence.ref?` · ${requirement.evidence.ref}`:""}{requirement.evidence.note?<><br/>{requirement.evidence.note}</>:null}</p>
+        // Kind and reference only: the note is your adviser's working record and never reaches this page (S2 review).
+        ?<p><b>{evidenceKind[requirement.evidence.kind]}</b>{requirement.evidence.ref?` · ${requirement.evidence.ref}`:requirement.evidence.kind==="note"?" · a working note held by your adviser":""}</p>
         :<p>No evidence is recorded against this requirement yet.</p>}
     </div>
     <div className="nz-pdv-sec"><h3>History</h3>

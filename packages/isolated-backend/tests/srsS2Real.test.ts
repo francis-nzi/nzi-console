@@ -107,11 +107,14 @@ describe("SRS S2 — the portal's readiness dashboard, against a real database",
     for (const requirement of model.dashboard.requirements) {
       for (const field of ["owner", "dueDate", "linkedActionId"]) assert.ok(!(field in requirement), `${requirement.code} carries no ${field}`);
       assert.equal(requirement.evidence?.ref, `Evidence ${requirement.code}`);
+      // The S2 review: kind and reference only — the consultant's free-text note stays staff-side.
+      assert.deepEqual([requirement.evidence?.kind, requirement.evidence?.note], ["document", ""]);
       assert.equal(requirement.history.length, 2);
     }
     const payload = JSON.stringify(model);
     assert.doesNotMatch(payload, /Ada Admin|2027-03-31/, "the owner and due date never cross, though both are set");
     assert.doesNotMatch(payload, /"assessedBy"|"notes"/, "nor the assessor or the assessment's notes");
+    assert.doesNotMatch(payload, /Seen in workshop/, "nor any evidence note, though every item has one");
   });
 
   it("two clients come out different, each only their own", async () => {

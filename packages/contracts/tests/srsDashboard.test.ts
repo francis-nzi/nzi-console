@@ -117,6 +117,10 @@ test("the portal reads the latest completed assessment, and none of the staff wo
   // R9: the client sees the evidence and the history on each question.
   const g1 = portal.requirements.find((entry) => entry.id === "g1")!;
   assert.equal(g1.evidence?.ref, "Board minutes");
+  // The S2 review: kind and reference cross; the free-text note is a staff working record and does not.
+  assert.deepEqual(g1.evidence, { kind: "document", ref: "Board minutes", note: "" });
+  assert.ok(!JSON.stringify(portal).includes("Minuted"), "the note is nowhere in the client's payload");
+  assert.equal(srsDashboard(framework, second, all).requirements.find((entry) => entry.id === "g1")!.evidence?.note, "Minuted", "the CRM still has it");
   assert.equal(g1.history.length, 2);
   assert.ok(!JSON.stringify(portal).includes("Ada Admin"), "no staff identity anywhere in the payload");
   assert.equal(srsPortalDashboard(framework, [draft]), null, "nothing completed — the portal says so rather than showing a provisional score");
