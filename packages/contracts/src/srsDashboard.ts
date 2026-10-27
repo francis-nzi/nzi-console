@@ -95,10 +95,18 @@ const round2 = (value: number) => Math.round(value * 100) / 100;
 /**
  * Build the dashboard model for one assessment (completed, or the draft in progress) among a client's assessments.
  * `standardKey` filters every rollup to one standard; null reads both, as S1's overall does.
+ *
+ * `frameworks` (S3, from the S2 review): the framework versions the client's assessments were made against, by id. Given
+ * them, every assessment — the one shown, the previous one a delta compares with, and each trend point — is read against
+ * **its own stamped version**, so publishing a new framework never restates what an earlier assessment measured. Without
+ * them, the framework in force is used throughout (every assessment on one version, as before).
  */
-export function srsDashboard(framework: SrsFramework, assessment: SrsAssessment, assessments: readonly SrsAssessment[], options: { standardKey?: string | null } = {}): SrsDashboardModel {
+export function srsDashboard(inForce: SrsFramework, assessment: SrsAssessment, assessments: readonly SrsAssessment[], options: { standardKey?: string | null; frameworks?: ReadonlyMap<string, SrsFramework> } = {}): SrsDashboardModel {
+  const own = (entry: SrsAssessment) => options.frameworks?.get(entry.frameworkId) ?? inForce;
+  const framework = own(assessment);
   const standardKey = options.standardKey && framework.standards.some((standard) => standard.key === options.standardKey) ? options.standardKey : null;
-  const scoped: SrsFramework = standardKey ? { ...framework, requirements: framework.requirements.filter((requirement) => requirement.standardKey === standardKey) } : framework;
+  const scopeOf = (version: SrsFramework): SrsFramework => standardKey ? { ...version, requirements: version.requirements.filter((requirement) => requirement.standardKey === standardKey) } : version;
+  const scoped = scopeOf(framework);
   const stepName = (step: SrsMaturity) => framework.maturityLevels.find((entry) => entry.level === step)?.label ?? `Step ${step}`;
 
   // The completed assessments that are not this one and came before it — what a delta compares against.
@@ -109,9 +117,9 @@ export function srsDashboard(framework: SrsFramework, assessment: SrsAssessment,
     && (entry.assessedOn < assessment.assessedOn! || (entry.assessedOn === assessment.assessedOn && entry.assessmentId < assessment.assessmentId))) ?? null;
 
   const overallNow = overallReadiness(scoped, assessment.items);
-  const overallBefore = previous ? overallReadiness(scoped, previous.items) : null;
+  const overallBefore = previous ? overallReadiness(scopeOf(own(previous)), previous.items) : null;
   const pillarsNow = pillarReadiness(scoped, assessment.items);
-  const pillarsBefore = previous ? new Map(pillarReadiness(scoped, previous.items).map((pillar) => [pillar.pillarKey, pillar.overall.level])) : null;
+  const pillarsBefore = previous ? new Map(pillarReadiness(scopeOf(own(previous)), previous.items).map((pillar) => [pillar.pillarKey, pillar.overall.level])) : null;
   const completion = srsCompletion(scoped, assessment.items);
   const pillarLabels = new Map(framework.pillars.map((pillar) => [pillar.key, pillar.label]));
   const items = new Map(assessment.items.map((item) => [item.requirementId, item]));
@@ -154,10 +162,10 @@ export function srsDashboard(framework: SrsFramework, assessment: SrsAssessment,
       };
     }),
     trend: {
-      overall: completed.map((entry) => ({ assessmentId: entry.assessmentId, assessedOn: entry.assessedOn, level: overallReadiness(scoped, entry.items).level })),
+      overall: completed.map((entry) => ({ assessmentId: entry.assessmentId, assessedOn: entry.assessedOn, level: overallReadiness(scopeOf(own(entry)), entry.items).level })),
       byPillar: Object.fromEntries(scoped.pillars.map((pillar) => [pillar.key, completed.map((entry) => ({
         assessmentId: entry.assessmentId, assessedOn: entry.assessedOn,
-        level: rollup(scoped.requirements.filter((requirement) => requirement.pillarKey === pillar.key), entry.items).level,
+        level: rollup(scopeOf(own(entry)).requirements.filter((requirement) => requirement.pillarKey === pillar.key), entry.items).level,
       }))])),
     },
     benchmark: resolveBenchmark(assessment),
@@ -169,7 +177,7 @@ export function srsDashboard(framework: SrsFramework, assessment: SrsAssessment,
  * due date, the action link — left out field by field (NZC-110: the client sees scores and evidence, never staff identity
  * or internal working). Null when nothing is completed yet: the portal says so rather than showing a provisional score.
  */
-export function srsPortalDashboard(framework: SrsFramework, assessments: readonly SrsAssessment[], options: { standardKey?: string | null } = {}): SrsDashboardModel | null {
+export function srsPortalDashboard(framework: SrsFramework, assessments: readonly SrsAssessment[], options: { standardKey?: string | null; frameworks?: ReadonlyMap<string, SrsFramework> } = {}): SrsDashboardModel | null {
   const latest = [...assessments].filter(isAssessed).sort((a, b) => b.assessedOn.localeCompare(a.assessedOn) || b.assessmentId.localeCompare(a.assessmentId))[0];
   if (!latest) return null;
   const model = srsDashboard(framework, latest, assessments, options);

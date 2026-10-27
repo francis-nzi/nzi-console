@@ -484,6 +484,13 @@ jobs:
       # own calendar day on a host ahead of UTC.
       - name: The portal's readiness dashboard is the latest completed assessment, without the staff working fields
         run: npx tsx --test packages/isolated-backend/tests/srsS2Real.test.ts
+      # 0189 (SRS S3): a gap bridged from the library (matched by alignment, not words) or in the consultant's words, as an
+      # srs_gap action — linked from an assessment in progress, a completed one never changed; AI ideas stored as shown,
+      # re-asking withdraws the last, a figure refused by the command and the table; the model told the gap, the sector and
+      # yes/no facts — no name, person, note or date; the client shown the ideas without model, hash or who; the report from
+      # a completed assessment only, with no staff field, note or person; exports and AI calls audited by reference.
+      - name: Readiness gaps bridged, AI ideas grounded and labelled, and the readiness report from a completed assessment
+        run: npx tsx --test packages/isolated-backend/tests/srsS3Real.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

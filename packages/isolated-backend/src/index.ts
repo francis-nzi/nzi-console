@@ -243,3 +243,12 @@ export {
   RecoveryCodeError, RECOVERY_CODE_COUNT, LOW_RECOVERY_CODES, type RecoveryPrincipal,
 } from "./mfaRecovery";
 export { previewDeclaredFactor, type DeclaredFactorPreview, type ResolutionEntry } from "./declarativeResolution";
+export {
+  bridgeSrsGap, exportSrsReport, listSrsGapSuggestions, recordSrsGapSuggestions, srsFrameworksFor, withdrawSrsGapSuggestion,
+  type BridgeGapResult, type ExportReportResult, type RecordSuggestionsResult, type WithdrawSuggestionResult,
+} from "./srsBridging";
+export {
+  anthropicSrsSuggestionModel, DEFAULT_SRS_SUGGESTION_MODEL, generateSrsGapSuggestions, srsPromptSha256, srsSuggestionInputFor,
+  type SrsSuggestionModel, type SrsSuggestionRun,
+} from "./srsSuggestions";
+export { getSrsReport, type SrsReportReadModel } from "./srsReport";

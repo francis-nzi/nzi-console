@@ -1,4 +1,5 @@
 import type { Queryable } from "./postgres";
+import { listSrsGapSuggestions, srsFrameworksFor } from "./srsBridging";
 import type {StaffRole} from "./auth";
 import { listClientContacts } from "./clientContactRecords";
 import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
@@ -12,7 +13,7 @@ import { readClientReportProfile } from "./reportSectionPlanRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp, ClientReportProfile } from "@nzi/contracts";
 import { clientReferences, type ClientReferences } from "./clientReference";
 import { issuerOf, type IssuerColumns } from "./reportCompositions";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget, type ClientReportingTemplateReadModel, type ReportingTemplateScope } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type SrsGapSuggestion, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget, type ClientReportingTemplateReadModel, type ReportingTemplateScope } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
 import { listAssuredPeriodSnapshots } from "./assuredPeriodSnapshots";
@@ -343,7 +344,11 @@ export type ClientWorkspaceReadModel = {
    * `framework` is null when no framework is published — the area says so rather than
    * rendering an empty assessment.
    */
-  srs: { framework: SrsFramework | null; assessments: SrsAssessment[] };
+  /**
+   * `frameworks`: every framework version the client's assessments were made against (S3, from the S2 review — each
+   * assessment is read against its own). `suggestions`: the AI ideas currently shown for its gaps (S3).
+   */
+  srs: { framework: SrsFramework | null; assessments: SrsAssessment[]; frameworks: SrsFramework[]; suggestions: SrsGapSuggestion[] };
   /**
    * The reduction plan: the levers, the Admin-managed library, and what this client holds.
    * Both travel together because the library drawer has to mark what is already assigned,
@@ -409,6 +414,8 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
   const files = await adjunct("files", [], listClientFiles(db, clientId));
   const srsFramework = await adjunct("srs", null, getSrsFramework(db));
   const srsAssessments = await adjunct("srs", [], listSrsAssessments(db, clientId));
+  const srsFrameworks = await adjunct("srs", [] as SrsFramework[], srsFrameworksFor(db, srsAssessments).then((versions) => [...versions.values()]));
+  const srsSuggestions = await adjunct("srs", [] as SrsGapSuggestion[], listSrsGapSuggestions(db, clientId));
   const intensityMetrics = await adjunct("intensity", [], listClientIntensityMetrics(db, clientId));
   const intensityValues = await adjunct("intensity", [], listClientIntensityValues(db, clientId));
   const libraryStrategies = await adjunct("strategies", [], listLibraryStrategies(db));
@@ -480,7 +487,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     reports,
     messages,
     files,
-    srs: { framework: srsFramework, assessments: srsAssessments },
+    srs: { framework: srsFramework, assessments: srsAssessments, frameworks: srsFrameworks, suggestions: srsSuggestions },
     strategies: {
       levers, library: libraryStrategies,
       plan: clientStrategies.filter((strategy) => strategy.proposal === null || strategy.proposal.state === "approved"),

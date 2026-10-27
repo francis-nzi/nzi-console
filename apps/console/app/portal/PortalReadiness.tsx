@@ -7,6 +7,8 @@ import type {ReportSrsRoadmapGap,ReportSrsRoadmapPillar,SrsDashboardModel,SrsDas
 import type {PortalReadinessReadModel} from "@nzi/isolated-backend";
 import {formatDate} from "../lib/formatDate";
 import {redirectIfPortalSessionEnded} from "./portalSessionClient";
+import {postBrowserCommand} from "@nzi/api-client";
+import {portalFeatureEnabled} from "../lib/portalFlags";
 
 /**
  * The client's own UK SRS readiness — where they stand, and what is aimed at each gap.
@@ -81,6 +83,12 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
   const expanded=totalGaps<=EXPAND_UP_TO;
   const rows=dashboard.pillars.map(pillar=>({label:pillar.label,level:pillar.level,stepName:pillar.stepName,target:pillar.targetLevel,delta:pillar.delta}));
   const open=dashboard.requirements.find(requirement=>requirement.id===openId)??null;
+  // S3, R2: AI ideas for the gaps, as your adviser left them shown — labelled, examples only. In your own session, with
+  // plan participation on (A2), an idea can be sent to your adviser as a proposal; the preview shows them and acts on none.
+  const ideas=model.ideas??[];
+  const codeToId=new Map(dashboard.requirements.map(requirement=>[requirement.code,requirement.id]));
+  const ideasFor=(requirementId:string|undefined)=>requirementId?ideas.filter(idea=>idea.requirementId===requirementId):[];
+  const canPropose=provided===undefined&&portalFeatureEnabled("portal-plan-participation");
 
   return <>
   <section className="nz-panel"><div className="nz-card-b">
@@ -134,13 +142,13 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
             : ""}
         </p>
         <div className="nz-portal-readiness-gaps">
-          {model.roadmap.pillars.map(pillar=><PillarGaps key={pillar.key} pillar={pillar} defaultOpen={expanded}/>)}
+          {model.roadmap.pillars.map(pillar=><PillarGaps key={pillar.key} pillar={pillar} defaultOpen={expanded} ideasFor={code=>ideasFor(codeToId.get(code))} canPropose={canPropose}/>)}
         </div>
       </>}
   </div></section>
 
   <Drawer open={open!==null} onClose={()=>setOpenId(null)} ariaLabel={open?`${open.code} ${open.title}`:"Requirement"} className="nz-site-drawer nz-pdv-drawer" dismissOnOutsideClick>
-    {open?<QuestionDrawer requirement={open} onClose={()=>setOpenId(null)}/>:null}
+    {open?<QuestionDrawer requirement={open} ideas={ideasFor(open.id)} canPropose={canPropose} onClose={()=>setOpenId(null)}/>:null}
   </Drawer>
   </>;
 }
@@ -166,7 +174,9 @@ function QuestionList({model,onOpen}:{model:SrsDashboardModel;onOpen:(id:string)
   </Collapsible>)}</div>;
 }
 
-function QuestionDrawer({requirement,onClose}:{requirement:SrsDashboardRequirement;onClose:()=>void}){
+type Idea={requirementId:string;title:string;how:string};
+
+function QuestionDrawer({requirement,ideas,canPropose,onClose}:{requirement:SrsDashboardRequirement;ideas:Idea[];canPropose:boolean;onClose:()=>void}){
   const evidenceKind={document:"Document",data:"From your own reported data",note:"Note"} as const;
   return <div className="nz-pdv-drawer-b">
     <div className="nz-pdv-drawer-h">
@@ -187,6 +197,7 @@ function QuestionDrawer({requirement,onClose}:{requirement:SrsDashboardRequireme
         ?<p><b>{evidenceKind[requirement.evidence.kind]}</b>{requirement.evidence.ref?` · ${requirement.evidence.ref}`:""}{requirement.evidence.note?<><br/>{requirement.evidence.note}</>:null}</p>
         :<p>No evidence is recorded against this requirement yet.</p>}
     </div>
+    {ideas.length>0?<div className="nz-pdv-sec"><Ideas ideas={ideas} code={requirement.code} canPropose={canPropose}/></div>:null}
     <div className="nz-pdv-sec"><h3>History</h3>
       {requirement.history.length===0?<p>This is its first assessment.</p>
         :<table className="nz-srs-table"><caption className="nz-sr-only">Step reached at each completed assessment</caption>
@@ -199,13 +210,13 @@ function QuestionDrawer({requirement,onClose}:{requirement:SrsDashboardRequireme
   </div>;
 }
 
-function PillarGaps({pillar,defaultOpen}:{pillar:ReportSrsRoadmapPillar;defaultOpen:boolean}){
+function PillarGaps({pillar,defaultOpen,ideasFor,canPropose}:{pillar:ReportSrsRoadmapPillar;defaultOpen:boolean;ideasFor:(code:string)=>Idea[];canPropose:boolean}){
   return <Collapsible title={pillar.label} count={`${pillar.gaps.length}`} defaultOpen={defaultOpen}>
-    {pillar.gaps.map(gap=><Gap key={gap.code} gap={gap}/>)}
+    {pillar.gaps.map(gap=><Gap key={gap.code} gap={gap} ideas={ideasFor(gap.code)} canPropose={canPropose}/>)}
   </Collapsible>;
 }
 
-function Gap({gap}:{gap:ReportSrsRoadmapGap}){
+function Gap({gap,ideas,canPropose}:{gap:ReportSrsRoadmapGap;ideas:Idea[];canPropose:boolean}){
   return <div className="nz-portal-gap">
     <div className="hd">
       <span className="nz-tag">{gap.code}</span>
@@ -218,5 +229,29 @@ function Gap({gap}:{gap:ReportSrsRoadmapGap}){
         {strategy.title} <span className="st">{strategy.statusLabel}</span>
       </li>)}</ul>
       : <p className="none">No action aligned yet.</p>}
+    {ideas.length>0?<Ideas ideas={ideas} code={gap.code} canPropose={canPropose}/>:null}
+  </div>;
+}
+
+/**
+ * Ideas from AI for one gap (S3, R2) — always labelled as AI and framed as examples, never as advice or as part of your
+ * plan. With plan participation on, an idea can be sent to your adviser as your own proposal (A2): it joins nothing until
+ * they take it forward.
+ */
+function Ideas({ideas,code,canPropose}:{ideas:Idea[];code:string;canPropose:boolean}){
+  const [sent,setSent]=useState<Record<string,"sending"|"sent"|string>>({});
+  async function propose(idea:Idea){
+    setSent(now=>({...now,[idea.title]:"sending"}));
+    const result=await postBrowserCommand("/api/portal/strategies/proposals",{title:idea.title,scope:"governance",note:`${idea.how} (An idea suggested by AI for ${code}.)`},crypto.randomUUID());
+    setSent(now=>({...now,[idea.title]:result.state==="success"?"sent":(result.state==="validation_failed"?(result.issues[0]?.message??result.message):result.message)}));
+  }
+  return <div className="nz-portal-ideas">
+    <span className="l"><span className="nz-tag nz-ai-tag">AI</span> Ideas suggested by AI — examples to discuss with your adviser, not advice</span>
+    <ul>{ideas.map(idea=><li key={idea.title}>
+      <b>{idea.title}</b><p>{idea.how}</p>
+      {canPropose?(sent[idea.title]==="sent"?<p className="hint">Sent to your adviser as your proposal.</p>
+        :<><button type="button" className="nz-btn sm" disabled={sent[idea.title]==="sending"} onClick={()=>void propose(idea)}>{sent[idea.title]==="sending"?"Sending…":"Suggest this to your adviser"}</button>
+          {sent[idea.title]&&sent[idea.title]!=="sending"?<span className="hint" role="alert"> {sent[idea.title]}</span>:null}</>):null}
+    </li>)}</ul>
   </div>;
 }
