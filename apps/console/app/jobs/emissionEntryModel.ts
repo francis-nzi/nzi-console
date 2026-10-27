@@ -160,8 +160,13 @@ export function factorsForBasis<T extends { unit?: string }>(options: readonly T
 export const spendCurrencies = (options: readonly { unit?: string }[]): string[] =>
   [...new Set(options.filter(isSpendFactor).map((option) => option.unit!.trim()))].sort();
 
-/** A fresh spend entry's currency (R3): the client's, where a spend factor is priced in it; else the first that is; else the client's. */
-export function openingCurrency(options: readonly { unit?: string }[], clientCurrency: string | null | undefined): string {
+/**
+ * A fresh spend entry's currency. D3 (R1), local-first: a site with a currency of its own is captured in it — always, even where no
+ * spend factor is priced in it yet (the form says so; the line is not quietly moved into another currency). Otherwise D1's rule:
+ * the client's currency where a spend factor is priced in it; else the first that is; else the client's.
+ */
+export function openingCurrency(options: readonly { unit?: string }[], clientCurrency: string | null | undefined, siteCurrency?: string | null): string {
+  if (siteCurrency?.trim()) return siteCurrency.trim();
   const available = spendCurrencies(options);
   const wanted = clientCurrency?.trim() || "GBP";
   return available.includes(wanted) ? wanted : available[0] ?? wanted;

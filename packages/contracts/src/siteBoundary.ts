@@ -26,6 +26,8 @@ export type ClientSiteReadModel = {
   addressLines?: string[];
   postcode?: string | null;
   country?: string | null;
+  /** Data entry D3 (R1): the currency the site spends in; null is the client's. */
+  currency?: string | null;
   /** CLIENT-04: whether the site has coordinates (from the geocoder, or brought by the v7 import). */
   located?: boolean;
 };

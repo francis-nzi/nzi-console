@@ -2020,6 +2020,13 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 /* Data entry D2: where a spend line is filed, in the drawer; moving one at review. */
 .nz-ef-allocation{display:flex;flex-direction:column;gap:4px;width:100%;margin-top:10px}
 .nz-reallocate{display:flex;flex-direction:column;gap:8px;margin:8px 0}
+/* Data entry D3 (R1): the job's Currency & FX panel. */
+.nz-fx-rows{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.nz-fx-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto;gap:12px;align-items:end;padding-top:10px;border-top:1px solid var(--line)}
+.nz-fx-total{margin-top:12px;padding:10px 12px;border-radius:9px;background:var(--paper)}
+.nz-fx-missing{color:#8A6410}
+.nz-fx-none{margin:10px 0 0}
+@media(max-width:640px){.nz-fx-row{grid-template-columns:1fr}}
 /* Data entry D2 (R5): an AI suggestion, labelled and never applied. */
 .nz-ai-suggestion{display:flex;flex-direction:column;gap:5px;border:1px dashed #B07A00;background:#FFF8E8;border-radius:9px;padding:9px 11px;margin-top:6px}
 .nz-ai-badge{align-self:flex-start;font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#7A5200;background:#FFE9B8;border-radius:999px;padding:2px 8px}

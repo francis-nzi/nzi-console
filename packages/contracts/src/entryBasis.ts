@@ -65,6 +65,8 @@ export type JobEntryBasis = {
   currency: string;
   /** D2: the client's live allocation map, which routes a spend line the drawer is given to its proper category. */
   allocations?: SpendAllocationEntry[];
+  /** D3 (R1): the sites with a currency of their own (site id → ISO code); a spend line at one is captured in it, local-first. */
+  siteCurrencies?: Record<string, string>;
 };
 
 /** One category's admin default as Admin lists it: the setting, if any, over the seed. */

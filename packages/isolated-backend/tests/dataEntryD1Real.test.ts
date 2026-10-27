@@ -140,7 +140,7 @@ describe("Data entry D1: spend on any category with a spend factor, and the basi
     await createScopeRow(database.pool, row({ entryBasis: "spend" }), context(CONSULTANT, "consultant"));
     assert.deepEqual(await choice("3.6"), { basis: "spend", chosen_by: CONSULTANT });
     const read = await withTenantRead(database.pool, ORG, (tx) => readJobEntryBasis(tx, ORG, JOB));
-    assert.deepEqual(read, { defaults: {}, choices: { "3.6": "spend", "1.company-vehicles": "spend", "2.purchased-electricity": "spend", "3.1": "spend" }, currency: "GBP", allocations: [] });
+    assert.deepEqual(read, { defaults: {}, choices: { "3.6": "spend", "1.company-vehicles": "spend", "2.purchased-electricity": "spend", "3.1": "spend" }, currency: "GBP", allocations: [], siteCurrencies: {} });
   });
 
   it("R4/R6: Admin sets a category's default — versioned, audited with the seed it replaced; unchanged and stale saves refused", async () => {

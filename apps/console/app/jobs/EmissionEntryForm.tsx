@@ -8,7 +8,7 @@
 import { type FormEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   emissionCategoryTaxonomy, ENTRY_BASES, ENTRY_BASIS_LABEL, openingEntryBasis, openingEntryBasisSource, renderInputSpec, routeSpendLine,
-  spendCategoryOf, spendRoutingLabel, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS, vatAppliesByDefault,
+  spendCategoryOf, spendRoutingLabel, spendValueLabel, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS, vatAppliesByDefault,
   type EntryBasis, type InputSpecCategory, type JobEntryBasis,
 } from "@nzi/contracts";
 import type { EmissionCategory } from "@nzi/contracts";
@@ -171,7 +171,7 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
     activity: "", quantity: "", unit: basis === "spend" ? "" : units[0] ?? "", factorId: "", factorOverrideReason: "", registration: "",
     manualMode: false, manualDetail: "", usageTypeId: current.usageTypeId === undefined ? undefined : "", supplySource: "",
     assertedVehicleAttributes: null, vatPercent: "", glCode: "", spendCategoryId: "",
-    currency: basis === "spend" ? openingCurrency(factors, props.entryBasis?.currency) : undefined,
+    currency: basis === "spend" ? openingCurrency(factors, props.entryBasis?.currency, site.id ? props.entryBasis?.siteCurrencies?.[site.id] : null) : undefined,
     qualityTier: basis === "spend" && audience === "crm" ? "Spend-based" : lean ? "" : QUALITY_TIERS[0],
   });
   const [draft, setDraft] = useState<EmissionEntryDraft>(() => {
@@ -224,6 +224,15 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   // until a person chooses otherwise ("allocate elsewhere"). An unmapped line stays in the drawer's own category: the person chose
   // it. The bucket flow (locked) never moves a line.
   const allocationTouched = useRef(false);
+  // D3 (R1): the site's currency arrives with the job's settings, after the drawer opens. It is applied to a fresh spend line until
+  // somebody chooses a currency.
+  const currencyTouched = useRef(false);
+  const siteCurrency = site.id ? props.entryBasis?.siteCurrencies?.[site.id] ?? null : null;
+  useEffect(() => {
+    if (mode !== "new" || !spend || props.basisLocked || currencyTouched.current || !siteCurrency || draft.currency === siteCurrency) return;
+    setDraft(current => ({ ...current, currency: siteCurrency, factorId: "" }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [siteCurrency, spend]);
   const mapRouting = spend && !props.basisLocked && props.entryBasis?.allocations?.length
     ? routeSpendLine(props.entryBasis.allocations, { glCode: draft.glCode, description: draft.activity }) : null;
   const mapped = mapRouting && mapRouting.by !== "residual" ? mapRouting : null;
@@ -471,7 +480,8 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
             return field.key === "quantity" && spend ? (
               <div key={field.key} className="nz-ef-spend">
                 <div className="nz-ef-two">
-                  <label className="nz-fl">{field.label}
+                  {/* D3 (R1): the value's label follows its currency — "Net value (£)" in EUR reads "Net value (€)". */}
+                  <label className="nz-fl">{spendValueLabel(field.label, draft.currency)}
                     <input className="nz-inp" inputMode="decimal" value={draft.quantity} placeholder="e.g. 4,100"
                       onChange={event => patch({ quantity: event.target.value })} />
                   </label>
@@ -479,7 +489,9 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     <select className="nz-sel" value={draft.currency ?? ""} aria-label="Currency"
                       onChange={event => {
                         const currency = event.target.value;
-                        // A factor priced in another currency cannot price this entry: it is cleared, never converted (FX is D3).
+                        currencyTouched.current = true;
+                        // A factor priced in another currency cannot price this entry: it is cleared, never converted — FX never
+                        // enters the emissions (D3, R1).
                         const kept = basisFactors.find(option => option.id === draft.factorId)?.unit === currency;
                         patch({ currency, ...(kept ? {} : { factorId: "" }) });
                       }}>
@@ -487,6 +499,10 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     </select>
                   </label>
                 </div>
+                {/* D3 (R1), local-first: a line is priced by a factor in its own currency, or not at all — never converted. */}
+                {!props.basisLocked && draft.currency && !spendCurrencies(filedFactors).includes(draft.currency) ? (
+                  <p className="nz-hint nz-ef-nofactor">No spend factor is priced in {draft.currency} in this job&rsquo;s datasets. Select the country&rsquo;s spend factors (CEDA or similar) for the job, or record the line in a currency that has one — it is never converted.</p>
+                ) : null}
                 <label className="nz-fl">VAT %
                   <input className="nz-inp" inputMode="decimal" value={draft.vatPercent} placeholder={vatApplies ? "20" : "No VAT"} disabled={!vatApplies}
                     onChange={event => patch({ vatPercent: event.target.value })} />

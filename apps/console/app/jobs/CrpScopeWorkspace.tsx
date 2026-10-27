@@ -63,6 +63,7 @@ import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, ENTR
 import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import { ReallocateControl } from "./ReallocateControl";
+import { JobCurrencyPanel } from "./JobCurrencyPanel";
 import {JobStageStepper,StageSection,StageFocusStrip,stageAnchorId,type StageStatus} from "./CrpStageSections";
 import {JobShellHeader,datasetsSummary,milestonesSummary,type JobShellDrawer,type JobShellSummary} from "./JobShellHeader";
 import {JobSitesDrawer} from "./JobSitesDrawer";
@@ -514,6 +515,8 @@ export function CrpScopeWorkspace({
       <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
       {/* Phase 3c: intensity has its own drawer (the Intensity chip); the per-job IntensityPanel is retired. */}
       <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
+      {/* Data entry D3 (R1): each site's currency, the job's FX rates, and the job's spend in the client's currency. */}
+      <JobCurrencyPanel jobId={job.header.id} rows={rows} notice={setNotice} writeEnabled={writeEnabled}/>
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
     </>
   );
@@ -524,6 +527,8 @@ export function CrpScopeWorkspace({
       <JobAnnualMetrics jobId={job.header.id} reportingYear={reportingYear} writeEnabled={writeEnabled}/>
       <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
       <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
+      {/* Data entry D3 (R1): each site's currency, the job's FX rates, and the job's spend in the client's currency. */}
+      <JobCurrencyPanel jobId={job.header.id} rows={rows} notice={setNotice} writeEnabled={writeEnabled}/>
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
     </>
   );

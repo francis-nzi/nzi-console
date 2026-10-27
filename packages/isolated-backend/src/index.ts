@@ -244,6 +244,7 @@ export {
   anthropicSpendSuggestionModel, spendSuggestionRequest, generateSpendSuggestion, recordSpendAllocationSuggestion, confirmSpendAllocationSuggestion,
   dismissSpendAllocationSuggestion, type SpendSuggestionModel, type SpendSuggestionRecorded, type SpendSuggestionConfirmed,
 } from "./spendAllocationSuggestions";
+export { readJobCurrencies, setJobSiteFxRate, type JobCurrencies, type JobSiteCurrency, type JobSiteFxResult } from "./jobSiteFx";
 export { recordClientEntryBasisChoice } from "./entryBasisChoices";
 export {
   readStaffSignature, updateOwnStaffSignature, emailPersonForMember, StaffSignatureError, type StaffSignatureRecord, type SignatureMember,

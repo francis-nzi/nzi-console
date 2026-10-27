@@ -61,6 +61,8 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   portal_report_approvals: { periodBound: true, why: "a client's approval of the period's report" },
   portal_report_comments: { periodBound: true, why: "a client's comments on the period's report" },
   portal_tracker_actions: { periodBound: true, why: "actions tracked against the period's report" },
+  // Data entry D3 (0194): the CRM's average FX rate over the reporting period — a different period is a different average.
+  job_site_fx_rates: { periodBound: true, why: "the average FX rate over the reporting period" },
   // Kept in step by this command, or not about the period.
   job_emissions_config: { periodBound: false, why: "the window itself — moved by this command (J2)" },
   job_dataset_selections: { periodBound: false, why: "re-derived by this command (J2)" },
