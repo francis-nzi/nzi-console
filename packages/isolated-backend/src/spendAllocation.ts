@@ -167,7 +167,7 @@ export async function learnSpendAllocation(
   return { allocationId, keyKind: key.kind, key: key.key, version: 1, created: true };
 }
 
-export type ReallocateResult = { rowId: string; version: number; categoryCode: string; allocation: { allocationId: string; keyKind: SpendAllocationKeyKind; key: string; version: number; created: boolean } | null };
+export type ReallocateResult = { rowId: string; version: number; categoryCode: string; suggestionConfirmed?: string; allocation: { allocationId: string; keyKind: SpendAllocationKeyKind; key: string; version: number; created: boolean } | null };
 
 /**
  * R4: a reviewer moves a spend line to the category it belongs in. The row (and the register source it was synced from, so a re-sync
@@ -245,9 +245,26 @@ export function reallocateScopeRow(pool: PoolLike, input: CommandInputMap["scope
       glCode = (await db.query<{ source_subtype: string | null }>(`SELECT source_subtype FROM nzi_console.job_emission_sources WHERE organisation_id = $1 AND source_id = $2`,
         [context.organisationId, row.source_id])).rows[0]?.source_subtype ?? null;
     }
-    const allocation = await learnSpendAllocation(db, context, row.client_id, { glCode, description: row.source_label }, input.categoryCode, "reallocation");
+    // D2 R5: a move that uses an AI suggestion — and lands where it said, for this line's key — confirms it; the map entry is then
+    // the suggestion's, confirmed by this person. A suggestion the person went against stays as it was: nothing is confirmed for them.
+    const key = spendAllocationKey({ glCode, description: row.source_label });
+    let confirming: string | null = null;
+    if (input.suggestionId) {
+      const { rows: [suggestion] } = await db.query<{ suggested_category_code: string; key_kind: string; match_key: string }>(
+        `SELECT suggested_category_code, key_kind, match_key FROM nzi_console.spend_allocation_suggestions
+          WHERE organisation_id = $1 AND suggestion_id = $2 AND client_id = $3 AND status = 'suggested' FOR UPDATE`,
+        [context.organisationId, input.suggestionId, row.client_id]);
+      if (!suggestion) throw new CommandValidationError([{ field: "suggestionId", code: "NOT_FOUND", message: "That suggestion is not open for this line's client." }]);
+      if (suggestion.suggested_category_code === input.categoryCode && key && suggestion.key_kind === key.kind && suggestion.match_key === key.key) confirming = input.suggestionId;
+    }
+    const allocation = await learnSpendAllocation(db, context, row.client_id, { glCode, description: row.source_label }, input.categoryCode, confirming ? "suggestion-confirmed" : "reallocation");
+    if (confirming && allocation) {
+      await db.query(
+        `UPDATE nzi_console.spend_allocation_suggestions SET status = 'confirmed', confirmed_category_code = $3, allocation_id = $4, decided_by = $5, decided_at = now(), version = version + 1
+          WHERE organisation_id = $1 AND suggestion_id = $2`, [context.organisationId, confirming, input.categoryCode, allocation.allocationId, context.actorId]);
+    }
     return {
-      data: { rowId: input.rowId, version: saved!.version, categoryCode: input.categoryCode, allocation },
+      data: { rowId: input.rowId, version: saved!.version, categoryCode: input.categoryCode, allocation, ...(confirming ? { suggestionConfirmed: confirming } : {}) },
       entityType: "scope_row", entityId: input.rowId, topic: "scope.row.reallocated",
       before: { scope: row.scope, categoryCode: current, datasetId: row.dataset_id, factorId: row.factor_id },
     };

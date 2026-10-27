@@ -50,6 +50,15 @@ export const DEFAULT_SRS_SUGGESTION_MODEL = "claude-sonnet-5";
 const SERVER_SIDE_FALLBACK_MODELS: ReadonlySet<string> = new Set(["claude-fable-5-1", "claude-fable-5", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5-5"]);
 
 export function anthropicSrsSuggestionModel(config: { apiKey: string; model?: string; client?: Anthropic }): SrsSuggestionModel {
+  return anthropicStructuredModel({ ...config, schema: SRS_SUGGESTION_SCHEMA as unknown as Record<string, unknown>, unreadable: { suggestions: [] } });
+}
+
+/**
+ * The adapter S3 introduced, for any short, grounded, structured-output task (S3's gap ideas; D2's allocation suggestions): the
+ * official SDK, the default Sonnet, structured output against the caller's schema, low effort, the cached system prompt, the
+ * server-side refusal fallback only where documented, and a refusal or an unreadable reply returned as such — never a guess.
+ */
+export function anthropicStructuredModel(config: { apiKey: string; model?: string; client?: Anthropic; schema: Record<string, unknown>; unreadable: unknown }): SrsSuggestionModel {
   const model = config.model ?? DEFAULT_SRS_SUGGESTION_MODEL;
   const client = config.client ?? new Anthropic({ apiKey: config.apiKey });
   const fallback = SERVER_SIDE_FALLBACK_MODELS.has(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {};
@@ -63,15 +72,15 @@ export function anthropicSrsSuggestionModel(config: { apiKey: string; model?: st
         // The fixed instructions cache; the client's details arrive as data in the user turn.
         system: [{ type: "text", text: prompt.system, cache_control: { type: "ephemeral" } }],
         messages: [{ role: "user", content: prompt.user }],
-        output_config: { effort: "low", format: { type: "json_schema", schema: SRS_SUGGESTION_SCHEMA as unknown as Record<string, unknown> } },
+        output_config: { effort: "low", format: { type: "json_schema", schema: config.schema } },
       });
       if (response.stop_reason === "refusal") return { kind: "refused" };
       const text = response.content.filter((block) => block.type === "text").map((block) => (block as { text: string }).text).join("");
       try {
         return { kind: "reply", body: JSON.parse(text) as unknown };
       } catch {
-        // An unreadable reply is no ideas, never a guess at what was meant.
-        return { kind: "reply", body: { suggestions: [] } };
+        // An unreadable reply is nothing, never a guess at what was meant.
+        return { kind: "reply", body: config.unreadable };
       }
     },
   };
