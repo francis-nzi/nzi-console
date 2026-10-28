@@ -73,7 +73,8 @@ export function VehicleBulkPanel({ jobId, factors, notice }: { jobId: string; fa
       const factor = factorsFor(row.scope).find((item) => item.factorId === row.factorId);
       const created = await postBrowserCommand<{ sourceId: string }>(`/api/isolated/jobs/${jobId}/emission-sources`, {
         groupId: groupId || null, scope: row.scope, sourceType: "vehicle", sourceSubtype: null, siteId: null,
-        sourceName: [row.make, row.model].filter(Boolean).join(" ").trim() || row.registration,
+        // D4 (R2): the registration is never a name — it goes only to the sealed identifier.
+        sourceName: [row.make, row.model].filter(Boolean).join(" ").trim() || ["Company vehicle", row.fuel].filter(Boolean).join(" · "),
         assetIdentifier: row.registration, purchasedGoodsCategoryId: null,
         datasetId: factor?.factorSource === "dataset" ? factor.datasetId : null,
         factorId: factor?.factorSource === "dataset" ? factor.factorId : null,

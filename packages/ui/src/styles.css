@@ -2496,3 +2496,8 @@ details.nz-job-report-link{white-space:normal}
 .nz-pdv-sec .nz-btn{justify-self:start}
 .nz-pdv-ro{margin:0;font-size:12.5px}
 @media (max-width:640px){.nz-pdv-facts>div{grid-template-columns:1fr;gap:2px}.nz-pdv-site{width:100%}.nz-pdv-site .nz-sel{flex:1}}
+/* Data entry D4 (R1, R3, R4): the vehicle drawer's manual type/size/fuel picker and unit choice; the client's registrations card. */
+.nz-ef-vehicle-pick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:8px 0}
+.nz-ef-vehicle-unit{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px}
+.nz-vehicle-regs-confirm{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--paper)}
+@media(max-width:640px){.nz-ef-vehicle-pick{grid-template-columns:1fr}}

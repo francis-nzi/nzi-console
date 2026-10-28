@@ -129,8 +129,9 @@ describe("the registration a person types into an entry is stored, by design", (
     // Stated so the transient-lookup guarantee above is not read as "no registration is ever
     // stored". A CRP row that cannot say which vehicle it describes is not auditable.
     const model = readFileSync(join(ROOT, "apps/console/app/jobs/emissionEntryModel.ts"), "utf8");
-    assert.ok(model.includes("assetIdentifier: draft.registration.trim() || null"),
-      "the entry deliberately persists the registration as the asset identifier");
+    // D4 (R1): only a company vehicle's — sealed by the write under the client's key; travel and commuting keep none.
+    assert.ok(model.includes("assetIdentifier: category.code === COMPANY_VEHICLES_CODE ? draft.registration.trim() || null : null"),
+      "the entry deliberately persists a company vehicle's registration as the asset identifier");
 
     const migration = readFileSync(
       join(ROOT, "packages/isolated-backend/migrations/0033_scope_row_asset_identifier.sql"), "utf8");

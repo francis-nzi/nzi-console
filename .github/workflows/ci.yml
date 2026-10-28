@@ -359,6 +359,11 @@ jobs:
       # review is a request to the CRM, sent as a message, and the CRM reopens by editing.
       - name: Financial-year imports, a stored carry-forward basis, GL carry-forward, five years and reopen-by-request
         run: npx tsx --test packages/isolated-backend/tests/dataEntryD3CarryReal.test.ts
+      # Data entry D4 (R1, R2, R8): a company vehicle's registration is held only sealed, under the client's own key — no plaintext,
+      # no label, note, audit or outbox payload holds it; the same plate keeps one client-scoped identity across edits, the sync and
+      # the roll-forward; commuting stays reg-free; the client's opt-out shreds the key and clears every plate; the one-off sealing.
+      - name: A vehicle registration is held only sealed, under the client's key, with a client opt-out
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD4VehicleRegReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked

@@ -53,6 +53,7 @@ import { lcaModuleCodes, lcaTransportModes } from "./jobFamilies";
 export type CommandKey =
   | "client.create"
   | "client.update"
+  | "client.vehicle_registrations.set"
   | "job.create"
   | "job.stage.change"
   | "job.milestone.set"
@@ -701,6 +702,7 @@ export type ClientIdentityFields = {
 export type CommandInputMap = {
   "client.create": ClientIdentityFields & ClientProfileFields;
   "client.update": { clientId: string; expectedVersion: number } & ClientIdentityFields & ClientProfileFields;
+  "client.vehicle_registrations.set": { clientId: string; optOut: boolean; expectedVersion: number };
   /**
    * `owner` carries the client manager's name and `clientManagerUserId` the reference to them —
    * the NZC-090 pair, on the columns `jobs` already had (NZC-092). The screen says "Client
@@ -1786,6 +1788,9 @@ const clientContactIssues = (input: ClientContactWriteFields) => {
 export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.create": { key: "client.create", label: "Create client", permission: "client.create", reasonRequired: false, transaction: "client + audit + outbox + idempotency", auditAction: "client_created", validate: (input, context) => [...baseIssues(context, false), ...clientIdentityIssues(input), ...clientProfileIssues(input)] },
   "client.update": { key: "client.update", label: "Update client", permission: "client.edit", reasonRequired: false, transaction: "versioned client + audit + outbox + idempotency", auditAction: "client_updated", validate: (input, context) => { /* F1 remedy (1): the field rules run in the handler, against the stored row — only on what the save changes (clientUpdateIssues). */ const issues = [...baseIssues(context, false)]; required(issues, "clientId", input.clientId); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
+  // Data entry D4 (R1, R8): "don't hold our reg numbers". Opting out shreds the client's vehicle key and clears every plate held;
+  // vehicles are then named instead. Versioned on the client; the audit names the client and counts, never a plate.
+  "client.vehicle_registrations.set": { key: "client.vehicle_registrations.set", label: "Set whether a client's vehicle registrations are held", permission: "client.edit", reasonRequired: false, transaction: "versioned client (+ key shred and plates cleared on opt-out) + audit + outbox + idempotency", auditAction: "client_vehicle_registrations_set", validate: (input, context) => { const issues = [...baseIssues(context, false)]; required(issues, "clientId", input.clientId); if (typeof input.optOut !== "boolean") issues.push({ field: "optOut", code: "INVALID", message: "Say whether registrations are held." }); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "job.create": { key: "job.create", label: "Create job", permission: "job.manage", reasonRequired: false, transaction: "number allocation + job + audit + outbox + idempotency", auditAction: "job_created", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "title", input.title); required(issues, "workflowStage", input.workflowStage); required(issues, "owner", input.owner); if (!oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const)) issues.push({ field: "family", code: "INVALID", message: "Job family is invalid." }); issues.push(...jobDateIssues(input, { family: oneOf(input.family, ["crp", "consultancy", "lca", "pcf", "training"] as const) ? input.family : undefined })); return issues; } },
   "job.stage.change": { key: "job.stage.change", label: "Change job stage", permission: "job.manage", reasonRequired: false, transaction: "stage history + job header", auditAction: "job_stage_changed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); required(issues, "fromStage", input.fromStage); required(issues, "toStage", input.toStage); if (input.fromStage === input.toStage) issues.push({ field: "toStage", code: "NO_CHANGE", message: "New stage must differ from the current stage." }); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   // PR 3 — the milestone command. Delivery work on a job, so job.manage and the job's client scope, as a stage change.

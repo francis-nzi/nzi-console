@@ -157,3 +157,4 @@ export * from "./reportStatus";
 export * from "./reportNavigation";
 export * from "./reportScope";
 export * from "./reportScopeComposition";
+export * from "./vehicleCapture";

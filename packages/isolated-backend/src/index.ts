@@ -245,6 +245,11 @@ export {
   dismissSpendAllocationSuggestion, type SpendSuggestionModel, type SpendSuggestionRecorded, type SpendSuggestionConfirmed,
 } from "./spendAllocationSuggestions";
 export { readJobCurrencies, setJobSiteFxRate, type JobCurrencies, type JobSiteCurrency, type JobSiteFxResult } from "./jobSiteFx";
+// Data entry D4 (R1): company-vehicle registrations sealed under the client's own key; the client's opt-out.
+export {
+  copySealedVehicleIdentifier, resealVehicleIdentifiers, sealExistingVehicleRegistrations, sealVehicleIdentifiers, setVehicleRegistrationsOptOut,
+  vehicleRegistrationReader, VEHICLE_CATEGORY_CODE, VEHICLE_KEY_PURPOSE, type VehicleRegistrationsOptOutResult,
+} from "./vehicleRegistrations";
 // Data entry D3 (R3–R6).
 export { fixCarryForwardBasis, storedCarryForwardBasis, type CarryForwardBasis } from "./carryForwardBasis";
 export { readCategoryLineYears, type CategoryLineYears, type CategoryLineYearValue } from "./categoryLineYears";

@@ -174,6 +174,19 @@ export function blindIndex(column: IndexedColumn, value: string | null | undefin
     .digest("base64url");
 }
 
+/**
+ * D4 (0196): a company vehicle's year-on-year identity — a keyed digest of its normalised registration, **scoped to the client**
+ * as well as the column, so the same plate held for two clients gives two digests and one client's digest cannot confirm a
+ * plate held for another. Under the blind-index key, never read back. Null for no plate.
+ */
+export function vehicleRegistrationIndex(clientId: string, normalisedPlate: string | null | undefined, indexKey: string): string | null {
+  const plate = String(normalisedPlate ?? "").trim();
+  if (plate === "") return null;
+  return createHmac("sha256", keyFrom(indexKey, "The blind index key"))
+    .update(`vehicles.registration:${clientId}:${plate}`)
+    .digest("base64url");
+}
+
 /* ── The linkage digest ──────────────────────────────────────────────────────────────── */
 
 /**

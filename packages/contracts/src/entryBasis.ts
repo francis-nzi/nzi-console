@@ -67,6 +67,8 @@ export type JobEntryBasis = {
   allocations?: SpendAllocationEntry[];
   /** D3 (R1): the sites with a currency of their own (site id → ISO code); a spend line at one is captured in it, local-first. */
   siteCurrencies?: Record<string, string>;
+  /** D4 (R1): the client holds no vehicle registrations — a company vehicle is named (or given a fleet number) instead. */
+  vehicleRegistrationsOptOut?: boolean;
 };
 
 /** One category's admin default as Admin lists it: the setting, if any, over the seed. */
