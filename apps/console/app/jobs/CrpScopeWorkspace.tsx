@@ -51,6 +51,7 @@ import {categorySourceKinds,EmissionSourceRegister} from "./EmissionSourceRegist
 import {CrpReportStageCard} from "./CrpReportStageCard";
 import {CommutingBulkPanel} from "./CommutingBulkPanel";
 import {VehicleBulkPanel} from "./VehicleBulkPanel";
+import {TravelTemplateImport} from "./TravelTemplateImport";
 import {SpendLedgerAdapter} from "./SpendLedgerAdapter";
 import {SpendRollforwardPanel} from "./SpendRollforwardPanel";
 import {SpendImportPanel} from "./SpendImportPanel";
@@ -322,6 +323,8 @@ export function CrpScopeWorkspace({
       return tabs.length?{title:`${category.name} — import & templates`,body:<ImportMethods idBase="import-pgs" tabs={tabs}/>}:null;
     }
     if(category.code==="3.7")return dataEntryAdapterEnabled("commuting")?{title:`${category.name} — import & templates`,body:<CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}:null;
+    // D5 (R6): Business Travel's template — trips filed by mode and factor, one roll-up row each.
+    if(category.code==="3.6")return dataEntryAdapterEnabled("travel")?{title:`${category.name} — import & templates`,body:<TravelTemplateImport jobId={job.header.id} job={vehicleTemplateJob} factors={factors} notice={setNotice}/>}:null;
     if(category.code==="1.company-vehicles")return dataEntryAdapterEnabled("vehicle")?{title:`${category.name} — import & templates`,body:<VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice} job={vehicleTemplateJob}/>}:null;
     return null;
   };

@@ -44,7 +44,7 @@ import { normaliseReportScope, reportScopeKey, reportSectionPlanIssues, resolveR
 import { defaultReportSectionPlan, normaliseReportPlanKeys, type ReportNarrativeElement } from "@nzi/contracts";
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
-import { factorServesTravelMode, normaliseTravelDetail, travelModeLabel } from "@nzi/contracts";
+import { BUSINESS_TRAVEL_CODE, factorServesTravelMode, normaliseTravelDetail, travelModeLabel, travelPatternOf } from "@nzi/contracts";
 import { isPortalProfileKey, isPortalProfileValue, isPortalScope } from "@nzi/contracts";
 import { isCurrencyUnit, rowScopeForCategory, spendCarryKey } from "@nzi/contracts";
 import { recordClientEntryBasisChoice } from "./entryBasisChoices";
@@ -1490,8 +1490,8 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
   if(!priorJob)throw new CommandValidationError([{field:"priorJobId",code:"NOT_FOUND",message:"Prior-year job was not found for this client."}]);
   // D3 (R3): rows and spend lines carry forward from one prior job, stored the first time either does.
   await fixCarryForwardBasis(db,context,input.jobId,input.priorJobId,"priorJobId");
-  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;asset_identifier_bidx:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null;filed_suffix_code:string|null;prior_filed_suffix_code:string|null;factor_own_label:string|null}>(
-    `SELECT scope_row_id,scope,source_label,report_label,asset_identifier,asset_identifier_bidx,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text,
+  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;asset_identifier_bidx:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null;filed_suffix_code:string|null;prior_filed_suffix_code:string|null;factor_own_label:string|null;group_id:string|null}>(
+    `SELECT scope_row_id,group_id,scope,source_label,report_label,asset_identifier,asset_identifier_bidx,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text,
             -- Dedup slice 2 (0171): a new row carries the prior usage type only while it is still offered (a withdrawn one drops to null).
             (SELECT v.value_id FROM nzi_console.reference_values v WHERE v.organisation_id=r.organisation_id AND v.value_id=r.usage_type_id AND v.active) AS usage_type_id,
             -- Dedup slice 3: filed by applicability only while the pair is still applicable.
@@ -1513,8 +1513,16 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
   // D4 (R6): a company vehicle is carried by its identity — its registration's digest, else (opted out) its name — so a vehicle
   // this job already has, carried or entered, is not carried twice; structure only, the mileage zeroed as every carried row's is.
   const heldVehicles=new Set((await db.query<{asset_identifier_bidx:string|null;asset_identifier:string|null;source_label:string}>(`SELECT asset_identifier_bidx,asset_identifier,source_label FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND category_code=$3 AND enabled`,[context.organisationId,input.jobId,VEHICLE_CATEGORY_CODE])).rows.map(held=>vehicleIdentityKey(held)));
+  // D5 (R8): Business Travel carries its pattern — the modes a client uses (a flight by haul and class), never a trip's figures. A mode
+  // this job already holds, carried or entered, is not carried again; a mode's roll-up row comes forward as the same mode's roll-up —
+  // a group on the same factor, its row zeroed — so this year's trips, imported into that group, fill the carried row.
+  const travelKey=(row:{factor_id:string|null;factor_label:string|null})=>travelPatternOf(row.factor_label)?.key??(row.factor_id?`factor:${row.factor_id}`:null);
+  const heldTravel=new Set((await db.query<{factor_id:string|null;factor_label:string|null}>(`SELECT factor_id,factor_label FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND enabled AND (category_code=$3 OR (category_code IS NULL AND scope=$3))`,[context.organisationId,input.jobId,BUSINESS_TRAVEL_CODE])).rows.map(travelKey).filter((key):key is string=>key!==null));
+  const travelGroups=new Map((await db.query<{group_id:string;name:string;dataset_id:string|null;factor_id:string|null;factor_label:string|null;unit:string|null}>(`SELECT g.group_id,g.name,g.dataset_id,g.factor_id,g.factor_label,g.unit FROM nzi_console.job_emission_groups g WHERE g.organisation_id=$1 AND g.group_id=ANY($2::text[]) AND EXISTS(SELECT 1 FROM nzi_console.job_emission_sources s WHERE (s.organisation_id,s.group_id)=(g.organisation_id,g.group_id) AND s.source_type='travel')`,[context.organisationId,priorRows.rows.map(row=>row.group_id).filter((id):id is string=>id!==null)])).rows.map(group=>[group.group_id,group]));
   for(const row of priorRows.rows){
     if(row.category_code===VEHICLE_CATEGORY_CODE){const identity=vehicleIdentityKey(row);if(heldVehicles.has(identity)){skipped+=1;continue;}heldVehicles.add(identity);}
+    const travelRow=(row.category_code??row.scope)===BUSINESS_TRAVEL_CODE;
+    if(travelRow){const key=travelKey(row);if(key&&heldTravel.has(key)){skipped+=1;continue;}if(key)heldTravel.add(key);}
     if(row.factor_source==="dataset"&&row.dataset_id){
       const selected=await db.query(`SELECT 1 FROM nzi_console.job_dataset_selections WHERE organisation_id=$1 AND job_id=$2 AND dataset_id=$3`,[context.organisationId,input.jobId,row.dataset_id]);
       if(!selected.rows[0]){
@@ -1558,12 +1566,18 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
     // Step A filed every write, most prior rows arrive filed, so the carried pair is the common case).
     const evidence=rolledSuffixCode?{...scoped,provenance:{...scoped.provenance,filedUnder:{suffixCode:rolledSuffixCode,by:"applicability"}}}:scoped;
     const lineage=[...evidence.lineage,{title:"Rolled forward",detail:`From ${priorJob.job_number} · FY${priorJob.reporting_year}`}];
+    let carriedGroupId:string|null=null;
+    const priorGroup=row.group_id?travelGroups.get(row.group_id):undefined;
+    if(travelRow&&priorGroup){
+      carriedGroupId=(await db.query<{group_id:string}>(`SELECT group_id FROM nzi_console.job_emission_groups WHERE organisation_id=$1 AND job_id=$2 AND dataset_id IS NOT DISTINCT FROM $3 AND factor_id IS NOT DISTINCT FROM $4 ORDER BY created_at,group_id LIMIT 1`,[context.organisationId,input.jobId,priorGroup.dataset_id,priorGroup.factor_id])).rows[0]?.group_id??null;
+      if(!carriedGroupId){carriedGroupId=randomUUID();await db.query(`INSERT INTO nzi_console.job_emission_groups(organisation_id,group_id,job_id,name,dataset_id,factor_id,factor_label,unit,created_by) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,[context.organisationId,carriedGroupId,input.jobId,priorGroup.name,priorGroup.dataset_id,priorGroup.factor_id,priorGroup.factor_label,priorGroup.unit,context.actorId]);}
+    }
     try{
       await db.query(
         `INSERT INTO nzi_console.job_scope_rows
-         (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,column_text,category_code,rolled_forward_from_row_id,usage_type_id,filed_suffix_code)
-         VALUES($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16,$17,'[]'::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)`,
-        [context.organisationId,rowId,input.jobId,row.scope,row.source_label.trim(),siteId,categoryId,row.unit,row.dataset_id,rolledFactor.factorId,row.factor_version,rolledFactor.factorLabel,JSON.stringify(evidence.provenance),JSON.stringify(lineage),row.report_label?.trim()||row.source_label.trim(),categoryPath[0],categoryPath[1],row.asset_identifier,row.factor_source,row.client_factor_id,row.is_custom_entry,Number(row.apply_pct),row.column_text,categoryCode,row.scope_row_id,row.usage_type_id,rolledSuffixCode],
+         (organisation_id,scope_row_id,job_id,scope,source_label,site_id,purchased_goods_category_id,quantity,unit,dataset_id,factor_id,factor_version,factor_label,provenance_json,lineage_json,report_label,level_1,level_2,monthly_activity_json,asset_identifier,factor_source,client_factor_id,is_custom_entry,apply_pct,column_text,category_code,rolled_forward_from_row_id,usage_type_id,filed_suffix_code,group_id,is_auto_generated,auto_pair_kind)
+         VALUES($1,$2,$3,$4,$5,$6,$7,NULL,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15,$16,$17,'[]'::jsonb,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$28::text IS NOT NULL,CASE WHEN $28::text IS NULL THEN NULL ELSE 'travel' END)`,
+        [context.organisationId,rowId,input.jobId,row.scope,row.source_label.trim(),siteId,categoryId,row.unit,row.dataset_id,rolledFactor.factorId,row.factor_version,rolledFactor.factorLabel,JSON.stringify(evidence.provenance),JSON.stringify(lineage),row.report_label?.trim()||row.source_label.trim(),categoryPath[0],categoryPath[1],row.asset_identifier,row.factor_source,row.client_factor_id,row.is_custom_entry,Number(row.apply_pct),row.column_text,categoryCode,row.scope_row_id,row.usage_type_id,rolledSuffixCode,carriedGroupId],
       );
       // D4 (R1): a vehicle carried forward keeps its sealed plate and identity — same client, same key; no plaintext.
       await copySealedVehicleIdentifier(db,context.organisationId,{table:"job_scope_rows",id:row.scope_row_id},{table:"job_scope_rows",id:rowId});
