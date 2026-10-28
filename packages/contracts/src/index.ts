@@ -159,3 +159,4 @@ export * from "./reportScope";
 export * from "./reportScopeComposition";
 export * from "./vehicleCapture";
 export * from "./travelCapture";
+export * from "./commutingCapture";

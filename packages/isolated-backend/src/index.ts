@@ -250,6 +250,8 @@ export {
   copySealedVehicleIdentifier, resealVehicleIdentifiers, sealExistingVehicleRegistrations, sealVehicleIdentifiers, setVehicleRegistrationsOptOut,
   vehicleRegistrationReader, VEHICLE_CATEGORY_CODE, VEHICLE_KEY_PURPOSE, type VehicleRegistrationsOptOutResult,
 } from "./vehicleRegistrations";
+// Data entry D6 (R1, R2a, R3): the one-off clear of commuting and pre-D5 travel identifiers — minimised, not sealed.
+export { clearCommutingTravelIdentifiers, D5_TRAVEL_CUTOFF, type MinimisationCounts } from "./commutingTravelMinimisation";
 // Data entry D3 (R3–R6).
 export { fixCarryForwardBasis, storedCarryForwardBasis, type CarryForwardBasis } from "./carryForwardBasis";
 export { readCategoryLineYears, type CategoryLineYears, type CategoryLineYearValue } from "./categoryLineYears";

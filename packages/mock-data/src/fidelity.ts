@@ -76,11 +76,11 @@ export const commutingGroup: EmissionSourceGroup = {
 };
 export const commutingSource: EmissionSource = {
   id: "src-emp-42", jobId: "712", groupId: commutingGroup.id, scope: "3", sourceType: "commuting",
-  sourceSubtype: "car", siteId: "site-hq", sourceName: "J. Smith", assetIdentifier: "AB12 CDE", purchasedGoodsCategoryId: null,
+  sourceSubtype: "car", siteId: "site-hq", sourceName: "Commuter 1 · Car — petrol", assetIdentifier: null, purchasedGoodsCategoryId: null,
   datasetId: commutingGroup.datasetId, factorId: commutingGroup.factorId, factorSource: "dataset", clientFactorId: null,
   quantity: 3000, unit: "km", applyPct: 100, dataSource: "Employee survey", dataConfidence: "M",
   monthlyActivity: months([250,250,250,250,250,250,250,250,250,250,250,250]),
-  detail: { kind: "commuting", vehicleRegistration: "AB12 CDE", commuteMode: "car - petrol", distanceUnit: "km", wfhDaysPerYear: 104, wfhHoursPerDay: 7.5, employeeName: "J. Smith" },
+  detail: { kind: "commuting", commuteMode: "car - petrol", distanceUnit: "km", wfhDaysPerYear: 104, wfhHoursPerDay: 7.5 },
   notes: null, calculatedTco2e: 0.51, enabled: true, submittedByPortal: true, reviewStatus: "approved", version: 1,
   scopeRowId: "row-commute-auto", scopeRowVersion: 1, scopeRowReviewStatus: "approved",
   rolledForwardFromSourceId: null, factorVersionMoved: false,

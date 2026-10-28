@@ -98,10 +98,10 @@ describe("Data entry D4: a vehicle registration held only sealed, with a client 
     assert.notEqual((await row(other)).asset_identifier_bidx, (await row(rowId)).asset_identifier_bidx);
   });
 
-  it("R1: commuting is not a company vehicle — its identifier (a name) is not sealed, and the drawer sends no plate for it", async () => {
+  it("R1: commuting is not a company vehicle — nothing is sealed for it; and since D6 (R2a) its identifier (a name) is not kept at all", async () => {
     const commute = (await createScopeRow(database.pool, { ...(vehicle(JOB, { scope: "3.7", categoryCode: "3.7", factorId: "d4-commute-car", unit: "km", assetIdentifier: "Jo Bloggs", sourceLabel: "Commute" }) as object) } as never, context())).data.rowId;
     const stored = await row(commute);
-    assert.deepEqual([stored.asset_identifier, stored.asset_identifier_sealed], ["Jo Bloggs", null]);
+    assert.deepEqual([stored.asset_identifier, stored.asset_identifier_sealed], [null, null]);
   });
 
   it("R1: a vehicle source (the register, the bulk grid) is sealed, its detail loses the plate, and its row carries the sealed plate", async () => {

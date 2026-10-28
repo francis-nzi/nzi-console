@@ -3243,7 +3243,8 @@ export type ClientSite = {
 };
 
 export type EmissionSourceKind = "asset" | "vehicle" | "commuting" | "spend" | "travel";
-export type CommutingDetail = { kind: "commuting"; vehicleRegistration: string | null; commuteMode: string; distanceUnit: string; wfhDaysPerYear: number | null; wfhHoursPerDay: number | null; employeeName: string | null };
+/** D6 (R1, R2a): no commuter name and no registration — the mode, distance and WFH are all the calculation needs. */
+export type CommutingDetail = { kind: "commuting"; commuteMode: string; distanceUnit: string; wfhDaysPerYear: number | null; wfhHoursPerDay: number | null };
 export type VehicleDetail = { kind: "vehicle"; vehicleRegistration: string | null; make: string | null; model: string | null; fuel: string | null };
 export type SpendDetail = { kind: "spend"; netValue: number; vatPercent: number | null; glCode: string | null; category: string };
 export type AssetDetail = { kind: "asset" };
