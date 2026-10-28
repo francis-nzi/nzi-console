@@ -380,6 +380,10 @@ jobs:
       # zeroed, a held mode skipped, a mode's roll-up carried as its group so the import fills it); the Lines drawer reads by mode.
       - name: Business travel amalgamated by mode, carried by its pattern, and read by mode across the years
         run: npx tsx --test packages/isolated-backend/tests/dataEntryD5TravelCarryReal.test.ts
+      # Data entry D6 (R1/R2a/R3): commuting keeps no name or registration at capture, and travel or commuting carries none into the
+      # next year; the one-off clears what was held before — counts only, no figure moved, migrated history left, a re-run a no-op.
+      - name: Commuting and travel hold no personal identifier — at capture, carried, and cleared once
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD6CommutingTravelPiiReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked

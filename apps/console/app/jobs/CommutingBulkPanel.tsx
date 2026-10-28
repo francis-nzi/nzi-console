@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
 import { InfoTip } from "@nzi/ui";
-import type { EmissionSourceGroup, FactorOption } from "@nzi/contracts";
+import { commuterLabel, type EmissionSourceGroup, type FactorOption } from "@nzi/contracts";
 import { COMMUTE_MODES, commutingTemplateCsv, matchCommuteMode, parseCommutingLedger } from "./commutingBulk";
 
 // S1.1 — Employee Commuting bulk-paste grid (NZC-036, flag `commuting`). Paste
@@ -10,6 +10,7 @@ import { COMMUTE_MODES, commutingTemplateCsv, matchCommuteMode, parseCommutingLe
 // (Scope 3.7) sharing one `import_batch_id` for an audited soft-undo. If a roll-up
 // group is chosen, the group is rolled up to one canonical row (NZC-043);
 // otherwise each line syncs to its own row through the unchanged review spine.
+// D6 (R2a): the Employee column only lines a paste up — it is never sent. Each source is "Commuter n · mode".
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
 type Row = {
   key: string; employee: string; mode: string; distance: number | null; distanceUnit: "km" | "mi";
@@ -22,6 +23,7 @@ const blankRow = (line?: Partial<Row>): Row => ({ key: crypto.randomUUID(), empl
 export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; factors: FactorOption[]; notice: Notice }) {
   const [groups, setGroups] = useState<EmissionSourceGroup[]>([]);
   const [groupId, setGroupId] = useState("");
+  const [commuters, setCommuters] = useState(0);
   const [raw, setRaw] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
   const [busy, setBusy] = useState(false);
@@ -34,6 +36,7 @@ export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; 
       const response = await fetch(`/api/isolated/jobs/${jobId}/emission-sources`, { cache: "no-store" });
       const body = await response.json();
       if (response.ok && Array.isArray(body.groups)) setGroups(body.groups);
+      if (response.ok && Array.isArray(body.sources)) setCommuters(body.sources.filter((source: { sourceType?: string }) => source.sourceType === "commuting").length);
     } catch { /* the register panel surfaces its own errors */ }
   }, [jobId]);
   useEffect(() => { void loadGroups(); }, [loadGroups]);
@@ -57,35 +60,38 @@ export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; 
     URL.revokeObjectURL(anchor.href);
   }
 
-  const ready = (row: Row) => row.state !== "saved" && row.employee.trim() !== "" && COMMUTE_MODES.includes(row.mode) && row.distance !== null && row.distance >= 0 && Boolean(row.factorId);
+  const ready = (row: Row) => row.state !== "saved" && COMMUTE_MODES.includes(row.mode) && row.distance !== null && row.distance >= 0 && Boolean(row.factorId);
 
   async function importRows() {
     if (busy) return;
     const toSave = rows.filter(ready);
-    if (toSave.length === 0) { notice({ kind: "warn", text: "Add at least one row with an employee, a controlled mode, a distance and a factor." }); return; }
+    if (toSave.length === 0) { notice({ kind: "warn", text: "Add at least one row with a controlled mode, a distance and a factor." }); return; }
     setBusy(true);
     const batchId = crypto.randomUUID();
-    let ok = 0;
+    let ok = 0, next = commuters;
     for (const row of toSave) {
+      next += 1;
+      const label = commuterLabel(next, row.mode);
       update(row.key, { state: "saving", detail: "" });
       const factor = commuteFactors.find((item) => item.factorId === row.factorId);
       const created = await postBrowserCommand<{ sourceId: string }>(`/api/isolated/jobs/${jobId}/emission-sources`, {
         groupId: groupId || null, scope: "3.7", sourceType: "commuting", sourceSubtype: null, siteId: null,
-        sourceName: row.employee.trim(), assetIdentifier: row.employee.trim(),
+        sourceName: label, assetIdentifier: null,
         purchasedGoodsCategoryId: null,
         datasetId: factor?.factorSource === "dataset" ? factor.datasetId : null,
         factorId: factor?.factorSource === "dataset" ? factor.factorId : null,
         factorSource: factor?.factorSource ?? "dataset", clientFactorId: factor?.clientFactorId ?? null,
         quantity: row.distance, unit: row.distanceUnit === "mi" ? "mi" : "km", applyPct: 100,
         dataSource: "Commuting bulk import", dataConfidence: "M", monthlyActivity: [],
-        detail: { kind: "commuting", vehicleRegistration: null, commuteMode: row.mode, distanceUnit: row.distanceUnit, wfhDaysPerYear: row.wfhDaysPerYear, wfhHoursPerDay: row.wfhHoursPerDay, employeeName: row.employee.trim() },
+        detail: { kind: "commuting", commuteMode: row.mode, distanceUnit: row.distanceUnit, wfhDaysPerYear: row.wfhDaysPerYear, wfhHoursPerDay: row.wfhHoursPerDay },
         notes: null, importBatchId: batchId,
       }, crypto.randomUUID());
       if (created.state !== "success") { update(row.key, { state: "failed", detail: created.state === "validation_failed" ? created.issues.map((issue) => issue.message).join(" ") : created.message }); continue; }
       if (!groupId) await postBrowserCommand<{ rowId: string }>(`/api/isolated/jobs/${jobId}/emission-sources/${created.data.sourceId}/sync`, {}, crypto.randomUUID());
-      update(row.key, { state: "saved", detail: groupId ? "Added to the roll-up group." : "Synced to a Scope 3.7 row, pending review." });
+      update(row.key, { state: "saved", detail: `${label} — ${groupId ? "added to the roll-up group." : "synced to a Scope 3.7 row, pending review."}` });
       ok += 1;
     }
+    setCommuters(next);
     if (ok && groupId) {
       const rolled = await postBrowserCommand<{ enabledMemberCount: number }>(`/api/isolated/jobs/${jobId}/emission-source-groups/${groupId}/sync`, {}, crypto.randomUUID());
       if (rolled.state !== "success") notice({ kind: "warn", text: rolled.state === "validation_failed" ? rolled.issues.map((issue) => issue.message).join(" ") : rolled.message });
@@ -111,7 +117,7 @@ export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; 
       <div className="nz-config-head">
         <div>
           <span className="nz-eyebrow">Data entry · employee commuting (bulk)</span>
-          <b>Employee commuting — paste a list <InfoTip label="Employee commuting — paste a list">Paste your commuting survey, confirm a controlled mode and an emission factor per employee, then import. Each row becomes a Scope 3.7 source through the standard review workflow; group them to roll up into one canonical carbon-emissions row.</InfoTip></b>
+          <b>Employee commuting — paste a list <InfoTip label="Employee commuting — paste a list">Paste your commuting survey, confirm a controlled mode and an emission factor per line, then import. Names are not saved: each line becomes a Scope 3.7 source labelled "Commuter n · mode" through the standard review workflow; group them to roll up into one canonical carbon-emissions row.</InfoTip></b>
         </div>
         <span className={`nz-st ${rows.length ? "done" : "need"}`}>{rows.length} rows</span>
       </div>
@@ -139,7 +145,7 @@ export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; 
           </label>
           <div style={{ overflowX: "auto", marginTop: 10 }}>
             <table className="nz-tbl">
-              <thead><tr><th>Employee</th><th>Mode</th><th className="num">Distance / year</th><th>Unit</th><th className="num">WFH days</th><th className="num">WFH hrs/day</th><th>Factor</th><th>Status</th><th /></tr></thead>
+              <thead><tr><th>Employee <span className="muted">· not saved</span></th><th>Mode</th><th className="num">Distance / year</th><th>Unit</th><th className="num">WFH days</th><th className="num">WFH hrs/day</th><th>Factor</th><th>Status</th><th /></tr></thead>
               <tbody>
                 {rows.map((row) => (
                   <tr key={row.key}>

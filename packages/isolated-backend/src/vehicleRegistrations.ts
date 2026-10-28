@@ -23,7 +23,8 @@ import { normaliseRegistration } from "./vehicleLookup";
  *   cleared, and from then on `asset_identifier` on their vehicles is a **name or fleet number** the client or staff give, which is
  *   not sealed (it is not a registration). The DVLA lookup still reads a plate transiently, and never stores it.
  * - **Audited by reference.** The opt-out's audit records the client and the counts; no write here puts a plate in a payload.
- * - **Only company vehicles.** `asset_identifier` also holds a commuter's name and an import's invoice date: those are left alone.
+ * - **Only company vehicles.** `asset_identifier` also holds an import's invoice date, which is left alone. (A commuter's name it no
+ *   longer holds at all — D6 minimises rather than seals: `commutingTravelMinimisation.ts`.)
  *
  * Reads open the plate through {@link vehicleRegistrationReader}, for the staff and the client's own views; a shredded key or
  * missing keys read as "held, unreadable" (null), never as an error.
