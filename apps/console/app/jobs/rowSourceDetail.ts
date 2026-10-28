@@ -9,7 +9,7 @@
 // `provenance.spendDetail`, frozen when the row was synced from the register or
 // the client portal. The editable scope-row fields (source label, report
 // label, PG&S category, reference) are rendered alongside by the drawer.
-import type { ScopeRowReadModel } from "@nzi/contracts";
+import { travelModeLabel, type ScopeRowReadModel } from "@nzi/contracts";
 
 export type SourceDetailKind = "vehicle" | "spend" | "travel" | "generic";
 export type SourceDetailField = { label: string; value: string };
@@ -51,8 +51,11 @@ export function rowSourceDetail(row: ScopeRowReadModel): RowSourceDetail {
       title: "Travel detail",
       kind: "travel",
       fields: compact([
-        ["Mode", text(detail.travelMode)],
+        // D5 (R2): the controlled mode's label — a flight with its haul and class; a trip from before the list, as it was saved.
+        ["Mode", text(travelModeLabel({ travelMode: text(detail.travelMode), airHaul: text(detail.airHaul), cabinClass: text(detail.cabinClass) }))],
         ["Leg", leg || null],
+        ["Nights", text(detail.nights)],
+        ["Date", text(detail.tripDate)],
         ["Carrier", text(detail.carrier)],
         ["Passengers", text(detail.passengers)],
         ["Traveller / ref", row.assetIdentifier],

@@ -3,6 +3,7 @@ import {useCallback,useEffect,useState} from "react";
 import {patchBrowserCommand,postBrowserCommand} from "@nzi/api-client";
 import {InfoTip} from "@nzi/ui";
 import {crpScopeOptions,type EmissionGroupRollup,type EmissionSource,type EmissionSourceDetail,type EmissionSourceGroup,type EmissionSourceKind,type FactorOption,type PurchasedGoodsCategoryOption,type SiteOption} from "@nzi/contracts";
+import {AIR_HAULS,airChoices,airFactorFor,CABIN_CLASSES,COMMUTE_MODES,TRAVEL_MODES,travelFactorsForMode,travelModeDef,type AirHaul,type CabinClass} from "@nzi/contracts";
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 import {yoyVarianceNote} from "./yoyVariance";
 import {useUsageTypes} from "./usageTypes";
@@ -15,25 +16,24 @@ const monthlyMap=(source:EmissionSource):Record<string,string>=>Object.fromEntri
 // S1 — the register's manual add path is Company Vehicles, Employee Commuting and
 // Business Travel (NZC-037; data-entry UX review item 5), each behind its own flag.
 const kindLabel:Record<EmissionSourceKind,string>={vehicle:"Company vehicle",commuting:"Employee commuting",travel:"Business travel",asset:"Asset (legacy)",spend:"Spend"};
-const commuteModes=["Car — petrol","Car — diesel","Car — hybrid","Car — plug-in hybrid","Car — battery electric","Motorcycle","Bus","Rail","Underground / tram","Cycle","Walk"];
-const travelModes=["Flight — domestic","Flight — short haul","Flight — long haul","Rail","Hire car","Taxi / private hire","Ferry","Coach"];
+// D5 (R2): both mode lists are the controlled ones in contracts — commuting's ground modes are travel's too.
 const fuels=["Petrol","Diesel","Hybrid","Plug-in hybrid","Battery electric","LPG","Unknown"];
 type Draft={groupId:string;scope:string;sourceType:EmissionSourceKind;siteId:string;sourceName:string;assetIdentifier:string;factorId:string;quantity:number;unit:string;applyPct:number;dataSource:string;dataConfidence:"H"|"M"|"L";notes:string;
   employeeName:string;vehicleRegistration:string;commuteMode:string;distanceUnit:string;wfhDaysPerYear:string;wfhHoursPerDay:string;
   make:string;model:string;fuel:string;
   /** Dedup slice 2 (0171): an emission_usage_type value (Car, Van, HGV…), "" for none — sync copies it to the scope row. */
   usageTypeId:string;
-  travelMode:string;origin:string;destination:string;carrier:string;passengers:string;
+  travelMode:string;airHaul:AirHaul|"";cabinClass:CabinClass|"";origin:string;destination:string;carrier:string;passengers:string;
   netValue:string;vatPercent:string;glCode:string;category:string;purchasedGoodsCategoryId:string};
 const blank=():Draft=>({groupId:"",scope:"3.7",sourceType:"commuting",siteId:"",sourceName:"",assetIdentifier:"",factorId:"",quantity:0,unit:"km",applyPct:100,dataSource:"Source Register",dataConfidence:"M",notes:"",
-  employeeName:"",vehicleRegistration:"",commuteMode:commuteModes[0]!,distanceUnit:"km",wfhDaysPerYear:"",wfhHoursPerDay:"",
+  employeeName:"",vehicleRegistration:"",commuteMode:COMMUTE_MODES[0]!,distanceUnit:"km",wfhDaysPerYear:"",wfhHoursPerDay:"",
   make:"",model:"",fuel:"",usageTypeId:"",
-  travelMode:travelModes[0]!,origin:"",destination:"",carrier:"",passengers:"",
+  travelMode:TRAVEL_MODES[0]!.value,airHaul:"",cabinClass:"",origin:"",destination:"",carrier:"",passengers:"",
   netValue:"",vatPercent:"",glCode:"",category:"",purchasedGoodsCategoryId:""});
 const num=(value:string):number|null=>value.trim()===""?null:Number(value);
 const buildDetail=(d:Draft):EmissionSourceDetail=>d.sourceType==="commuting"?{kind:"commuting",vehicleRegistration:d.vehicleRegistration.trim()||null,commuteMode:d.commuteMode,distanceUnit:d.distanceUnit,wfhDaysPerYear:num(d.wfhDaysPerYear),wfhHoursPerDay:num(d.wfhHoursPerDay),employeeName:d.employeeName.trim()||null}
   :d.sourceType==="vehicle"?{kind:"vehicle",vehicleRegistration:d.vehicleRegistration.trim()||null,make:d.make.trim()||null,model:d.model.trim()||null,fuel:d.fuel||null}
-  :d.sourceType==="travel"?{kind:"travel",travelMode:d.travelMode,origin:d.origin.trim()||null,destination:d.destination.trim()||null,carrier:d.carrier.trim()||null,distanceUnit:d.distanceUnit,passengers:num(d.passengers)}
+  :d.sourceType==="travel"?{kind:"travel",travelMode:d.travelMode,airHaul:d.travelMode==="air"?d.airHaul||null:null,cabinClass:d.travelMode==="air"?d.cabinClass||null:null,nights:travelModeDef(d.travelMode)?.basis==="nights"?d.quantity:null,origin:d.origin.trim()||null,destination:d.destination.trim()||null,carrier:d.carrier.trim()||null,distanceUnit:d.distanceUnit,passengers:num(d.passengers)}
   :d.sourceType==="spend"?{kind:"spend",netValue:Number(d.netValue||0),vatPercent:num(d.vatPercent),glCode:d.glCode.trim()||null,category:d.category.trim()||"Uncategorised"}
   :{kind:"asset"};
 const scopeForKind=(kind:EmissionSourceKind):string=>kind==="vehicle"?"1":kind==="travel"?"3.6":"3.7";
@@ -75,7 +75,13 @@ export function EmissionSourceRegister({jobId,factors,sites,categories,notice,on
   async function changeStatus(source:EmissionSource){const enabled=!source.enabled;if(!enabled&&!window.confirm(`Archive ${source.sourceName}? Its linked scope row will be excluded and require fresh review if restored.`))return;setPending(`status:${source.id}`);const result=await patchBrowserCommand<{sourceId:string;version:number;enabled:boolean}>(`/api/isolated/jobs/${jobId}/emission-sources/${source.id}/status`,{expectedVersion:source.version,enabled},crypto.randomUUID());if(result.state==="success"&&source.groupId){setPending("");notice({kind:"ok",text:`${source.sourceName} ${enabled?"restored":"archived"}. Its roll-up group was recomputed and returned to review.`});await load();return;}if(result.state==="success"&&enabled){const synced=await postBrowserCommand<{rowId:string}>(`/api/isolated/jobs/${jobId}/emission-sources/${source.id}/sync`,{},crypto.randomUUID());setPending("");notice(synced.state==="success"?{kind:"ok",text:`${source.sourceName} restored and re-synced for review.`}:{kind:"warn",text:"The source was restored, but its canonical row still needs syncing."});await load();return;}setPending("");if(result.state==="success"){notice({kind:"ok",text:`${source.sourceName} archived with its canonical row.`});await load();return;}if(result.state==="conflict")await load();notice({kind:"warn",text:result.state==="validation_failed"?result.issues.map(issue=>issue.message).join(" "):result.message});}
   const register=loaded?scopeRegister(loaded,only):null;
   const usageTypes=useUsageTypes();
-  const applicable=factors.filter(item=>item.scopes.includes(value.scope.split(".")[0]!)||item.scopes.includes(value.scope));
+  const inScope=factors.filter(item=>item.scopes.includes(value.scope.split(".")[0]!)||item.scopes.includes(value.scope));
+  // D5 (R2, R3): a trip is priced by its mode's factors only; a flight by its haul and cabin class, read from the library's labels.
+  const travel=value.sourceType==="travel",asOptions=inScope.map(item=>({...item,id:item.factorId,unit:item.activityUnit}));
+  const applicable=travel?travelFactorsForMode(asOptions,value.travelMode):inScope;
+  const air=travel&&value.travelMode==="air"?airChoices(asOptions,value.airHaul||null):null;
+  const pickAir=(airHaul:AirHaul|"",cabinClass:CabinClass|"")=>{const factor=airHaul&&cabinClass?airFactorFor(asOptions,airHaul,cabinClass):null;setValue({...value,airHaul,cabinClass,factorId:factor?.factorId??"",unit:factor?.activityUnit??value.unit});};
+  const travelBasis=travel?travelModeDef(value.travelMode)?.basis??"distance":null;
   const scopedTitle=fromRow?(only?.groupId?"This row's roll-up members":"This row's source"):only?.kinds?`${only.kinds.map(kind=>kindLabel[kind]).join(" · ")} sources`:null;
   const emptyText=fromRow?"The register holds no source for this row.":only?.kinds?`No ${only.kinds.map(kind=>kindLabel[kind].toLowerCase()).join(" or ")} sources have been added.`:"No per-entity emission sources have been added.";
   // One full register on a page at a time, so the anchor is the unscoped one's; a scoped view may sit beside a row's own.
@@ -92,13 +98,13 @@ export function EmissionSourceRegister({jobId,factors,sites,categories,notice,on
         <label className="nz-fl">Roll-up group<select className="nz-sel" value={value.groupId} onChange={event=>setValue({...value,groupId:event.target.value})}><option value="">Ungrouped</option>{register.groups.map(group=><option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
         <label className="nz-fl">Factor<select className="nz-sel" value={value.factorId} onChange={event=>{const next=factors.find(item=>item.factorId===event.target.value);setValue({...value,factorId:event.target.value,unit:next?.activityUnit??value.unit})}}><option value="">No factor yet</option>{applicable.map(item=><option key={`${item.factorSource}:${item.factorId}`} value={item.factorId}>{item.label}</option>)}</select></label>
         <label className="nz-fl">Site<select className="nz-sel" value={value.siteId} onChange={event=>setValue({...value,siteId:event.target.value})}><option value="">No site</option>{sites.map(site=><option key={site.id} value={site.id}>{site.name}</option>)}</select></label>
-        {value.sourceType!=="spend"?<><label className="nz-fl">Quantity<input className="nz-inp" type="number" min="0" step="any" value={value.quantity} onChange={event=>setValue({...value,quantity:Number(event.target.value)})}/></label>
+        {value.sourceType!=="spend"?<><label className="nz-fl">{travelBasis==="nights"?"Nights":travelBasis==="distance"?"Distance":"Quantity"}<input className="nz-inp" type="number" min="0" step="any" value={value.quantity} onChange={event=>setValue({...value,quantity:Number(event.target.value)})}/></label>
         <label className="nz-fl">Unit<input className="nz-inp" value={value.unit} onChange={event=>setValue({...value,unit:event.target.value})}/></label></>:null}
         <label className="nz-fl">Apply %<input className="nz-inp" type="number" min="0" max="100" value={value.applyPct} onChange={event=>setValue({...value,applyPct:Number(event.target.value)})}/></label>
-        <label className="nz-fl">{value.sourceType==="commuting"?"Employee ID / name":value.sourceType==="spend"?"Reference":value.sourceType==="travel"?"Traveller / trip ref":"Asset ID / meter"}<input className="nz-inp" value={value.assetIdentifier} onChange={event=>setValue({...value,assetIdentifier:event.target.value})}/></label>
+        <label className="nz-fl">{value.sourceType==="commuting"?"Employee ID / name":value.sourceType==="spend"?"Reference":value.sourceType==="travel"?"Trip reference":"Asset ID / meter"}<input className="nz-inp" value={value.assetIdentifier} placeholder={value.sourceType==="travel"?"Booking or trip ref — not a name or registration":undefined} onChange={event=>setValue({...value,assetIdentifier:event.target.value})}/></label>
         {value.sourceType==="commuting"?<>
           <label className="nz-fl">Employee name<input className="nz-inp" value={value.employeeName} onChange={event=>setValue({...value,employeeName:event.target.value})}/></label>
-          <label className="nz-fl">Commute mode<select className="nz-sel" value={value.commuteMode} onChange={event=>setValue({...value,commuteMode:event.target.value})}>{commuteModes.map(mode=><option key={mode}>{mode}</option>)}</select></label>
+          <label className="nz-fl">Commute mode<select className="nz-sel" value={value.commuteMode} onChange={event=>setValue({...value,commuteMode:event.target.value})}>{COMMUTE_MODES.map(mode=><option key={mode}>{mode}</option>)}</select></label>
           <label className="nz-fl">Vehicle registration<input className="nz-inp" value={value.vehicleRegistration} placeholder="if a private vehicle" onChange={event=>setValue({...value,vehicleRegistration:event.target.value})}/></label>
           <label className="nz-fl">Distance unit<select className="nz-sel" value={value.distanceUnit} onChange={event=>setValue({...value,distanceUnit:event.target.value})}><option value="km">km</option><option value="mi">miles</option></select></label>
           <label className="nz-fl">WFH days / year<input className="nz-inp" type="number" min="0" max="366" value={value.wfhDaysPerYear} onChange={event=>setValue({...value,wfhDaysPerYear:event.target.value})}/></label>
@@ -112,7 +118,12 @@ export function EmissionSourceRegister({jobId,factors,sites,categories,notice,on
           {usageTypes?<label className="nz-fl">Usage type <span className="muted">· optional</span><select className="nz-sel" data-usage-type value={value.usageTypeId} onChange={event=>setValue({...value,usageTypeId:event.target.value})}><option value="">Not specified</option>{usageTypes.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}</select></label>:null}
         </>:null}
         {value.sourceType==="travel"?<>
-          <label className="nz-fl">Travel mode<select className="nz-sel" value={value.travelMode} onChange={event=>setValue({...value,travelMode:event.target.value})}>{travelModes.map(mode=><option key={mode}>{mode}</option>)}</select></label>
+          <label className="nz-fl">Travel mode<select className="nz-sel" value={value.travelMode} onChange={event=>setValue({...value,travelMode:event.target.value,airHaul:"",cabinClass:"",factorId:""})}>{TRAVEL_MODES.map(mode=><option key={mode.value} value={mode.value}>{mode.label}</option>)}</select></label>
+          {air?<>
+            <label className="nz-fl">Haul<select className="nz-sel" value={value.airHaul} onChange={event=>pickAir(event.target.value as AirHaul|"","")}><option value="">Choose…</option>{air.hauls.map(entry=><option key={entry.value} value={entry.value}>{entry.label}</option>)}</select></label>
+            <label className="nz-fl">Cabin class<select className="nz-sel" value={value.cabinClass} disabled={!value.airHaul} onChange={event=>pickAir(value.airHaul,event.target.value as CabinClass|"")}><option value="">Choose…</option>{air.classes.map(entry=><option key={entry.value} value={entry.value}>{entry.label}</option>)}</select></label>
+            {air.hauls.length===0?<span className="nz-hint">No flight factors are in this job&rsquo;s datasets.</span>:value.airHaul&&value.cabinClass&&!value.factorId?<span className="nz-hint bad">No factor for {AIR_HAULS.find(entry=>entry.value===value.airHaul)?.label} · {CABIN_CLASSES.find(entry=>entry.value===value.cabinClass)?.label} in this job&rsquo;s datasets.</span>:null}
+          </>:null}
           <label className="nz-fl">From<input className="nz-inp" value={value.origin} placeholder="Origin (city / airport)" onChange={event=>setValue({...value,origin:event.target.value})}/></label>
           <label className="nz-fl">To<input className="nz-inp" value={value.destination} placeholder="Destination" onChange={event=>setValue({...value,destination:event.target.value})}/></label>
           <label className="nz-fl">Carrier<input className="nz-inp" value={value.carrier} placeholder="Airline / operator (optional)" onChange={event=>setValue({...value,carrier:event.target.value})}/></label>
