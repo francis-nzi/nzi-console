@@ -15,6 +15,10 @@ import {
   COMPANY_VEHICLES_CODE, parseVehicleFactorLabel, preferMiles, VEHICLE_TYPE_LABEL, VEHICLE_UNIT_LABEL, vehicleChoices, vehicleUnitOptions,
   type VehicleType,
 } from "@nzi/contracts";
+import {
+  AIR_HAULS, airChoices, airFactorFor, CABIN_CLASSES, factorServesTravelMode, readTravelFactorLabel, TRAVEL_MODES, travelFactorsForMode, travelModeDef,
+  type AirHaul, type CabinClass,
+} from "@nzi/contracts";
 import type { EmissionCategory } from "@nzi/contracts";
 import {
   draftBasis,
@@ -286,7 +290,19 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
   // Suggestions show as soon as the box has focus (JW-13) — the first few of the category's options, narrowed as you type.
-  const searchResults = searchActivityOptions(basisFactors, draft.activity);
+  // D5 (R2, R3): a business-travel entry starts from its mode — the activities on offer are that mode's, a flight's its haul and class's.
+  // Staff capture only: the portal's travel options are its bucket's, unchanged.
+  const travelEntry = category.kind === "travel" && audience === "crm" && !spend;
+  const [travelPick, setTravelPick] = useState<{ mode: string; haul: AirHaul | ""; cabinClass: CabinClass | "" }>(() => {
+    const seeded = factors.find(option => option.id === entry?.factorId);
+    const read = seeded ? readTravelFactorLabel(seeded.label) : null;
+    return { mode: read ? read.mode : "", haul: read?.haul ?? "", cabinClass: read?.cabinClass ?? "" };
+  });
+  const greyFleet = travelEntry && travelPick.mode === "grey-fleet";
+  const modeFactors = travelEntry && travelPick.mode
+    ? basisFactors.filter(option => factorServesTravelMode(option.label, travelPick.mode, travelPick.mode === "air" ? { haul: travelPick.haul || null, cabinClass: travelPick.cabinClass || null } : undefined))
+    : basisFactors;
+  const searchResults = searchActivityOptions(modeFactors, draft.activity);
   // CRM only: the portal's options are its bucket's, and an empty bucket is the consultant's to fix, not the client's.
   const noFactors = audience === "crm" && factors.length === 0;
   // A pick is the only way an activity is accepted: it sets the activity, its factor and that factor's unit (on spend, the
@@ -301,9 +317,11 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   const lastVehicle = useRef<ReturnType<typeof parseVehicleFactorLabel>>(null);
   // D4 (R4): the manual fallback's type → size → fuel, picked from the library's own labels.
   const companyVehicle = category.code === COMPANY_VEHICLES_CODE;
+  // D5 (R5): grey fleet — a personal car — is picked as a company vehicle is (lookup, or type → size → fuel), but keeps no plate.
+  const vehiclePicker = companyVehicle || greyFleet;
   const optedOut = companyVehicle && props.entryBasis?.vehicleRegistrationsOptOut === true;
   const [vehiclePick, setVehiclePick] = useState<{ type: VehicleType | null; size: string | null; fuel?: string | null }>({ type: null, size: null });
-  const choices = companyVehicle ? vehicleChoices(basisFactors, vehiclePick) : null;
+  const choices = vehiclePicker ? vehicleChoices(greyFleet ? modeFactors : basisFactors, vehiclePick) : null;
   const pickVehicleFuel = (fuel: string) => {
     const match = basisFactors.find((option) => { const read = parseVehicleFactorLabel(option.label); return read && read.type === vehiclePick.type && (read.size ?? null) === vehiclePick.size && read.fuel === fuel; });
     setVehiclePick({ ...vehiclePick, fuel });
@@ -312,9 +330,29 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
   // D4 (R3): how the chosen vehicle is measured — miles (the default), km, or litres of its fuel — each its own factor.
   const chosenFactor = basisFactors.find((option) => option.id === draft.factorId) ?? null;
   const chosenRead = chosenFactor ? parseVehicleFactorLabel(chosenFactor.label) : null;
-  if (companyVehicle && chosenRead) lastVehicle.current = chosenRead;
-  const chosenVehicle = companyVehicle && !spend && chosenFactor ? chosenRead ?? lastVehicle.current : null;
+  if (vehiclePicker && chosenRead) lastVehicle.current = chosenRead;
+  const chosenVehicle = vehiclePicker && !spend && chosenFactor ? chosenRead ?? lastVehicle.current : null;
   const unitChoices = chosenVehicle ? vehicleUnitOptions(basisFactors, chosenVehicle) : [];
+
+  // D5: choosing a mode keeps a factor that serves it, else clears it — and takes the mode's only factor when it has just one.
+  const pickTravelMode = (mode: string) => {
+    setTravelPick({ mode, haul: "", cabinClass: "" });
+    setVehiclePick({ type: null, size: null });
+    setLookup({ state: "idle" });
+    const serving = mode ? travelFactorsForMode(basisFactors, mode) : [];
+    const current = basisFactors.find(option => option.id === draft.factorId);
+    const keep = Boolean(current && mode !== "air" && factorServesTravelMode(current.label, mode));
+    if (!keep) patch({ activity: "", factorId: "", registration: "", assertedVehicleAttributes: null, manualMode: false });
+    if (!keep && mode !== "air" && mode !== "grey-fleet" && serving.length === 1) pickActivity(serving[0]!);
+  };
+  // R3: a flight's factor is its haul and class's — with the RF uplift where the library publishes both.
+  const pickAir = (haul: AirHaul | "", cabinClass: CabinClass | "") => {
+    setTravelPick({ mode: "air", haul, cabinClass });
+    const option = haul && cabinClass ? airFactorFor(basisFactors, haul, cabinClass) : null;
+    if (option) pickActivity(option); else patch({ activity: "", factorId: "" });
+  };
+  const air = travelEntry && travelPick.mode === "air" ? airChoices(basisFactors, travelPick.haul || null) : null;
+  const showRegistration = !travelEntry || greyFleet;
 
   const runLookup = async () => {
     const plate = draft.registration.trim();
@@ -393,7 +431,38 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
           case "registration":
             return (
               <fieldset key={field.key} style={{ border: 0, padding: 0, margin: 0 }}>
-                <span className="nz-eyebrow">{field.label}</span>
+                <span className="nz-eyebrow">{travelEntry ? "Mode" : field.label}</span>
+                {travelEntry ? (
+                  // D5 (R2): the controlled mode list — never free text. Its basis follows: distance, or nights for a hotel (R4).
+                  <div className="nz-ef-travel-mode" role="group" aria-label="Travel mode">
+                    <label className="nz-fl">Travel mode
+                      <select className="nz-sel" value={travelPick.mode} onChange={event => pickTravelMode(event.target.value)}>
+                        <option value="">Choose…</option>
+                        {TRAVEL_MODES.map(mode => <option key={mode.value} value={mode.value}>{mode.label}</option>)}
+                      </select>
+                      {travelPick.mode ? <span className="nz-hint">{travelModeDef(travelPick.mode)?.basis === "nights" ? "Measured in nights — one room, one night each." : greyFleet ? "Measured in distance — find the car by its registration, or enter it manually." :"Measured in distance — passenger distance where the factor says so."}</span> : null}
+                    </label>
+                    {air ? <>
+                      {/* D5 (R3): air by haul, then cabin class — as the library publishes them. */}
+                      <label className="nz-fl">Haul
+                        <select className="nz-sel" value={travelPick.haul} onChange={event => pickAir(event.target.value as AirHaul | "", "")}>
+                          <option value="">Choose…</option>
+                          {air.hauls.map(entry => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+                        </select>
+                      </label>
+                      <label className="nz-fl">Cabin class
+                        <select className="nz-sel" value={travelPick.cabinClass} disabled={!travelPick.haul} onChange={event => pickAir(travelPick.haul, event.target.value as CabinClass | "")}>
+                          <option value="">Choose…</option>
+                          {air.classes.map(entry => <option key={entry.value} value={entry.value}>{entry.label}</option>)}
+                        </select>
+                      </label>
+                      {air.hauls.length === 0 ? <span className="nz-hint">No flight factors are offered for this category — check the job&rsquo;s datasets.</span>
+                        : travelPick.haul && travelPick.cabinClass && !draft.factorId ? <span className="nz-hint bad" role="alert">No factor for {AIR_HAULS.find(entry => entry.value === travelPick.haul)?.label} · {CABIN_CLASSES.find(entry => entry.value === travelPick.cabinClass)?.label} in this job&rsquo;s datasets.</span> : null}
+                    </> : null}
+                    {travelPick.mode && travelPick.mode !== "air" && !greyFleet && modeFactors.length === 0 ? <span className="nz-hint">No {travelModeDef(travelPick.mode)?.label} factor is offered for this category — check the job&rsquo;s datasets.</span> : null}
+                  </div>
+                ) : null}
+                {showRegistration ? <>
                 <div className="nz-ef-reg">
                   {optedOut ? (
                     // D4 (R1): this client holds no registration numbers — the vehicle is named, and nothing is looked up.
@@ -431,9 +500,9 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                 ) : null}
                 {/* D4 (R4): an opted-out client's vehicle is always picked by type → size → fuel, so the link is not offered. */}
                 {optedOut ? null : <p className="nz-ef-manual-link">
-                  …or <button type="button" onClick={() => patch({ manualMode: !draft.manualMode })}>enter manually</button> ({companyVehicle ? "type · size · fuel" : spec?.manualEntryHint ?? ""}).
+                  …or <button type="button" onClick={() => patch({ manualMode: !draft.manualMode })}>enter manually</button> ({vehiclePicker ? "type · size · fuel" : spec?.manualEntryHint ?? ""}).
                 </p>}
-                {(draft.manualMode || optedOut) && companyVehicle && choices ? (
+                {(draft.manualMode || optedOut) && vehiclePicker && choices ? (
                   // D4 (R4): the manual fallback — type, then size, then fuel, from the library's own vehicle factors.
                   <div className="nz-ef-vehicle-pick" role="group" aria-label="Vehicle type, size and fuel">
                     <label className="nz-fl">Type
@@ -457,13 +526,14 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     {choices.types.length === 0 ? <span className="nz-hint">No vehicle factors are offered for this category — search the activities below.</span> : null}
                   </div>
                 ) : null}
-                {draft.manualMode && !companyVehicle ? (
+                {draft.manualMode && !vehiclePicker && !travelEntry ? (
                   <label className="nz-fl">
                     {category.kind === "commuting" ? "Mode / WFH" : category.kind === "travel" ? "Travel type" : "Make · model · fuel"}
                     <input className="nz-inp" value={draft.manualDetail} onChange={event => patch({ manualDetail: event.target.value })}
                       placeholder={category.kind === "commuting" ? "e.g. Car — diesel, 2 WFH days" : category.kind === "travel" ? "e.g. Air — short haul" : "e.g. Ford Transit, diesel"} />
                   </label>
                 ) : null}
+                </> : null}
                 {unitChoices.length > 1 ? (
                   // D4 (R3): miles by default; km, or litres of fuel, where the library offers them. Choosing one chooses its factor.
                   <div className="nz-ef-vehicle-unit">

@@ -1,6 +1,7 @@
 // S1.1 — pure helpers for the Employee Commuting bulk-paste grid (NZC-036).
 // Parsing and mode matching are deterministic and side-effect-free so they can be
 // unit-tested without a browser. Mirrors the B2 spendLedger parser.
+import { COMMUTE_MODES } from "@nzi/contracts";
 
 export type CommutingRow = {
   employee: string;
@@ -11,10 +12,8 @@ export type CommutingRow = {
   wfhHoursPerDay: number | null;
 };
 
-export const COMMUTE_MODES = [
-  "Car — petrol", "Car — diesel", "Car — hybrid", "Car — plug-in hybrid", "Car — battery electric",
-  "Motorcycle", "Bus", "Rail", "Underground / tram", "Cycle", "Walk",
-];
+// D5 (R2): one controlled list, read by commuting and business travel alike — the ground modes are travel's too.
+export { COMMUTE_MODES };
 
 const HEADER_HINTS = ["employee", "name", "staff", "mode", "transport", "method", "distance", "km", "mile", "commute", "wfh", "home", "days", "hours"];
 const num = (raw: string): number | null => {
