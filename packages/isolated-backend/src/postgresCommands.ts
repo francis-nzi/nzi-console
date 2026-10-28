@@ -49,7 +49,7 @@ import { isCurrencyUnit, rowScopeForCategory, spendCarryKey } from "@nzi/contrac
 import { recordClientEntryBasisChoice } from "./entryBasisChoices";
 import { fixCarryForwardBasis, storedCarryForwardBasis } from "./carryForwardBasis";
 import { resolveReopenRequestOnEdit } from "./portalReopenRequests";
-import { copySealedVehicleIdentifier, resealVehicleIdentifiers, sealVehicleIdentifiers } from "./vehicleRegistrations";
+import { copySealedVehicleIdentifier, resealVehicleIdentifiers, sealVehicleIdentifiers, VEHICLE_CATEGORY_CODE, vehicleIdentityKey } from "./vehicleRegistrations";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { resolveReportNarrative } from "./reportNarrative";
 import { insertClientContact } from "./clientContactRecords";
@@ -1471,8 +1471,8 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
   if(!priorJob)throw new CommandValidationError([{field:"priorJobId",code:"NOT_FOUND",message:"Prior-year job was not found for this client."}]);
   // D3 (R3): rows and spend lines carry forward from one prior job, stored the first time either does.
   await fixCarryForwardBasis(db,context,input.jobId,input.priorJobId,"priorJobId");
-  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null;filed_suffix_code:string|null;prior_filed_suffix_code:string|null;factor_own_label:string|null}>(
-    `SELECT scope_row_id,scope,source_label,report_label,asset_identifier,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text,
+  const priorRows=await db.query<{scope_row_id:string;scope:string;source_label:string;report_label:string|null;asset_identifier:string|null;asset_identifier_bidx:string|null;site_id:string|null;category_code:string|null;purchased_goods_category_id:string|null;dataset_id:string|null;factor_id:string|null;factor_version:string|null;factor_label:string|null;factor_source:"dataset"|"client";client_factor_id:string|null;is_custom_entry:boolean;apply_pct:string;unit:string|null;column_text:string|null;usage_type_id:string|null;filed_suffix_code:string|null;prior_filed_suffix_code:string|null;factor_own_label:string|null}>(
+    `SELECT scope_row_id,scope,source_label,report_label,asset_identifier,asset_identifier_bidx,site_id,category_code,purchased_goods_category_id,dataset_id,factor_id,factor_version,factor_label,factor_source,client_factor_id,is_custom_entry,apply_pct,unit,column_text,
             -- Dedup slice 2 (0171): a new row carries the prior usage type only while it is still offered (a withdrawn one drops to null).
             (SELECT v.value_id FROM nzi_console.reference_values v WHERE v.organisation_id=r.organisation_id AND v.value_id=r.usage_type_id AND v.active) AS usage_type_id,
             -- Dedup slice 3: filed by applicability only while the pair is still applicable.
@@ -1489,9 +1489,13 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
     [context.organisationId,input.priorJobId,input.rowIds,input.jobId],
   );
   let rolledForward=0;
-  const skipped=input.rowIds.length-priorRows.rows.length;
+  let skipped=input.rowIds.length-priorRows.rows.length;
   const createdRowIds:string[]=[];
+  // D4 (R6): a company vehicle is carried by its identity — its registration's digest, else (opted out) its name — so a vehicle
+  // this job already has, carried or entered, is not carried twice; structure only, the mileage zeroed as every carried row's is.
+  const heldVehicles=new Set((await db.query<{asset_identifier_bidx:string|null;asset_identifier:string|null;source_label:string}>(`SELECT asset_identifier_bidx,asset_identifier,source_label FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND category_code=$3 AND enabled`,[context.organisationId,input.jobId,VEHICLE_CATEGORY_CODE])).rows.map(held=>vehicleIdentityKey(held)));
   for(const row of priorRows.rows){
+    if(row.category_code===VEHICLE_CATEGORY_CODE){const identity=vehicleIdentityKey(row);if(heldVehicles.has(identity)){skipped+=1;continue;}heldVehicles.add(identity);}
     if(row.factor_source==="dataset"&&row.dataset_id){
       const selected=await db.query(`SELECT 1 FROM nzi_console.job_dataset_selections WHERE organisation_id=$1 AND job_id=$2 AND dataset_id=$3`,[context.organisationId,input.jobId,row.dataset_id]);
       if(!selected.rows[0]){

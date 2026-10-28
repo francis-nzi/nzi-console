@@ -92,12 +92,3 @@ export function parseVehicleLedger(text: string): VehicleRow[] {
     })
     .filter((line) => line.registration !== "" || line.activity !== null);
 }
-
-/** A downloadable .csv template for the domain (no identity block — CSV is import-only, S1.2). */
-export function vehicleTemplateCsv(): string {
-  return [
-    "Registration,Make,Model,Fuel,Activity per year,Unit",
-    "AB12CDE,Ford,Transit,Diesel,3200,litres",
-    "FG34HIJ,Nissan,Leaf,Battery electric,9800,kWh",
-  ].join("\r\n");
-}

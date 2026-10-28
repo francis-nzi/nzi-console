@@ -22,7 +22,7 @@ import { DATASET_EDITION_SUFFIX, datasetDisplayLabel, datasetPreferenceRank, isP
 import { todayInLondon } from "@nzi/contracts";
 import { spendCarryKey } from "@nzi/contracts";
 import { storedCarryForwardBasis } from "./carryForwardBasis";
-import { vehicleRegistrationReader } from "./vehicleRegistrations";
+import { VEHICLE_CATEGORY_CODE, vehicleIdentityKey, vehicleRegistrationReader } from "./vehicleRegistrations";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary } from "./siteBoundary";
 import { resolveJobReportedIntensity } from "./jobReportedIntensity";
 
@@ -723,8 +723,8 @@ export async function listScopeRowRollforwardPreview(db:Queryable,jobId:string):
   const stored=await storedCarryForwardBasis(db,jobId);
   const p=stored?{job_id:stored.priorJobId,job_number:stored.priorJobNumber,reporting_year:stored.priorYear}:(await db.query<{job_id:string;job_number:string;reporting_year:number}>(`SELECT j.job_id,j.job_number,coalesce(j.reporting_year,extract(year from j.start_date)::int) AS reporting_year FROM nzi_console.jobs j WHERE j.client_id=$1 AND j.job_family='crp' AND j.job_id<>$2 AND coalesce(j.reporting_year,extract(year from j.start_date)::int)<$3 AND EXISTS(SELECT 1 FROM nzi_console.job_scope_rows r WHERE r.organisation_id=j.organisation_id AND r.job_id=j.job_id AND r.enabled=true) ORDER BY coalesce(j.reporting_year,extract(year from j.start_date)::int) DESC,j.sequence DESC LIMIT 1`,[t.client_id,jobId,targetYear])).rows[0];
   if(!p)return{priorJob:null,rows:[]};
-  const rows=await db.query<{prior_row_id:string;source_label:string;scope:string;category_code:string|null;site_id:string|null;site_label:string|null;factor_source:import("@nzi/contracts").FactorSource;factor_label:string|null;pinned_version:string|null;current_version:string|null;dataset_in_selection:boolean;already_rolled_forward:boolean}>(
-    `SELECT r.scope_row_id AS prior_row_id,r.source_label,r.scope,r.category_code,r.site_id,s.name AS site_label,r.factor_source,coalesce(cf.report_label,f.label) AS factor_label,
+  const rows=await db.query<{prior_row_id:string;source_label:string;scope:string;category_code:string|null;asset_identifier:string|null;asset_identifier_bidx:string|null;site_id:string|null;site_label:string|null;factor_source:import("@nzi/contracts").FactorSource;factor_label:string|null;pinned_version:string|null;current_version:string|null;dataset_in_selection:boolean;already_rolled_forward:boolean}>(
+    `SELECT r.scope_row_id AS prior_row_id,r.source_label,r.scope,r.category_code,r.asset_identifier,r.asset_identifier_bidx,r.site_id,s.name AS site_label,r.factor_source,coalesce(cf.report_label,f.label) AS factor_label,
         coalesce('v'||cf.version::text,d.version) AS pinned_version,
         (SELECT d2.version FROM nzi_console.emission_factor_datasets d1 JOIN nzi_console.emission_factor_datasets d2 ON d2.organisation_id=d1.organisation_id AND ${SAME_SERIES_SQL} JOIN nzi_console.job_dataset_selections sel ON sel.organisation_id=d2.organisation_id AND sel.dataset_id=d2.dataset_id AND sel.job_id=$2 WHERE d1.organisation_id=r.organisation_id AND d1.dataset_id=r.dataset_id ORDER BY (d2.dataset_id=r.dataset_id) DESC LIMIT 1) AS current_version,
         EXISTS(SELECT 1 FROM nzi_console.job_dataset_selections sel WHERE sel.organisation_id=r.organisation_id AND sel.job_id=$2 AND sel.dataset_id=r.dataset_id) AS dataset_in_selection,
@@ -748,6 +748,9 @@ export async function listScopeRowRollforwardPreview(db:Queryable,jobId:string):
     const taxonomyMatch=categoryCode?emissionCategoryTaxonomy.find(entry=>entry.code===categoryCode):undefined;
     return taxonomyMatch?taxonomyMatch.name:crpScopeCategoryLabel(categoryCode??scope);
   };
+  // D4 (R6): a company vehicle this job already has — by its identity, carried or entered — reads as already carried.
+  const heldVehicles=new Set((await db.query<{asset_identifier_bidx:string|null;asset_identifier:string|null;source_label:string}>(`SELECT asset_identifier_bidx,asset_identifier,source_label FROM nzi_console.job_scope_rows WHERE job_id=$1 AND category_code=$2 AND enabled`,[jobId,VEHICLE_CATEGORY_CODE])).rows.map(held=>vehicleIdentityKey(held)));
+  for(const row of rows.rows)if(row.category_code===VEHICLE_CATEGORY_CODE&&heldVehicles.has(vehicleIdentityKey(row)))row.already_rolled_forward=true;
   return{priorJob:{id:p.job_id,number:p.job_number,reportingYear:p.reporting_year,fixed:stored!==null},rows:rows.rows.map(row=>({priorRowId:row.prior_row_id,sourceLabel:row.source_label,scope:row.scope,categoryCode:row.category_code,categoryLabel:categoryLabel(row.category_code,row.scope),siteId:row.site_id,siteLabel:row.site_label,factorSource:row.factor_source,factorLabel:row.factor_label,pinnedFactorVersion:row.pinned_version,currentFactorVersion:row.current_version,factorVersionMoved:row.current_version!=null&&row.current_version!==row.pinned_version,datasetInJobSelection:row.dataset_in_selection===true,alreadyRolledForward:row.already_rolled_forward===true}))};
 }
 

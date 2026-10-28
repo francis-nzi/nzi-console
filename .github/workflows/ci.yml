@@ -364,6 +364,10 @@ jobs:
       # the roll-forward; commuting stays reg-free; the client's opt-out shreds the key and clears every plate; the one-off sealing.
       - name: A vehicle registration is held only sealed, under the client's key, with a client opt-out
         run: npx tsx --test packages/isolated-backend/tests/dataEntryD4VehicleRegReal.test.ts
+      # Data entry D4 (R6/R7): a company vehicle is carried year on year by its identity — the plate's digest, or an opted-out
+      # client's name — mileage zeroed, never twice; the Lines drawer reads the category vehicle by vehicle, roll-up members included.
+      - name: Vehicles carried by identity, and read vehicle by vehicle across the years
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD4VehicleCarryReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked
