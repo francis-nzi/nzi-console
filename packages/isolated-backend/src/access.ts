@@ -41,6 +41,7 @@ const trainingEntitlement = (input: { entitlementIds: string[] }): Subject => ({
 const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } = {
   "client.create": organisation,
   "client.update": client,
+  "client.vehicle_registrations.set": client,
   "job.create": client,
   "job.stage.change": job,
   "job.milestone.set": job,

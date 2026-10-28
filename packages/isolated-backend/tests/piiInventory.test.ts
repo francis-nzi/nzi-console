@@ -100,6 +100,15 @@ describe("the PII inventory (NZC-125)", () => {
         assert.equal(sealedColumnOf(column), null, `${name} must stay out of the subject-key sealing views`);
         assert.ok(column.storage.keyColumn.trim(), `${name} must name the column holding its wrapped key`);
       }
+      if (column.storage.kind === "client-sealed") {
+        // D4 (0196): sealed under a client's own key — a vehicle registration names no person here, so no subject path leads to
+        // it, no person's shred reaches it, and it stays out of the subject-key sealing views; the client's opt-out destroys it.
+        assert.equal(column.erasure, "not-attributable", `${name} is client-sealed and attributable to no person`);
+        assert.ok(!isAttributable(column), `${name} must not be attributed to a subject`);
+        assert.equal(sealedColumnOf(column), null, `${name} must stay out of the subject-key sealing views`);
+        assert.equal(column.storage.keyTable, "client_data_keys");
+        assert.ok(column.storage.sealed.endsWith("_sealed") && column.storage.index.endsWith("_bidx"), `${name} names its ciphertext and digest`);
+      }
       if (column.erasure === "association-to-tombstone") {
         assert.equal(attributionOf(column).kind, "pointer",
           `${name} dangles to a tombstone, which is only meaningful for a pointer`);

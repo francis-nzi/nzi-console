@@ -38,8 +38,8 @@ export async function readJobEntryBasis(db: Queryable, organisationId: string, j
       `SELECT c.category_code, c.basis FROM nzi_console.client_entry_basis_choices c
          JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = (c.organisation_id, c.client_id)
         WHERE j.organisation_id = $1 AND j.job_id = $2`, [organisationId, jobId]),
-    db.query<{ currency: string | null }>(
-      `SELECT cl.currency FROM nzi_console.jobs j JOIN nzi_console.clients cl ON (cl.organisation_id, cl.client_id) = (j.organisation_id, j.client_id)
+    db.query<{ currency: string | null; vehicle_registrations_opt_out: boolean }>(
+      `SELECT cl.currency, cl.vehicle_registrations_opt_out FROM nzi_console.jobs j JOIN nzi_console.clients cl ON (cl.organisation_id, cl.client_id) = (j.organisation_id, j.client_id)
         WHERE j.organisation_id = $1 AND j.job_id = $2`, [organisationId, jobId]),
     activeSpendAllocationsForJob(db, organisationId, jobId),
     // D3 (R1): the sites that spend in a currency of their own — a spend line at one is captured in it.
@@ -55,6 +55,7 @@ export async function readJobEntryBasis(db: Queryable, organisationId: string, j
     currency: client.rows[0]?.currency?.trim() || "GBP",
     allocations,
     siteCurrencies: Object.fromEntries(sites.rows.map((row) => [row.site_id, row.currency])),
+    vehicleRegistrationsOptOut: client.rows[0]?.vehicle_registrations_opt_out === true,
   };
 }
 

@@ -44,7 +44,14 @@ export type PiiStorage =
    * beside it and no subject key reaches it, so it is neither in the sealing views nor shredded with a person:
    * it is retained as a record of account (NZC-166), and destroying `keyColumn` is reserved.
    */
-  | { kind: "document-sealed"; keyColumn: string };
+  | { kind: "document-sealed"; keyColumn: string }
+  /**
+   * Ciphertext under a *client's* own key for one purpose (0196, D4 R1: `client_data_keys`), plus a client-scoped digest. For data
+   * that is potentially personal but names no person in our data — a company vehicle's registration — so no subject key exists to
+   * seal it under. A person's resolution never holds the key, and a person's erasure never reaches it; it is destroyed by the
+   * client's opt-out (the key shredded, every value cleared) or a value's own clearing.
+   */
+  | { kind: "client-sealed"; sealed: string; index: string; keyTable: "client_data_keys"; purpose: "vehicle-registration" };
 
 /* ── Whether a datum can be reached from a subject, and when not, why ────────────────── */
 
@@ -399,10 +406,17 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
   // Staff, not client data, and unsealed by ruling (PR 2, R4): the name v7 recorded against a completed milestone.
   { table: "job_milestones", column: "completed_by_label", label: "Milestone completed by", stage: "deferred", erasure: "not-attributable",
     storage: { kind: "plaintext" }, because: "a staff member's name as v7 recorded it, kept in the clear by ruling (R4); free text with no reliable subject" },
-  { table: "job_scope_rows", column: "asset_identifier", label: "Asset identifier", stage: "deferred", erasure: "not-attributable",
-    storage: sealed("asset_identifier_sealed"), because: "a vehicle registration identifies a keeper who is not in our data" },
+  // D4 (R1, 0196): a company vehicle's registration — sealed under the client's own vehicle key, the plaintext cleared by the write
+  // that seals it. Not a subject's: the keeper is not in our data. A commuter's name or an invoice date in the same column (other
+  // categories) is not a registration and is not sealed.
+  { table: "job_scope_rows", column: "asset_identifier", label: "Vehicle registration", stage: "sealed", erasure: "not-attributable",
+    storage: { kind: "client-sealed", sealed: "asset_identifier_sealed", index: "asset_identifier_bidx", keyTable: "client_data_keys", purpose: "vehicle-registration" },
+    because: "a vehicle registration identifies a keeper who is not in our data; it is sealed under the client's own key and destroyed by the client's opt-out" },
+  { table: "job_emission_sources", column: "asset_identifier", label: "Vehicle registration", stage: "sealed", erasure: "not-attributable",
+    storage: { kind: "client-sealed", sealed: "asset_identifier_sealed", index: "asset_identifier_bidx", keyTable: "client_data_keys", purpose: "vehicle-registration" },
+    because: "as the scope row's: a vehicle source's registration, sealed under the client's own key" },
   { table: "job_emission_sources", column: "detail_json", label: "Emission source detail", stage: "deferred", erasure: "not-attributable",
-    storage: sealed("detail_sealed"), because: "carries the asset identifier" },
+    storage: sealed("detail_sealed"), because: "a vehicle source's detail no longer carries its registration (D4: removed by the write that seals it), but other detail may name a person" },
   { table: "client_sites", column: "postcode", label: "Site postcode", stage: "deferred", erasure: "not-attributable",
     storage: sealed("postcode_sealed"), because: "a site address belongs to the client" },
   { table: "client_sites", column: "address_lines_json", label: "Site address", stage: "deferred", erasure: "not-attributable",

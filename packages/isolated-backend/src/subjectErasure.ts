@@ -162,7 +162,8 @@ export function planColumn(
   // A document-sealed record is the same case: no link names the people inside a historical report, so the
   // traversal finding nothing says nothing about whether this person is in one. It is retained on its basis.
   const SPOKEN_FOR_ELSEWHERE = ["not-attributable", "redact-or-retain", "redact-on-erasure", "pending-counsel"];
-  const spokenForElsewhere = SPOKEN_FOR_ELSEWHERE.includes(column.erasure) || column.storage.kind === "document-sealed";
+  // A client-sealed value (D4) likewise: no link names a person in it, and its own erasure is the client's key shred.
+  const spokenForElsewhere = SPOKEN_FOR_ELSEWHERE.includes(column.erasure) || column.storage.kind === "document-sealed" || column.storage.kind === "client-sealed";
   if (held.considered && held.rows === 0 && !spokenForElsewhere) {
     return { ...base, outcome: "nothing-held", because: `no ${column.table} record for this person` };
   }

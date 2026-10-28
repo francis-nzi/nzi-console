@@ -5,6 +5,7 @@
 // (the portal is a constrained mirror — same order, fewer fields).
 import type { EmissionCategory, ScopeQualityTier, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
 import { entryBasisOfUnit, isCurrencyUnit, scopeMeta, spendCategoryOf, type EntryBasis } from "@nzi/contracts";
+import { COMPANY_VEHICLES_CODE, preferMiles } from "@nzi/contracts";
 import { defaultPortalFactorId } from "../portal/portalFactorDefault";
 
 export type EntryAudience = "crm" | "portal";
@@ -419,7 +420,9 @@ export function vehicleLookupPatch(
     assertedVehicleAttributes: result.attributes ?? null,
     manualMode: false,
   };
-  const option = result.factorId ? factors.find((candidate) => candidate.id === result.factorId) : undefined;
+  const matched = result.factorId ? factors.find((candidate) => candidate.id === result.factorId) : undefined;
+  // D4 (R3): the vehicle is measured in miles by default — its miles factor when the library publishes one.
+  const option = matched ? preferMiles(factors, matched) : undefined;
   if (!option) return base;
   return { ...base, activity: option.label, factorId: option.id, unit: option.unit ?? draft.unit,
     factorOverrideReason: declared && option.id === declared.optionId ? "" : draft.factorOverrideReason };
@@ -502,7 +505,8 @@ export function emissionEntryDraftToScopeRow(
   const monthly = draft.monthlyOpen
     ? reportingMonths.map((month) => ({ month, quantity: parseEntryNumber(draft.monthly[month]) }))
     : [];
-  const label = draft.activity.trim() || draft.registration.trim() || draft.manualDetail.trim() || category.name;
+  // D4 (R2): the registration is never a label or a note — it goes only to the sealed identifier, and only for a company vehicle.
+  const label = draft.activity.trim() || draft.manualDetail.trim() || category.name;
   const noteParts = [
     draft.note.trim(),
     spend && draft.vatPercent.trim() ? `VAT ${draft.vatPercent.trim()}%` : "",
@@ -512,7 +516,9 @@ export function emissionEntryDraftToScopeRow(
     categoryCode: filed.code,
     sourceLabel: label,
     reportLabel: label,
-    assetIdentifier: draft.registration.trim() || null,
+    // D4 (R1): only a company vehicle holds its plate (sealed by the write); business travel and commuting use it for the lookup
+    // alone and stay reg-free.
+    assetIdentifier: category.code === COMPANY_VEHICLES_CODE ? draft.registration.trim() || null : null,
     // Seeded from the row when editing, so a save sends back what it holds; blank is no usage type. A draft that never carried
     // the field sends nothing, and the server keeps what the row holds.
     ...(draft.usageTypeId !== undefined ? { usageTypeId: draft.usageTypeId.trim() || null } : {}),
@@ -615,7 +621,9 @@ export function emissionEntryDraftToPortalRecord(
   const factorId = draft.factorId || defaultPortalFactorId(bucket.factors);
   const factor = bucket.factors.find(option => option.id === factorId);
   if (!factor) return { error: "Choose one of the authorised factors." };
-  const note = [draft.activity.trim(), draft.registration.trim(), draft.manualDetail.trim(), draft.note.trim()]
+  // D4 (R2, D0's finding): the registration never enters the record's free-text note. This form has no sealed identifier to carry
+  // it, so it holds no plate at all; the lookup used it, transiently.
+  const note = [draft.activity.trim(), draft.manualDetail.trim(), draft.note.trim()]
     .filter(Boolean)
     .join(" · ");
 

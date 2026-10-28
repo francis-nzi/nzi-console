@@ -171,6 +171,10 @@ function readRow(
     if (column.storage.kind === "document-sealed") {
       return { ...base, unavailable: "sealed under the record's own key, not this person's; retained as a record of account" };
     }
+    // Sealed under a client's own key (D4): a vehicle registration names no person here, so no person's key opens it.
+    if (column.storage.kind === "client-sealed") {
+      return { ...base, unavailable: "sealed under the client's own key, not this person's; not attributable to a person" };
+    }
     const value = asText(row[column.column]);
     return value === null ? { ...base, value: null, unavailable: "nothing stored" } : { ...base, value };
   });

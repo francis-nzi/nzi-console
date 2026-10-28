@@ -10,6 +10,7 @@ import { formatDate } from "../../lib/formatDate";
 import { clientJobsHref } from "../../lib/crumbs";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { ClientContacts } from "./ClientContacts";
+import { VehicleRegistrationsCard } from "./VehicleRegistrationsCard";
 import { ClientSites } from "./ClientSites";
 import { ClientTargets } from "./ClientTargets";
 import { ClientIntensityTargets } from "./ClientIntensityTargets";
@@ -132,6 +133,8 @@ export function OverviewAside({ workspace, today, access, onDrawer, factorsEnabl
   return <>
     <ClientContacts contacts={contacts ?? []} consent={contactConsent ?? []} consentUnavailable={consentUnavailable} access={access.contact} onEdit={(contact) => onDrawer({ kind: "contact", contact })} />
     <ClientSites sites={sites} archived={workspace.archivedSites ?? []} reportingPeriods={reportingPeriods} today={today} access={access.site} onEdit={(site) => onDrawer({ kind: "site", site })} geocodingEnabled={geocodingEnabled} />
+    {/* D4 (R1): whether this client's vehicle registrations are held (sealed) or not at all. */}
+    <VehicleRegistrationsCard clientId={client.id} version={client.version} optOut={client.vehicleRegistrationsOptOut === true} access={access.client} />
     <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<><span className="eyebrow">Commercial</span><h2>Financial status</h2></>} count="Held">
       <FinancialStatusCard />
     </Collapsible>

@@ -11,6 +11,10 @@ import {
   spendCategoryOf, spendRoutingLabel, spendValueLabel, SUPPLY_SOURCES, SUPPLY_SOURCE_LABELS, vatAppliesByDefault,
   type EntryBasis, type InputSpecCategory, type JobEntryBasis,
 } from "@nzi/contracts";
+import {
+  COMPANY_VEHICLES_CODE, parseVehicleFactorLabel, preferMiles, VEHICLE_TYPE_LABEL, VEHICLE_UNIT_LABEL, vehicleChoices, vehicleUnitOptions,
+  type VehicleType,
+} from "@nzi/contracts";
 import type { EmissionCategory } from "@nzi/contracts";
 import {
   draftBasis,
@@ -293,6 +297,24 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
     setSearchOpen(false);
   };
   const setMonth = (key: string, value: string) => patch({ monthly: { ...draft.monthly, [key]: value } });
+  // The vehicle a litres (fuel) factor was chosen for, so the miles / km choices stay on offer beside it.
+  const lastVehicle = useRef<ReturnType<typeof parseVehicleFactorLabel>>(null);
+  // D4 (R4): the manual fallback's type → size → fuel, picked from the library's own labels.
+  const companyVehicle = category.code === COMPANY_VEHICLES_CODE;
+  const optedOut = companyVehicle && props.entryBasis?.vehicleRegistrationsOptOut === true;
+  const [vehiclePick, setVehiclePick] = useState<{ type: VehicleType | null; size: string | null; fuel?: string | null }>({ type: null, size: null });
+  const choices = companyVehicle ? vehicleChoices(basisFactors, vehiclePick) : null;
+  const pickVehicleFuel = (fuel: string) => {
+    const match = basisFactors.find((option) => { const read = parseVehicleFactorLabel(option.label); return read && read.type === vehiclePick.type && (read.size ?? null) === vehiclePick.size && read.fuel === fuel; });
+    setVehiclePick({ ...vehiclePick, fuel });
+    if (match) pickActivity(preferMiles(basisFactors, match));
+  };
+  // D4 (R3): how the chosen vehicle is measured — miles (the default), km, or litres of its fuel — each its own factor.
+  const chosenFactor = basisFactors.find((option) => option.id === draft.factorId) ?? null;
+  const chosenRead = chosenFactor ? parseVehicleFactorLabel(chosenFactor.label) : null;
+  if (companyVehicle && chosenRead) lastVehicle.current = chosenRead;
+  const chosenVehicle = companyVehicle && !spend && chosenFactor ? chosenRead ?? lastVehicle.current : null;
+  const unitChoices = chosenVehicle ? vehicleUnitOptions(basisFactors, chosenVehicle) : [];
 
   const runLookup = async () => {
     const plate = draft.registration.trim();
@@ -373,12 +395,22 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
               <fieldset key={field.key} style={{ border: 0, padding: 0, margin: 0 }}>
                 <span className="nz-eyebrow">{field.label}</span>
                 <div className="nz-ef-reg">
-                  <label className="nz-fl">Registration (DVLA lookup)
-                    <input className="nz-plate" placeholder="AB12 CDE" value={draft.registration}
-                      onChange={event => { patch({ registration: event.target.value.toUpperCase(), assertedVehicleAttributes: null }); setLookup({ state: "idle" }); }} />
-                  </label>
-                  <button type="button" className="nz-btn" disabled={props.busy || lookup.state === "loading" || draft.registration.trim() === "" || !props.onLookupRegistration}
-                    onClick={() => void runLookup()}>{lookup.state === "loading" ? "Looking up…" : "Look up"}</button>
+                  {optedOut ? (
+                    // D4 (R1): this client holds no registration numbers — the vehicle is named, and nothing is looked up.
+                    <label className="nz-fl">Vehicle name or fleet number
+                      <input className="nz-inp" placeholder="e.g. Van 3, Sales pool car" value={draft.registration}
+                        onChange={event => patch({ registration: event.target.value, assertedVehicleAttributes: null })} />
+                      <span className="nz-hint">This client doesn&rsquo;t hold registration numbers, so name the vehicle instead — not its registration.</span>
+                    </label>
+                  ) : <>
+                    <label className="nz-fl">Registration (DVLA lookup)
+                      <input className="nz-plate" placeholder="AB12 CDE" value={draft.registration}
+                        onChange={event => { patch({ registration: event.target.value.toUpperCase(), assertedVehicleAttributes: null }); setLookup({ state: "idle" }); }} />
+                      {companyVehicle ? <span className="nz-hint">Held encrypted, never in a note.</span> : <span className="nz-hint">Used for the lookup only — not kept.</span>}
+                    </label>
+                    <button type="button" className="nz-btn" disabled={props.busy || lookup.state === "loading" || draft.registration.trim() === "" || !props.onLookupRegistration}
+                      onClick={() => void runLookup()}>{lookup.state === "loading" ? "Looking up…" : "Look up"}</button>
+                  </>}
                 </div>
                 {lookup.state === "error" ? <p className="nz-hint bad" role="alert">{lookup.message}</p> : null}
                 {lookup.state === "done" ? (
@@ -397,15 +429,52 @@ export function EmissionEntryForm(props: EmissionEntryFormProps) {
                     </div>
                   </div>
                 ) : null}
-                <p className="nz-ef-manual-link">
-                  …or <button type="button" onClick={() => patch({ manualMode: !draft.manualMode })}>enter manually</button> ({(spec?.manualEntryHint ?? "")}).
-                </p>
-                {draft.manualMode ? (
+                {/* D4 (R4): an opted-out client's vehicle is always picked by type → size → fuel, so the link is not offered. */}
+                {optedOut ? null : <p className="nz-ef-manual-link">
+                  …or <button type="button" onClick={() => patch({ manualMode: !draft.manualMode })}>enter manually</button> ({companyVehicle ? "type · size · fuel" : spec?.manualEntryHint ?? ""}).
+                </p>}
+                {(draft.manualMode || optedOut) && companyVehicle && choices ? (
+                  // D4 (R4): the manual fallback — type, then size, then fuel, from the library's own vehicle factors.
+                  <div className="nz-ef-vehicle-pick" role="group" aria-label="Vehicle type, size and fuel">
+                    <label className="nz-fl">Type
+                      <select className="nz-sel" value={vehiclePick.type ?? ""} onChange={event => setVehiclePick({ type: (event.target.value || null) as VehicleType | null, size: null, fuel: null })}>
+                        <option value="">Choose…</option>
+                        {choices.types.map(type => <option key={type} value={type}>{VEHICLE_TYPE_LABEL[type]}</option>)}
+                      </select>
+                    </label>
+                    <label className="nz-fl">Size
+                      <select className="nz-sel" value={vehiclePick.size ?? ""} disabled={!vehiclePick.type} onChange={event => setVehiclePick({ ...vehiclePick, size: event.target.value || null, fuel: null })}>
+                        <option value="">Choose…</option>
+                        {choices.sizes.map(size => <option key={size} value={size}>{size}</option>)}
+                      </select>
+                    </label>
+                    <label className="nz-fl">Fuel
+                      <select className="nz-sel" value={vehiclePick.fuel ?? ""} disabled={!vehiclePick.type || (choices.sizes.length > 0 && !vehiclePick.size)} onChange={event => event.target.value && pickVehicleFuel(event.target.value)}>
+                        <option value="">{choices.fuels.length ? "Choose…" : "—"}</option>
+                        {choices.fuels.map(fuel => <option key={fuel} value={fuel}>{fuel}</option>)}
+                      </select>
+                    </label>
+                    {choices.types.length === 0 ? <span className="nz-hint">No vehicle factors are offered for this category — search the activities below.</span> : null}
+                  </div>
+                ) : null}
+                {draft.manualMode && !companyVehicle ? (
                   <label className="nz-fl">
                     {category.kind === "commuting" ? "Mode / WFH" : category.kind === "travel" ? "Travel type" : "Make · model · fuel"}
                     <input className="nz-inp" value={draft.manualDetail} onChange={event => patch({ manualDetail: event.target.value })}
                       placeholder={category.kind === "commuting" ? "e.g. Car — diesel, 2 WFH days" : category.kind === "travel" ? "e.g. Air — short haul" : "e.g. Ford Transit, diesel"} />
                   </label>
+                ) : null}
+                {unitChoices.length > 1 ? (
+                  // D4 (R3): miles by default; km, or litres of fuel, where the library offers them. Choosing one chooses its factor.
+                  <div className="nz-ef-vehicle-unit">
+                    <span className="nz-eyebrow" id={listId + "-measured"}>Measured in</span>
+                    <div className="nz-seg" role="radiogroup" aria-labelledby={listId + "-measured"}>
+                      {unitChoices.map(choice => (
+                        <button key={choice.kind} type="button" role="radio" aria-checked={draft.factorId === choice.option.id} className={draft.factorId === choice.option.id ? "on" : undefined}
+                          disabled={props.busy} onClick={() => pickActivity(choice.option)}>{VEHICLE_UNIT_LABEL[choice.kind]}</button>
+                      ))}
+                    </div>
+                  </div>
                 ) : null}
               </fieldset>
             );
