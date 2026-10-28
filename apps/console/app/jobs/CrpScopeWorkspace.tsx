@@ -307,6 +307,9 @@ export function CrpScopeWorkspace({
     setRegisterFilter(filter);requestAnimationFrame(()=>document.getElementById("emissions-register")?.scrollIntoView({behavior:"smooth",block:"start"}));
   };
   const reportingYear = job.header.reportingYear ?? new Date(job.header.startDate).getUTCFullYear();
+  // D4 (R5): what the vehicle template is named and laid out by — the job, its period and months, its sites.
+  const vehicleTemplateJob = { jobNumber: job.header.number, clientName: job.header.client, jobName: job.header.title, reportingFrom: datasets[0]?.reportingFrom ?? null, reportingTo: datasets[0]?.reportingTo ?? null,
+    reportingMonths: reportingMonthKeys(datasets[0]?.reportingFrom ?? `${reportingYear}-01-01`, datasets[0]?.reportingTo ?? `${reportingYear}-12-31`), sites: captureSites.map((site) => ({ id: site.id, name: site.name })) };
   const spendReportingMonths = reportingMonthKeys(datasets[0]?.reportingFrom ?? `${reportingYear}-01-01`, datasets[0]?.reportingTo ?? `${reportingYear}-12-31`);
   // Accordion surface (data-entry UX review item 4): one "Import & templates"
   // modal per category, the bulk methods as tabs inside it.
@@ -319,7 +322,7 @@ export function CrpScopeWorkspace({
       return tabs.length?{title:`${category.name} — import & templates`,body:<ImportMethods idBase="import-pgs" tabs={tabs}/>}:null;
     }
     if(category.code==="3.7")return dataEntryAdapterEnabled("commuting")?{title:`${category.name} — import & templates`,body:<CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}:null;
-    if(category.code==="1.company-vehicles")return dataEntryAdapterEnabled("vehicle")?{title:`${category.name} — import & templates`,body:<VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}:null;
+    if(category.code==="1.company-vehicles")return dataEntryAdapterEnabled("vehicle")?{title:`${category.name} — import & templates`,body:<VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice} job={vehicleTemplateJob}/>}:null;
     return null;
   };
   // F (Phase 3d, per category): a source-writing category's Sources view — its register records, opened from the category.
@@ -560,7 +563,7 @@ export function CrpScopeWorkspace({
       {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
       {dataEntryAdapterEnabled("spend-import") && <SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
       {dataEntryAdapterEnabled("commuting") && <CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
-      {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
+      {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice} job={vehicleTemplateJob}/>}
     </>
   );
   // F (Phase 3d): with the accordion, the register lives in its categories' Sources views and in a managed row's drawer; the

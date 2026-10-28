@@ -171,7 +171,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 
 /* "Import & templates" modal (item 4) — a centered dialog whose root div is the backdrop */
 .nz-import-modal{position:fixed;inset:0;z-index:60;display:grid;place-items:start center;padding:5vh 16px;background:rgba(11,27,43,.42);overflow:auto}
-.nz-import-modal-card{width:min(940px,100%);background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 60px rgba(11,27,43,.28);display:flex;flex-direction:column;max-height:90vh}
+.nz-import-modal-card{width:min(940px,100%);min-width:0;background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:0 24px 60px rgba(11,27,43,.28);display:flex;flex-direction:column;max-height:90vh}
 .nz-import-modal-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-bottom:1px solid var(--line2)}
 .nz-import-modal-h h2{margin:0;font-size:15px;font-weight:600}
 .nz-import-modal-b{padding:14px 18px 18px;overflow:auto}

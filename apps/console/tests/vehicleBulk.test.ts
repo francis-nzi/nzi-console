@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { matchFuel, parseVehicleLedger, vehicleTemplateCsv, VEHICLE_FUELS } from "../app/jobs/vehicleBulk";
+import { matchFuel, parseVehicleLedger } from "../app/jobs/vehicleBulk";
 
 describe("matchFuel", () => {
   it("passes a controlled fuel through unchanged", () => assert.equal(matchFuel("Diesel"), "Diesel"));
@@ -27,9 +27,4 @@ describe("parseVehicleLedger", () => {
     assert.equal(rows[0]?.activity, 4200);
   });
   it("drops blank lines", () => assert.equal(parseVehicleLedger("\n \n").length, 0));
-  it("ships a template with the controlled headers and worked rows", () => {
-    const csv = vehicleTemplateCsv();
-    assert.ok(csv.includes("Registration,Make,Model,Fuel,Activity per year,Unit"));
-    assert.ok(VEHICLE_FUELS.some((fuel) => csv.includes(fuel)));
-  });
 });

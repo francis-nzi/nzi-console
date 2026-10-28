@@ -4,7 +4,8 @@ import { postBrowserCommand } from "@nzi/api-client";
 import { InfoTip } from "@nzi/ui";
 import type { EmissionSourceGroup, FactorOption } from "@nzi/contracts";
 import { crpScopeOptions } from "@nzi/contracts";
-import { matchFuel, parseVehicleLedger, vehicleTemplateCsv, VEHICLE_FUELS } from "./vehicleBulk";
+import { matchFuel, parseVehicleLedger, VEHICLE_FUELS } from "./vehicleBulk";
+import { VehicleTemplateImport, type VehicleTemplateJob } from "./VehicleTemplateImport";
 
 // S1.2 — Company Vehicles bulk-paste grid (NZC-036 / NZC-037, flag `vehicle`).
 // Same shape as CommutingBulkPanel: paste → confirm fuel + factor per vehicle →
@@ -20,7 +21,7 @@ const SAMPLE = "Registration\tMake\tModel\tFuel\tActivity / year\tUnit\nAB12CDE\
 const vehicleScopes = crpScopeOptions.filter((option) => option.value === "1" || option.value === "3.6");
 const blankRow = (line?: Partial<Row>): Row => ({ key: crypto.randomUUID(), registration: line?.registration ?? "", make: line?.make ?? "", model: line?.model ?? "", fuel: line?.fuel ?? "", activity: line?.activity ?? null, activityUnit: line?.activityUnit ?? "litres", scope: "1", factorId: "", state: "", detail: "" });
 
-export function VehicleBulkPanel({ jobId, factors, notice }: { jobId: string; factors: FactorOption[]; notice: Notice }) {
+export function VehicleBulkPanel({ jobId, factors, notice, job }: { jobId: string; factors: FactorOption[]; notice: Notice; job?: VehicleTemplateJob }) {
   const [groups, setGroups] = useState<EmissionSourceGroup[]>([]);
   const [groupId, setGroupId] = useState("");
   const [raw, setRaw] = useState("");
@@ -47,15 +48,6 @@ export function VehicleBulkPanel({ jobId, factors, notice }: { jobId: string; fa
     setRows((current) => [...current, ...parsed]);
     setRaw("");
     notice(parsed.length ? { kind: "ok", text: `${parsed.length} vehicle row${parsed.length === 1 ? "" : "s"} added. Confirm the fuel and factor for each, then import.` } : { kind: "warn", text: "No vehicle rows were recognised. Expected registration, make, model, fuel, activity value, unit." });
-  }
-
-  function downloadTemplate() {
-    const blob = new Blob([vehicleTemplateCsv()], { type: "text/csv;charset=utf-8" });
-    const anchor = document.createElement("a");
-    anchor.href = URL.createObjectURL(blob);
-    anchor.download = "company-vehicles-template.csv";
-    anchor.click();
-    URL.revokeObjectURL(anchor.href);
   }
 
   const ready = (row: Row) => row.state !== "saved" && row.registration.trim() !== "" && row.activity !== null && row.activity >= 0 && Boolean(row.factorId);
@@ -119,14 +111,16 @@ export function VehicleBulkPanel({ jobId, factors, notice }: { jobId: string; fa
         <span className={`nz-st ${rows.length ? "done" : "need"}`}>{rows.length} rows</span>
       </div>
 
+      {/* D4 (R5): the vehicle template — type · size · fuel, mileage, site, months — downloaded and imported. */}
+      {job && rows.length === 0 ? <VehicleTemplateImport jobId={jobId} job={job} factors={factors} groups={groups} notice={notice} /> : null}
       {rows.length === 0 ? (
         <div className="nz-config-grid">
+          {job ? <div className="nz-sect" style={{ gridColumn: "1/-1" }}>…or paste a list</div> : null}
           <label className="nz-fl" style={{ gridColumn: "1/-1" }}>
             Vehicle rows
             <textarea className="nz-notes" rows={6} value={raw} placeholder={SAMPLE} onChange={(event) => setRaw(event.target.value)} />
           </label>
           <div className="nz-config-actions">
-            <button type="button" className="nz-btn" onClick={downloadTemplate}>Download .csv template</button>
             <button type="button" className="nz-btn" onClick={() => setRaw(SAMPLE)}>Use sample</button>
             <button type="button" className="nz-btn pri" disabled={!raw.trim()} onClick={parse}>Parse rows</button>
           </div>

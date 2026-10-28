@@ -129,6 +129,18 @@ export async function copySealedVehicleIdentifier(db: Queryable, organisationId:
 }
 
 /**
+ * D4 (R6): a company vehicle's year-on-year identity — its registration's client-scoped digest; else, for an opted-out client, the
+ * name or fleet number it is identified by; else its label. Never the plate itself. The same vehicle in two years of one client
+ * has the same key; two vehicles never share one unless they share a plate (or, with no plate, a name).
+ */
+export function vehicleIdentityKey(row: { asset_identifier_bidx?: string | null; asset_identifier?: string | null; source_label?: string | null }): string {
+  if (row.asset_identifier_bidx) return `reg:${row.asset_identifier_bidx}`;
+  const name = (row.asset_identifier ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  if (name) return `name:${name}`;
+  return `label:${(row.source_label ?? "").trim().toLowerCase().replace(/\s+/g, " ")}`;
+}
+
+/**
  * Opens sealed plates for display, one client key at a time (cached). Null — "held, unreadable" — when the client's key is
  * shredded, the value was sealed under a key since shredded, or the application has no sealing keys: a read never fails on it.
  */
