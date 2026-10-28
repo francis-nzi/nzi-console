@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   airChoices, airFactorFor, commandDefinitions, commandGrantForRole, COMMUTE_MODES, GROUND_MODES, matchCabinClass, matchTravelMode, normaliseTravelDetail,
-  readTravelFactorLabel, TRAVEL_MODES, travelDetailIssues, travelFactorsForMode, travelModeDef, travelModeGroupOf, travelModeLabel,
+  readTravelFactorLabel, TRAVEL_MODES, travelDetailIssues, travelGroupName, travelPatternOf, travelFactorsForMode, travelModeDef, travelModeGroupOf, travelModeLabel,
   type CommandContext,
 } from "../src/index";
 
@@ -120,5 +120,15 @@ describe("D5: modes read from words — for a file, or a trip saved before the l
     assert.equal(travelModeLabel({ travelMode: "Flight — long haul" }), "Flight — long haul");
     assert.equal(travelModeGroupOf({ travelMode: "Flight — short haul" }), "air");
     assert.equal(travelModeGroupOf({ travelMode: null, factorLabel: "Hotel stay - United Kingdom" }), "hotel");
+  });
+});
+
+describe("D5 R7/R8: a travel factor's pattern — what a year carries and an import groups by", () => {
+  it("is the mode, and for a flight its haul and class; named as the mode reads; null for no travel mode", () => {
+    assert.deepEqual(travelPatternOf(LIBRARY[0]!.label), { key: "air:long-haul:business", label: "Air · Long haul · Business", group: "air" });
+    assert.equal(travelPatternOf(LIBRARY[1]!.label)!.key, travelPatternOf(LIBRARY[0]!.label)!.key, "with or without RF, one flight pattern");
+    assert.deepEqual(travelPatternOf("Hotel stay - United Kingdom"), { key: "hotel", label: "Hotel", group: "hotel" });
+    assert.equal(travelPatternOf("Business travel services — spend"), null);
+    assert.equal(travelGroupName("Air · Long haul · Business"), "Business travel · Air · Long haul · Business");
   });
 });

@@ -1,4 +1,4 @@
-import { spendCarryKey, type ReportingChainSource } from "@nzi/contracts";
+import { BUSINESS_TRAVEL_CODE, isCurrencyUnit, spendCarryKey, TRAVEL_MODE_GROUP_LABEL, travelModeGroupOf, type ReportingChainSource } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 import { resolveCrpReportingChain } from "./readModels";
 import { VEHICLE_CATEGORY_CODE, vehicleIdentityKey, vehicleRegistrationReader } from "./vehicleRegistrations";
@@ -15,6 +15,10 @@ import { VEHICLE_CATEGORY_CODE, vehicleIdentityKey, vehicleRegistrationReader } 
  * A prior year's figures are its job's enabled rows as they stand — the year's reviewed snapshot names the job, and its totals are
  * frozen, but not line by line by GL code. A year with no job behind it (a baseline with no reviewed snapshot) has no figures: null,
  * never zero.
+ *
+ * D5 (R7): Business Travel reads by **mode** — air, rail, road, sea, hotel — beside the prior years, not trip by trip: trips don't
+ * recur. A row's mode is its trip's (a synced source's detail), else its factor's (a mode's roll-up row, a drawer entry); a spend row
+ * with no mode is its own line.
  */
 export type CategoryLineYearValue = { quantity: number | null; unit: string | null; tco2e: number | null };
 export type CategoryLineYears = {
@@ -24,6 +28,8 @@ export type CategoryLineYears = {
 };
 
 type LineRow = { job_id: string; label: string; gl_code: string | null; quantity: string | null; unit: string | null; tco2e: string | null;
+  /** D5 (R7): what says a travel row's mode — its trip's, else its factor's label. */
+  factor_label?: string | null; travel_mode?: string | null;
   /** D4 (R6/R7): a company vehicle's identity parts — the sealed plate's digest and ciphertext, or an opted-out client's name. */
   asset_identifier?: string | null; asset_identifier_bidx?: string | null; asset_identifier_sealed?: unknown; client_id?: string };
 
@@ -45,7 +51,7 @@ export async function readCategoryLineYears(db: Queryable, jobId: string, catego
   // Scope 1 row, whatever its code — the vehicles apart.
   const { rows } = categoryCode === VEHICLE_CATEGORY_CODE ? { rows: [] as LineRow[] } : await db.query<LineRow>(
     `SELECT r.job_id,coalesce(nullif(btrim(r.report_label),''),r.source_label) AS label,coalesce(nullif(btrim(r.column_text),''),s.source_subtype) AS gl_code,
-            r.quantity::text,r.unit,coalesce(r.override_tco2e,r.calculated_tco2e)::text AS tco2e
+            r.quantity::text,r.unit,coalesce(r.override_tco2e,r.calculated_tco2e)::text AS tco2e,r.factor_label,s.detail_json->>'travelMode' AS travel_mode
        FROM nzi_console.job_scope_rows r
        LEFT JOIN nzi_console.job_emission_sources s ON (s.organisation_id,s.source_id)=(r.organisation_id,r.source_id)
       WHERE r.job_id = ANY($1::text[]) AND r.enabled AND (r.category_code=$2 OR (r.category_code IS NULL AND r.scope=$2)
@@ -57,11 +63,14 @@ export async function readCategoryLineYears(db: Queryable, jobId: string, catego
     [jobIds, categoryCode, VEHICLE_CATEGORY_CODE]);
 
   const lines = new Map<string, { label: string; glCode: string | null; byJob: Map<string, LineRow[]> }>();
+  const travel = categoryCode === BUSINESS_TRAVEL_CODE;
   for (const row of rows) {
-    const key = spendCarryKey({ glCode: row.gl_code, description: row.label }) ?? `label:${row.label.trim().toLowerCase()}`;
-    const line = lines.get(key) ?? { label: row.label, glCode: row.gl_code, byJob: new Map<string, LineRow[]>() };
-    // The current year names the line where it has it; otherwise the most recent year that does.
-    if (row.job_id === jobId) line.label = row.label;
+    const mode = travel ? travelModeGroupOf({ travelMode: row.travel_mode, factorLabel: row.factor_label }) : null;
+    const byMode = mode ? { key: `mode:${mode}`, label: TRAVEL_MODE_GROUP_LABEL[mode] } : travel && isCurrencyUnit(row.unit) ? { key: "mode:spend", label: "Spend (no mode)" } : null;
+    const key = byMode?.key ?? spendCarryKey({ glCode: row.gl_code, description: row.label }) ?? `label:${row.label.trim().toLowerCase()}`;
+    const line = lines.get(key) ?? { label: byMode?.label ?? row.label, glCode: byMode ? null : row.gl_code, byJob: new Map<string, LineRow[]>() };
+    // The current year names the line where it has it; otherwise the most recent year that does. A mode names its own.
+    if (row.job_id === jobId && !byMode) line.label = row.label;
     line.byJob.set(row.job_id, [...(line.byJob.get(row.job_id) ?? []), row]);
     lines.set(key, line);
   }

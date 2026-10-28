@@ -184,6 +184,21 @@ export function travelModeGroupOf(input: { travelMode?: string | null; factorLab
   return read ? travelModeDef(read.mode)!.group : null;
 }
 
+/**
+ * D5 (R7, R8) — a travel factor's pattern: its mode, and for a flight its haul and class. What a year carries forward (structure, the
+ * figures zeroed) and what the import groups trips by, with the factor — one roll-up row per mode and factor, composing 3.6's total.
+ * Null for a factor that is no travel mode's (a spend factor).
+ */
+export function travelPatternOf(factorLabel: string | null | undefined): { key: string; label: string; group: TravelModeGroup } | null {
+  const read = factorLabel ? readTravelFactorLabel(factorLabel) : null;
+  if (!read) return null;
+  const label = travelModeLabel({ travelMode: read.mode, airHaul: read.haul, cabinClass: read.cabinClass });
+  return { key: read.mode === "air" ? `air:${read.haul ?? "-"}:${read.cabinClass ?? "-"}` : read.mode, label, group: travelModeDef(read.mode)!.group };
+}
+
+/** The roll-up group a mode and factor's trips are filed in: "Business travel · Air · Long haul · Business". */
+export const travelGroupName = (patternLabel: string) => `Business travel · ${patternLabel}`;
+
 type TravelDetailInput = {
   travelMode?: unknown; airHaul?: unknown; cabinClass?: unknown; nights?: unknown; tripDate?: unknown;
   origin?: unknown; destination?: unknown; carrier?: unknown; distanceUnit?: unknown; passengers?: unknown;

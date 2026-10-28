@@ -376,6 +376,10 @@ jobs:
       # and a group already holding one is not rolled up (named, its row left as it was) — one row per distinct factor.
       - name: A roll-up group is priced with one factor — a member on another is refused
         run: npx tsx --test packages/isolated-backend/tests/emissionGroupMemberFactorReal.test.ts
+      # Data entry D5 (R7/R8): trips amalgamate to one 3.6 row per mode and factor; the year carries its travel pattern (the modes,
+      # zeroed, a held mode skipped, a mode's roll-up carried as its group so the import fills it); the Lines drawer reads by mode.
+      - name: Business travel amalgamated by mode, carried by its pattern, and read by mode across the years
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryD5TravelCarryReal.test.ts
       # H4 as ruled: every manual 3.3 entry carries a non-blocking prompt to consider adding T&D losses — a
       # completeness nudge, ungated by companions. Only 3.3 rows, and a prompted row still calculates.
       - name: A manual 3.3 entry is prompted to consider adding T&D, and nothing is blocked
