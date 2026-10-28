@@ -310,9 +310,9 @@ describe("the full-extract review of 25 Sep 2026", () => {
 });
 
 describe("the dry-run rulings of 25 Sep 2026", () => {
-  it("excludes only the six named reasons; any other bad row still refuses the whole load", () => {
+  it("excludes only the named reasons (six, and air without RF since 28 Oct); any other bad row still refuses the whole load", () => {
     assert.deepEqual(Object.keys(EXCLUSION_REASONS).sort(),
-      ["column-shifted", "duplicate-upload-unit-conflict", "factor-missing", "not-kgco2e", "retired-w", "swc-no-country"]);
+      ["air-without-rf", "column-shifted", "duplicate-upload-unit-conflict", "factor-missing", "not-kgco2e", "retired-w", "swc-no-country"]);
     const result = plan([
       row({ db_id: "1101", factor: "NaN" }),
       row({ db_id: "1102", original_id: "X_1", currency: "Rail transport services" }),
@@ -443,5 +443,36 @@ describe("dedup slice 4: the fold (always, since slice 5 Step E retired the mate
     assert.ok(codes(divergent.reports).includes("variant-differs"));
     const retired = REGISTRY.map((entry: { suffixCode: string }) => (entry.suffixCode === "-d" ? { ...entry, status: "retired" } : entry)) as never;
     assert.ok(!ids(planV7Load(FOLD_EXTRACT, retired).folded).includes("uk-ghg-27_320_3235_14_1-d"), "folded under a retired suffix");
+  });
+});
+
+describe("D5-air (R2, ruled 28 Oct 2026): business-travel air loads with RF, by DESNZ's own id convention", () => {
+  // DESNZ's 2025 activity flat file: each flight haul × class is an adjacent id pair — the even third segment with RF, the odd one
+  // without. Rows shaped as v7's factor_lookup carries them (level_4 the class, or "With RF" in 2023/24's v7 uploads).
+  const flight = (over: Partial<ExtractRow>) => row({
+    original_id: "21_316_3174_11_1", dataset_id: "1", year: "2025", scope: "Scope 3", category: "Business Travel",
+    level_1: "Business travel- air", level_2: "Flights", level_3: "Long-haul, to/from UK", level_4: "Business class",
+    column_text: "Business travel- air - Flights - Long-haul, to/from UK - Business class", report_label: "", uom: "passenger.km", ...over,
+  });
+  it("loads the with-RF id and excludes its without-RF pair, so a DESNZ load can never bring a without-RF flight in", () => {
+    const result = plan([flight({ db_id: "2101", factor: "0.3394" }), flight({ db_id: "2102", original_id: "21_316_3175_11_1", factor: "0.20083" })]);
+    assert.deepEqual(result.refusals, []);
+    assert.deepEqual(result.factors.map((factor) => [factor.factorId, factor.kgco2ePerUnit]), [["uk-ghg-21_316_3174_11_1", "0.3394"]]);
+    assert.deepEqual(result.excluded.map((excluded) => `${excluded.dbId}:${excluded.reason}`), ["2102:air-without-rf"]);
+  });
+  it("excludes a flight whose own text says Without RF, whatever its id; keeps v7's \"With RF\" level", () => {
+    const result = plan([flight({ db_id: "2111", level_4: "With RF", factor: "0.58028", year: "2024", dataset_id: "2" }),
+      flight({ db_id: "2112", original_id: "21_316_3174_11_2", level_4: "Without RF", factor: "0.34252", year: "2024", dataset_id: "2" })]);
+    assert.deepEqual(result.factors.map((factor) => factor.legacyDbId), ["2111"]);
+    assert.deepEqual(result.excluded.map((excluded) => excluded.reason), ["air-without-rf"]);
+  });
+  it("touches nothing else: WTT flights, freight flights and other odd ids load as before", () => {
+    const result = plan([
+      flight({ db_id: "2121", original_id: "22_912_3175_11_1", level_1: "WTT- business travel- air", level_2: "WTT- flights", factor: "0.07137" }),
+      flight({ db_id: "2122", original_id: "27_317_3153_14_1", level_1: "Freighting goods", level_2: "Freight flights", factor: "2.1", uom: "tonne.km" }),
+      row({ db_id: "2123", original_id: "10_100_1001_1_1" }),
+    ]);
+    assert.deepEqual(result.excluded, []);
+    assert.equal(result.factors.length, 3);
   });
 });

@@ -180,7 +180,23 @@ export const EXCLUSION_REASONS = {
   "not-kgco2e": "a row not in kgCO2e: not an emission factor",
   "retired-w": "a code ending in -w, the retired waste variant",
   "duplicate-upload-unit-conflict": "a ruled duplicate-upload row whose unit contradicts the xlsx edition at a value of 0: the xlsx row loads",
+  "air-without-rf": "a business-travel flight priced without radiative forcing: air is always reported with RF (ruled 28 Oct 2026), so only the with-RF id loads",
 } as const;
+
+/**
+ * D5-air (R2, ruled 28 Oct 2026): business-travel air is always the **with-RF** factor — DESNZ's recommended basis — in every year
+ * and every future load. This encodes **DESNZ's own id convention**, read from its activity flat file: each flight haul × class is
+ * published as an adjacent pair of ids that differ only in the third segment, the **even** one with RF and the **odd** one without
+ * (2025: Long-haul · Business `21_316_3174_11_1` = 0.3394 with RF, `21_316_3175_11_1` = 0.20083 without — the RF uplift). v7 holds
+ * only the even ids (checked against DESNZ's published with-RF column for 2019–2025), so today this excludes nothing; it stops a
+ * future DESNZ load from bringing a without-RF flight in. A row whose own text says "Without RF" is excluded too, whatever its id.
+ */
+export function isAirWithoutRf(row: { level_1?: string; level_2?: string; level_4?: string; column_text?: string }, code: string): boolean {
+  if (clean(row.level_1)?.toLowerCase() !== "business travel- air" || clean(row.level_2)?.toLowerCase() !== "flights") return false;
+  if (/without rf/i.test(`${clean(row.level_4) ?? ""} ${clean(row.column_text) ?? ""}`)) return true;
+  const segment = /^\d+_\d+_(\d+)_/.exec(code)?.[1];
+  return segment !== undefined && Number(segment) % 2 === 1;
+}
 
 /**
  * The rows excluded as `duplicate-upload-unit-conflict` (ruled 25 Sep 2026), by db_id: nzi Walking and Cycling priced
@@ -345,6 +361,7 @@ export function planV7Load(
     const normalised = normaliseCode(code);
     if (!normalised || /[:|\s]/.test(normalised)) { refuse("unsafe-code", "a code that cannot be a factor id (empty, or with ':', '|' or whitespace)", `${dbId}: ${code}`); continue; }
     if (/-w$/.test(normalised)) { exclude("retired-w", dbId, row, code); continue; }
+    if (isAirWithoutRf(row, code)) { exclude("air-without-rf", dbId, row, `${code} ${clean(row.year)} ${factor}`); continue; }
     if (/^\d$/.test(scopeRaw!)) report("scope-normalised", `a bare scope number, read as "Scope n"`, `${dbId}: ${code} "${scopeRaw}" → Scope ${scope}`);
     if (aliased) report("suffix-aliased", "a suffix the registry does not know, loaded as the registered variant it means (the v7 code is kept verbatim)", `${dbId}: ${verbatimCode} → ${code}`);
 

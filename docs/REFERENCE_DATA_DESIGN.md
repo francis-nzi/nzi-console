@@ -165,7 +165,7 @@ reasons**, lists it in the exclusion report, and lets the load go ahead. A **rep
 ahead. The list is closed on purpose (ruled 25 Sep 2026): a row that fails for any reason not on it refuses the load,
 so a new kind of bad row halts it rather than disappearing.
 
-**Excluded — the closed six** (703 rows on the full extract):
+**Excluded — the closed six, and a seventh since 28 Oct** (703 rows on the full extract; the seventh excludes none of them):
 
 | Reason | Rows | What |
 |---|---|---|
@@ -175,6 +175,7 @@ so a new kind of bad row halts it rather than disappearing.
 | `not-kgco2e` | 3 | `kWh(net)` rows — not emission factors |
 | `retired-w` | 8 | a code ending in `-w` |
 | `duplicate-upload-unit-conflict` | 4 | db 31415, 31416, 21722, 21723 only: nzi Walking/Cycling at 0 `passenger.km` in v7's `tmp*.csv` duplicate uploads, where the xlsx edition says 0 `miles`. **Self-checking:** excluded only while the value is 0 and the xlsx miles counterpart is present; otherwise refused as `ruled-exclusion-unverified` |
+| `air-without-rf` | 0 | D5-air (R2, ruled 28 Oct 2026): a `Business travel- air` / `Flights` row priced **without** radiative forcing. It encodes **DESNZ's id convention** (its activity flat file): each haul × class is an adjacent id pair differing only in the third segment, **even = with RF, odd = without** (2025 Long-haul · Business: `21_316_3174_11_1` 0.3394 / `21_316_3175_11_1` 0.20083). Also any flight whose own text says "Without RF". v7 holds only the even ids, so none today; it stops a future DESNZ load bringing a without-RF flight in. WTT and freight flights are untouched |
 
 Every excluded row is written, dry run or not, to `<extract>.exclusions.csv` beside the extract.
 
