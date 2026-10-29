@@ -167,6 +167,17 @@ describe("the re-ingest carries the full v7 record, and D7 reconciles per site",
       assert.equal(await count(`SELECT count(*) AS n FROM nzi_console.job_scope_rows WHERE job_id=$1 AND origin='live'`, [JOB]), 0);
     });
 
+    it("a v7 correction month below zero is carried (the re-ingest's own create only): the months still sum to the quantity", async () => {
+      const JOB = "neg-month-job";
+      const rows: V7[] = [{ id: "n-credit", scope: "1", label: "Gas", qty: 500, unit: "kWh", reported: 0.1, site: "v7-site-uk", months: months12({ 1: 300, 2: 300, 3: -100 }) }];
+      await seedJob(JOB, 5, ["2025-01-01", "2025-12-31"], rows);
+      const done = await run(plan(JOB, rows));
+      assert.equal(done.data.nativeTotalTco2e, done.data.v7TotalTco2e);
+      const live = await liveFor(JOB, "n-credit");
+      assert.deepEqual((live.monthly as Array<{ quantity: number | null }>).slice(0, 3).map((slot) => Number(slot.quantity)), [300, 300, -100], "the correction month is kept");
+      assert.deepEqual([live.q, live.t], [500, 0.1]);
+    });
+
     it("positional months on a short period: slot i on reporting month i, nothing beyond", () => {
       const { slots, outside } = v7MonthSlots(months12({ 1: 5, 6: 7, 10: 0 }), ["2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09"]);
       assert.deepEqual(outside, []);
