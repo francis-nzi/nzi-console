@@ -37,6 +37,16 @@ describe("command contracts", () => {
     assert.ok(validateCommand("scope.row.create", { ...base, sourceQuantity: 125, sourceUnit: null }, context).some((issue) => issue.field === "sourceUnit"));
     assert.ok(validateCommand("scope.row.create", { ...base, factorSource: "client", clientFactorId: "cf-a", isCustomEntry: false, datasetId: null }, context).some((issue) => issue.field === "clientFactorId"));
   });
+  it("a negative monthly quantity is refused for everyone except the v7 re-ingest's own system create", () => {
+    const row = { jobId: "job-a", scope: "1", sourceLabel: "Gas", quantity: 500, unit: "kWh", datasetId: "d", factorId: "f", factorVersion: "v1", factorLabel: "Gas",
+      monthlyActivity: [{ month: "2025-01", quantity: 600 }, { month: "2025-02", quantity: -100 }] };
+    const monthly = (issues: Array<{ field: string }>) => issues.some((issue) => issue.field === "monthlyActivity.1.quantity");
+    assert.ok(monthly(validateCommand("scope.row.create", row as never, context)), "a consultant's live capture stays ≥ 0");
+    const reingest = { ...context, principal: "system" as const, actorId: "policy:v7-reingest" };
+    assert.equal(monthly(validateCommand("scope.row.create", row as never, reingest as never)), false, "the re-ingest carries v7's correction month");
+    assert.ok(monthly(validateCommand("scope.row.create", row as never, { ...context, principal: "system" as const, actorId: "someone-else" } as never)), "another system actor does not");
+    assert.ok(monthly(validateCommand("scope.row.update", { ...row, scopeRowId: "r", expectedVersion: 1 } as never, reingest as never)), "an update never takes a negative month");
+  });
   it("validates the NZC-046 category code against the taxonomy and its scope (UX1c)", () => {
     const s1 = { jobId: "job-a", scope: "1", sourceLabel: "Gas", quantity: 10, unit: "kWh", datasetId: "dataset-a", factorId: "factor-a", factorVersion: "v1", factorLabel: "Gas factor", qualityTier: "measured" as const };
     assert.equal(validateCommand("scope.row.create", { ...s1, categoryCode: "1.natural-gas" }, context).length, 0);
