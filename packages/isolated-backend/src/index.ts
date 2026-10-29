@@ -129,6 +129,7 @@ export * from "./clientTargets";
 export * from "./scopeRowState";
 export * from "./v7Reingest";
 export * from "./reingestAttest";
+export * from "./v7ReingestBook";
 export * from "./clientIntensityTargets";
 export * from "./clientReportingTemplates";
 export * from "./masterTemplates";

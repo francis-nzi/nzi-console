@@ -48,8 +48,9 @@ describe("scope.review.attest_reingest, against a real database", { skip: TEST_D
   const reviewer = () => context(REVIEWER, "staff");
   const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
   const preview = (job: string, ctx = reviewer()) => previewReingestAttestation(database.pool, job, ctx);
-  const act = (job: string, plan: ReingestAttestationPlan, ctx = reviewer()) => attestReingestRows(database.pool,
-    { jobId: job, runId: plan.runId!, rows: plan.attest.map((row) => ({ rowId: row.rowId, expectedReviewVersion: row.version })), gapKeys: plan.gaps.map((gap) => gap.gapKey) }, ctx);
+  // The reviewer acknowledges what the preview flagged, unless a case says otherwise (RULING-v7-book-runner R3).
+  const act = (job: string, plan: ReingestAttestationPlan, ctx = reviewer(), acknowledgedDeltas = plan.deltas?.flagged ?? []) => attestReingestRows(database.pool,
+    { jobId: job, runId: plan.runId!, rows: plan.attest.map((row) => ({ rowId: row.rowId, expectedReviewVersion: row.version })), gapKeys: plan.gaps.map((gap) => gap.gapKey), acknowledgedDeltas }, ctx);
   const live = async (job: string, v7: string) => (await db.query(
     `SELECT scope_row_id AS id, version, review_status, reviewed_by, reviewer_note FROM nzi_console.job_scope_rows WHERE job_id=$1 AND origin='live' AND enabled AND reingested_from_row_id=$2`, [job, v7])).rows[0]!;
   const count = async (sql: string, params: unknown[] = []) => Number((await db.query(sql, params)).rows[0]!.n);
@@ -146,16 +147,31 @@ describe("scope.review.attest_reingest, against a real database", { skip: TEST_D
       assert.ok(plan.otherOpenGaps.some((gap) => gap.gapKey === `zero_blank:${gas.id}`), "a blank quantity where v7 had a figure is a judgment");
     });
 
-    it("D7.2 at the moment of attesting: a row that has drifted refuses the whole act; its zero gap is not offered either", async () => {
-      const zero = await live(JOB, "v7-zero");
-      await db.query(`UPDATE nzi_console.job_scope_rows SET calculated_tco2e = 0.5, version = version + 1 WHERE scope_row_id = $1`, [zero.id]);
-      const plan = await preview(JOB);
-      assert.deepEqual(plan.blocked.map((row) => row.rowId), [zero.id]);
-      assert.match(plan.blocked[0]!.reasons.join(" "), /no longer reproduces v7's 0 t \(D7\.2\)/);
-      assert.ok(!plan.gaps.some((gap) => gap.gapKey === `zero_blank:${zero.id}`), "v7 recorded 0 but the row no longer reproduces 0");
+    it("D7.2 at the moment of attesting (R2): a row whose input has left v7's refuses the whole act; a figure that moved is a delta to acknowledge (R3)", async () => {
+      // The gas row's quantity was blanked by the case before: it no longer carries v7's input, so it blocks the act.
+      const gas = await live(JOB, "v7-gas"), zero = await live(JOB, "v7-zero");
+      let plan = await preview(JOB);
+      assert.deepEqual(plan.blocked.map((row) => row.rowId), [gas.id]);
+      assert.match(plan.blocked[0]!.reasons.join(" "), /its quantity none is no longer v7's 1000 \(D7\.2\)/);
       await assert.rejects(act(JOB, plan), (error) => codes(error).includes("ATTEST_BLOCKED"));
       assert.equal(await attestedHistory(JOB), 0, "nothing written");
+      await db.query(`UPDATE nzi_console.job_scope_rows SET quantity = 1000, override_tco2e = NULL, override_reason = NULL, version = version + 1 WHERE scope_row_id = $1`, [gas.id]);
+
+      // The zero row's figure drifts while its input stays v7's: not blocked — flagged, as a 0 → non-zero move.
+      await db.query(`UPDATE nzi_console.job_scope_rows SET calculated_tco2e = 0.5, version = version + 1 WHERE scope_row_id = $1`, [zero.id]);
+      plan = await preview(JOB);
+      assert.deepEqual(plan.blocked, [], "the calc is authoritative: a moved figure never blocks a row that carries v7's input");
+      assert.deepEqual(plan.deltas!.flagged, ["job", "v7-zero"], "the row, and the job it moves > 5%");
+      assert.equal(plan.deltas!.rows.find((row) => row.v7RowId === "v7-zero")!.flag, "zero-base");
+      assert.equal(plan.deltaLabels["v7-zero"], "Standby boiler");
+      assert.ok(!plan.gaps.some((gap) => gap.gapKey === `zero_blank:${zero.id}`), "v7 recorded 0 but the row no longer holds 0: not swept up");
+      // Unacknowledged, or acknowledged in part, the act refuses and writes nothing.
+      await assert.rejects(act(JOB, plan, reviewer(), []), (error) => codes(error).includes("DELTAS_NOT_ACKNOWLEDGED"));
+      await assert.rejects(act(JOB, plan, reviewer(), ["v7-zero"]), (error) => codes(error).includes("DELTAS_NOT_ACKNOWLEDGED"));
+      await assert.rejects(act(JOB, plan, reviewer(), ["job", "v7-zero", "v7-gas"]), (error) => codes(error).includes("DELTAS_NOT_ACKNOWLEDGED"), "no more than is flagged");
+      assert.equal(await attestedHistory(JOB), 0, "nothing written");
       await db.query(`UPDATE nzi_console.job_scope_rows SET calculated_tco2e = 0, version = version + 1 WHERE scope_row_id = $1`, [zero.id]);
+      assert.deepEqual((await preview(JOB)).deltas!.flagged, [], "back to v7's figure: nothing flagged");
     });
 
     it("all or nothing: a row or a gap that moved since the preview refuses the act — CHANGED_SINCE_PREVIEW — and nothing is written", async () => {
@@ -198,8 +214,8 @@ describe("scope.review.attest_reingest, against a real database", { skip: TEST_D
       assert.doesNotMatch(audit[0]!.j, /GBP|£|kWh|quantity|kgco2e|price|cost/i, "NZC-120: ids and counts, no money");
       const screen = (await withTenantRead(database.pool, ORG, (client) => getAssuranceScreen(client, JOB)))!;
       const open = screen.gaps.gaps.filter((gap) => !gap.resolved).map((gap) => gap.key);
-      const water = await live(JOB, "v7-water"), gas = await live(JOB, "v7-gas");
-      assert.ok(open.includes(`unmapped:${water.id}`) && open.includes(`zero_blank:${gas.id}`), "the judgment gaps are still open, for their own Resolve");
+      const water = await live(JOB, "v7-water");
+      assert.ok(open.includes(`unmapped:${water.id}`), "the judgment gap is still open, for its own Resolve");
     });
 
     it("a replay is the same outcome; nothing is left to attest afterwards", async () => {
