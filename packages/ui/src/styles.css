@@ -2172,6 +2172,9 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-a-mt-editor{border:0;margin:0;padding:0;min-width:0}
 .nz-a-mt-editor legend{padding:0;margin-bottom:7px;font-size:11.5px;font-weight:600;color:var(--a-ink-2)}
 .nz-a-mt-editor .nz-a-hint{margin-top:8px}
+/* Master templates (data-entry R1): one line of the drawer's editor. */
+.nz-a-master-line{border:1px solid var(--line2);border-radius:9px;padding:10px;margin-bottom:8px;min-width:0}
+.nz-a-master-line-end{display:flex;align-items:flex-end;justify-content:flex-end}
 .nz-a-mitem.edit{grid-template-columns:22px minmax(0,1fr) 104px;grid-template-areas:"k body off" ". inc inc"}
 .nz-a-mitem.edit .k{grid-area:k}
 .nz-a-mitem.edit .body{grid-area:body;min-width:0}

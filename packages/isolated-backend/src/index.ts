@@ -131,6 +131,7 @@ export * from "./v7Reingest";
 export * from "./reingestAttest";
 export * from "./clientIntensityTargets";
 export * from "./clientReportingTemplates";
+export * from "./masterTemplates";
 export * from "./reportSectionPlans";
 export * from "./jobSiteInclusions";
 export { seedJobFromTemplate, getJobTemplateSeeding } from "./jobTemplateSeeding";

@@ -182,6 +182,28 @@ describe("isolated Postgres migrations", () => {
     }
     assert.ok(!/\bquantity\b/.test(clientReportingTemplatesMigration.replace(/--.*$/gm, "")), "a template holds lines, never a quantity");
   });
+  it("holds the organisation's master templates: a header archived never deleted, lines append-only per version, no site, dataset or quantity, three seeded (0197, data-entry R1)", () => {
+    const sql = readFileSync(resolve(here, "../migrations/0197_master_templates.sql"), "utf8");
+    for (const clause of [
+      "CREATE TABLE nzi_console.master_templates", "PRIMARY KEY (organisation_id, master_id)",
+      "CONSTRAINT master_templates_archive_reason CHECK (active = (archived_reason IS NULL))",
+      "CREATE UNIQUE INDEX master_templates_name_key ON nzi_console.master_templates (organisation_id, lower(name))",
+      "CREATE TABLE nzi_console.master_template_rows", "PRIMARY KEY (organisation_id, master_id, rows_version, row_id)",
+      "category_code text NOT NULL REFERENCES nzi_console.input_spec_categories(category_code)",
+      "FOREIGN KEY (organisation_id, factor_id) REFERENCES nzi_console.factor_identities(organisation_id, factor_id)",
+      "CONSTRAINT master_template_rows_category_scope CHECK (split_part(category_code, '.', 1) = scope)",
+      "GRANT UPDATE (name, active, archived_reason, rows_version, version, updated_by, updated_at) ON nzi_console.master_templates TO nzi_console_app",
+      "GRANT SELECT, INSERT ON nzi_console.master_template_rows TO nzi_console_app",
+      "REVOKE UPDATE, DELETE ON nzi_console.master_template_rows FROM PUBLIC, nzi_console_app, nzi_console_worker, nzi_console_auth",
+      "REVOKE DELETE ON nzi_console.master_templates FROM PUBLIC, nzi_console_app, nzi_console_worker, nzi_console_auth",
+      "('default', 'Default', 1), ('construction', 'Construction', 2), ('office', 'Office', 3)",
+      "CREATE TRIGGER provision_master_templates_on_insert AFTER INSERT ON nzi_console.organisations",
+    ]) assert.ok(sql.includes(clause), clause);
+    for (const table of ["master_templates", "master_template_rows"]) assert.ok(sql.includes(`ALTER TABLE nzi_console.${table} FORCE ROW LEVEL SECURITY`), table);
+    // A column named for a quantity, a site or a dataset — the comments and the table descriptions may say the words.
+    const columns = sql.replace(/--.*$/gm, "").replace(/COMMENT ON[\s\S]*?;/g, "");
+    for (const held of ["quantity", "site_id", "dataset_id", "monthly"]) assert.ok(!new RegExp(`\\b${held}\\w*\\s+(text|numeric|integer|jsonb)`).test(columns), `a master holds no ${held}`);
+  });
   it("holds a job's site inclusion per (job, site), versioned and append-only; absence is included, an exclusion says why (0161, Phase 3a)", () => {
     for (const clause of [
       "CREATE TABLE nzi_console.job_site_inclusions", "PRIMARY KEY (organisation_id, job_id, site_id, version)",

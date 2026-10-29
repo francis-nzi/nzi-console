@@ -1,8 +1,8 @@
 "use client";
 
 // Redesign Phase 1c (0159) — the client's reporting template: what the client reports, year to year, held on the
-// Client. Scopes → categories → lines; a line with no category is "to file" (it came from v7's history, which carries
-// none) and is never guessed. A version is the whole template — every save, initialise or withdraw writes the next one.
+// Client. Scopes → categories → lines; a line with no category is "to categorise" (data-entry R7; it came from v7's
+// history, which carries none) and is never guessed. A version is the whole template — every save, initialise or withdraw writes the next one.
 import { useRef, useState } from "react";
 import { Collapsible, GatedButton } from "@nzi/ui";
 import { postBrowserCommand, postBrowserCommandWithReason, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
@@ -27,7 +27,7 @@ export function ReportingTemplateCard({ template, access, onEdit, onInitialise }
   const canEdit = access.state === "allowed";
   return <Collapsible className="nz-panel nz-collapsible-card nz-reporting-template" headingClassName="nz-card-h"
     title={<><span className="eyebrow">Reporting</span><h2>Reporting template</h2></>}
-    count={current ? `${current.lines.length} line${current.lines.length === 1 ? "" : "s"}${toFile ? ` · ${toFile} to file` : ""}` : "None set"}>
+    count={current ? `${current.lines.length} line${current.lines.length === 1 ? "" : "s"}${toFile ? ` · ${toFile} to categorise` : ""}` : "None set"}>
     <div className="nz-card-b">
       {current
         ? <p className="sub">Version {current.version} · {originText(current)} · {current.setBy}, {formatDate(current.setAt)}. Each year&rsquo;s job captures these lines; quantities stay on the job.</p>
@@ -39,8 +39,8 @@ export function ReportingTemplateCard({ template, access, onEdit, onInitialise }
     </div>
     {current ? groupReportingTemplateLines(current.lines).map((group) => <div key={group.scope} className="nz-card-b" style={{ paddingTop: 0 }}>
       <div className="nz-sect"><span className={`nz-scope-sw s${group.scope}`} aria-hidden="true" /> Scope {group.scope}</div>
-      {group.categories.map((category) => <div key={category.categoryCode ?? "to-file"} style={{ marginBottom: 8 }}>
-        <div className="k" style={{ fontWeight: 600 }}>{category.categoryCode === null ? <span className="nz-st est">To file</span> : category.categoryName ?? category.categoryCode}</div>
+      {group.categories.map((category) => <div key={category.categoryCode ?? "to-categorise"} style={{ marginBottom: 8 }}>
+        <div className="k" style={{ fontWeight: 600 }}>{category.categoryCode === null ? <span className="nz-st est">To categorise</span> : category.categoryName ?? category.categoryCode}</div>
         {category.lines.map((line) => <div key={line.lineId} className="nz-kv">
           <span className="k">{line.sourceLabel}{line.reportLabel && line.reportLabel !== line.sourceLabel ? <span className="muted"> · reports as {line.reportLabel}</span> : null}</span>
           <span className="v muted">{[line.siteName, line.factorLabel, line.unit].filter(Boolean).join(" · ") || "—"}</span>
@@ -92,7 +92,7 @@ export function ReportingTemplateForm({ clientId, template, access, onClose, onS
   return <>
     <div className="nz-dh"><div className="k">Reporting</div><h3>Reporting template</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
     <div className="nz-db">
-      <p className="sub">Saving writes the next version; the one before stays in the record. A line &ldquo;to file&rdquo; has no category yet — choose one when you know it.</p>
+      <p className="sub">Saving writes the next version; the one before stays in the record. A line &ldquo;to categorise&rdquo; has no category yet — choose one when you know it.</p>
       {lines.map((line, index) => {
         const options = template.categories.filter((category) => category.scope === line.scope);
         return <fieldset key={line.key} className="nz-template-line" aria-label={`Line ${index + 1}`} style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10, marginBottom: 8 }}>
@@ -103,7 +103,7 @@ export function ReportingTemplateForm({ clientId, template, access, onClose, onS
               </select></label>
             <label className="nz-fl"><span>Category</span>
               <select className="nz-inp" value={line.categoryCode ?? ""} onChange={(e) => update(line.key, { categoryCode: e.target.value || null })}>
-                <option value="">To file</option>
+                <option value="">To categorise</option>
                 {line.categoryCode && !options.some((option) => option.code === line.categoryCode) ? <option value={line.categoryCode}>{line.categoryCode} (retired)</option> : null}
                 {options.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}
               </select></label>
@@ -136,7 +136,7 @@ export function ReportingTemplateForm({ clientId, template, access, onClose, onS
   </>;
 }
 
-/** Initialise from a job: the job's enabled rows become the next version. v7 history comes in "to file". */
+/** Initialise from a job: the job's enabled rows become the next version. v7 history comes in "to categorise". */
 export function ReportingTemplateInitialiseForm({ clientId, template, jobs, access, onClose, onSaved }: {
   clientId: string; template: Template; jobs: JobScreenReadModel[]; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
@@ -158,7 +158,7 @@ export function ReportingTemplateInitialiseForm({ clientId, template, jobs, acce
   return <>
     <div className="nz-dh"><div className="k">Reporting</div><h3>Initialise from a job</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
     <div className="nz-db">
-      <p className="sub">The job&rsquo;s enabled entries become the template&rsquo;s lines — one per distinct activity, with its category, labels, site and factor. Entries imported from v7 have no category, so they come in &ldquo;to file&rdquo;. {template.current ? "This writes a new version; the current one stays in the record." : ""}</p>
+      <p className="sub">The job&rsquo;s enabled entries become the template&rsquo;s lines — one per distinct activity, with its category, labels, site and factor. Entries imported from v7 have no category, so they come in &ldquo;to categorise&rdquo;. {template.current ? "This writes a new version; the current one stays in the record." : ""}</p>
       {crp.length === 0
         ? <p className="sub">This client has no CRP jobs to build from.</p>
         : <label className="nz-fl"><span>Job</span>

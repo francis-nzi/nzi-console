@@ -55,6 +55,8 @@ export const ADMIN_AUDIT_ACTIONS = [
   "custom_field.%", "custom_fields.imported",
   // Portal broadcasts (admin F4). No import (R1).
   "portal_broadcast.%",
+  // Master templates (data-entry R1, 0197). No import: an administrator authors the lines.
+  "master_template.%",
 ] as const;
 
 export async function getAdminOverview(db: Queryable, options: { includeChanges: boolean; changeLimit?: number }): Promise<AdminOverview> {
