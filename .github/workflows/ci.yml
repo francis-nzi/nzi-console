@@ -783,6 +783,10 @@ jobs:
       # edition added or flagged; dry run writes nothing; run → attest → snapshot → the client's analytics year.
       - name: The v7 book runner carries v7's inputs, reports emission deltas, and skips what is Francis's
         run: npx tsx --test packages/isolated-backend/tests/v7ReingestBookReal.test.ts
+      # RULING 29 Oct: the 11 stale migrated quantities are set to their months' sum through 0133's sanctioned bypass — one
+      # transaction, guarded (no completed run; the scan returns exactly the ruled set), verified, audited by id; a dry run writes nothing.
+      - name: The stale migrated quantities are corrected through the sanctioned immutability bypass
+        run: npx tsx --test packages/isolated-backend/tests/v7MigratedQtyCorrectionReal.test.ts
       # RULING-v7-reingest-full-record: each live row carries its v7 row's site, data confidence, column text and months (from the
       # v7 row, never the plan); SITE_NOT_USABLE / MONTHS_DO_NOT_FIT refuse, named; D7 per site and per carried field.
       - name: The re-ingest carries the full v7 record, and D7 reconciles per site

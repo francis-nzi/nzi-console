@@ -33,6 +33,7 @@
     "v7:reingest": "tsx scripts/v7-reingest-job.ts",
     "v7:reingest:revert": "tsx scripts/v7-reingest-revert.ts",
     "v7:reingest-book": "tsx scripts/v7-reingest-book.ts",
+    "v7:correct-migrated-qty": "tsx scripts/v7-correct-migrated-qty.ts",
     "discard:scope-rows": "tsx scripts/discard-scope-rows.ts",
     "backfill:job-datasets": "tsx scripts/backfill-job-datasets.ts",
     "seal:vehicle-registrations": "tsx scripts/seal-vehicle-registrations.ts",
