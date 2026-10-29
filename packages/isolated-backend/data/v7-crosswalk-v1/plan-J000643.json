@@ -1,0 +1,40 @@
+{
+  "jobId": "v7-job-633",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2025"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-6939",
+      "scope": "2",
+      "sourceLabel": "UK Electricity: Electricity Generated Electricity: UK kWh",
+      "v7Tco2e": 8.319,
+      "rule": "S2-ELEC",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "2.purchased-electricity",
+      "quantity": 47000,
+      "unit": "kWh",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-7_400_4000_5_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-6940",
+      "scope": "3.3",
+      "sourceLabel": "Transmission and Distribution: T&D UK Electricity Electricity: UK kWh",
+      "v7Tco2e": 0.8709100000000001,
+      "rule": "S3-3",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.3",
+      "quantity": 47000,
+      "unit": "kWh",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-13_402_4000_5_1",
+      "qualityTier": "measured"
+    }
+  ]
+}

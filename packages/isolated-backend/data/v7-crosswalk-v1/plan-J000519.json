@@ -1,0 +1,70 @@
+{
+  "jobId": "v7-job-509",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2025"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-2553",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Medium Car Diesel (1701-2000cc)",
+      "v7Tco2e": 0,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 0,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_301_3053_9_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-2554",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Large Car Diesel (>2000cc)",
+      "v7Tco2e": 0,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 0,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-2555",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Small Car Diesel (<1700cc)",
+      "v7Tco2e": 0,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 0,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_301_3045_9_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-2556",
+      "scope": "3.1",
+      "sourceLabel": "Real estate services, excluding on a fee or contract basis and imputed rent",
+      "v7Tco2e": 0,
+      "rule": "S3-1",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.1",
+      "quantity": 0,
+      "unit": "GBP",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-SPEND-SIC-68.12",
+      "qualityTier": "spend-based"
+    }
+  ]
+}

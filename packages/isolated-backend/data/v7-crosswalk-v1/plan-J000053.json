@@ -1,0 +1,25 @@
+{
+  "jobId": "v7-job-46",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2022"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-5078",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Large Car Diesel (>2000cc)",
+      "v7Tco2e": 0,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 0,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "qualityTier": "measured"
+    }
+  ]
+}

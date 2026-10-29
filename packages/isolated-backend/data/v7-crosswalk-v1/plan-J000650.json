@@ -1,0 +1,85 @@
+{
+  "jobId": "v7-job-640",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2025"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-1377",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Large Car Petrol (>2000cc)",
+      "v7Tco2e": 3.7303199999999994,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 8640,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_301_3062_9_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1378",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Rail National Rail",
+      "v7Tco2e": 0.21275999999999998,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 6000,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_315_3147_11_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1379",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Average Car Diesel",
+      "v7Tco2e": 0.7285298400000002,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 2616,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_301_3069_9_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1380",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Large Car Petrol (>2000cc)",
+      "v7Tco2e": 4.144800000000001,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 9600,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_301_3062_9_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1381",
+      "scope": "3.7",
+      "sourceLabel": "Homeworking: Homeworking (Office Equipment + Heating)",
+      "v7Tco2e": 1.1215008000000004,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 3360,
+      "unit": "per FTE Working Hour",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-32_603_9999_12_1",
+      "qualityTier": "measured"
+    }
+  ]
+}
