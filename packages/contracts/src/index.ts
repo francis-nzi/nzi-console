@@ -111,6 +111,7 @@ export * from "./srsBridge";
 export * from "./readinessReportTemplates";
 export * from "./intensityMetrics";
 export * from "./reportingTemplate";
+export * from "./masterTemplates";
 export * from "./datasetSources";
 export * from "./trainingWorkflow";
 export * from "./reductionStrategies";

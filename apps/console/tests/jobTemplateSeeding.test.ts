@@ -17,7 +17,7 @@ describe("template seeding on the capture surface (Phase 3b)", () => {
     assert.equal(seedOutcomeText(result()), "Seeded 9 entries from template v3.");
     assert.equal(seedOutcomeText(result({ seeded: 1 })), "Seeded 1 entry from template v3.");
     assert.equal(seedOutcomeText(result({ skipped: { toFile: 2, duplicate: 1, FACTOR_REQUIRED: 1 }, siteDropped: 2 })),
-      "Seeded 9 entries from template v3 — skipped 2 not yet filed under a category, 1 already on the job, 1 with no factor in this job's datasets; 2 seeded without a site (archived or left out of this job).");
+      "Seeded 9 entries from template v3 — skipped 2 to categorise, 1 already on the job, 1 with no factor in this job's datasets; 2 seeded without a site (archived or left out of this job).");
     assert.equal(seedOutcomeText(result({ seeded: 0, skipped: { duplicate: 5 } })), "Seeded 0 entries from template v3 — skipped 5 already on the job.");
     assert.match(seedOutcomeText(result({ skipped: { SOMETHING_NEW: 1 } })), /1 refused \(SOMETHING_NEW\)/, "an unnamed refusal is shown as itself, not hidden");
   });

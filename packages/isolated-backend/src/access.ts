@@ -123,6 +123,12 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "job_type.update": organisation,
   "job_type.deactivate": organisation,
   "job_type.reinstate": organisation,
+  // Master templates (data-entry R1): the organisation's own starting templates.
+  "master.template.create": organisation,
+  "master.template.rename": organisation,
+  "master.template.archive": organisation,
+  "master.template.reinstate": organisation,
+  "master.template.rows.set": organisation,
   "milestone_template.create": organisation,
   "milestone_template.update": organisation,
   "milestone_template.set_default": organisation,

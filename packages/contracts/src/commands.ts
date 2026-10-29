@@ -42,6 +42,7 @@ import { groundSrsSuggestion, SRS_SUGGESTION_LIMITS } from "./srsBridge";
 import { readinessReportTemplates } from "./readinessReportTemplates";
 import { intensityDividers, intensityUnitKinds, isIntensityIconKey, monetaryKindIssue, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
 import { REPORTING_TEMPLATE_LABEL_MAX, REPORTING_TEMPLATE_MAX_LINES, reportingTemplateCategoryScope, type ReportingTemplateLineInput } from "./reportingTemplate";
+import { MASTER_TEMPLATE_NAME_MAX, type MasterTemplateRowInput } from "./masterTemplates";
 import type { SpendImportColumnMap, SpendImportRow } from "./spendImport";
 import type { ReportSectionReadModel } from "./reportSections";
 import type { SnapshotProvenanceStamp } from "./evidence";
@@ -122,6 +123,11 @@ export type CommandKey =
   | "job_type.update"
   | "job_type.deactivate"
   | "job_type.reinstate"
+  | "master.template.create"
+  | "master.template.rename"
+  | "master.template.archive"
+  | "master.template.reinstate"
+  | "master.template.rows.set"
   | "milestone_template.create"
   | "milestone_template.update"
   | "milestone_template.set_default"
@@ -911,6 +917,13 @@ export type CommandInputMap = {
   "job_type.update": JobTypeFields & { jobTypeId: string; expectedVersion: number };
   "job_type.deactivate": { jobTypeId: string; expectedVersion: number };
   "job_type.reinstate": { jobTypeId: string; expectedVersion: number };
+  /** Data-entry R1 (0197) — the organisation's master templates. Every write after the create names the header's version. */
+  "master.template.create": { name: string };
+  "master.template.rename": { masterId: string; expectedVersion: number; name: string };
+  "master.template.archive": { masterId: string; expectedVersion: number };
+  "master.template.reinstate": { masterId: string; expectedVersion: number };
+  /** The whole set of lines, in order, as the next rows version. */
+  "master.template.rows.set": { masterId: string; expectedVersion: number; rows: MasterTemplateRowInput[] };
   /** Milestone templates (admin C2): the schedule is written with the template; the default moves, never lapses. */
   "milestone_template.create": MilestoneTemplateFields;
   "milestone_template.update": MilestoneTemplateFields & { templateId: string; expectedVersion: number };
@@ -1338,6 +1351,41 @@ export function reportingTemplateLineIssues(lines: unknown): CommandIssue[] {
   });
   return issues.slice(0, 20);
 }
+/**
+ * Data-entry R1 (0197) — a master template's lines, each whole: a scope, a category of that scope (required — a master
+ * is curated), a source label, an optional factor identity and unit. No site and no dataset (a master is site-agnostic
+ * and resolves its factors on seeding), and never a quantity: a line that carries one is refused, not stripped. Empty
+ * is allowed — a master starts empty.
+ */
+export function masterTemplateRowIssues(rows: unknown): CommandIssue[] {
+  if (!Array.isArray(rows)) return [{ field: "rows", code: "INVALID", message: "The template's lines are a list." }];
+  if (rows.length > REPORTING_TEMPLATE_MAX_LINES) return [{ field: "rows", code: "TOO_MANY", message: `A template holds at most ${REPORTING_TEMPLATE_MAX_LINES} lines.` }];
+  const issues: CommandIssue[] = [];
+  const optionalText = (value: unknown) => value === null || (typeof value === "string" && value.trim() !== "" && value.trim().length <= REPORTING_TEMPLATE_LABEL_MAX);
+  rows.forEach((row: (Partial<MasterTemplateRowInput> & Record<string, unknown>) | null, index) => {
+    const at = (name: string) => `rows[${index}].${name}`;
+    if (!row || typeof row !== "object") { issues.push({ field: `rows[${index}]`, code: "INVALID", message: `Line ${index + 1} is not a line.` }); return; }
+    for (const held of ["quantity", "monthlyActivity", "siteId", "datasetId"] as const) {
+      if (held in row) issues.push({ field: at(held), code: held === "quantity" || held === "monthlyActivity" ? "QUANTITY_NOT_HELD" : "NOT_HELD",
+        message: held === "quantity" || held === "monthlyActivity" ? `Line ${index + 1}: a template never holds a quantity — the job records the year.`
+          : `Line ${index + 1}: a master names no ${held === "siteId" ? "site" : "dataset"} — it is resolved on the job it seeds.` });
+    }
+    if (!oneOf(row.scope, ["1", "2", "3"] as const)) issues.push({ field: at("scope"), code: "INVALID", message: `Line ${index + 1}: the scope is 1, 2 or 3.` });
+    if (!(typeof row.categoryCode === "string" && row.categoryCode.trim() !== "")) issues.push({ field: at("categoryCode"), code: "REQUIRED", message: `Line ${index + 1} needs a category.` });
+    else if (reportingTemplateCategoryScope(row.categoryCode) !== row.scope) issues.push({ field: at("categoryCode"), code: "CATEGORY_SCOPE", message: `Line ${index + 1}: its category belongs to another scope.` });
+    if (!(typeof row.sourceLabel === "string" && row.sourceLabel.trim() !== "")) issues.push({ field: at("sourceLabel"), code: "REQUIRED", message: `Line ${index + 1} needs a source label.` });
+    else if (row.sourceLabel.trim().length > REPORTING_TEMPLATE_LABEL_MAX) issues.push({ field: at("sourceLabel"), code: "TOO_LONG", message: `Line ${index + 1}: a label is at most ${REPORTING_TEMPLATE_LABEL_MAX} characters.` });
+    if (!optionalText(row.reportLabel ?? null)) issues.push({ field: at("reportLabel"), code: "INVALID", message: `Line ${index + 1}: the report label is text, or left empty.` });
+    if (!optionalText(row.unit ?? null)) issues.push({ field: at("unit"), code: "INVALID", message: `Line ${index + 1}: the unit is text, or left empty.` });
+    const factor = row.factorId ?? null;
+    if (factor !== null && !(typeof factor === "string" && factor.trim() !== "")) issues.push({ field: at("factorId"), code: "INVALID", message: `Line ${index + 1}: the activity is a factor, or left empty.` });
+  });
+  return issues.slice(0, 20);
+}
+const masterNameIssues = (issues: CommandIssue[], name: unknown) => {
+  if (!(typeof name === "string" && name.trim() !== "")) issues.push({ field: "name", code: "REQUIRED", message: "A master template needs a name — Default, Construction, Office…" });
+  else if (name.trim().length > MASTER_TEMPLATE_NAME_MAX) issues.push({ field: "name", code: "TOO_LONG", message: `A name is at most ${MASTER_TEMPLATE_NAME_MAX} characters.` });
+};
 /** A lookup value's own fields: a managed category, a label within bounds, an optional short code, a whole sort order. */
 const lookupIssues = (issues: CommandIssue[], input: { categoryKey: string; label: string; code?: string | null; sortOrder?: number }) => {
   if (!isLookupCategory(input.categoryKey)) issues.push({ field: "categoryKey", code: "INVALID", message: "That is not a lookup managed here." });
@@ -2258,6 +2306,39 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, false);
     required(issues, "jobTypeId", input.jobTypeId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  // Master templates (data-entry R1, 0197). Firm configuration under the catalogue's gate (admin.lookups, ruled); archived,
+  // never deleted, and an archive says why. The audit carries counts, never a line's label.
+  "master.template.create": { key: "master.template.create", label: "Add a master template", permission: "admin.lookups", reasonRequired: false, transaction: "master template header + audit + outbox + idempotency", auditAction: "master_template.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    masterNameIssues(issues, input.name);
+    return issues;
+  } },
+  "master.template.rename": { key: "master.template.rename", label: "Rename a master template", permission: "admin.lookups", reasonRequired: false, transaction: "versioned header + audit + outbox + idempotency", auditAction: "master_template.renamed", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "masterId", input.masterId);
+    masterNameIssues(issues, input.name);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "master.template.archive": { key: "master.template.archive", label: "Archive a master template", permission: "admin.lookups", reasonRequired: true, transaction: "archive (never deletion) + audit + outbox + idempotency", auditAction: "master_template.archived", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    required(issues, "masterId", input.masterId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "master.template.reinstate": { key: "master.template.reinstate", label: "Reinstate a master template", permission: "admin.lookups", reasonRequired: false, transaction: "reinstatement + audit + outbox + idempotency", auditAction: "master_template.reinstated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "masterId", input.masterId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    return issues;
+  } },
+  "master.template.rows.set": { key: "master.template.rows.set", label: "Set a master template's lines", permission: "admin.lookups", reasonRequired: false, transaction: "versioned lines (append-only) + header + audit + outbox + idempotency", auditAction: "master_template.rows_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "masterId", input.masterId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    issues.push(...masterTemplateRowIssues(input.rows));
     return issues;
   } },
   // Milestone templates (admin C2). Templates are admin.templates (the design's chip). Moving the default and
