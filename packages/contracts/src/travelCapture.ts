@@ -79,6 +79,9 @@ const CAR_FUEL_MODE: Record<string, TravelModeValue> = {
  */
 export function readTravelFactorLabel(label: string): TravelFactorRead | null {
   const text = label.toLowerCase();
+  // D5-air (R4): a well-to-tank factor ("WTT- business travel- air - WTT- flights - …") is the fuel's upstream, filed under 3.3 — never
+  // the trip itself, so it is no travel mode's factor, or a flight would resolve to its WTT wherever both are offered.
+  if (/^\s*wtt-/.test(text)) return null;
   const read = (mode: TravelModeValue, extra: Partial<TravelFactorRead> = {}): TravelFactorRead => ({ mode, haul: null, cabinClass: null, withRf: null, car: false, ...extra });
   if (/\bflights?\b|business travel- ?air|\baviation\b/.test(text)) {
     return read("air", { haul: haulOf(text), cabinClass: classOf(text), withRf: /without rf/.test(text) ? false : /with rf/.test(text) ? true : null });
