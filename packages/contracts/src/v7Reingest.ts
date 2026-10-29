@@ -139,6 +139,16 @@ export type V7ReingestPostconditionInput = {
 const topScope = (scope: string) => scope.split(".")[0]!;
 /** A carried quantity is the same number, to floating-point noise — never a rounding or a unit conversion. */
 export const sameV7Quantity = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+/**
+ * RULING 29 Oct 2026 (v7-row-4063: qty 9.9996, one month of 10): v7 stores a row's quantity and its months separately, and they can
+ * disagree by rounding. The row's quantity is its months' sum, so months fit the quantity within this **relative** tolerance
+ * (scaled by the larger of 1 and the magnitudes) — rounding, never a different number: 1,186,404 against 23,421 still refuses.
+ */
+export const V7_MONTHS_ROUNDING = 1e-4;
+export const monthsFitQuantity = (monthsSum: number, quantity: number): boolean =>
+  Math.abs(monthsSum - quantity) <= V7_MONTHS_ROUNDING * Math.max(1, Math.abs(monthsSum), Math.abs(quantity));
+/** D7.2's quantity test: the same number — or, only on a row that carries months (whose sum becomes its quantity), the same to rounding. */
+export const sameV7CarriedQuantity = (live: number, v7: number, carriesMonths: boolean): boolean => sameV7Quantity(live, v7) || (carriesMonths && monthsFitQuantity(live, v7));
 /** v7's apportionment as the plan carries it: none, or 0, is the whole quantity (100%). */
 export const v7ApplyPct = (stored: number | null | undefined): number => (stored === null || stored === undefined || stored === 0 ? 100 : stored);
 
@@ -169,7 +179,7 @@ export function v7ReingestPostconditionMisses(input: V7ReingestPostconditionInpu
       // No input to carry: v7's figure is the record of account, and the row must hold it (D5, R4).
       if (row.tco2e !== null && !withinV7Tolerance(row.tco2e, v7.v7Tco2e)) misses.push(`row ${row.rowId}: reported total ${row.tco2e} t ≠ v7 ${v7.v7Tco2e} t`);
     } else {
-      if (row.quantity === null || v7.quantity === null || !sameV7Quantity(row.quantity, v7.quantity)) misses.push(`row ${row.rowId}: quantity ${show(row.quantity)} ≠ v7's ${show(v7.quantity)}`);
+      if (row.quantity === null || v7.quantity === null || !sameV7CarriedQuantity(row.quantity, v7.quantity, row.months?.some((value) => value !== null) ?? false)) misses.push(`row ${row.rowId}: quantity ${show(row.quantity)} ≠ v7's ${show(v7.quantity)}`);
       if (row.unit === null || v7.unit === null || !sameUnit(row.unit, v7.unit)) misses.push(`row ${row.rowId}: unit ${show(row.unit)} ≠ v7's ${show(v7.unit)}`);
       if (!sameV7Quantity(row.applyPct, v7.applyPct)) misses.push(`row ${row.rowId}: apportionment ${row.applyPct}% ≠ v7's ${v7.applyPct}%`);
     }

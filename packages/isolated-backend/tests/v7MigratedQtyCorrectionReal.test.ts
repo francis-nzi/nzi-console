@@ -25,6 +25,7 @@ const ROWS: Row[] = [
   { id: "b1", job: "job-b", qty: 0, months: [100, 100, 100] },
   { id: "ok", job: "job-b", qty: 300, months: [100, 100, 100] },
   { id: "rounding", job: "job-b", qty: 9.9996, months: [10] },
+  { id: "cents", job: "job-b", qty: 17133.81, months: [17133.8] }, // v7-row-2750's shape: a 0.01 rounding difference, not a typo
   { id: "disabled", job: "job-b", qty: 59213, months: [79056], enabled: false },
 ];
 const RULED = [{ jobId: "job-a", rowIds: ["a1", "a2"] }, { jobId: "job-b", rowIds: ["b1"] }];
@@ -91,7 +92,7 @@ describe("the stale migrated quantities are corrected through the sanctioned imm
     const before = await Promise.all(["a1", "a2", "b1"].map(record));
     const report = await run({ commit: true });
     assert.deepEqual([report.committed, report.corrected, report.triggerEnabledAfter], [true, 3, true]);
-    assert.deepEqual(report.withinRounding, ["rounding@job-b"], "a within-rounding difference is reported, not touched");
+    assert.deepEqual(report.withinRounding.sort(), ["cents@job-b", "rounding@job-b"], "within-rounding differences (up to 0.01) are reported, not touched, and do not make the scan refuse");
     assert.deepEqual(report.disabledMismatches, ["disabled@job-b"], "a disabled row's difference is reported, not touched");
     const sums: Record<string, number> = { a1: 23421, a2: 2475, b1: 300 };
     for (const [index, id] of ["a1", "a2", "b1"].entries()) {
@@ -100,7 +101,7 @@ describe("the stale migrated quantities are corrected through the sanctioned imm
       const { qty: _was, ...keptBefore } = before[index]!; const { qty: _is, ...keptNow } = now;
       assert.deepEqual(keptNow, keptBefore, `${id}: only qty moved`);
     }
-    assert.deepEqual([(await record("rounding")).qty, (await record("disabled")).qty, (await record("ok")).qty], [9.9996, 59213, 300]);
+    assert.deepEqual([(await record("rounding")).qty, (await record("cents")).qty, (await record("disabled")).qty, (await record("ok")).qty], [9.9996, 17133.81, 59213, 300]);
     assert.equal(await triggerOn(), true);
     await assert.rejects(db.query(`UPDATE nzi_console.job_scope_rows SET migrated_record = jsonb_set(migrated_record,'{qty}','1') WHERE scope_row_id='a1'`), /migrated|immutable|only/i, "the bypass is closed again");
     assert.equal(await audits(), 3);

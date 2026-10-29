@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
-import { commandGrantForRole, V7_REINGEST_ACTOR, type CommandContext, type V7ReingestJobInput, type V7ReingestPlanRow } from "@nzi/contracts";
+import { commandGrantForRole, monthsFitQuantity, V7_REINGEST_ACTOR, type CommandContext, type V7ReingestJobInput, type V7ReingestPlanRow } from "@nzi/contracts";
 import { CommandValidationError } from "../src/postgresCommands";
 import { withTenantWrite } from "../src/postgres";
 import { reingestV7JobInTransaction, v7MonthSlots } from "../src/v7Reingest";
@@ -176,6 +176,19 @@ describe("the re-ingest carries the full v7 record, and D7 reconciles per site",
       const live = await liveFor(JOB, "n-credit");
       assert.deepEqual((live.monthly as Array<{ quantity: number | null }>).slice(0, 3).map((slot) => Number(slot.quantity)), [300, 300, -100], "the correction month is kept");
       assert.deepEqual([live.q, live.t], [500, 0.1]);
+    });
+
+    it("months that differ from the quantity by rounding fit (v7-row-4063: 9.9996 against 10); a real difference still does not", async () => {
+      const JOB = "rounding-job";
+      const rows: V7[] = [{ id: "r-round", scope: "1", label: "Gas", qty: 9.9996, unit: "kWh", reported: 0.002, site: "v7-site-uk", months: months12({ 1: 10 }) }];
+      await seedJob(JOB, 6, ["2025-01-01", "2025-12-31"], rows);
+      const done = await run(plan(JOB, rows));
+      assert.equal(done.data.nativeTotalTco2e, done.data.v7TotalTco2e, "no emission delta flagged: 0.0004 of 10 kWh");
+      const live = await liveFor(JOB, "r-round");
+      assert.deepEqual([Number(live.q), (live.monthly as Array<{ quantity: number | null }>)[0]!.quantity], [10, 10], "the row's quantity is its months' sum; D7.2 accepts it as v7's within rounding");
+      assert.equal(monthsFitQuantity(100, 100.005), true);
+      assert.equal(monthsFitQuantity(23421, 1186404), false, "a stale typo is never rounding");
+      assert.equal(monthsFitQuantity(100, 999), false);
     });
 
     it("positional months on a short period: slot i on reporting month i, nothing beyond", () => {

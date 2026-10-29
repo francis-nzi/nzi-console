@@ -20,7 +20,7 @@
 //     with the individual Resolve. A gap that already has a resolution is never overwritten.
 import { randomUUID } from "node:crypto";
 import {
-  isV7ReportedTotalReason, sameV7Quantity, V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_REASONS, v7ApplyPct, v7EmissionDeltaReport, withinV7Tolerance,
+  isV7ReportedTotalReason, sameV7CarriedQuantity, sameV7Quantity, V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_REASONS, v7ApplyPct, v7EmissionDeltaReport, withinV7Tolerance,
   type AssuranceGap, type CommandContext, type CommandInputMap, type V7EmissionDeltaReport,
 } from "@nzi/contracts";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
@@ -94,7 +94,7 @@ type RunRow = {
   captured_by: string | null; calculated_by: string | null;
   scope: string; site_id: string | null; reingested_from_row_id: string;
   /** The live row's input, and v7's (RULING-v7-book-runner R2). */
-  quantity: string | null; unit: string | null; apply_pct: string | null; v7_qty: string | null; v7_uom: string | null; v7_apply_pct: string | null;
+  quantity: string | null; unit: string | null; apply_pct: string | null; has_months: boolean; v7_qty: string | null; v7_uom: string | null; v7_apply_pct: string | null;
 };
 
 export async function planReingestAttestation(db: Queryable, context: Pick<CommandContext, "organisationId" | "actorId" | "principal">, jobId: string, lock = false): Promise<ReingestAttestationPlan> {
@@ -114,6 +114,7 @@ export async function planReingestAttestation(db: Queryable, context: Pick<Comma
             r.factor_id, r.client_factor_id, r.factor_source, v.migrated_record->>'reported_tco2e' AS reported,
             r.provenance_json->>'capturedBy' AS captured_by, r.provenance_json->>'calculatedBy' AS calculated_by,
             r.scope, r.site_id, r.reingested_from_row_id, r.quantity::text AS quantity, r.unit, r.apply_pct::text AS apply_pct,
+            (jsonb_typeof(r.monthly_activity_json) = 'array' AND jsonb_array_length(r.monthly_activity_json) > 0) AS has_months,
             v.migrated_record->>'qty' AS v7_qty, v.migrated_record->>'uom' AS v7_uom, v.migrated_record->>'apply_pct' AS v7_apply_pct
        FROM nzi_console.job_scope_rows r
        JOIN nzi_console.job_scope_rows v ON v.organisation_id = r.organisation_id AND v.scope_row_id = r.reingested_from_row_id AND v.origin = 'migrated'
@@ -130,7 +131,7 @@ export async function planReingestAttestation(db: Queryable, context: Pick<Comma
       : `its reported total ${tco2e(row) ?? "none"} t is not v7's ${row.reported ?? "missing"} t (D7.2)`;
     const v7Quantity = row.v7_qty === null || row.v7_qty === "" ? null : Number(row.v7_qty), v7Unit = normaliseV7Unit(row.v7_uom);
     const v7Pct = v7ApplyPct(row.v7_apply_pct === null || row.v7_apply_pct === "" ? null : Number(row.v7_apply_pct));
-    if (row.quantity === null || v7Quantity === null || !sameV7Quantity(Number(row.quantity), v7Quantity)) return `its quantity ${row.quantity ?? "none"} is no longer v7's ${v7Quantity ?? "none"} (D7.2)`;
+    if (row.quantity === null || v7Quantity === null || !sameV7CarriedQuantity(Number(row.quantity), v7Quantity, row.has_months)) return `its quantity ${row.quantity ?? "none"} is no longer v7's ${v7Quantity ?? "none"} (D7.2)`;
     if (row.unit === null || v7Unit === null || !sameV7Unit(row.unit, v7Unit)) return `its unit ${row.unit ?? "none"} is no longer v7's ${v7Unit ?? "none"} (D7.2)`;
     if (!sameV7Quantity(row.apply_pct === null ? 100 : Number(row.apply_pct), v7Pct)) return `its apportionment is no longer v7's ${v7Pct}% (D7.2)`;
     return null;
