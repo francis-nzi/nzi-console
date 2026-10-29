@@ -78,7 +78,7 @@
       "quantity": 3840,
       "unit": "km",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3061_4_1-c",
+      "factorId": "uk-ghg-25_301_3061_4_1",
       "qualityTier": "measured"
     },
     {
@@ -93,7 +93,7 @@
       "quantity": 3072,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3074_9_1-c",
+      "factorId": "uk-ghg-25_301_3074_9_1",
       "qualityTier": "measured"
     },
     {

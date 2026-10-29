@@ -153,7 +153,7 @@
       "quantity": 80929.068,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-SPEND-SIC-49.3-5-b",
+      "factorId": "uk-ghg-SPEND-SIC-49.3-5",
       "qualityTier": "spend-based"
     },
     {
@@ -168,7 +168,7 @@
       "quantity": 36444.95,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-SPEND-SIC-51-b",
+      "factorId": "uk-ghg-SPEND-SIC-51",
       "qualityTier": "spend-based"
     },
     {
@@ -183,7 +183,7 @@
       "quantity": 78398.266,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-SPEND-SIC-55-b",
+      "factorId": "uk-ghg-SPEND-SIC-55",
       "qualityTier": "spend-based"
     },
     {
@@ -213,7 +213,7 @@
       "quantity": 2682.96,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-SPEND-SIC-49.1-2-b",
+      "factorId": "uk-ghg-SPEND-SIC-49.1-2",
       "qualityTier": "spend-based"
     }
   ]

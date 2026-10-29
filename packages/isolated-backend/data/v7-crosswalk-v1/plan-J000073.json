@@ -125,7 +125,7 @@
       "quantity": 696,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-25_301_3046_9_1-c",
+      "factorId": "uk-ghg-25_301_3046_9_1",
       "qualityTier": "measured"
     },
     {
@@ -140,7 +140,7 @@
       "quantity": 6444,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-25_301_3045_9_1-c",
+      "factorId": "uk-ghg-25_301_3045_9_1",
       "qualityTier": "measured"
     },
     {
@@ -155,7 +155,7 @@
       "quantity": 14028,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-25_301_3053_9_1-c",
+      "factorId": "uk-ghg-25_301_3053_9_1",
       "qualityTier": "measured"
     },
     {
@@ -170,7 +170,7 @@
       "quantity": 19788,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "factorId": "uk-ghg-25_301_3061_9_1",
       "qualityTier": "measured"
     },
     {
@@ -504,7 +504,7 @@
       "quantity": 4070.028,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-SPEND-SIC-26-p",
+      "factorId": "uk-ghg-SPEND-SIC-26",
       "qualityTier": "spend-based"
     },
     {

@@ -60,10 +60,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 460.7999999999999,
+      "quantity": 460.8,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3045_9_1-c",
+      "factorId": "uk-ghg-25_301_3045_9_1",
       "qualityTier": "survey"
     },
     {
@@ -75,10 +75,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 896.8000000000002,
+      "quantity": 896.8,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3046_9_1-c",
+      "factorId": "uk-ghg-25_301_3046_9_1",
       "qualityTier": "survey"
     },
     {

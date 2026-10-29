@@ -15,7 +15,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "1.natural-gas",
-      "quantity": 15243.259999999998,
+      "quantity": 15243.26,
       "unit": "kWh",
       "datasetId": "uk-ghg-gb-2023",
       "factorId": "uk-ghg-1_100_1004_6_1",
@@ -63,7 +63,7 @@
       "quantity": 2304,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3045_9_1-c",
+      "factorId": "uk-ghg-25_301_3045_9_1",
       "qualityTier": "survey"
     },
     {
@@ -78,7 +78,7 @@
       "quantity": 19820,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3046_9_1-c",
+      "factorId": "uk-ghg-25_301_3046_9_1",
       "qualityTier": "survey"
     },
     {

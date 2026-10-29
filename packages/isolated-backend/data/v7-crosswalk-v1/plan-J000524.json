@@ -46,10 +46,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "1.company-vehicles",
-      "quantity": 91741.95999999999,
+      "quantity": 91741.96,
       "unit": "litres",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-1_101_1011_8_1-vvd",
+      "factorId": "uk-ghg-1_101_1011_8_1",
       "qualityTier": "measured"
     },
     {
@@ -349,7 +349,7 @@
       "quantity": 51120,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3075_9_1-c",
+      "factorId": "uk-ghg-25_301_3075_9_1",
       "qualityTier": "measured"
     },
     {

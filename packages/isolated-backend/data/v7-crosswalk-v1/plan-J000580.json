@@ -166,7 +166,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "2.renewable-electricity",
-      "quantity": 6840.8150000000005,
+      "quantity": 6840.815,
       "unit": "kWh",
       "datasetId": "nzi-gb-2025",
       "factorId": "nzi-99_400_4000_5_3",

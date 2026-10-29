@@ -94,7 +94,7 @@
       "quantity": 2160,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "factorId": "uk-ghg-25_301_3061_9_1",
       "qualityTier": "measured"
     },
     {
@@ -109,7 +109,7 @@
       "quantity": 8046,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3053_9_1-c",
+      "factorId": "uk-ghg-25_301_3053_9_1",
       "qualityTier": "measured"
     },
     {
@@ -124,7 +124,7 @@
       "quantity": 297,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3062_9_1-c",
+      "factorId": "uk-ghg-25_301_3062_9_1",
       "qualityTier": "measured"
     },
     {
@@ -139,7 +139,7 @@
       "quantity": 6055,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3054_9_1-c",
+      "factorId": "uk-ghg-25_301_3054_9_1",
       "qualityTier": "measured"
     },
     {
@@ -154,7 +154,7 @@
       "quantity": 1188,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3046_9_1-c",
+      "factorId": "uk-ghg-25_301_3046_9_1",
       "qualityTier": "measured"
     },
     {
@@ -169,7 +169,7 @@
       "quantity": 2039,
       "unit": "miles",
       "datasetId": "nzi-gb-2025",
-      "factorId": "nzi-99_316_3160_11_3-c",
+      "factorId": "nzi-99_316_3160_11_3",
       "qualityTier": "measured"
     },
     {
@@ -184,7 +184,7 @@
       "quantity": 324,
       "unit": "miles",
       "datasetId": "nzi-gb-2025",
-      "factorId": "nzi-99_316_3160_11_2-c",
+      "factorId": "nzi-99_316_3160_11_2",
       "qualityTier": "measured"
     },
     {
@@ -199,7 +199,7 @@
       "quantity": 1404,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3075_9_1-c",
+      "factorId": "uk-ghg-25_301_3075_9_1",
       "qualityTier": "measured"
     },
     {

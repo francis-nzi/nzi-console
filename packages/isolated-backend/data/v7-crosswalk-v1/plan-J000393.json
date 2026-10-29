@@ -16,7 +16,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "1.company-vehicles",
-      "quantity": 25726.679999999997,
+      "quantity": 25726.68,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
       "factorId": "uk-ghg-4_301_3070_9_1",
@@ -61,7 +61,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.6",
-      "quantity": 26415.599999999995,
+      "quantity": 26415.6,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
       "factorId": "uk-ghg-25_301_3070_9_1",
@@ -79,7 +79,7 @@
       "quantity": 8400,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3054_9_1-c",
+      "factorId": "uk-ghg-25_301_3054_9_1",
       "qualityTier": "measured"
     },
     {
@@ -94,7 +94,7 @@
       "quantity": 34560,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3045_9_1-c",
+      "factorId": "uk-ghg-25_301_3045_9_1",
       "qualityTier": "measured"
     },
     {
@@ -109,7 +109,7 @@
       "quantity": 19200,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3053_9_1-c",
+      "factorId": "uk-ghg-25_301_3053_9_1",
       "qualityTier": "measured"
     },
     {
@@ -124,7 +124,7 @@
       "quantity": 21600,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "factorId": "uk-ghg-25_301_3061_9_1",
       "qualityTier": "measured"
     },
     {
@@ -139,7 +139,7 @@
       "quantity": 5160,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3076_9_1-c",
+      "factorId": "uk-ghg-25_301_3076_9_1",
       "qualityTier": "measured"
     },
     {
@@ -154,7 +154,7 @@
       "quantity": 420,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_302_3080_9_1-c",
+      "factorId": "uk-ghg-25_302_3080_9_1",
       "qualityTier": "measured"
     },
     {
@@ -169,7 +169,7 @@
       "quantity": 19308,
       "unit": "passenger.km",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_315_3147_11_1-c",
+      "factorId": "uk-ghg-25_315_3147_11_1",
       "qualityTier": "measured"
     },
     {
@@ -181,10 +181,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 238.67999999999995,
+      "quantity": 238.68,
       "unit": "miles",
       "datasetId": "nzi-gb-2023",
-      "factorId": "nzi-99_316_3160_11_2-c",
+      "factorId": "nzi-99_316_3160_11_2",
       "qualityTier": "measured"
     },
     {
@@ -226,7 +226,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.5",
-      "quantity": 27.959999999999994,
+      "quantity": 27.96,
       "unit": "m3",
       "datasetId": "uk-ghg-gb-2023",
       "factorId": "uk-ghg-17_404_4005_1_1",
@@ -241,7 +241,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.5",
-      "quantity": 26.520000000000007,
+      "quantity": 26.52,
       "unit": "m3",
       "datasetId": "uk-ghg-gb-2023",
       "factorId": "uk-ghg-18_405_4006_1_1",
