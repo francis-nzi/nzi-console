@@ -215,7 +215,7 @@
       "quantity": 320,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3046_9_1-c",
+      "factorId": "uk-ghg-25_301_3046_9_1",
       "qualityTier": "survey"
     },
     {
@@ -230,7 +230,7 @@
       "quantity": 2784,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3052_9_1-c",
+      "factorId": "uk-ghg-25_301_3052_9_1",
       "qualityTier": "survey"
     },
     {
@@ -245,7 +245,7 @@
       "quantity": 16800,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3053_9_1-c",
+      "factorId": "uk-ghg-25_301_3053_9_1",
       "qualityTier": "survey"
     },
     {
@@ -260,7 +260,7 @@
       "quantity": 2160,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3054_9_1-c",
+      "factorId": "uk-ghg-25_301_3054_9_1",
       "qualityTier": "survey"
     },
     {
@@ -275,7 +275,7 @@
       "quantity": 1344,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "factorId": "uk-ghg-25_301_3061_9_1",
       "qualityTier": "survey"
     },
     {
@@ -290,7 +290,7 @@
       "quantity": 2472,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3071_9_1-c",
+      "factorId": "uk-ghg-25_301_3071_9_1",
       "qualityTier": "survey"
     },
     {
@@ -305,7 +305,7 @@
       "quantity": 1200,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3076_9_1-c",
+      "factorId": "uk-ghg-25_301_3076_9_1",
       "qualityTier": "survey"
     },
     {
@@ -320,7 +320,7 @@
       "quantity": 20.8,
       "unit": "km",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_313_3141_4_1-c",
+      "factorId": "uk-ghg-25_313_3141_4_1",
       "qualityTier": "survey"
     },
     {
@@ -335,7 +335,7 @@
       "quantity": 60,
       "unit": "passenger.km",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_315_3147_11_1-c",
+      "factorId": "uk-ghg-25_315_3147_11_1",
       "qualityTier": "survey"
     },
     {

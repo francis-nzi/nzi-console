@@ -18,7 +18,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "1.natural-gas",
-      "quantity": 3756.8999999999996,
+      "quantity": 3756.9,
       "unit": "kWh",
       "datasetId": "uk-ghg-gb-2025",
       "factorId": "uk-ghg-1_100_1004_6_1",
@@ -33,7 +33,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "2.purchased-electricity",
-      "quantity": 7633.199999999999,
+      "quantity": 7633.2,
       "unit": "kWh",
       "datasetId": "uk-ghg-gb-2025",
       "factorId": "uk-ghg-7_400_4000_5_1",
@@ -63,7 +63,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.3",
-      "quantity": 7633.199999999999,
+      "quantity": 7633.2,
       "unit": "kWh",
       "datasetId": "uk-ghg-gb-2025",
       "factorId": "uk-ghg-13_402_4000_5_1",
@@ -111,7 +111,7 @@
       "quantity": 23688,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "factorId": "uk-ghg-25_301_3061_9_1",
       "qualityTier": "survey"
     },
     {
@@ -126,7 +126,7 @@
       "quantity": 14832,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3062_9_1-c",
+      "factorId": "uk-ghg-25_301_3062_9_1",
       "qualityTier": "survey"
     },
     {
@@ -141,7 +141,7 @@
       "quantity": 1584,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3054_9_1-c",
+      "factorId": "uk-ghg-25_301_3054_9_1",
       "qualityTier": "survey"
     },
     {
@@ -156,7 +156,7 @@
       "quantity": 6000,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3045_9_1-c",
+      "factorId": "uk-ghg-25_301_3045_9_1",
       "qualityTier": "survey"
     },
     {
@@ -171,7 +171,7 @@
       "quantity": 52380,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3046_9_1-c",
+      "factorId": "uk-ghg-25_301_3046_9_1",
       "qualityTier": "survey"
     },
     {
@@ -426,7 +426,7 @@
       "quantity": 88549.2,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-SPEND-SIC-55-b",
+      "factorId": "uk-ghg-SPEND-SIC-55",
       "qualityTier": "spend-based"
     },
     {

@@ -424,7 +424,7 @@
       "quantity": 44892.05,
       "unit": "passenger.km",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_314_3143_11_1-c",
+      "factorId": "uk-ghg-25_314_3143_11_1",
       "qualityTier": "measured"
     },
     {
@@ -511,7 +511,7 @@
       "quantity": 7536,
       "unit": "passenger.km",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_315_3149_11_1-c",
+      "factorId": "uk-ghg-25_315_3149_11_1",
       "qualityTier": "measured"
     }
   ]

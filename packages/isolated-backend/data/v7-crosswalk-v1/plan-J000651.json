@@ -136,7 +136,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.5",
-      "quantity": 0.3600000000000001,
+      "quantity": 0.36,
       "unit": "tonnes",
       "datasetId": "uk-ghg-gb-2023",
       "factorId": "uk-ghg-20_507_5285_15_1",
@@ -169,7 +169,7 @@
       "quantity": 140872,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3074_9_1-c",
+      "factorId": "uk-ghg-25_301_3074_9_1",
       "qualityTier": "survey"
     },
     {

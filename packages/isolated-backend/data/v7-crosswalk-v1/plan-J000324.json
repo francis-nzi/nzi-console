@@ -112,7 +112,7 @@
       "quantity": 1006,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "factorId": "uk-ghg-25_301_3061_9_1",
       "qualityTier": "measured"
     },
     {
@@ -127,7 +127,7 @@
       "quantity": 8363,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3060_9_1-c",
+      "factorId": "uk-ghg-25_301_3060_9_1",
       "qualityTier": "measured"
     },
     {
@@ -142,7 +142,7 @@
       "quantity": 15257,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3054_9_1-c",
+      "factorId": "uk-ghg-25_301_3054_9_1",
       "qualityTier": "measured"
     },
     {
@@ -169,7 +169,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 45.900000000000006,
+      "quantity": 45.9,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution (v7 factor)",
@@ -251,7 +251,7 @@
       "quantity": 6731,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3045_9_1-c",
+      "factorId": "uk-ghg-25_301_3045_9_1",
       "qualityTier": "measured"
     },
     {
@@ -266,7 +266,7 @@
       "quantity": 1668,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2023",
-      "factorId": "uk-ghg-25_301_3053_9_1-c",
+      "factorId": "uk-ghg-25_301_3053_9_1",
       "qualityTier": "measured"
     }
   ]

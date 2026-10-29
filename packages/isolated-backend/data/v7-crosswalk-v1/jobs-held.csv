@@ -1,0 +1,8 @@
+job,reason,detail
+J000002,QUANTITY_VS_MONTHS,"v7 stored qty is stale: rows v7-row-1063 (qty 1,186,404; months sum 23,421) and v7-row-1066 (3,000; 2,475). v7's own emission matches the months, not qty. Carried verbatim, MONTHS_DO_NOT_FIT. Ruling needed."
+J000684,QUANTITY_VS_MONTHS,"v7 stored qty is 0 on all 3 rows (v7-row-3617/3618/3619); months sum 238,830 / 33,780.48 / 1,949.4 and v7's emission (67.6 t) follows the months. Ruling needed."
+J000639,QUANTITY_VS_MONTHS,"v7-row-3621: qty 21,112.8, months sum 33,780.48 (x1.6, a miles-to-km conversion); v7's emission follows the months. Ruling needed."
+J000688,QUANTITY_VS_MONTHS,"v7-row-5969: qty 2,076.76 GBP, months sum 558 (two months present); v7's emission follows the months. Ruling needed."
+J000665,NEGATIVE_MONTH,"v7-row-7896/7897/7898 hold a negative month (a v7 correction: -51,996.41 kWh; -26 and -24.7 m3). The command refuses a negative monthly quantity. Francis's call."
+J000670,NO_YEAR_EDITION,"Reporting year 2027, no GB edition; all 7 rows total 0 t. Needs a 2027 dataset or a reporting-year correction."
+J000053,WRONG_FAMILY,"A training job (v7-job-46), not CRP; one zero-tCO2e row. Plan removed; not a re-ingest job."

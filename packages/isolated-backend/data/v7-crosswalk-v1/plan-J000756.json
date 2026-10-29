@@ -93,7 +93,7 @@
       "quantity": 3198.65,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-SPEND-SIC-49.1-2-b",
+      "factorId": "uk-ghg-SPEND-SIC-49.1-2",
       "qualityTier": "spend-based"
     },
     {
@@ -108,7 +108,7 @@
       "quantity": 289.17,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-SPEND-SIC-55-b",
+      "factorId": "uk-ghg-SPEND-SIC-55",
       "qualityTier": "spend-based"
     },
     {

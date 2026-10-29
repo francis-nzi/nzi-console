@@ -139,7 +139,7 @@
       "quantity": 198672,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3069_9_1-c",
+      "factorId": "uk-ghg-25_301_3069_9_1",
       "qualityTier": "survey"
     },
     {
@@ -154,7 +154,7 @@
       "quantity": 151536,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3070_9_1-c",
+      "factorId": "uk-ghg-25_301_3070_9_1",
       "qualityTier": "survey"
     },
     {
@@ -169,7 +169,7 @@
       "quantity": 24120,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3071_9_1-c",
+      "factorId": "uk-ghg-25_301_3071_9_1",
       "qualityTier": "survey"
     },
     {
@@ -184,7 +184,7 @@
       "quantity": 10896,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3076_9_1-c",
+      "factorId": "uk-ghg-25_301_3076_9_1",
       "qualityTier": "survey"
     },
     {
@@ -196,10 +196,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 223.69362920544003,
+      "quantity": 223.69362920544,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_302_3080_9_1-c",
+      "factorId": "uk-ghg-25_302_3080_9_1",
       "qualityTier": "survey"
     },
     {
@@ -214,7 +214,7 @@
       "quantity": 3036,
       "unit": "km",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_313_3141_4_1-c",
+      "factorId": "uk-ghg-25_313_3141_4_1",
       "qualityTier": "survey"
     },
     {
@@ -229,7 +229,7 @@
       "quantity": 4500,
       "unit": "passenger.km",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_314_3145_11_1-c",
+      "factorId": "uk-ghg-25_314_3145_11_1",
       "qualityTier": "survey"
     },
     {
@@ -244,7 +244,7 @@
       "quantity": 77136,
       "unit": "passenger.km",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_315_3147_11_1-c",
+      "factorId": "uk-ghg-25_315_3147_11_1",
       "qualityTier": "survey"
     },
     {
@@ -259,7 +259,7 @@
       "quantity": 5400,
       "unit": "passenger.km",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_315_3150_11_1-c",
+      "factorId": "uk-ghg-25_315_3150_11_1",
       "qualityTier": "survey"
     },
     {
@@ -271,10 +271,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 1640.4199475065564,
+      "quantity": 1640.41994750656,
       "unit": "miles",
       "datasetId": "nzi-gb-2022",
-      "factorId": "nzi-99_316_3160_11_2-c",
+      "factorId": "nzi-99_316_3160_11_2",
       "qualityTier": "survey"
     },
     {
@@ -286,10 +286,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 633.7986160820809,
+      "quantity": 633.798616082081,
       "unit": "miles",
       "datasetId": "nzi-gb-2022",
-      "factorId": "nzi-99_316_3160_11_3-c",
+      "factorId": "nzi-99_316_3160_11_3",
       "qualityTier": "survey"
     },
     {

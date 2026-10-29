@@ -31,7 +31,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "2.renewable-electricity",
-      "quantity": 55389.500003999994,
+      "quantity": 55389.500004,
       "unit": "kWh",
       "datasetId": "nzi-gb-2022",
       "factorId": "nzi-99_400_4000_5_2",
@@ -46,7 +46,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.3",
-      "quantity": 55389.500003999994,
+      "quantity": 55389.500004,
       "unit": "kWh",
       "datasetId": "uk-ghg-gb-2022",
       "factorId": "uk-ghg-13_402_4000_5_1",
@@ -64,7 +64,7 @@
       "quantity": 23148,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3046_9_1-c",
+      "factorId": "uk-ghg-25_301_3046_9_1",
       "qualityTier": "measured"
     },
     {
@@ -79,7 +79,7 @@
       "quantity": 19884,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3045_9_1-c",
+      "factorId": "uk-ghg-25_301_3045_9_1",
       "qualityTier": "measured"
     },
     {
@@ -94,7 +94,7 @@
       "quantity": 2112,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3053_9_1-c",
+      "factorId": "uk-ghg-25_301_3053_9_1",
       "qualityTier": "measured"
     },
     {
@@ -109,7 +109,7 @@
       "quantity": 22740,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "factorId": "uk-ghg-25_301_3061_9_1",
       "qualityTier": "measured"
     },
     {
@@ -124,7 +124,7 @@
       "quantity": 2328,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3069_9_1-c",
+      "factorId": "uk-ghg-25_301_3069_9_1",
       "qualityTier": "measured"
     },
     {
@@ -139,7 +139,7 @@
       "quantity": 1440,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3071_9_1-c",
+      "factorId": "uk-ghg-25_301_3071_9_1",
       "qualityTier": "measured"
     },
     {
@@ -154,7 +154,7 @@
       "quantity": 6000,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2022",
-      "factorId": "uk-ghg-25_301_3076_9_1-c",
+      "factorId": "uk-ghg-25_301_3076_9_1",
       "qualityTier": "measured"
     },
     {
@@ -226,7 +226,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.1",
-      "quantity": 2775.2400000000002,
+      "quantity": 2775.24,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2022",
       "factorId": "uk-ghg-SPEND-SIC-20.5",
@@ -241,7 +241,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.1",
-      "quantity": 3004.1999999999994,
+      "quantity": 3004.2,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2022",
       "factorId": "uk-ghg-SPEND-SIC-22",
@@ -286,7 +286,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.2",
-      "quantity": 15185.639999999998,
+      "quantity": 15185.64,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2022",
       "factorId": "uk-ghg-SPEND-SIC-27",
@@ -301,7 +301,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.1",
-      "quantity": 143634.84000000003,
+      "quantity": 143634.84,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2022",
       "factorId": "uk-ghg-SPEND-PROD-11.1.1",
@@ -331,7 +331,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.1",
-      "quantity": 4805.399999999999,
+      "quantity": 4805.4,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2022",
       "factorId": "uk-ghg-SPEND-SIC-51",
@@ -346,7 +346,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.15",
-      "quantity": 117735.60000000002,
+      "quantity": 117735.6,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2022",
       "factorId": "uk-ghg-SPEND-SIC-65.1-2",
@@ -361,7 +361,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.1",
-      "quantity": 25029.599999999995,
+      "quantity": 25029.6,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2022",
       "factorId": "uk-ghg-SPEND-SIC-68.12",

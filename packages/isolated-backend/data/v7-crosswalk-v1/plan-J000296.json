@@ -33,7 +33,7 @@
       "quantity": 30687.78,
       "unit": "litres",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-1_101_1011_8_1-vh",
+      "factorId": "uk-ghg-1_101_1011_8_1",
       "qualityTier": "measured"
     },
     {
@@ -48,7 +48,7 @@
       "quantity": 2680.43,
       "unit": "litres",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-1_101_1017_8_1-vcp",
+      "factorId": "uk-ghg-1_101_1017_8_1",
       "qualityTier": "measured"
     },
     {
@@ -63,7 +63,7 @@
       "quantity": 84531.4,
       "unit": "litres",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-1_101_1011_8_1-vcd",
+      "factorId": "uk-ghg-1_101_1011_8_1",
       "qualityTier": "measured"
     },
     {
@@ -75,7 +75,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "2.purchased-electricity",
-      "quantity": 42142.399999999994,
+      "quantity": 42142.4,
       "unit": "kWh",
       "datasetId": "uk-ghg-gb-2024",
       "factorId": "uk-ghg-7_400_4000_5_1",
@@ -105,7 +105,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.5",
-      "quantity": 452.04000000000013,
+      "quantity": 452.04,
       "unit": "m3",
       "datasetId": "uk-ghg-gb-2024",
       "factorId": "uk-ghg-17_404_4005_1_1",
@@ -120,7 +120,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.5",
-      "quantity": 429.3599999999999,
+      "quantity": 429.36,
       "unit": "m3",
       "datasetId": "uk-ghg-gb-2024",
       "factorId": "uk-ghg-18_405_4006_1_1",
@@ -180,7 +180,7 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.5",
-      "quantity": 2.7800000000000002,
+      "quantity": 2.78,
       "unit": "tonnes",
       "datasetId": "uk-ghg-gb-2024",
       "factorId": "uk-ghg-20_504_5367_15_1",
@@ -228,7 +228,7 @@
       "quantity": 13728,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-25_301_3046_9_1-c",
+      "factorId": "uk-ghg-25_301_3046_9_1",
       "qualityTier": "survey"
     },
     {
@@ -240,10 +240,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 4646.399999999999,
+      "quantity": 4646.4,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-25_301_3062_9_1-c",
+      "factorId": "uk-ghg-25_301_3062_9_1",
       "qualityTier": "survey"
     },
     {
@@ -255,10 +255,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 8683.200000000003,
+      "quantity": 8683.2,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-25_301_3063_9_1-c",
+      "factorId": "uk-ghg-25_301_3063_9_1",
       "qualityTier": "survey"
     },
     {
@@ -288,7 +288,7 @@
       "quantity": 27966.999996,
       "unit": "GBP",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-SPEND-SIC-49.3-5-b",
+      "factorId": "uk-ghg-SPEND-SIC-49.3-5",
       "qualityTier": "spend-based"
     }
   ]

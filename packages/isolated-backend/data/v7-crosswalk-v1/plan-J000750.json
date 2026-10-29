@@ -48,7 +48,7 @@
       "quantity": 16094.3,
       "unit": "litres",
       "datasetId": "uk-ghg-gb-2024",
-      "factorId": "uk-ghg-1_101_1011_8_1-vcd",
+      "factorId": "uk-ghg-1_101_1011_8_1",
       "qualityTier": "measured"
     },
     {

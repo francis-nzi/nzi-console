@@ -93,7 +93,7 @@
       "quantity": 2673.8,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "factorId": "uk-ghg-25_301_3061_9_1",
       "qualityTier": "measured"
     },
     {
@@ -105,10 +105,10 @@
       "applyPct": 100,
       "disposition": "RE-INGEST",
       "categoryCode": "3.7",
-      "quantity": 10125.400000000001,
+      "quantity": 10125.4,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3060_9_1-c",
+      "factorId": "uk-ghg-25_301_3060_9_1",
       "qualityTier": "measured"
     },
     {
@@ -123,7 +123,7 @@
       "quantity": 1749,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3053_9_1-c",
+      "factorId": "uk-ghg-25_301_3053_9_1",
       "qualityTier": "measured"
     },
     {
@@ -138,7 +138,7 @@
       "quantity": 16453,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2025",
-      "factorId": "uk-ghg-25_301_3054_9_1-c",
+      "factorId": "uk-ghg-25_301_3054_9_1",
       "qualityTier": "measured"
     },
     {
@@ -248,7 +248,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.1",
-      "quantity": 963.5999999999998,
+      "quantity": 963.6,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Materials Used - Virgin Plastic (v7 factor)",
@@ -267,7 +267,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.1",
-      "quantity": 49.20000000000001,
+      "quantity": 49.2,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Materials Used - Hessian (v7 factor)",
@@ -305,7 +305,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 5.831999999999998,
+      "quantity": 5.832,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - 100ML SHOWER GELS (v7 factor)",
@@ -324,7 +324,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 7.224000000000001,
+      "quantity": 7.224,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - 150ML BODY MIST (v7 factor)",
@@ -343,7 +343,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 5.123999999999999,
+      "quantity": 5.124,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - 200 ML BODY BUTTER (v7 factor)",
@@ -362,7 +362,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 18.216000000000005,
+      "quantity": 18.216,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - 200 ML DRY SHAMPOO (v7 factor)",
@@ -381,7 +381,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 0.9959999999999999,
+      "quantity": 0.996,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - 200G BUMP SMOOTHER (v7 factor)",
@@ -438,7 +438,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 46.12800000000001,
+      "quantity": 46.128,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - 500ML CREAMY SHEA SHOWER GELS (v7 factor)",
@@ -476,7 +476,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 7.931999999999999,
+      "quantity": 7.932,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - 75ML HAND CREAMS (v7 factor)",
@@ -495,7 +495,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 63.347999999999985,
+      "quantity": 63.348,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - Brazilian Love Collection (v7 factor)",
@@ -514,7 +514,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 41.02799999999999,
+      "quantity": 41.028,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - Brazilian Love Heros Gift Set (v7 factor)",
@@ -609,7 +609,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 31.979999999999993,
+      "quantity": 31.98,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - Rouge Love Story Delights Gift Set (v7 factor)",
@@ -628,7 +628,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 24.984000000000005,
+      "quantity": 24.984,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - Glorious Body Butters (v7 factor)",
@@ -647,7 +647,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 39.576000000000015,
+      "quantity": 39.576,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - Cosy Winter Favourites (v7 factor)",
@@ -704,7 +704,7 @@
       "applyPct": 100,
       "disposition": "CARRY-V7-FACTOR",
       "categoryCode": "3.4",
-      "quantity": 42.29999999999999,
+      "quantity": 42.3,
       "unit": "tonnes",
       "carriedFactor": {
         "label": "Upstream Transportation and Distribution - Frosted Candy Angel Treats (v7 factor)",
