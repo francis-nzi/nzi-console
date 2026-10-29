@@ -1,0 +1,56 @@
+{
+  "jobId": "v7-job-684",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "nzi-gb-2024",
+    "uk-ghg-gb-2024"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-3617",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Average Car Petrol",
+      "v7Tco2e": 63.22546590000001,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 238830,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2024",
+      "factorId": "uk-ghg-25_301_3070_9_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-3618",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Bus Local Bus (Not London)",
+      "v7Tco2e": 4.391124595199999,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 33780.48,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2024",
+      "factorId": "uk-ghg-25_314_3143_11_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-3619",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Cycling",
+      "v7Tco2e": 0,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 1949.4000000000003,
+      "unit": "miles",
+      "datasetId": "nzi-gb-2024",
+      "factorId": "nzi-99_316_3160_11_3-c",
+      "qualityTier": "measured"
+    }
+  ]
+}

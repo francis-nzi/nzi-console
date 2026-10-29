@@ -1,0 +1,100 @@
+{
+  "jobId": "v7-job-28",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2022"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-1897",
+      "scope": "1",
+      "sourceLabel": "Delivery Vehicles: Vans Average (up to 3.5 Tonnes) Diesel",
+      "v7Tco2e": 22.348501560000003,
+      "rule": "S1-VEH",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "1.company-vehicles",
+      "quantity": 59967,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-5_303_3102_9_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1894",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Large Car Diesel (>2000cc)",
+      "v7Tco2e": 0.22256520000000005,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 660,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-25_301_3061_9_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1895",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Average Car Diesel",
+      "v7Tco2e": 0.027492000000000003,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 100,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-25_301_3069_9_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1896",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Bus Average Local Bus",
+      "v7Tco2e": 0.0568385,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 589,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-25_314_3145_11_1-c",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1898",
+      "scope": "3.7",
+      "sourceLabel": "Homeworking: Homeworking (Office Equipment + Heating)",
+      "v7Tco2e": 0.3720990000000001,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 1092,
+      "unit": "per FTE Working Hour",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-32_603_9999_12_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1899",
+      "scope": "3.6",
+      "sourceLabel": "Hotel Stay: UK",
+      "v7Tco2e": 0.312,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 30,
+      "unit": "nights",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-29_600_4000_13_1",
+      "qualityTier": "measured"
+    }
+  ]
+}

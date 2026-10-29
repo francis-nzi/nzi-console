@@ -1,0 +1,40 @@
+{
+  "jobId": "v7-job-688",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2025"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-5969",
+      "scope": "3.1",
+      "sourceLabel": "Postal and courier services",
+      "v7Tco2e": 0.1249865179631468,
+      "rule": "S3-1",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.1",
+      "quantity": 558,
+      "unit": "GBP",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-SPEND-SIC-53",
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-5970",
+      "scope": "3.7",
+      "sourceLabel": "Homeworking: Homeworking (Office Equipment + Heating)",
+      "v7Tco2e": 0.06008040000000002,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 180,
+      "unit": "per FTE Working Hour",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-32_603_9999_12_1",
+      "qualityTier": "measured"
+    }
+  ]
+}
