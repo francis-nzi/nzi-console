@@ -32,7 +32,7 @@ import {
   type AssuranceTrendYear,
   type ReviewedCrpSnapshotReadModel,
 } from "@nzi/contracts";
-import { formatQuantity } from "../lib/formatNumber";
+import { formatQuantity, formatTonnes } from "../lib/formatNumber";
 import { useStaffMe } from "../lib/useEditAccess";
 import { filterAuditRows, filterGaps, worklistCounts, type GapFilter, type Worklist } from "./assuranceWorklist";
 import { CategoryLinesDrawer } from "./CategoryLinesDrawer";
@@ -469,6 +469,10 @@ function RowReview({ jobId, row, onReviewed }: { jobId: string; row: AssuranceAu
  * act will and will not do: the rows it approves, the record-of-account gaps it resolves, what it skips and what it leaves for an
  * individual Resolve. A reason is required. Re-previewed whenever the surface re-reads, so it never offers a stale plan; the act
  * itself refuses anything that moved since (CHANGED_SINCE_PREVIEW).
+ *
+ * RULING-v7-book-runner R3: the rows carry v7's input and their figure is the console's calculation. Each emission delta against
+ * v7 the run flags (> 5%, or a 0 → non-zero move) is listed, and the act stays blocked until the reviewer has ticked every one as
+ * investigated — what they tick is sent, and the act refuses anything but exactly the flagged set.
  */
 function ReingestAttestPanel({ jobId, readKey, onAttested }: { jobId: string; readKey: unknown; onAttested: () => void }) {
   const [plan, setPlan] = useState<ReingestAttestationPlan | null>(null);
@@ -476,6 +480,9 @@ function ReingestAttestPanel({ jobId, readKey, onAttested }: { jobId: string; re
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  const [acknowledged, setAcknowledged] = useState<string[]>([]);
+  // A new preview is a new set of flags: nothing carries over from the last one.
+  useEffect(() => { setAcknowledged([]); }, [plan]);
   const base = `/api/isolated/jobs/${jobId}/reingest-attestation`;
 
   useEffect(() => {
@@ -496,7 +503,7 @@ function ReingestAttestPanel({ jobId, readKey, onAttested }: { jobId: string; re
     if (!plan?.runId || busy || !reason.trim()) return;
     setBusy(true); setError(null);
     const result = await postBrowserCommandWithReason<ReingestAttestationResult>(base,
-      { runId: plan.runId, rows: plan.attest.map((row) => ({ rowId: row.rowId, expectedReviewVersion: row.version })), gapKeys: plan.gaps.map((gap) => gap.gapKey) },
+      { runId: plan.runId, rows: plan.attest.map((row) => ({ rowId: row.rowId, expectedReviewVersion: row.version })), gapKeys: plan.gaps.map((gap) => gap.gapKey), acknowledgedDeltas: acknowledged },
       crypto.randomUUID(), reason.trim());
     setBusy(false);
     if (result.state !== "success") { setError(result.state === "validation_failed" ? result.issues[0]?.message ?? result.message : result.message); onAttested(); return; }
@@ -509,13 +516,30 @@ function ReingestAttestPanel({ jobId, readKey, onAttested }: { jobId: string; re
   if (!plan) return error ? <div className="nz-assurance-signoff"><div className="nz-banner warn" role="alert">{error}</div></div> : null;
   if (!plan.runId || (plan.attest.length === 0 && plan.gaps.length === 0 && plan.blocked.length === 0)) return null;
   const zeros = plan.gaps.filter((gap) => gap.flag === "zero_blank").length, totals = plan.gaps.length - zeros;
-  const blockedReason = plan.reviewerRefusal ?? (plan.blocked.length ? `${plan.blocked.length} row${plan.blocked.length === 1 ? "" : "s"} cannot be attested — see below` : !reason.trim() ? "A reason is required" : undefined);
+  const flagged = plan.deltas?.flagged ?? [];
+  const unacknowledged = flagged.filter((key) => !acknowledged.includes(key)).length;
+  const blockedReason = plan.reviewerRefusal ?? (plan.blocked.length ? `${plan.blocked.length} row${plan.blocked.length === 1 ? "" : "s"} cannot be attested — see below`
+    : unacknowledged ? `${unacknowledged} flagged emission delta${unacknowledged === 1 ? "" : "s"} still to investigate` : !reason.trim() ? "A reason is required" : undefined);
+  const deltaOf = (key: string) => key === "job" ? plan.deltas!.job : plan.deltas!.rows.find((row) => row.v7RowId === key)!;
+  const percent = (relative: number | null) => relative === null ? "v7 recorded 0" : `${relative > 0 ? "+" : ""}${(relative * 100).toFixed(1)}%`;
   return <div className="nz-assurance-signoff nz-attest" aria-label="Attest re-ingested rows">
     <div className="nz-sect">Attest re-ingested rows</div>
     <p style={{ fontSize: 13, margin: "4px 0 8px" }}>
-      &ldquo;I attest that these <b>{plan.attest.length}</b> row{plan.attest.length === 1 ? "" : "s"} reproduce NZ Insights Pro v7 exactly, verified by re-ingest D7.2.&rdquo;
+      &ldquo;I attest that these <b>{plan.attest.length}</b> row{plan.attest.length === 1 ? "" : "s"} carry NZ Insights Pro v7&rsquo;s input exactly, verified by re-ingest D7.2, with each emission by the console&rsquo;s own calculation.&rdquo;
       {" "}Each is recorded as your own approval. Nothing is edited.
     </p>
+    {flagged.length ? <fieldset className="nz-banner warn" style={{ display: "block", margin: "0 0 8px" }} aria-label="Emission deltas against v7">
+      <legend style={{ fontWeight: 600 }}>Emission deltas against v7 — investigate each before attesting</legend>
+      <p style={{ fontSize: 12, margin: "2px 0 6px" }}>The console&rsquo;s figure differs from v7&rsquo;s reported one by more than 5%. A mis-mapped factor shows here, as does v7&rsquo;s own arithmetic; the console&rsquo;s figure stands once you have confirmed which.</p>
+      {flagged.map((key) => {
+        const delta = deltaOf(key);
+        return <label key={key} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12 }}>
+          <input type="checkbox" checked={acknowledged.includes(key)}
+            onChange={(event) => setAcknowledged((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} />
+          <span><b>{key === "job" ? "The job's total" : plan.deltaLabels[key] ?? key}</b> · console {formatTonnes(delta.calcTco2e)} t · v7 {formatTonnes(delta.v7Tco2e)} t · {percent(delta.relative)}</span>
+        </label>;
+      })}
+    </fieldset> : null}
     <ul className="muted" style={{ fontSize: 12, margin: "0 0 8px", paddingLeft: 18 }}>
       <li><b>{plan.attest.length}</b> pending row{plan.attest.length === 1 ? "" : "s"} approved{plan.skippedApproved ? <> · {plan.skippedApproved} already approved, left as they are</> : null}</li>
       <li><b>{plan.gaps.length}</b> record-of-account gap{plan.gaps.length === 1 ? "" : "s"} resolved{plan.gaps.length ? <> ({zeros ? `${zeros} where v7 recorded zero` : ""}{zeros && totals ? ", " : ""}{totals ? `${totals} v7 reported total` : ""})</> : null}{plan.skippedResolvedGaps ? <> · {plan.skippedResolvedGaps} already resolved, kept</> : null}</li>
@@ -525,7 +549,7 @@ function ReingestAttestPanel({ jobId, readKey, onAttested }: { jobId: string; re
     {plan.blocked.length ? <div className="nz-banner warn" role="alert"><div><b>Cannot attest while these rows fail a check:</b>
       <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{plan.blocked.map((row) => <li key={row.rowId}>{row.label} — {row.reasons.join("; ")}</li>)}</ul></div></div> : null}
     <textarea className="nz-notes" style={{ width: "100%" }} value={reason} onChange={(event) => setReason(event.target.value)} rows={2}
-      aria-label="Attestation reason" placeholder="Reason (required) — e.g. reconciled to v7 at job, scope and row level" />
+      aria-label="Attestation reason" placeholder="Reason (required) — e.g. v7's inputs carried; flagged deltas investigated" />
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
       <GatedButton className="nz-btn pri" blocked={busy || !!blockedReason} blockedReason={!busy ? blockedReason : undefined} reasonClassName="muted nz-gated-reason"
         aria-busy={busy || undefined} onClick={() => void attest()}>{busy ? "Attesting…" : `Attest ${plan.attest.length} row${plan.attest.length === 1 ? "" : "s"}`}</GatedButton>

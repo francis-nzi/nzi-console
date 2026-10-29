@@ -188,9 +188,10 @@ describe("the re-ingest carries the full v7 record, and D7 reconciles per site",
       try {
         await assert.rejects(run(plan(JOB, rows)), (error) => {
           assert.deepEqual(codes(error), ["POSTCONDITION_FAILED"]);
-          assert.match(messages(error), /site v7-site-uk: live 0\.000000 t ≠ v7 0\.200000 t/);
-          assert.match(messages(error), /site unallocated: live 0\.200000 t ≠ v7 0\.000000 t/);
+          // RULING-v7-book-runner R3: the per-site emission totals are the delta report's now, not a refusal — the row's own carried
+          // site is what refuses it, and still does.
           assert.match(messages(error), /site none ≠ v7's "v7-site-uk"/);
+          assert.doesNotMatch(messages(error), /live 0\.000000 t ≠ v7/, "no emission total refuses the run");
           return true;
         });
       } finally {

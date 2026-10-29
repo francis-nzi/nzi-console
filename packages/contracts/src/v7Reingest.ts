@@ -120,53 +120,59 @@ export function v7ReingestPlanIssues(input: V7ReingestJobInput): CommandIssue[] 
  */
 export type V7CarriedFields = { siteId: string | null; dataConfidence: string | null; columnText: string | null; months: Array<number | null> | null };
 
+/**
+ * The input a row carries from v7 (RULING-v7-book-runner R2): the quantity, its unit and the apportionment. `quantity` and `unit`
+ * are null on a reported-total row, which has no activity to carry — its v7 figure is what it carries instead.
+ */
+export type V7CarriedInput = { quantity: number | null; unit: string | null; applyPct: number };
+
 export type V7ReingestPostconditionInput = {
-  /** v7's enabled rows before the run: id, scope, figure, and the fields the run carries. */
-  v7Rows: Array<{ rowId: string; scope: string; v7Tco2e: number } & V7CarriedFields>;
+  /** v7's enabled rows before the run: id, scope, figure, the input it held, and the fields the run carries. */
+  v7Rows: Array<{ rowId: string; scope: string; v7Tco2e: number; reportedTotal: boolean } & V7CarriedInput & V7CarriedFields>;
   /** The live rows the run wrote, with the figure the console now holds for each (coalesce(override, calculated)), and their fields. */
-  liveRows: Array<{ rowId: string; reingestedFrom: string; scope: string; tco2e: number | null; enabled: boolean } & V7CarriedFields>;
+  liveRows: Array<{ rowId: string; reingestedFrom: string; scope: string; tco2e: number | null; enabled: boolean } & V7CarriedInput & V7CarriedFields>;
   /** Migrated rows of the job still enabled after the run. */
   enabledMigratedAfter: number;
 };
 
 /** The top-level scope ("3.6" → "3"). */
 const topScope = (scope: string) => scope.split(".")[0]!;
+/** A carried quantity is the same number, to floating-point noise — never a rounding or a unit conversion. */
+export const sameV7Quantity = (a: number, b: number): boolean => Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a), Math.abs(b));
+/** v7's apportionment as the plan carries it: none, or 0, is the whole quantity (100%). */
+export const v7ApplyPct = (stored: number | null | undefined): number => (stored === null || stored === undefined || stored === 0 ? 100 : stored);
 
 /**
- * D7: what every run must meet before it may commit — checked inside the transaction (and by the dry run). Each failure is
- * named; any one fails the run and rolls the whole job back.
- *  1a. Σ live = Σ v7 (the job total); 1b. Σ live = Σ v7 per scope (condition 4: a total that matches by offsetting scopes
- *      does not pass); 1c. Σ live = Σ v7 per site, Unallocated its own bucket (RULING-v7-reingest-full-record);
- *  2. every live row reproduces its v7 row — its figure, and each carried field (site, data confidence, column text, monthly
- *     slots), so two rows that swap sites with equal figures do not pass where the per-site totals alone would;
+ * D7, as refined by RULING-v7-book-runner (R2/R3): what every run must meet before it may commit — checked inside the transaction
+ * (and by the dry run). Each failure is named; any one fails the run and rolls the whole job back.
+ *  1. every input-bearing live row carries its v7 row's **input** exactly — quantity, unit (the same unit, as `sameUnit` judges
+ *     it) and apportionment — and has a figure; a reported-total row (no input) carries v7's **figure** within the ruled tolerance;
+ *  2. every live row carries each of its v7 row's fields (site, data confidence, column text, monthly slots), and its top-level
+ *     scope — so a dropped or swapped site is still caught row by row;
  *  3. one live row per v7 row, and no v7 row left enabled.
+ * The **emission** of an input-bearing row is the console's own calculation and is no longer a gate: `v7EmissionDeltaReport`
+ * compares it with v7's reported figure, and a material difference is flagged for the attesting reviewer — never refused, and
+ * never forced to v7's number.
  */
-export function v7ReingestPostconditionMisses(input: V7ReingestPostconditionInput): string[] {
+export function v7ReingestPostconditionMisses(input: V7ReingestPostconditionInput, sameUnit: (a: string, b: string) => boolean = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase()): string[] {
   const misses: string[] = [];
   const v7ById = new Map(input.v7Rows.map((row) => [row.rowId, row]));
   const live = input.liveRows.filter((row) => row.enabled);
-  const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
-  const v7Total = sum(input.v7Rows.map((row) => row.v7Tco2e));
-  const liveTotal = sum(live.map((row) => row.tco2e ?? 0));
-  if (!withinV7Tolerance(liveTotal, v7Total)) misses.push(`total: live ${liveTotal.toFixed(6)} t ≠ v7 ${v7Total.toFixed(6)} t`);
-  for (const scope of [...new Set([...input.v7Rows.map((r) => topScope(r.scope)), ...live.map((r) => topScope(r.scope))])].sort()) {
-    const v7 = sum(input.v7Rows.filter((row) => topScope(row.scope) === scope).map((row) => row.v7Tco2e));
-    const got = sum(live.filter((row) => topScope(row.scope) === scope).map((row) => row.tco2e ?? 0));
-    if (!withinV7Tolerance(got, v7)) misses.push(`scope ${scope}: live ${got.toFixed(6)} t ≠ v7 ${v7.toFixed(6)} t`);
-  }
-  const siteOf = (siteId: string | null) => siteId ?? "unallocated";
-  for (const site of [...new Set([...input.v7Rows.map((r) => siteOf(r.siteId)), ...live.map((r) => siteOf(r.siteId))])].sort()) {
-    const v7 = sum(input.v7Rows.filter((row) => siteOf(row.siteId) === site).map((row) => row.v7Tco2e));
-    const got = sum(live.filter((row) => siteOf(row.siteId) === site).map((row) => row.tco2e ?? 0));
-    if (!withinV7Tolerance(got, v7)) misses.push(`site ${site}: live ${got.toFixed(6)} t ≠ v7 ${v7.toFixed(6)} t`);
-  }
+  const show = (value: unknown) => (value === null ? "none" : String(value));
   const linked = new Map<string, number>();
   for (const row of live) {
     linked.set(row.reingestedFrom, (linked.get(row.reingestedFrom) ?? 0) + 1);
     const v7 = v7ById.get(row.reingestedFrom);
     if (!v7) { misses.push(`row ${row.rowId}: re-ingested from ${row.reingestedFrom}, which is not an enabled v7 row of the job`); continue; }
     if (row.tco2e === null) misses.push(`row ${row.rowId}: no figure`);
-    else if (!withinV7Tolerance(row.tco2e, v7.v7Tco2e)) misses.push(`row ${row.rowId}: ${row.tco2e} t ≠ v7 ${v7.v7Tco2e} t`);
+    if (v7.reportedTotal) {
+      // No input to carry: v7's figure is the record of account, and the row must hold it (D5, R4).
+      if (row.tco2e !== null && !withinV7Tolerance(row.tco2e, v7.v7Tco2e)) misses.push(`row ${row.rowId}: reported total ${row.tco2e} t ≠ v7 ${v7.v7Tco2e} t`);
+    } else {
+      if (row.quantity === null || v7.quantity === null || !sameV7Quantity(row.quantity, v7.quantity)) misses.push(`row ${row.rowId}: quantity ${show(row.quantity)} ≠ v7's ${show(v7.quantity)}`);
+      if (row.unit === null || v7.unit === null || !sameUnit(row.unit, v7.unit)) misses.push(`row ${row.rowId}: unit ${show(row.unit)} ≠ v7's ${show(v7.unit)}`);
+      if (!sameV7Quantity(row.applyPct, v7.applyPct)) misses.push(`row ${row.rowId}: apportionment ${row.applyPct}% ≠ v7's ${v7.applyPct}%`);
+    }
     if (topScope(row.scope) !== topScope(v7.scope)) misses.push(`row ${row.rowId}: scope ${row.scope} ≠ v7's ${v7.scope}`);
     for (const field of v7CarriedFieldMisses(v7, row)) misses.push(`row ${row.rowId}: ${field}`);
   }
@@ -176,6 +182,56 @@ export function v7ReingestPostconditionMisses(input: V7ReingestPostconditionInpu
   }
   if (input.enabledMigratedAfter !== 0) misses.push(`${input.enabledMigratedAfter} v7 row(s) still enabled`);
   return misses;
+}
+
+/** RULING-v7-book-runner R3: a difference from v7's reported figure is material above 5% of it. */
+export const V7_EMISSION_DELTA_THRESHOLD = 0.05;
+
+/** Why a delta is flagged: above the threshold, or v7 recorded ~0 and the calculation does not (a 0 → non-zero move is material). */
+export type V7EmissionDeltaFlag = "material" | "zero-base";
+export type V7EmissionDelta = { v7Tco2e: number; calcTco2e: number; deltaTco2e: number; relative: number | null; flag: V7EmissionDeltaFlag | null };
+
+/**
+ * One comparison of the console's figure with v7's. Within the ruled tolerance (0.1% / 0.001 t) is never flagged. A v7 figure at
+ * ~0 has no relative delta: a non-trivial calculation against it is flagged "zero-base".
+ */
+export function v7EmissionDelta(v7Tco2e: number, calcTco2e: number): V7EmissionDelta {
+  const deltaTco2e = calcTco2e - v7Tco2e;
+  const zeroBase = Math.abs(v7Tco2e) <= V7_REINGEST_TOLERANCE.absoluteTco2e;
+  const relative = zeroBase ? null : deltaTco2e / v7Tco2e;
+  const flag: V7EmissionDeltaFlag | null = withinV7Tolerance(calcTco2e, v7Tco2e) ? null
+    : zeroBase ? "zero-base" : Math.abs(relative!) > V7_EMISSION_DELTA_THRESHOLD ? "material" : null;
+  return { v7Tco2e, calcTco2e, deltaTco2e, relative, flag };
+}
+
+export type V7EmissionDeltaRow = { v7RowId: string; liveRowId: string; scope: string; siteId: string | null } & V7EmissionDelta;
+export type V7EmissionDeltaReport = {
+  job: V7EmissionDelta;
+  byScope: Record<string, V7EmissionDelta>;
+  bySite: Record<string, V7EmissionDelta>;
+  /** Every row, in v7-row order — the row-by-row diff a flagged job is investigated from. */
+  rows: V7EmissionDeltaRow[];
+  /** What a reviewer acknowledges before attesting: "job" when the job's own total is flagged, then each flagged v7 row id. */
+  flagged: string[];
+};
+
+/**
+ * R3 — the emission delta report: the console's calculated figure against v7's reported figure, per row, per scope, per site
+ * (Unallocated its own bucket) and for the job. tCO₂e only — no label, no money (NZC-120). A report, never a refusal.
+ */
+export function v7EmissionDeltaReport(rows: Array<{ v7RowId: string; liveRowId: string; scope: string; siteId: string | null; v7Tco2e: number; calcTco2e: number }>): V7EmissionDeltaReport {
+  const sorted = [...rows].sort((a, b) => a.v7RowId.localeCompare(b.v7RowId));
+  const totals = (pick: (row: (typeof rows)[number]) => string) => {
+    const sums = new Map<string, { v7: number; calc: number }>();
+    for (const row of sorted) { const at = sums.get(pick(row)) ?? { v7: 0, calc: 0 }; at.v7 += row.v7Tco2e; at.calc += row.calcTco2e; sums.set(pick(row), at); }
+    return Object.fromEntries([...sums.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([key, sum]) => [key, v7EmissionDelta(sum.v7, sum.calc)]));
+  };
+  const job = v7EmissionDelta(sorted.reduce((a, row) => a + row.v7Tco2e, 0), sorted.reduce((a, row) => a + row.calcTco2e, 0));
+  const deltaRows = sorted.map((row) => ({ v7RowId: row.v7RowId, liveRowId: row.liveRowId, scope: row.scope, siteId: row.siteId, ...v7EmissionDelta(row.v7Tco2e, row.calcTco2e) }));
+  return {
+    job, byScope: totals((row) => topScope(row.scope)), bySite: totals((row) => row.siteId ?? "unallocated"), rows: deltaRows,
+    flagged: [...(job.flag ? ["job"] : []), ...deltaRows.filter((row) => row.flag).map((row) => row.v7RowId)],
+  };
 }
 
 /** Each carried field the live row does not equal its v7 source in, named (an empty list when it carries the record). */

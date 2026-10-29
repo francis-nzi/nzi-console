@@ -2,14 +2,19 @@
 // accepted units). One job, one transaction: v7's vintages added to the job's selection (ruling 3), v7's copied factor values
 // carried as client factors (ruling 4), every enabled v7 row re-written as a live row through the ordinary create and
 // calculate (D4), totals-only rows as labelled reported totals (D5), the v7 rows switched off (D6), and the post-conditions
-// checked before anything can commit (D7, with the per-scope check). A dry run is the same call inside a transaction the
-// caller rolls back. Tenancy is the caller's `withTenantWrite` (SET LOCAL ROLE nzi_console_app: forced RLS throughout).
+// checked before anything can commit (D7). RULING-v7-book-runner (R2/R3) refines D7: the hard gate is v7's **input** — each
+// row's quantity, unit and apportionment carried exactly — and the emission is the console's calculation, compared with v7's
+// reported figure in a delta report (material differences flagged for the attesting reviewer) rather than refused. A dry run is
+// the same call inside a transaction the caller rolls back. Tenancy is the caller's `withTenantWrite` (SET LOCAL ROLE
+// nzi_console_app: forced RLS throughout).
 import { createHash, randomUUID } from "node:crypto";
 import {
-  V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, v7ReingestPostconditionMisses, withinV7Tolerance,
-  type CommandContext, type CommandInputMap, type V7ReingestPlanRow,
+  sameV7Quantity, V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, v7ApplyPct, v7EmissionDeltaReport, v7ReingestPostconditionMisses,
+  withinV7Tolerance, type CommandContext, type CommandInputMap, type V7EmissionDeltaReport, type V7ReingestPlanRow,
 } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
+import { checkUnit } from "./unitCompatibility";
+import { UNITS as V7_UNITS } from "./v7ReferenceImport";
 import {
   CommandValidationError, createScopeRowInTransaction, recalculateScopeRowInTransaction, reportingMonthsFor, requireCrpJob,
   runPostgresCommandInTransaction, type StoredOutcome,
@@ -29,6 +34,11 @@ export type V7ReingestResult = {
   /** How many rows carried each v7 field. */
   carried: { site: number; dataConfidence: number; columnText: number; months: number };
   rowsByDisposition: Record<string, number>; datasetsAdded: string[]; clientFactorsCreated: number; v7RowsSwitchedOff: number;
+  /**
+   * RULING-v7-book-runner R3: the console's calculated figure against v7's reported one, per row, scope, site and job — a comparison,
+   * not a gate. Its `flagged` list is what the attesting reviewer must acknowledge. tCO2e and row ids only.
+   */
+  deltas: V7EmissionDeltaReport;
 };
 export type V7ReingestRevertResult = { runId: string; jobId: string; liveRowsSwitchedOff: number; v7RowsSwitchedOn: number };
 
@@ -39,7 +49,26 @@ export type V7ReingestRevertResult = { runId: string; jobId: string; liveRowsSwi
 type MigratedRow = {
   scope_row_id: string; scope: string; enabled: boolean; reported: string | null; immutable_hash: string;
   site_id: string | null; data_confidence: string | null; column_text: string | null; months: Array<number | null> | null; data_source: string | null;
+  /** v7's input (RULING-v7-book-runner R2): what the live row must carry exactly. */
+  qty: string | null; uom: string | null; apply_pct: string | null;
 };
+
+/** v7's uom in the console registry's spelling (the ruled map; a three-letter currency upper-cased; anything else as written). */
+export function normaliseV7Unit(uom: string | null): string | null {
+  const key = (uom ?? "").trim().toLowerCase();
+  if (!key) return null;
+  return V7_UNITS[key] ?? (/^[a-z]{3}$/.test(key) ? key.toUpperCase() : uom!.trim());
+}
+
+/** The same unit — one spelling, or two the unit registry reads as the same (the factor's own spelling, as the plan uses). */
+export const sameV7Unit = (a: string, b: string): boolean =>
+  a.trim().toLowerCase() === b.trim().toLowerCase() || checkUnit(a, b).kind === "same" || checkUnit(b, a).kind === "same";
+
+/** v7's stored input, as numbers. */
+const v7Input = (row: MigratedRow) => ({
+  quantity: row.qty === null || row.qty === "" ? null : Number(row.qty), unit: normaliseV7Unit(row.uom),
+  applyPct: v7ApplyPct(row.apply_pct === null || row.apply_pct === "" ? null : Number(row.apply_pct)),
+});
 
 /** What the live row must carry from its v7 row — site, confidence, column text, months on the job's reporting months. */
 type Carried = { siteId: string | null; dataConfidence: string | null; columnText: string | null; slots: Array<{ month: string; quantity: number | null }> | null };
@@ -64,7 +93,8 @@ async function migratedRows(db: Queryable, organisationId: string, jobId: string
   return (await db.query<MigratedRow>(
     `SELECT scope_row_id, scope, enabled, migrated_record->>'reported_tco2e' AS reported,
             md5((to_jsonb(r) - ARRAY['enabled', 'version', 'updated_at'])::text) AS immutable_hash,
-            site_id, data_confidence, column_text, migrated_record->'months' AS months, migrated_record->>'data_source' AS data_source
+            site_id, data_confidence, column_text, migrated_record->'months' AS months, migrated_record->>'data_source' AS data_source,
+            migrated_record->>'qty' AS qty, migrated_record->>'uom' AS uom, migrated_record->>'apply_pct' AS apply_pct
        FROM nzi_console.job_scope_rows r
       WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' ORDER BY scope_row_id FOR UPDATE`,
     [organisationId, jobId])).rows;
@@ -98,9 +128,24 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
       // row's scope is its Scope 3 category ("3.6"), as every native Scope 3 row's is — a refinement, not a move.
       if (v7!.scope.split(".")[0] !== row.scope.split(".")[0] || (v7!.scope.includes(".") && v7!.scope !== row.scope))
         fail("PLAN_SCOPE_MOVED", `v7 row ${row.v7RowId} is scope ${v7!.scope}; the plan says ${row.scope}. The scope is never moved.`);
+      // The plan's v7 figure is the comparison basis of the delta report (and a reported total's own figure): it must be v7's.
       if (v7!.reported === null || !withinV7Tolerance(row.v7Tco2e, Number(v7!.reported)))
         fail("PLAN_FIGURE_MISMATCH", `v7 row ${row.v7RowId} reported ${v7!.reported ?? "nothing"} t; the plan says ${row.v7Tco2e} t.`);
     }
+    // RULING-v7-book-runner R2 — the hard gate: every input-bearing plan row carries its v7 row's input exactly (quantity, unit,
+    // apportionment), or nothing is written. A reported total has no input; it carries v7's figure, checked above.
+    const quantityRefusals: Array<{ field: string; code: string; message: string }> = [];
+    for (const row of input.rows) {
+      if (row.disposition === "REPORTED-TOTAL") continue;
+      const held = v7Input(v7ById.get(row.v7RowId)!);
+      const why = held.quantity === null ? "v7 holds no quantity for it"
+        : row.quantity === null || !sameV7Quantity(row.quantity, held.quantity) ? `the plan carries ${row.quantity ?? "none"}, v7 holds ${held.quantity}`
+        : held.unit === null || !row.unit || !sameV7Unit(row.unit, held.unit) ? `the plan's unit ${row.unit ?? "none"} is not v7's ${held.unit ?? "none"}`
+        : !sameV7Quantity(row.applyPct ?? 100, held.applyPct) ? `the plan apportions ${row.applyPct ?? 100}%, v7 ${held.applyPct}%`
+        : null;
+      if (why) quantityRefusals.push({ field: "rows", code: "PLAN_QUANTITY_MISMATCH", message: `v7 row ${row.v7RowId}: ${why} — its quantity cannot be carried faithfully.` });
+    }
+    if (quantityRefusals.length) throw new CommandValidationError(quantityRefusals.slice(0, 20));
     const unplanned = enabledV7.filter((row) => !planned.has(row.scope_row_id));
     if (unplanned.length) fail("PLAN_INCOMPLETE", `${unplanned.length} enabled v7 row(s) have no plan row (${unplanned.slice(0, 5).map((row) => row.scope_row_id).join(", ")}…); a partial re-ingest would double count or drop them.`);
 
@@ -175,7 +220,10 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
       { reingestedFrom: plan.v7RowId, reportedTotal, historicalUnit: !reportedTotal, declaredResolutionExempt: true });
       const rowId = created.data.rowId;
       const mark = { title: reportedTotal ? "v7 reported total carried" : "Re-ingested from NZ Insights Pro v7",
-        detail: `${input.crosswalkVersion} · rule ${plan.rule} · ${plan.disposition} · reproduces v7's ${round6(plan.v7Tco2e)} t (v7 row ${plan.v7RowId}, run ${input.runId})` };
+        detail: reportedTotal
+          ? `${input.crosswalkVersion} · rule ${plan.rule} · ${plan.disposition} · carries v7's ${round6(plan.v7Tco2e)} t (v7 row ${plan.v7RowId}, run ${input.runId})`
+          // R2/R3: the row carries v7's input; its figure is the console's calculation, and v7's is kept only as the comparison.
+          : `${input.crosswalkVersion} · rule ${plan.rule} · ${plan.disposition} · carries v7's input; v7 reported ${round6(plan.v7Tco2e)} t (v7 row ${plan.v7RowId}, run ${input.runId})` };
       // RULING-v7-reingest-declared-factor (a): where the category declares a factor, say that it was not applied, and why.
       const marks = declaredCategories.has(plan.categoryCode)
         ? [mark, { title: "Declared resolution not applied", detail: "declared resolution not applied: v7's own factor (ruling 3)" }]
@@ -210,11 +258,13 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
 
     // D7: the post-conditions, read back from what is now in the table.
     const live = (await db.query<{ scope_row_id: string; reingested_from_row_id: string; scope: string; tco2e: string | null; enabled: boolean;
-      site_id: string | null; data_confidence: string | null; column_text: string | null; monthly: Array<{ month: string; quantity: number | null }> | null }>(
+      site_id: string | null; data_confidence: string | null; column_text: string | null; monthly: Array<{ month: string; quantity: number | null }> | null;
+      quantity: string | null; unit: string | null; apply_pct: string | null }>(
       `SELECT scope_row_id, reingested_from_row_id, scope, coalesce(override_tco2e, calculated_tco2e)::text AS tco2e, enabled,
-              site_id, data_confidence, column_text, monthly_activity_json AS monthly
+              site_id, data_confidence, column_text, monthly_activity_json AS monthly, quantity::text AS quantity, unit, apply_pct::text AS apply_pct
          FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND reingested_from_row_id IS NOT NULL AND enabled`,
       [context.organisationId, input.jobId])).rows;
+    const planByV7 = new Map(input.rows.map((plan) => [plan.v7RowId, plan]));
     const after = await migratedRows(db, context.organisationId, input.jobId);
     // Each side's carried fields: what the v7 row says the live row must hold, and what it holds.
     const expected = (v7: MigratedRow) => {
@@ -223,12 +273,18 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
         months: fields?.slots ? fields.slots.map((slot) => slot.quantity) : null };
     };
     const misses = v7ReingestPostconditionMisses({
-      v7Rows: enabledV7.map((row) => ({ rowId: row.scope_row_id, scope: row.scope, v7Tco2e: Number(row.reported), ...expected(row) })),
+      v7Rows: enabledV7.map((row) => {
+        const reportedTotal = planByV7.get(row.scope_row_id)?.disposition === "REPORTED-TOTAL";
+        const held = v7Input(row);
+        return { rowId: row.scope_row_id, scope: row.scope, v7Tco2e: Number(row.reported), reportedTotal,
+          quantity: reportedTotal ? null : held.quantity, unit: reportedTotal ? null : held.unit, applyPct: held.applyPct, ...expected(row) };
+      }),
       liveRows: live.map((row) => ({ rowId: row.scope_row_id, reingestedFrom: row.reingested_from_row_id, scope: row.scope, tco2e: row.tco2e === null ? null : Number(row.tco2e), enabled: row.enabled,
+        quantity: row.quantity === null ? null : Number(row.quantity), unit: row.unit, applyPct: row.apply_pct === null ? 100 : Number(row.apply_pct),
         siteId: row.site_id, dataConfidence: row.data_confidence, columnText: row.column_text,
         months: Array.isArray(row.monthly) && row.monthly.length ? row.monthly.map((slot) => (slot.quantity === null || slot.quantity === undefined ? null : Number(slot.quantity))) : null })),
       enabledMigratedAfter: after.filter((row) => row.enabled).length,
-    });
+    }, sameV7Unit);
     const beforeHash = new Map(before.map((row) => [row.scope_row_id, row.immutable_hash]));
     for (const row of after) if (beforeHash.get(row.scope_row_id) !== row.immutable_hash) misses.push(`v7 row ${row.scope_row_id}: a kept field changed`);
     if (after.length !== before.length) misses.push("the job's v7 rows changed in number");
@@ -258,8 +314,12 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
          scope_totals_json, rows_by_disposition_json, created_by, correlation_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb,$10,$11)`,
       [context.organisationId, input.runId, input.jobId, input.crosswalkVersion, input.crosswalkSha256, v7TotalTco2e, nativeTotalTco2e,
         JSON.stringify(scopeTotals), JSON.stringify(counts), context.actorId, context.correlationId]);
+    // R3: the comparison — the console's figure against v7's, every row, with what is material flagged for the reviewer.
+    const reported = new Map(enabledV7.map((row) => [row.scope_row_id, Number(row.reported)]));
+    const deltas = v7EmissionDeltaReport(live.map((row) => ({ v7RowId: row.reingested_from_row_id, liveRowId: row.scope_row_id, scope: row.scope,
+      siteId: row.site_id, v7Tco2e: reported.get(row.reingested_from_row_id) ?? 0, calcTco2e: Number(row.tco2e) })));
     const data: V7ReingestResult = { runId: input.runId, jobId: input.jobId, crosswalkVersion: input.crosswalkVersion, v7TotalTco2e, nativeTotalTco2e,
-      scopeTotals, siteTotals, carried: carriedCounts, rowsByDisposition: counts, datasetsAdded, clientFactorsCreated, v7RowsSwitchedOff: enabledV7.length };
+      scopeTotals, siteTotals, carried: carriedCounts, rowsByDisposition: counts, datasetsAdded, clientFactorsCreated, v7RowsSwitchedOff: enabledV7.length, deltas };
     return { data, entityType: "job", entityId: input.jobId, topic: "v7.reingest.completed", before: { enabledV7Rows: enabledV7.length }, governedEvents };
   });
 }

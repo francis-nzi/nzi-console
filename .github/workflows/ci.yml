@@ -774,9 +774,15 @@ jobs:
       - name: The v7 re-ingest revert runner dry-runs by default, writes nothing, and its commit reverts every row
         run: npx tsx --test packages/isolated-backend/tests/v7ReingestRevertRunnerReal.test.ts
       # RULING-reingest-bulk-attest: one staff reviewer attests a re-ingest run's pending rows (each its own approval in review
-      # history); only the record-of-account gaps resolved, never overwriting; the preparer refused; all or nothing; D7.2 re-checked.
+      # history); only the record-of-account gaps resolved, never overwriting; the preparer refused; all or nothing; D7.2 re-checked
+      # (as refined: v7's input carried; flagged emission deltas acknowledged).
       - name: A re-ingest run's rows are attested in one reviewed act, and the freeze gate opens
         run: npx tsx --test packages/isolated-backend/tests/v7ReingestAttestReal.test.ts
+      # RULING-v7-book-runner: the book runner over v7.reingest.job — v7's input the hard gate, the emission the console's calculation
+      # with a > 5% delta report; drift passes on its quantity; totals-only carried; open residuals skipped; J000663 held; the year
+      # edition added or flagged; dry run writes nothing; run → attest → snapshot → the client's analytics year.
+      - name: The v7 book runner carries v7's inputs, reports emission deltas, and skips what is Francis's
+        run: npx tsx --test packages/isolated-backend/tests/v7ReingestBookReal.test.ts
       # RULING-v7-reingest-full-record: each live row carries its v7 row's site, data confidence, column text and months (from the
       # v7 row, never the plan); SITE_NOT_USABLE / MONTHS_DO_NOT_FIT refuse, named; D7 per site and per carried field.
       - name: The re-ingest carries the full v7 record, and D7 reconciles per site
