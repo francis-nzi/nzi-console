@@ -1,2 +1,1 @@
 disposition,job,reporting_year,scope,v7_level_1,v7_label,quantity,unit,factor_ref,factor_category,rule,native_category,candidates,disposition_detail,v7_tco2e,scope_row_id
-CARRY-V7-FACTOR,J000705,2021,1,Scope 1,Fugitive Emissions,7.1,tonne,,,NOFACTOR,,,ruling 4: carry v7's factor; category for Francis (no category or label signal),7.1,v7-row-5000
