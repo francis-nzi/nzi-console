@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  commandDefinitions, commandGrantForRole, isV7ReportedTotalReason, sameV7Quantity, v7ApplyPct, v7EmissionDelta, v7EmissionDeltaReport, v7QualityTier,
+  commandDefinitions, commandGrantForRole, isV7ReportedTotalReason, monthsFitQuantity, sameV7CarriedQuantity, sameV7Quantity, v7ApplyPct, v7EmissionDelta, v7EmissionDeltaReport, v7QualityTier,
   V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_REASONS, v7ReingestPlanIssues, v7CarriedFieldMisses, v7ReingestPostconditionMisses, validateCommand, withinV7Tolerance,
   type CommandContext, type V7ReingestJobInput,
 } from "../src/index";
@@ -117,6 +117,11 @@ describe("the v7 re-ingest's rules", () => {
     assert.equal(v7ApplyPct(40), 40);
     assert.ok(sameV7Quantity(0.1 + 0.2, 0.3));
     assert.ok(!sameV7Quantity(1000, 1000.001));
+    // RULING 29 Oct: months fit the quantity to rounding (relative), never to a different number.
+    assert.ok(monthsFitQuantity(10, 9.9996) && monthsFitQuantity(17133.8, 17133.81) && monthsFitQuantity(100, 100));
+    assert.ok(!monthsFitQuantity(23421, 1186404) && !monthsFitQuantity(100, 999) && !monthsFitQuantity(0, 525) && !monthsFitQuantity(1, 1.001));
+    assert.ok(sameV7CarriedQuantity(10, 9.9996, true), "a row carrying months may differ from v7's quantity by rounding");
+    assert.ok(!sameV7CarriedQuantity(10, 9.9996, false), "a row without months carries v7's number exactly");
   });
 
   it("per row, each carried field must equal its v7 source — what catches two rows swapping sites with equal figures, or a dropped site", () => {

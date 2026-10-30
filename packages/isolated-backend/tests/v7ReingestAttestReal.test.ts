@@ -20,7 +20,7 @@ const ORG = "v7-attest";
 const REVIEWER = "staff-reviewer";
 const CROSSWALK_SHA = "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2";
 const record = (over: Record<string, unknown>) => ({ qty: 0, uom: "kWh", factor: 0, ghg_unit: "kgCO2e", original_id: "7_x", reported_tco2e: 0, data_source: "Company Data", enabled: true, ...over });
-type V7 = { id: string; scope: string; label: string; qty: number; unit: string; reported: number };
+type V7 = { id: string; scope: string; label: string; qty: number; unit: string; reported: number; months?: Array<number | null> };
 const gasRow = (id: string, label: string, qty: number, reported: number): [V7, V7ReingestPlanRow] => [
   { id, scope: "1", label, qty, unit: "kWh", reported },
   { v7RowId: id, disposition: "RE-INGEST", categoryCode: "1.natural-gas", scope: "1", sourceLabel: label, quantity: qty, unit: "kWh",
@@ -65,7 +65,7 @@ describe("scope.review.attest_reingest, against a real database", { skip: TEST_D
       await db.query(`INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,source_label,report_label,level_1,level_2,quantity,unit,
           calculated_tco2e,review_status,enabled,origin,migrated_record,source_system,legacy_db_id)
         VALUES ($1,$2,$3,$4,$5,$5,'v7','v7',$6,$7,$8,'pending',true,'migrated',$9::jsonb,'nzi-pro-v7',$2)`,
-        [ORG, v7.id, job, v7.scope, v7.label, v7.qty, v7.unit, v7.reported, JSON.stringify(record({ qty: v7.qty, uom: v7.unit, reported_tco2e: v7.reported }))]);
+        [ORG, v7.id, job, v7.scope, v7.label, v7.qty, v7.unit, v7.reported, JSON.stringify(record({ qty: v7.qty, uom: v7.unit, reported_tco2e: v7.reported, ...(v7.months ? { months: v7.months } : {}) }))]);
     }
     const input: V7ReingestJobInput = { jobId: job, runId: `v7-reingest-${randomUUID()}`, crosswalkVersion: "v1", crosswalkSha256: CROSSWALK_SHA,
       vintageDatasetIds: ["v7-vintage-2025"], rows: rows.map(([, plan]) => plan) };
@@ -172,6 +172,18 @@ describe("scope.review.attest_reingest, against a real database", { skip: TEST_D
       assert.equal(await attestedHistory(JOB), 0, "nothing written");
       await db.query(`UPDATE nzi_console.job_scope_rows SET calculated_tco2e = 0, version = version + 1 WHERE scope_row_id = $1`, [zero.id]);
       assert.deepEqual((await preview(JOB)).deltas!.flagged, [], "back to v7's figure: nothing flagged");
+    });
+
+    it("D7.2 accepts a months-derived quantity within rounding of v7's (9.9996 against 10), and still refuses a moved input", async () => {
+      const JOB_R = "attest-rounding";
+      const months = [10, null, null, null, null, null, null, null, null, null, null, null];
+      await seedJob(JOB_R, 9, [[{ id: "r-round", scope: "1", label: "Gas", qty: 9.9996, unit: "kWh", reported: 0.002, months }, { v7RowId: "r-round", disposition: "RE-INGEST", categoryCode: "1.natural-gas", scope: "1", sourceLabel: "Gas", quantity: 9.9996, unit: "kWh",
+        datasetId: "v7-vintage-2025", factorId: "gas", qualityTier: "measured", v7Tco2e: 0.002, rule: "S1-GAS" }]]);
+      const row = await live(JOB_R, "r-round");
+      assert.equal(Number((await db.query(`SELECT quantity::text AS q FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [row.id])).rows[0]!.q), 10, "the live quantity is the months' sum");
+      assert.deepEqual((await preview(JOB_R)).blocked, [], "within rounding of v7's quantity, on a row that carries months: not blocked");
+      await db.query(`UPDATE nzi_console.job_scope_rows SET quantity = 11, version = version + 1 WHERE scope_row_id = $1`, [row.id]);
+      assert.equal((await preview(JOB_R)).blocked.length, 1, "a quantity that moved beyond rounding blocks");
     });
 
     it("all or nothing: a row or a gap that moved since the preview refuses the act — CHANGED_SINCE_PREVIEW — and nothing is written", async () => {

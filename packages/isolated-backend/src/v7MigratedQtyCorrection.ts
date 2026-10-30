@@ -19,8 +19,13 @@ import type { PoolLike } from "./postgres";
 
 export const MIGRATED_IMMUTABLE_TRIGGER = "job_scope_rows_migrated_immutable";
 export const QTY_CORRECTION_ACTION = "v7.migrated_qty.corrected";
-/** Above this, a qty and its months sum differ by more than rounding (the ruled scan's tolerance). */
-export const QTY_ROUNDING_TOLERANCE = 0.005;
+/**
+ * Above this (absolute), a qty and its months sum differ by more than rounding — a genuine stale typo. Measured on staging 29 Oct:
+ * rounding differences are at most 0.01 (v7-row-2750/2752, 4063); the 11 stale typos differ by at least 525. 1.0 splits them cleanly
+ * (the first dry run, at 0.005, caught the two 0.01 rounding rows and refused SET_MISMATCH). Rounding is carried by the re-ingest's
+ * relative months tolerance (V7_MONTHS_ROUNDING), not corrected here.
+ */
+export const QTY_ROUNDING_TOLERANCE = 1.0;
 
 /** The ruled 11 — enabled migrated rows whose qty is the pre-amendment typo — grouped by their job. */
 export const V7_STALE_QTY_ROWS: ReadonlyArray<{ jobId: string; rowIds: readonly string[] }> = [

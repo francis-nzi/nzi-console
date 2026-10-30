@@ -9,7 +9,7 @@
 // nzi_console_app: forced RLS throughout).
 import { createHash, randomUUID } from "node:crypto";
 import {
-  sameV7Quantity, V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, v7ApplyPct, v7EmissionDeltaReport, v7ReingestPostconditionMisses,
+  monthsFitQuantity, sameV7Quantity, V7_REINGEST_ACTOR, V7_REPORTED_TOTAL_LABEL, V7_REPORTED_TOTAL_REASONS, v7ApplyPct, v7EmissionDeltaReport, v7ReingestPostconditionMisses,
   withinV7Tolerance, type CommandContext, type CommandInputMap, type V7EmissionDeltaReport, type V7ReingestPlanRow,
 } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
@@ -174,7 +174,7 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
         refusals.push({ field: "rows", code: "MONTHS_DO_NOT_FIT", message: `v7 row ${plan.v7RowId} has activity in month ${months.outside.join(", ")} of 12, outside this job's ${reportingMonths.length}-month reporting period.` });
       else if (months.slots) {
         const sum = months.slots.reduce((total, slot) => total + (slot.quantity ?? 0), 0);
-        if (plan.quantity === null || Math.abs(sum - plan.quantity) > 1e-9 * Math.max(1, Math.abs(plan.quantity)))
+        if (plan.quantity === null || !monthsFitQuantity(sum, plan.quantity))
           refusals.push({ field: "rows", code: "MONTHS_DO_NOT_FIT", message: `v7 row ${plan.v7RowId}'s months sum to ${sum}, not its quantity ${plan.quantity ?? "none"}; carrying them would move its figure.` });
       }
       const columnText = v7.column_text?.trim() || null;
