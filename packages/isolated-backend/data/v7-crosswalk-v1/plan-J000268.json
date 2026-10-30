@@ -1,0 +1,104 @@
+{
+  "jobId": "v7-job-259",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2024"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-1623",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Large Car Petrol (>2000cc)",
+      "v7Tco2e": 3.22944888,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 7464,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2024",
+      "factorId": "uk-ghg-25_301_3062_9_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1624",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Average Car Battery Electric Vehicle",
+      "v7Tco2e": 0.018326399999999996,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 240,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2024",
+      "factorId": "uk-ghg-25_301_3076_9_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1625",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Rail National Rail",
+      "v7Tco2e": 0.4127543999999999,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 11640,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2024",
+      "factorId": "uk-ghg-25_315_3147_11_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1626",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Bus Average Local Bus",
+      "v7Tco2e": 0.03904560000000001,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 360,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2024",
+      "factorId": "uk-ghg-25_314_3145_11_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1627",
+      "scope": "3.1",
+      "sourceLabel": "Office Emisssions",
+      "v7Tco2e": 1.2,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 1.2,
+      "unit": "spend",
+      "carriedFactor": {
+        "label": "Office Emisssions (v7 factor)",
+        "unit": "spend",
+        "kgco2ePerUnit": 1000,
+        "vintageYear": 2023
+      },
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1628",
+      "scope": "3.7",
+      "sourceLabel": "Homeworking: Homeworking (Office Equipment + Heating)",
+      "v7Tco2e": 1.7944012799999998,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 5376,
+      "unit": "per FTE Working Hour",
+      "datasetId": "uk-ghg-gb-2024",
+      "factorId": "uk-ghg-32_603_9999_12_1",
+      "qualityTier": "measured"
+    }
+  ]
+}

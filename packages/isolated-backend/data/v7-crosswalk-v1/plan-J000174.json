@@ -1,0 +1,105 @@
+{
+  "jobId": "v7-job-165",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2022",
+    "uk-ghg-gb-2023"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-1371",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Large Car Petrol (>2000cc)",
+      "v7Tco2e": 3.8430720000000007,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 8640,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-25_301_3062_9_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1372",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Average Car Diesel",
+      "v7Tco2e": 0.7191907200000002,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 2616,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-25_301_3069_9_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1373",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Large Car Petrol (>2000cc)",
+      "v7Tco2e": 4.270080000000001,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 9600,
+      "unit": "miles",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-25_301_3062_9_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1374",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Rail National Rail",
+      "v7Tco2e": 0.19519500000000004,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 5500,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2022",
+      "factorId": "uk-ghg-25_315_3147_11_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1375",
+      "scope": "3.1",
+      "sourceLabel": "Leased Office Emissions",
+      "v7Tco2e": 14.7,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 14.7,
+      "unit": "Area",
+      "carriedFactor": {
+        "label": "Leased Office Emissions (v7 factor)",
+        "unit": "Area",
+        "kgco2ePerUnit": 1000,
+        "vintageYear": 2023
+      },
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1376",
+      "scope": "3.7",
+      "sourceLabel": "Homeworking: Homeworking (Office Equipment + Heating)",
+      "v7Tco2e": 2.243001600000001,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 6720,
+      "unit": "per FTE Working Hour",
+      "datasetId": "uk-ghg-gb-2023",
+      "factorId": "uk-ghg-32_603_9999_12_1",
+      "qualityTier": "measured"
+    }
+  ]
+}
