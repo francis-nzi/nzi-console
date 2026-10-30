@@ -79,3 +79,4 @@ v7-row-5459,J000710,2026,Fuels: Liquid Fuels Petrol (Average Biofuel Blend),1.co
 v7-row-5511,J000710,2026,"Electricity, transmission and distribution",3.3,Francis,2026-10-30,Residuals worksheet answer.
 v7-row-6245,J000734,2024,Leased Office Emissions,3.1,Francis,2026-10-30,Residuals worksheet answer.
 v7-row-7405,J000752,2024,UK Ingredients,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5000,J000705,2021,Fugitive Emissions,1.refrigerants,Francis,2026-10-30,"Worksheet answer, fugitive = refrigerant leakage. Corrects the earlier 1.fugitive normalisation, which is not a taxonomy code."
