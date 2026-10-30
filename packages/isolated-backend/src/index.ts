@@ -130,6 +130,7 @@ export * from "./scopeRowState";
 export * from "./v7Reingest";
 export * from "./reingestAttest";
 export * from "./v7ReingestBook";
+export * from "./v7BatchAttest";
 export * from "./clientIntensityTargets";
 export * from "./clientReportingTemplates";
 export * from "./masterTemplates";

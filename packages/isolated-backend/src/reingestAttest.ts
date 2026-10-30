@@ -24,7 +24,7 @@ import {
   type AssuranceGap, type CommandContext, type CommandInputMap, type V7EmissionDeltaReport,
 } from "@nzi/contracts";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
-import { CommandValidationError, isV7ReingestPrincipal, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
+import { CommandValidationError, isV7ReingestPrincipal, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
 import { getAssuranceScreen } from "./readModels";
 import { normaliseV7Unit, sameV7Unit } from "./v7Reingest";
 
@@ -189,7 +189,16 @@ export type ReingestAttestationResult = {
 
 /** `scope.review.attest_reingest`: the act, all or nothing, exactly as previewed. One audit event (the command's own). */
 export function attestReingestRows(pool: PoolLike, input: CommandInputMap["scope.review.attest_reingest"], context: CommandContext): Promise<StoredOutcome<ReingestAttestationResult>> {
-  return runPostgresCommand(pool, "scope.review.attest_reingest", input, context, async (db) => {
+  return runPostgresCommand(pool, "scope.review.attest_reingest", input, context, attestReingestHandler(input, context));
+}
+
+/** The same act inside a transaction the caller owns — the batch attest runs each run as one, and a dry run rolls it back. */
+export function attestReingestRowsInTransaction(db: Queryable, input: CommandInputMap["scope.review.attest_reingest"], context: CommandContext): Promise<StoredOutcome<ReingestAttestationResult>> {
+  return runPostgresCommandInTransaction(db, "scope.review.attest_reingest", input, context, attestReingestHandler(input, context));
+}
+
+function attestReingestHandler(input: CommandInputMap["scope.review.attest_reingest"], context: CommandContext) {
+  return async (db: Queryable) => {
     const refusal = reviewerRefusal(context);
     if (refusal) fail("actorId", "REVIEWER_IS_PREPARER", refusal);
     const job = (await db.query<{ job_family: string }>(`SELECT job_family FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2 FOR UPDATE`, [context.organisationId, input.jobId])).rows[0];
@@ -241,6 +250,6 @@ export function attestReingestRows(pool: PoolLike, input: CommandInputMap["scope
       skippedResolvedGaps: plan.skippedResolvedGaps, excludedRejected: plan.excludedRejected.length,
       rowIds: plan.attest.map((row) => row.rowId), gapKeys: plan.gaps.map((gap) => gap.gapKey), acknowledgedDeltas: [...(plan.deltas?.flagged ?? [])],
     };
-    return { data, entityType: "job", entityId: input.jobId, topic: "scope.review.reingest_attested" };
-  });
+    return { data, entityType: "job" as const, entityId: input.jobId, topic: "scope.review.reingest_attested" };
+  };
 }
