@@ -778,6 +778,10 @@ jobs:
       # (as refined: v7's input carried; flagged emission deltas acknowledged).
       - name: A re-ingest run's rows are attested in one reviewed act, and the freeze gate opens
         run: npx tsx --test packages/isolated-backend/tests/v7ReingestAttestReal.test.ts
+      # 30 Oct: the governed batch attest — one person attests every committed run with no flagged delta through the same command;
+      # flagged and unattestable runs skipped; dry run rolled back; the actor an active member holding snapshot.review.
+      - name: The batch attest attests the unflagged v7 runs in one reviewed act and skips the rest
+        run: npx tsx --test packages/isolated-backend/tests/v7BatchAttestReal.test.ts
       # RULING-v7-book-runner: the book runner over v7.reingest.job — v7's input the hard gate, the emission the console's calculation
       # with a > 5% delta report; drift passes on its quantity; totals-only carried; open residuals skipped; J000663 held; the year
       # edition added or flagged; dry run writes nothing; run → attest → snapshot → the client's analytics year.
