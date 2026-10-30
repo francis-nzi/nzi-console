@@ -40,7 +40,7 @@ class DryRunRollback extends Error {}
 const MIN_REASON = 8;
 
 /** The person's own grant: their membership's role, which must hold `snapshot.review`. */
-async function personContext(pool: PoolLike, input: BatchAttestInput): Promise<{ organisationId: string; actorId: string; principal: "staff"; reason: string; grant: CommandGrant }> {
+export async function personContext(pool: PoolLike, input: BatchAttestInput): Promise<{ organisationId: string; actorId: string; principal: "staff"; reason: string; grant: CommandGrant }> {
   const member = (await withTenantRead(pool, input.organisationId, (db) => db.query<{ role_id: string; status: string }>(
     `SELECT role_id, status FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2`, [input.organisationId, input.actorId]))).rows[0];
   if (!member) throw new Error(`NOT_A_MEMBER: ${input.actorId} is not a member of ${input.organisationId}; a person attests.`);

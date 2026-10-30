@@ -131,6 +131,7 @@ export * from "./v7Reingest";
 export * from "./reingestAttest";
 export * from "./v7ReingestBook";
 export * from "./v7BatchAttest";
+export * from "./v7StrayRepoint";
 export * from "./clientIntensityTargets";
 export * from "./clientReportingTemplates";
 export * from "./masterTemplates";
