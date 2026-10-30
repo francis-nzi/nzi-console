@@ -35,6 +35,7 @@
     "v7:reingest-book": "tsx scripts/v7-reingest-book.ts",
     "v7:correct-migrated-qty": "tsx scripts/v7-correct-migrated-qty.ts",
     "v7:batch-attest": "tsx scripts/v7-batch-attest.ts",
+    "v7:repoint-stray-2019": "tsx scripts/v7-repoint-stray-2019.ts",
     "discard:scope-rows": "tsx scripts/discard-scope-rows.ts",
     "backfill:job-datasets": "tsx scripts/backfill-job-datasets.ts",
     "seal:vehicle-registrations": "tsx scripts/seal-vehicle-registrations.ts",
