@@ -1,0 +1,2 @@
+scope_row_id,job,reporting_year,v7_label,category,resolved_by,resolved_on,note
+v7-row-1423,J000003,2022,WFH Electricity,3.7,Francis,2026-10-30,"Employee commuting / homeworking. Resolves the worksheet question (2.purchased-electricity or 3.3): neither; the row is employees' home-working electricity, a Scope 3 category 3.7 activity. Carried on v7's own factor (ruling 4); the category takes kWh."
