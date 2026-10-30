@@ -1,2 +1,81 @@
 scope_row_id,job,reporting_year,v7_label,category,resolved_by,resolved_on,note
 v7-row-1423,J000003,2022,WFH Electricity,3.7,Francis,2026-10-30,"Employee commuting / homeworking. Resolves the worksheet question (2.purchased-electricity or 3.3): neither; the row is employees' home-working electricity, a Scope 3 category 3.7 activity. Carried on v7's own factor (ruling 4); the category takes kWh."
+v7-row-8554,J000004,2021,Managed Assets: Electricity Electricity Generated Electricity: UK kWh,3.8,Francis,2026-10-30,Upstream leased assets. Residuals worksheet answer.
+v7-row-1956,J000020,2021,Working From Home Energy,3.7,Francis,2026-10-30,Homeworking. Residuals worksheet answer.
+v7-row-7649,J000021,2023,Green Electricity - Working from Home,3.7,Francis,2026-10-30,Homeworking. Residuals worksheet answer.
+v7-row-5595,J000034,2023,Purchased Goods and Services,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-4674,J000063,2023,DHL Supply Chain,3.9,Francis,2026-10-30,Downstream. Residuals worksheet answer.
+v7-row-1130,J000088,2022,Liquid fuels,3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-2069,J000113,2022,Working From Home Energy,3.7,Francis,2026-10-30,Homeworking. Residuals worksheet answer.
+v7-row-2090,J000113,2022,Working From Home Energy,3.7,Francis,2026-10-30,Homeworking. Residuals worksheet answer.
+v7-row-7216,J000115,2023,UK Ingredients,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5291,J000118,2022,Contracted Labour Travel,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1164,J000129,2022,Paris Electricity,2.purchased-electricity,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1166,J000129,2022,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1167,J000129,2022,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1168,J000129,2022,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1169,J000129,2022,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1170,J000129,2022,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1171,J000129,2022,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1172,J000129,2022,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-4678,J000136,2024,DHL Supply Chain,3.9,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5687,J000156,2024,Purchased Goods and Services,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1375,J000174,2023,Leased Office Emissions,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5038,J000227,2023,Water Treatment,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5940,J000263,2024,Contracted Labour Travel,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1627,J000268,2023,Office Emisssions,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1234,J000272,2023,Paris Electricity,2.purchased-electricity,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1241,J000272,2023,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1242,J000272,2023,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1243,J000272,2023,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1244,J000272,2023,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1246,J000272,2023,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1247,J000272,2023,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1252,J000272,2023,USA Electricity,2.purchased-electricity,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3517,J000320,2023,Liquid fuels,3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3530,J000320,2023,Electricity,3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3532,J000320,2023,Gas; distribution of gaseous fuels through mains; steam and air conditioning supply,3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-4679,J000328,2025,DHL Supply Chain,3.9,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-7357,J000406,2025,UK Ingredients,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5070,J000446,2024,Water Treatment,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1254,J000457,2024,Paris Electricity,2.purchased-electricity,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1262,J000457,2024,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1264,J000457,2024,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1265,J000457,2024,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1266,J000457,2024,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1268,J000457,2024,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3548,J000462,2024,Electricity,3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3552,J000462,2024,Gas; distribution of gaseous fuels through mains; steam and air conditioning supply,3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3558,J000462,2024,Liquid fuels,3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-6294,J000469,2025,Contracted Labour Travel,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3193,J000548,2026,DHL Supply Chain,3.9,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3204,J000548,2026,Dachser Ltd,3.9,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3205,J000548,2026,DSV Road Limited,3.9,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3207,J000548,2026,STEDER Group UK Ltd,3.9,Francis,2026-10-30,Residuals worksheet answer.
+v7-source-872,J000554,2026,Company Vehicles,1.company-vehicles,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1533,J000559,2025,"Electricity, transmission and distribution",3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1179,J000566,2026,Business Travel Flights,3.6,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1180,J000566,2026,Business Travel Uber,3.6,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1368,J000627,2025,Leased Office Emissions,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1228,J000632,2025,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1229,J000632,2025,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1230,J000632,2025,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1231,J000632,2025,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1232,J000632,2025,Office Space,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-2044,J000632,2025,Paris Electricity,2.purchased-electricity,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-1887,J000656,2025,"Electric power generation, transmission and distribution",3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-2889,J000689,2022,Fuels: Liquid Fuels Petrol (Average Biofuel Blend),1.company-vehicles,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-2930,J000689,2022,Working from Home Emissions,3.7,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-2932,J000690,2023,Fuels: Liquid Fuels Petrol (Average Biofuel Blend),1.company-vehicles,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-2965,J000690,2023,Working from Home Emissions,3.7,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3056,J000691,2024,Fuels: Liquid Fuels Petrol (Average Biofuel Blend),1.company-vehicles,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3096,J000691,2024,"Electricity, transmission and distribution",3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3111,J000692,2025,Fuels: Liquid Fuels Petrol (Average Biofuel Blend),1.company-vehicles,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-3129,J000692,2025,"Electricity, transmission and distribution",3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-source-301,J000700,2026,Business Travel,3.6,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5001,J000705,2021,Contracted Labour Travel,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5876,J000706,2023,Contracted Labour Travel,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5459,J000710,2026,Fuels: Liquid Fuels Petrol (Average Biofuel Blend),1.company-vehicles,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-5511,J000710,2026,"Electricity, transmission and distribution",3.3,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-6245,J000734,2024,Leased Office Emissions,3.1,Francis,2026-10-30,Residuals worksheet answer.
+v7-row-7405,J000752,2024,UK Ingredients,3.1,Francis,2026-10-30,Residuals worksheet answer.

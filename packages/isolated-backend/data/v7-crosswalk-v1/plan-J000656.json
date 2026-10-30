@@ -1,0 +1,666 @@
+{
+  "jobId": "v7-job-656",
+  "crosswalkVersion": "v1",
+  "crosswalkSha256": "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2",
+  "vintageDatasetIds": [
+    "uk-ghg-gb-2025"
+  ],
+  "rows": [
+    {
+      "v7RowId": "v7-row-1842",
+      "scope": "1",
+      "sourceLabel": "Delivery Vehicles: HGV (All Diesel) Rigid (>7.5 Tonnes-17 Tonnes) Average Laden",
+      "v7Tco2e": 104.71089573,
+      "rule": "S1-VEH",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "1.company-vehicles",
+      "quantity": 173073,
+      "unit": "km",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-5_304_3116_4_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1843",
+      "scope": "1",
+      "sourceLabel": "Delivery Vehicles: Vans Average (up to 3.5 Tonnes) Diesel",
+      "v7Tco2e": 22.6496021,
+      "rule": "S1-VEH",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "1.company-vehicles",
+      "quantity": 88610,
+      "unit": "km",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-5_303_3102_4_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1844",
+      "scope": "3.1",
+      "sourceLabel": "Accommodation",
+      "v7Tco2e": 0.828073023336,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 754,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Accommodation (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.098240084,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1845",
+      "scope": "3.1",
+      "sourceLabel": "Accounting, bookkeeping and auditing activities; tax consultancy",
+      "v7Tco2e": 13.217066635422,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 13107,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Accounting, bookkeeping and auditing activities; tax consultancy (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.008397546,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1846",
+      "scope": "3.1",
+      "sourceLabel": "Activities Of Head Offices; Management Consultancy Activities",
+      "v7Tco2e": 70.46892220096,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 26045,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Activities Of Head Offices; Management Consultancy Activities (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 2.705660288,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1847",
+      "scope": "3.1",
+      "sourceLabel": "Activities Of Membership Organisations",
+      "v7Tco2e": 0.14204192620800002,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 151,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Activities Of Membership Organisations (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.940675008,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1848",
+      "scope": "3.1",
+      "sourceLabel": "Advertising And Market Research",
+      "v7Tco2e": 39.402605266893,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 20057,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Advertising And Market Research (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.964531349,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1851",
+      "scope": "3.1",
+      "sourceLabel": "Buying and selling, renting and operating of own or leased real estate, excluding imputed rent",
+      "v7Tco2e": 32.068021377864,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 65202,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Buying and selling, renting and operating of own or leased real estate, excluding imputed rent (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.491825732,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1852",
+      "scope": "3.1",
+      "sourceLabel": "Education",
+      "v7Tco2e": 1.524508681862,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 2351,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Education (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.648451162,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1853",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Bus Local Bus (Not London)",
+      "v7Tco2e": 4.80353904,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.7",
+      "quantity": 44568,
+      "unit": "passenger.km",
+      "carriedFactor": {
+        "label": "Employee Commuting: Bus Local Bus (Not London) (v7 factor)",
+        "unit": "passenger.km",
+        "kgco2ePerUnit": 0.10778,
+        "vintageYear": 2025
+      },
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1854",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Medium Car Petrol (1401-2000cc)",
+      "v7Tco2e": 28.070706000000005,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.7",
+      "quantity": 151980,
+      "unit": "km",
+      "carriedFactor": {
+        "label": "Employee Commuting: Medium Car Petrol (1401-2000cc) (v7 factor)",
+        "unit": "km",
+        "kgco2ePerUnit": 0.1847,
+        "vintageYear": 2025
+      },
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1856",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Small Car Petrol (<1400cc)",
+      "v7Tco2e": 9.406584,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.7",
+      "quantity": 64200,
+      "unit": "km",
+      "carriedFactor": {
+        "label": "Employee Commuting: Small Car Petrol (<1400cc) (v7 factor)",
+        "unit": "km",
+        "kgco2ePerUnit": 0.14652,
+        "vintageYear": 2025
+      },
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1857",
+      "scope": "3.1",
+      "sourceLabel": "Financial Service Activities, Except Insurance And Pension Funding",
+      "v7Tco2e": 0.78066856158,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 2748,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Financial Service Activities, Except Insurance And Pension Funding (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.284086085,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1858",
+      "scope": "3.1",
+      "sourceLabel": "Insurance and reinsurance, except compulsory social security & Pension funding",
+      "v7Tco2e": 1.8366076753290002,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 7989,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Insurance and reinsurance, except compulsory social security & Pension funding (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.229892061,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1859",
+      "scope": "3.6",
+      "sourceLabel": "Land transport services and transport services via pipelines, excluding rail transport",
+      "v7Tco2e": 142.616827793616,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.6",
+      "quantity": 83829,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Land transport services and transport services via pipelines, excluding rail transport (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.701282704,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1860",
+      "scope": "3.1",
+      "sourceLabel": "Manufacture Of Wearing Apparel",
+      "v7Tco2e": 0.367388924643,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 711,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Manufacture Of Wearing Apparel (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.516721413,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1862",
+      "scope": "3.1",
+      "sourceLabel": "Postal And Courier Activities",
+      "v7Tco2e": 1.861034840042,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 1358,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Postal And Courier Activities (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.370423299,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1863",
+      "scope": "3.1",
+      "sourceLabel": "Rental And Leasing Activities",
+      "v7Tco2e": 0.8371408125119999,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 412,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Rental And Leasing Activities (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 2.031895176,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1864",
+      "scope": "3.1",
+      "sourceLabel": "Repair Of Computers And Personal And Household Goods",
+      "v7Tco2e": 0.18002459486900002,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 263,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Repair Of Computers And Personal And Household Goods (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.684504163,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1865",
+      "scope": "3.1",
+      "sourceLabel": "Rest of Repair; Installation: 33.11-14/17/19/20",
+      "v7Tco2e": 10.506597621400001,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 10744,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Rest of Repair; Installation: 33.11-14/17/19/20 (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.977903725,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1866",
+      "scope": "3.1",
+      "sourceLabel": "Services To Buildings And Landscape Activities",
+      "v7Tco2e": 4.3032199502760005,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 2309,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Services To Buildings And Landscape Activities (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.863672564,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1867",
+      "scope": "3.1",
+      "sourceLabel": "Telecommunications",
+      "v7Tco2e": 33.53318221504,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 18770,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Telecommunications (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.786530752,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1868",
+      "scope": "3.1",
+      "sourceLabel": "Warehousing And Support Activities For Transportation",
+      "v7Tco2e": 2.286952885134,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 1581,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Warehousing And Support Activities For Transportation (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.446523014,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1869",
+      "scope": "3.1",
+      "sourceLabel": "Wholesale And Retail Trade And Repair Of Motor Vehicles And Motorcycles",
+      "v7Tco2e": 44.210514138648,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 32708,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Wholesale And Retail Trade And Repair Of Motor Vehicles And Motorcycles (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.351672806,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1873",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Small Car Petrol (<1400cc)",
+      "v7Tco2e": 0,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 0,
+      "unit": "km",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_301_3046_4_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1874",
+      "scope": "3.1",
+      "sourceLabel": "Computer Programming, Consultancy And Related Activities",
+      "v7Tco2e": 6.616310198022,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 13902,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Computer Programming, Consultancy And Related Activities (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.475925061,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1877",
+      "scope": "3.2",
+      "sourceLabel": "Manufacture Of Computer, Electronic And Optical Products",
+      "v7Tco2e": 0.160206717593,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.2",
+      "quantity": 197,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Manufacture Of Computer, Electronic And Optical Products (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 0.813232069,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1879",
+      "scope": "3.5",
+      "sourceLabel": "Waste Disposal: Refuse Household Residual Waste Incineration with Energy Recovery",
+      "v7Tco2e": 0,
+      "rule": "S3-5",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.5",
+      "quantity": 0,
+      "unit": "tonnes",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-20_507_5283_15_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1881",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Air Flights International, to/from Non-UK Economy Class",
+      "v7Tco2e": 34.32951008,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 314488,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-21_316_3180_11_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1882",
+      "scope": "3.1",
+      "sourceLabel": "Office Administrative, Office Support And Other Business Support Activities",
+      "v7Tco2e": 48.518562177854996,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 30483,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Office Administrative, Office Support And Other Business Support Activities (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.591659685,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1883",
+      "scope": "3.6",
+      "sourceLabel": "Business Travel: Air Flights International, to/from Non-UK Business Class",
+      "v7Tco2e": 9.2023992,
+      "rule": "S3-6",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.6",
+      "quantity": 29070,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-21_316_3184_11_1",
+      "qualityTier": "measured"
+    },
+    {
+      "v7RowId": "v7-row-1884",
+      "scope": "3.1",
+      "sourceLabel": "Other Professional, Scientific And Technical Activities",
+      "v7Tco2e": 3.651685311953,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 1393,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Other Professional, Scientific And Technical Activities (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 2.621453921,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1885",
+      "scope": "3.1",
+      "sourceLabel": "Food And Beverage Service Activities",
+      "v7Tco2e": 0.73996214224,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 685,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Food And Beverage Service Activities (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 1.080236704,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1886",
+      "scope": "3.1",
+      "sourceLabel": "Water Collection, Treatment And Supply",
+      "v7Tco2e": 2.99525883462,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.1",
+      "quantity": 234,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Water Collection, Treatment And Supply (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 12.80025143,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1887",
+      "scope": "3.3",
+      "sourceLabel": "Electric power generation, transmission and distribution",
+      "v7Tco2e": 52.0115331024,
+      "rule": "NOFACTOR",
+      "applyPct": 100,
+      "disposition": "CARRY-V7-FACTOR",
+      "categoryCode": "3.3",
+      "quantity": 2108,
+      "unit": "GBP",
+      "carriedFactor": {
+        "label": "Electric power generation, transmission and distribution (v7 factor)",
+        "unit": "GBP",
+        "kgco2ePerUnit": 24.6734028,
+        "vintageYear": 2025
+      },
+      "qualityTier": "spend-based"
+    },
+    {
+      "v7RowId": "v7-row-1889",
+      "scope": "3.7",
+      "sourceLabel": "Employee Commuting: Rail Light Rail and Tram",
+      "v7Tco2e": 0.2086656,
+      "rule": "S3-7",
+      "applyPct": 100,
+      "disposition": "RE-INGEST",
+      "categoryCode": "3.7",
+      "quantity": 7296,
+      "unit": "passenger.km",
+      "datasetId": "uk-ghg-gb-2025",
+      "factorId": "uk-ghg-25_315_3149_11_1",
+      "qualityTier": "measured"
+    }
+  ]
+}
