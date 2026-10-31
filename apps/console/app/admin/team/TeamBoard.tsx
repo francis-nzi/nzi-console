@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import { PAGE_SIZES, ROLE_CAPABILITY_MATRIX, roleLabels, staffListSpec, staffRoles, todayInLondon, type StaffListQuery, type StaffRole } from "@nzi/contracts";
 import type { StaffHistoryEntry, StaffInviteEmail, StaffPage, StaffPickers, StaffRates, StaffRow, StaffSignIn } from "@nzi/isolated-backend";
-import { AuditLine, CapabilityChip, DataList, DrawerEditor, FieldRow, NumberField, ProvenanceBadge, SelectField, TextAreaField, TextField, type DataListColumn } from "@nzi/ui";
+import { AuditLine, CapabilityChip, DataList, DrawerEditor, FieldRow, NumberField, SelectField, TextAreaField, TextField, type DataListColumn } from "@nzi/ui";
 import { formatDate, formatDateTime } from "../../lib/formatDate";
 import { useListNavigation } from "../../lib/useListNavigation";
 
@@ -91,7 +91,6 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
           ? <button type="button" className="nz-a-linkish" disabled={inviting !== null} onClick={(event) => { event.stopPropagation(); void sendInvite(row, "link"); }}>Issue a link to copy</button> : null}
       </div> : null}
     </div> },
-    { key: "source", header: "Source", cell: (row) => <ProvenanceBadge provenance={row.provenance} /> },
     { key: "status", header: "Status", sortKey: "status", cell: (row) => <span className={`nz-a-badge ${row.status === "active" ? "ok" : "off"}`}><i aria-hidden="true" />{STATUS_LABEL[row.status]}</span> },
   ];
   const statusCount = (value: string) => page.filterOptions.status.find((option) => option.value === value)?.count ?? 0;
@@ -101,7 +100,6 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
       <div>
         <div className="nz-a-eyebrow">Foundation</div>
         <h1>Team & access</h1>
-        <p>The people who sign in to the console, their positions and their roles. Roles resolve against permission matrix v{pickers.matrixVersion ?? "—"}. People are deactivated, never deleted, and stay named on everything they touched.</p>
       </div>
       <div className="nz-a-head-actions">
         <CapabilityChip capability="admin.users" />
