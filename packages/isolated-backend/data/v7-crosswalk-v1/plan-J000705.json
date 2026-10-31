@@ -67,7 +67,7 @@
       "quantity": 10,
       "unit": "litres",
       "datasetId": "uk-ghg-gb-2021",
-      "factorId": "uk-ghg-1_101_1017_8_1-vcp",
+      "factorId": "uk-ghg-1_101_1017_8_1",
       "qualityTier": "measured"
     },
     {
@@ -82,7 +82,7 @@
       "quantity": 26919.96,
       "unit": "litres",
       "datasetId": "uk-ghg-gb-2021",
-      "factorId": "uk-ghg-1_101_1011_8_1-vvd",
+      "factorId": "uk-ghg-1_101_1011_8_1",
       "qualityTier": "measured"
     },
     {
@@ -217,7 +217,7 @@
       "quantity": 68298.96,
       "unit": "miles",
       "datasetId": "uk-ghg-gb-2021",
-      "factorId": "uk-ghg-25_301_3074_9_1-c",
+      "factorId": "uk-ghg-25_301_3074_9_1",
       "qualityTier": "measured"
     },
     {
