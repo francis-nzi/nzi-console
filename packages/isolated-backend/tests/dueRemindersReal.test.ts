@@ -31,7 +31,7 @@ const CLIENT = "client-a3";
 const TODAY = "2026-11-02";
 const ORIGIN = "https://console.example.test";
 const KEYED = { NZI_DATABASE_BOUNDARY: "isolated-non-production", NEXT_PUBLIC_APP_ENV: "staging", RESEND_API_KEY: "re_test_0123456789abcdef", EMAIL_FROM: "Net Zero International <no-reply@netzero.international>" };
-const ENV = { appEnv: "staging", boundaryToken: "isolated-non-production" };
+const ENV = {};
 let keys = 0;
 const context = (): CommandContext => {
   keys += 1;

@@ -42,6 +42,8 @@ function recordingMailer(): Mailer & { sent: MailMessage[]; failNext: (times: nu
   };
 }
 
+const SEND_ENV = { mailMode: "send", smtp: { SMTP_HOST: "smtp.example.com", SMTP_USER: "u", SMTP_PASS: "p", SMTP_FROM: "f@example.com" } };
+
 describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let client: pg.Client;
 
@@ -132,7 +134,7 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
     await resetQueues();
     await addStrategy("s-overdue", "2026-09-01");
     const mailer = recordingMailer();
-    const env = { appEnv: "production", boundaryToken: "live", mailMode: "send" };
+    const env = SEND_ENV;
 
     const first = await runReminderTick(client as never, { organisationId: ORG, today: TODAY, mailer, env });
     assert.equal(first.sent, 1, "the first tick sends");
@@ -151,7 +153,7 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
     await addStrategy("s-consent", "2026-09-02");
     const mailer = recordingMailer();
     await runReminderTick(client as never, {
-      organisationId: ORG, today: TODAY, mailer, env: { appEnv: "production", boundaryToken: "live", mailMode: "send" },
+      organisationId: ORG, today: TODAY, mailer, env: SEND_ENV,
     });
     assert.deepEqual(mailer.sent.map((message) => message.to), ["dana@example.com"]);
   });
@@ -181,7 +183,7 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
     await resetQueues();
     await addStrategy("s-flaky", "2026-09-03");
     const mailer = recordingMailer();
-    const env = { appEnv: "production", boundaryToken: "live", mailMode: "send" };
+    const env = SEND_ENV;
     mailer.failNext(1);
 
     const first = await runReminderTick(client as never, { organisationId: ORG, today: TODAY, mailer, env });
@@ -224,7 +226,7 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
     await addStrategy("s-undated", null);
     const mailer = recordingMailer();
     const result = await runReminderTick(client as never, {
-      organisationId: ORG, today: TODAY, mailer, env: { appEnv: "production", boundaryToken: "live", mailMode: "send" },
+      organisationId: ORG, today: TODAY, mailer, env: SEND_ENV,
     });
     const { rows } = await client.query<{ count: string }>(
       `SELECT count(*)::text FROM nzi_console.strategy_automation_log WHERE client_strategy_id='s-undated'`);
@@ -233,7 +235,7 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
   });
 
   it("records a suppressed send in full rather than skipping the work", async () => {
-    // On the isolated boundary the message is still composed and logged; only the delivery
+    // With the switch off the message is still composed and logged; only the delivery
     // is withheld. "We would have sent this" is a claim worth being able to inspect.
     await resetQueues();
     await addStrategy("s-staging", "2026-09-05");
@@ -241,7 +243,7 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
     const result = await runReminderTick(client as never, {
       organisationId: ORG, today: TODAY,
       mailer: suppressingMailer((message) => seen.push(message)),
-      env: { boundaryToken: "isolated-non-production", appEnv: "production", mailMode: "send" },
+      env: { mailMode: undefined, smtp: SEND_ENV.smtp },
     });
     assert.equal(result.suppressed, 1);
     assert.equal(result.sent, 0, "nothing went on the wire");
@@ -269,7 +271,7 @@ describe("strategy deadline reminders", { skip: DATABASE_URL ? false : "NZI_TEST
   });
 
   it("words a reminder in the organisation's own template when one is active, and in the built-in wording otherwise (admin F1)", async () => {
-    const env = { appEnv: "production", boundaryToken: "live", mailMode: "send" };
+    const env = SEND_ENV;
     await client.query(
       `INSERT INTO nzi_console.message_templates (organisation_id, template_key, subject, body, created_by, updated_by)
        VALUES ($1, 'strategy.reminder.overdue', 'Overdue: {{strategyTitle}}', 'Dear {{firstName}}, {{clientName}} passed {{targetDate}}.{{ownerLine}}', 'tester', 'tester')`, [ORG]);

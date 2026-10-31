@@ -18,7 +18,7 @@ import { runReminderTick, runWorkerTick } from "../src/strategyReminderWorker";
 const ORG = "tick-org";
 const TODAY = "2026-10-26";
 const KEYED = { NZI_DATABASE_BOUNDARY: "isolated-non-production", NEXT_PUBLIC_APP_ENV: "staging", RESEND_API_KEY: "re_test_0123456789abcdef", EMAIL_FROM: "Net Zero International <no-reply@netzero.international>" };
-const ENV = { appEnv: "staging", boundaryToken: "isolated-non-production" };
+const ENV = {};
 // Every table the tick touches, with what it does there (0183 asserts the same set at deploy).
 const TICK_TABLES: Array<[string, string]> = [
   ["clients", "SELECT"], ["client_strategies", "SELECT"], ["reduction_strategies", "SELECT"], ["strategy_levers", "SELECT"],

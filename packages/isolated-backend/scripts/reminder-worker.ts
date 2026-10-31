@@ -52,11 +52,7 @@ async function main() {
   const organisationId = process.env.NZI_DEMO_ORGANISATION_ID?.trim();
   if (!organisationId) throw new Error("NZI_DEMO_ORGANISATION_ID is required.");
 
-  const delivery = mailDelivery({
-    mailMode: process.env.NZI_MAIL_MODE,
-    appEnv: process.env.NEXT_PUBLIC_APP_ENV,
-    boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
-  });
+  const delivery = mailDelivery({ mailMode: process.env.NZI_MAIL_MODE, smtp: process.env });
   const { mailer, transport } = buildMailer(delivery);
   const email = emailDispatchFromEnv(process.env);
   log("worker.started", {
@@ -78,11 +74,7 @@ async function main() {
       // Email and reminders in their own transactions, email first: a reminder-side failure is reported, never fatal to email.
       // A3's due-date reminders link to the portal at the console's own address — the same variable the console uses.
       const { emails, dueReminders, reminders } = await runWorkerTick(pool, { organisationId, today: londonToday(), mailer, email,
-        consoleOrigin: process.env.NZI_ISOLATED_API_URL, env: {
-          mailMode: process.env.NZI_MAIL_MODE,
-          appEnv: process.env.NEXT_PUBLIC_APP_ENV,
-          boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
-        } });
+        consoleOrigin: process.env.NZI_ISOLATED_API_URL, env: { mailMode: process.env.NZI_MAIL_MODE, smtp: process.env } });
       // Counts only: no address, name or action title reaches the log.
       log("tick.complete", {
         emails: emails.ok ? emails.summary : { failed: emails.error },

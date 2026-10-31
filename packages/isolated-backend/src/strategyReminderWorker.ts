@@ -413,9 +413,7 @@ export async function runWorkerTick(pool: PoolLike, input: {
   windowDays?: number;
   limit?: number;
 }): Promise<WorkerTickSummary> {
-  const delivery = mailDelivery(input.env ?? {
-    mailMode: process.env.NZI_MAIL_MODE, appEnv: process.env.NEXT_PUBLIC_APP_ENV, boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
-  });
+  const delivery = mailDelivery(input.env ?? { mailMode: process.env.NZI_MAIL_MODE, smtp: process.env });
   const drained = await partOf(() => withTenantWorker(pool, input.organisationId, (db) => drainOutbox(db, {
     organisationId: input.organisationId, today: input.today, mailer: input.mailer, delivery,
     email: input.email, only: "email", limit: input.limit,
@@ -449,11 +447,7 @@ export async function runReminderTick(db: Queryable, input: {
   windowDays?: number;
   limit?: number;
 }): Promise<ReminderRunSummary> {
-  const delivery = mailDelivery(input.env ?? {
-    mailMode: process.env.NZI_MAIL_MODE,
-    appEnv: process.env.NEXT_PUBLIC_APP_ENV,
-    boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
-  });
+  const delivery = mailDelivery(input.env ?? { mailMode: process.env.NZI_MAIL_MODE, smtp: process.env });
   let scanned = 0, claimed = 0;
   for (const clientId of await clientsWithPlans(db)) {
     const result = await scanClientReminders(db, {

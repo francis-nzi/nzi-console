@@ -115,14 +115,19 @@ services:
   # deadline reminders. A separate service because a tick driven by web traffic fires
   # whenever someone happens to be looking, which is neither a schedule nor idempotent.
   #
-  # ON THIS SERVICE IT SENDS NO REMINDER. NZI_DATABASE_BOUNDARY=isolated-non-production makes
-  # mailDelivery() return "suppress" before either of the other two conditions is read, so
-  # the worker composes each reminder, records it in strategy_automation_log, and logs the
-  # mail it would have sent. That is the isolation rule, not a limitation to work around:
-  # staging must never email a real client.
+  # AS COMMITTED IT SENDS NO REMINDER. mailDelivery() suppresses unless NZI_MAIL_MODE is exactly
+  # "send", so the worker composes each reminder, records it in strategy_automation_log, and
+  # logs the mail it would have sent. It no longer reads NZI_DATABASE_BOUNDARY or
+  # NEXT_PUBLIC_APP_ENV: those say which database this service may touch, not whether it may mail.
   #
-  # Real sending needs a non-isolated boundary AND NEXT_PUBLIC_APP_ENV=production AND
-  # NZI_MAIL_MODE=send. All three, and the default of every one of them is silence.
+  # Real sending needs NZI_MAIL_MODE=send AND a complete SMTP configuration (SMTP_HOST, SMTP_USER,
+  # SMTP_PASS, SMTP_FROM; SMTP_PORT optional). With the switch on and any of those missing the
+  # worker fails loudly at start rather than suppressing or half-sending. Both are dashboard
+  # values; the default of each is silence.
+  #
+  # THE BLAST RADIUS OF SWITCHING IT ON: overdue-strategy reminders go to client contacts whose
+  # email_consent is 'granted' (real people, real database). If NZI_MAIL_MODE is in an env group
+  # shared with the console, this worker is switched on by the same edit.
   #
   # Queued email (`email.send`, email programme phase 1) is drained here too, over Resend.
   # With RESEND_API_KEY unset every send is recorded as stubbed and nothing leaves. With it

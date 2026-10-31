@@ -7,14 +7,19 @@
  *     the SMTP implementation is a thin edge rather than something woven through the logic.
  *   * `mailDelivery` — the decision about whether real mail may leave this process at all.
  *
- * The gate **fails closed, twice over**. Sending requires an explicit opt-in *and* an
- * environment that is not the isolated one. Either alone is not enough: an opt-in set by
- * mistake on staging must not reach a real client, and a production-looking environment
- * without a deliberate switch should still stay quiet until someone turns it on.
+ * The gate **fails closed, twice over**, and both conditions are about mail itself:
  *
- * This repository's services are configured with `NZI_DATABASE_BOUNDARY=isolated-non-production`
- * (see `validateDatabaseBoundary`), so as deployed here the answer is always "suppress".
- * That is the intended state, not a limitation to work around.
+ *   1. `NZI_MAIL_MODE` is exactly `send` — the deliberate switch. Anything else suppresses.
+ *   2. The SMTP configuration is complete. With the switch on and a variable missing,
+ *      `mailDelivery` **throws** (`SmtpConfigurationError`, naming the variable, never a value)
+ *      rather than suppressing: a switch someone turned on that quietly does nothing is the
+ *      failure mode this is here to prevent, and it must never fall through to "send" half-configured.
+ *
+ * Mail does not read the database-isolation token (`NZI_DATABASE_BOUNDARY`) or `NEXT_PUBLIC_APP_ENV`.
+ * Those describe which database a service may touch (`validateDatabaseBoundary`), not whether it may
+ * send an email; coupling them meant the staging console, whose database is the live organisation's,
+ * could never mail anyone. Turning `NZI_MAIL_MODE` on is therefore the whole decision, made per service
+ * in the host's environment — and it applies to everything that sends through the SMTP `Mailer`.
  */
 
 export type MailMessage = {
@@ -35,24 +40,17 @@ export type MailDelivery =
 export type MailEnvironment = {
   /** `NZI_MAIL_MODE` — the deliberate switch. Only the exact string "send" opts in. */
   mailMode?: string;
-  /** `NEXT_PUBLIC_APP_ENV` — the environment's own account of itself. */
-  appEnv?: string;
-  /** `NZI_DATABASE_BOUNDARY` — the isolation token this repo's services carry. */
-  boundaryToken?: string;
+  /** The SMTP variables (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_TLS`), normally `process.env`. */
+  smtp?: Record<string, string | undefined>;
 };
 
+/** Suppress unless the switch is on; with it on, throw unless the SMTP configuration is complete. */
 export function mailDelivery(env: MailEnvironment): MailDelivery {
-  // Checked first and reported first: it is the isolation rule, and it is the reason this
-  // service can never mail a real client however the other two are set.
-  if (env.boundaryToken === "isolated-non-production") {
-    return { mode: "suppress", reason: "This service runs against the isolated non-production boundary." };
-  }
-  if (env.appEnv !== "production") {
-    return { mode: "suppress", reason: `NEXT_PUBLIC_APP_ENV is ${env.appEnv ?? "unset"}, not production.` };
-  }
   if (env.mailMode !== "send") {
     return { mode: "suppress", reason: "NZI_MAIL_MODE is not set to send." };
   }
+  // Throws when incomplete. Deliberately not a suppress: see the module comment.
+  smtpSettingsFrom(env.smtp ?? {});
   return { mode: "send" };
 }
 
@@ -97,7 +95,7 @@ export function smtpSettingsFrom(env: Record<string, string | undefined>): SmtpS
 
 /**
  * A mailer that records instead of sending. Used wherever `mailDelivery` says suppress —
- * which, in this repository's deployments, is everywhere.
+ * that is, wherever `NZI_MAIL_MODE` is not `send`.
  *
  * It is a real implementation rather than a no-op: the message is composed in full and
  * handed back, so a suppressed run produces the same audit trail as a real one minus the

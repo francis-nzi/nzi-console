@@ -3,37 +3,43 @@ import { describe, it } from "node:test";
 import { mailDelivery, smtpSettingsFrom, SmtpConfigurationError } from "../src/mailer";
 
 /**
- * The gate in front of the wire. Every case here is the isolation rule: this repository's
- * services must never email a real client.
+ * The gate in front of the wire. Two conditions, both about mail: the deliberate switch, and a complete SMTP
+ * configuration. It reads neither the database-isolation token nor the app environment.
  */
 describe("whether mail may leave the building", () => {
-  const live = { boundaryToken: "live", appEnv: "production", mailMode: "send" };
+  const smtp = { SMTP_HOST: "smtp.example.com", SMTP_USER: "u", SMTP_PASS: "p", SMTP_FROM: "f@example.com" };
+  const on = { mailMode: "send", smtp };
 
-  it("sends only when all three say so", () => {
-    assert.equal(mailDelivery(live).mode, "send");
+  it("sends when the switch is on and the SMTP configuration is complete", () => {
+    assert.equal(mailDelivery(on).mode, "send");
   });
 
-  it("suppresses on the isolated boundary whatever else is set", () => {
-    // The isolation rule, and the reason this service cannot mail a real client however
-    // the other two are configured.
-    const result = mailDelivery({ ...live, boundaryToken: "isolated-non-production" });
-    assert.equal(result.mode, "suppress");
-    assert.match(result.mode === "suppress" ? result.reason : "", /isolated non-production/);
+  it("does not read the database boundary or the app environment: a staging, isolated-boundary service sends once switched on", () => {
+    const env = { ...smtp, NZI_DATABASE_BOUNDARY: "isolated-non-production", NEXT_PUBLIC_APP_ENV: "staging" };
+    assert.equal(mailDelivery({ mailMode: "send", smtp: env }).mode, "send");
+    assert.equal(mailDelivery({ mailMode: "send", ...{ boundaryToken: "isolated-non-production", appEnv: "staging" }, smtp } as never).mode, "send", "a stray boundary or env field changes nothing");
   });
 
-  it("suppresses outside production even with the switch on", () => {
-    assert.equal(mailDelivery({ ...live, boundaryToken: "live", appEnv: "staging" }).mode, "suppress");
-  });
-
-  it("suppresses in production until the switch is deliberately set", () => {
-    // A production-looking environment without an explicit opt-in stays quiet.
-    assert.equal(mailDelivery({ ...live, mailMode: undefined }).mode, "suppress");
-    assert.equal(mailDelivery({ ...live, mailMode: "true" }).mode, "suppress", "only the exact string opts in");
+  it("suppresses until the switch is deliberately set, whatever the SMTP configuration", () => {
+    assert.equal(mailDelivery({ smtp }).mode, "suppress");
+    assert.equal(mailDelivery({ mailMode: "true", smtp }).mode, "suppress", "only the exact string opts in");
+    assert.equal(mailDelivery({ mailMode: "SEND", smtp }).mode, "suppress");
+    const result = mailDelivery({ smtp });
+    assert.match(result.mode === "suppress" ? result.reason : "", /NZI_MAIL_MODE/);
   });
 
   it("suppresses when it is told nothing at all", () => {
     // The default has to be silence: an unconfigured worker must not discover a way to send.
     assert.equal(mailDelivery({}).mode, "suppress");
+  });
+
+  it("with the switch on, an incomplete SMTP configuration fails loudly — it neither sends nor quietly suppresses", () => {
+    for (const missing of ["SMTP_HOST", "SMTP_USER", "SMTP_PASS", "SMTP_FROM"]) {
+      assert.throws(() => mailDelivery({ mailMode: "send", smtp: { ...smtp, [missing]: "" } }), (error: unknown) =>
+        error instanceof SmtpConfigurationError && error.message.includes(missing) && !error.message.includes("smtp.example.com"), missing);
+    }
+    assert.throws(() => mailDelivery({ mailMode: "send" }), SmtpConfigurationError, "no SMTP variables at all");
+    assert.throws(() => mailDelivery({ mailMode: "send", smtp: { ...smtp, SMTP_PORT: "nope" } }), SmtpConfigurationError);
   });
 });
 

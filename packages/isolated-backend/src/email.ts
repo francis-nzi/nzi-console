@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { mailDelivery } from "./mailer";
 import type { Queryable } from "./postgres";
 
 /**
@@ -21,7 +20,7 @@ import type { Queryable } from "./postgres";
  * ## Who it may reach (R3, and the isolation rule)
  *
  * With no `RESEND_API_KEY` every send is `stubbed`: recorded in full, never on the wire, like the DVLA lookup's stub. With a
- * key, the existing mail gate (`mailDelivery`) still decides. On the isolated non-production boundary — which every service
+ * key, the mail switch (`NZI_MAIL_MODE=send`) still decides. On the isolated non-production boundary — which every service
  * in this repository runs on, against a database holding the live organisation's real contacts — it does not open the gate:
  * it narrows it to {@link ISOLATED_RECIPIENT_DOMAINS}, so the test send can be proved without staging ever being able to
  * write to a client. Any other recipient there is `stubbed`, with the reason recorded.
@@ -216,10 +215,11 @@ export function emailDispatchFromEnv(env: Record<string, string | undefined>, fe
   if (env.NZI_DATABASE_BOUNDARY === "isolated-non-production") {
     return { gate: { mode: "isolated", domains: ISOLATED_RECIPIENT_DOMAINS }, transport, defaultFrom };
   }
-  const delivery = mailDelivery({ mailMode: env.NZI_MAIL_MODE, appEnv: env.NEXT_PUBLIC_APP_ENV, boundaryToken: env.NZI_DATABASE_BOUNDARY });
-  return delivery.mode === "send"
+  // Off the isolated boundary the switch decides. The SMTP completeness half of `mailDelivery` does not apply: this pipe is
+  // Resend, whose own completeness (key and sender) was checked above.
+  return env.NZI_MAIL_MODE === "send"
     ? { gate: { mode: "live" }, transport, defaultFrom }
-    : { gate: { mode: "stub", reason: delivery.reason }, transport: null, defaultFrom };
+    : { gate: { mode: "stub", reason: "NZI_MAIL_MODE is not set to send." }, transport: null, defaultFrom };
 }
 
 /** Why this recipient is not sent to, or null when it is. */

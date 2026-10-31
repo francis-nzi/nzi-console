@@ -118,11 +118,11 @@ describe("email: the gate", () => {
     assert.deepEqual(ISOLATED_RECIPIENT_DOMAINS, ["netzero.international"]);
   });
 
-  it("off the isolated boundary, a key alone is not enough: the existing mail gate still decides", () => {
+  it("off the isolated boundary, a key alone is not enough: the mail switch still decides", () => {
     const keyed = { RESEND_API_KEY: KEY, EMAIL_FROM: "no-reply@netzero.international" };
     assert.equal(emailDispatchFromEnv({ ...keyed, NEXT_PUBLIC_APP_ENV: "staging" }).gate.mode, "stub");
     assert.equal(emailDispatchFromEnv({ ...keyed, NEXT_PUBLIC_APP_ENV: "production" }).gate.mode, "stub");
-    assert.deepEqual(emailDispatchFromEnv({ ...keyed, NEXT_PUBLIC_APP_ENV: "production", NZI_MAIL_MODE: "send" }).gate, { mode: "live" });
+    assert.deepEqual(emailDispatchFromEnv({ ...keyed, NEXT_PUBLIC_APP_ENV: "staging", NZI_MAIL_MODE: "send" }).gate, { mode: "live" }, "the app environment is not part of the decision");
     assert.equal(stubReasonFor({ mode: "live" }, "anyone@client.example"), null);
   });
 });

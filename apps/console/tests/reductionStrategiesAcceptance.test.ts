@@ -411,12 +411,15 @@ describe("strategy deadline email", () => {
     assert.match(migration, /CHECK \(state IN \('pending','processing','sent','skipped','failed'\)\)/);
   });
 
-  it("fails closed on three independent conditions", () => {
-    assert.match(mailer, /boundaryToken === "isolated-non-production"/);
-    assert.match(mailer, /appEnv !== "production"/);
+  it("fails closed on two conditions, both about mail: the switch, then a complete SMTP configuration", () => {
     assert.match(mailer, /mailMode !== "send"/);
-    // The boundary is read first, so nothing else can override the isolation rule.
-    assert.ok(mailer.indexOf("isolated-non-production") < mailer.indexOf('appEnv !== "production"'));
+    assert.match(mailer, /smtpSettingsFrom\(env\.smtp \?\? \{\}\)/);
+    // The gate no longer reads the database-isolation token or the app environment (that is validateDatabaseBoundary's job).
+    const gate = /export function mailDelivery[\s\S]*?\n\}\n/.exec(mailer)?.[0] ?? "";
+    assert.ok(gate.length > 0, "the gate is found");
+    assert.doesNotMatch(gate, /boundaryToken|appEnv|isolated-non-production/);
+    // The switch is read first, so a missing SMTP variable can never be reached without it being deliberately on.
+    assert.ok(gate.indexOf("mailMode") < gate.indexOf("smtpSettingsFrom"));
   });
 
   it("never writes a secret down", () => {

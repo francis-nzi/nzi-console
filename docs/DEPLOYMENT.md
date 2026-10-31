@@ -137,20 +137,21 @@ client's device clock cannot decide whether their own plan is late.
 A second Render service, `nzi-console-reminders` (`type: worker`), drains
 `nzi_console.transactional_outbox` on a clock and sends deadline reminders.
 
-### This service sends nothing, by design
+### This service sends nothing until the mail switch is turned on
 
-`mailDelivery()` requires **all three** of the following, and the default of every one of them is
-silence:
+`mailDelivery()` requires **both** of the following, and the default of each is silence:
 
-| Condition | On `nzi-console-reminders` | Effect |
+| Condition | As committed | Effect |
 |---|---|---|
-| `NZI_DATABASE_BOUNDARY` ≠ `isolated-non-production` | it **is** isolated | suppress |
-| `NEXT_PUBLIC_APP_ENV` = `production` | `staging` | suppress |
 | `NZI_MAIL_MODE` = `send` (exact string) | unset | suppress |
+| SMTP configuration complete (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) | dashboard values | with the switch on, a missing one **throws** (names the variable, never a value) |
 
-The boundary token is checked first, so **no combination of the other two can make this service email
-a real client**. `NZI_MAIL_MODE` is deliberately absent from `render.yaml` rather than set to a false-y
-value: adding it is the single edit that could put mail on the wire, and it must never be made here.
+Mail no longer reads `NZI_DATABASE_BOUNDARY` or `NEXT_PUBLIC_APP_ENV`: they say which database a service may
+touch (`validateDatabaseBoundary`, unchanged), not whether it may email. `NZI_MAIL_MODE` is deliberately absent
+from `render.yaml` rather than set to a false-y value: adding it is the single edit that puts SMTP mail on the wire,
+and it is a dashboard edit. **If it sits in an env group shared by `nzi-console` and `nzi-console-reminders`, it
+switches on both, including the strategy-reminder worker, which mails client contacts with `email_consent = granted`.**
+The Resend pipe (`email.send`) is separate: on the isolated boundary it still narrows to `@netzero.international`.
 
 Suppressed is a *successful* outcome, not a skipped one: the message is composed in full, written to
 `strategy_automation_log` with `state='suppressed'`, and logged. "We would have sent this" stays
@@ -398,8 +399,8 @@ authenticator secret — not the operator, not the database in the clear.
 **From the console, once there is an admin (matrix v8).** Everyone after the first is invited from **Platform & audit →
 Access → Invite a member of the team**, which needs `staff.invite` — held by the Admin role alone. It issues through the
 same path as the command above (same token, same `staff.enrolment.issue` event, attributed to the admin), so every
-property holds. While mail is suppressed the admin is shown the link once, to deliver privately; once the service may
-send mail, the link goes straight to the member's work address and the admin sees only that it was sent.
+property holds. The invitation is queued as email to the member's work address and the admin sees only that it was sent; the one-time link
+is the fallback the admin asks for when that email was stubbed or failed.
 
 **The first admin — once per organisation.** The roster makes everyone a Viewer, so the first person is enrolled with
 the command above and then made Admin, in the Render Shell:
@@ -416,8 +417,7 @@ can sign in (ruled Q9): it runs the same `staff.role.assign` command as the cons
 organisation's last active admin, and the same audit event — as the `system` principal, with `--actor` recorded as
 `operator:<name>`. The database refuses the last-admin change too (0141's deferred trigger), whatever path attempts it.
 
-The link carries its token in the URL fragment, so it never reaches a server log. Mail is suppressed on this service by
-design (see *This service sends nothing*), which is why the operator delivers the link. Someone with Render Shell
+The link carries its token in the URL fragment, so it never reaches a server log. Where mail is not switched on (see *This service sends nothing until the mail switch is turned on*), the operator delivers the link. Someone with Render Shell
 access could use a link they issued — but that person already holds the database, and the audit trail and the
 single-use link make it visible: the real person's link would no longer work.
 
