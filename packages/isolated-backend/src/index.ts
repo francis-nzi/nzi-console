@@ -132,6 +132,8 @@ export * from "./reingestAttest";
 export * from "./v7ReingestBook";
 export * from "./v7BatchAttest";
 export * from "./v7StrayRepoint";
+export * from "./v7Desnz2019";
+export * from "./v7Desnz2019Apply";
 export * from "./clientIntensityTargets";
 export * from "./clientReportingTemplates";
 export * from "./masterTemplates";

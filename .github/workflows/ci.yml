@@ -786,6 +786,10 @@ jobs:
       # re-ingest's principal and re-attested by the person; the unused 2019 selection goes; flagged/missing/overridden/issued stop the job.
       - name: The stray 2019 rows are re-pointed to their reporting year, recalculated and re-attested
         run: npx tsx --test packages/isolated-backend/tests/v7StrayRepointReal.test.ts
+      # RULING-v7-2019-dataset-replace: the real DESNZ 2019 values corrected in place on the existing ids (composite-key join, the three named rules, no guessing),
+      # the rows on a changed factor recalculated and re-attested; a commit needs the signed plan sha and the reviewed flagged-set hash; other consumers / issued figures refuse.
+      - name: The DESNZ 2019 dataset correction plans, applies, recalculates and re-attests
+        run: npx tsx --test packages/isolated-backend/tests/v7Desnz2019.test.ts packages/isolated-backend/tests/v7Desnz2019Real.test.ts
       # RULING-v7-book-runner: the book runner over v7.reingest.job — v7's input the hard gate, the emission the console's calculation
       # with a > 5% delta report; drift passes on its quantity; totals-only carried; open residuals skipped; J000663 held; the year
       # edition added or flagged; dry run writes nothing; run → attest → snapshot → the client's analytics year.
