@@ -1,6 +1,6 @@
 import pg from "pg";
 import {
-  emailDispatchFromEnv, mailDelivery, runWorkerTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
+  emailDispatchFromEnv, emailOrganisationsFrom, mailDelivery, runEmailDrain, runWorkerTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
   type Mailer,
 } from "../src/index";
 import { smtpMailer } from "../src/smtpMailer";
@@ -51,6 +51,8 @@ async function main() {
   });
   const organisationId = process.env.NZI_DEMO_ORGANISATION_ID?.trim();
   if (!organisationId) throw new Error("NZI_DEMO_ORGANISATION_ID is required.");
+  // Organisations whose queued email (and only email) this worker also delivers: the one staff actually invite from.
+  const emailOrganisations = emailOrganisationsFrom(process.env.NZI_EMAIL_DRAIN_ORGANISATIONS, organisationId);
 
   const delivery = mailDelivery({
     mailMode: process.env.NZI_MAIL_MODE,
@@ -60,7 +62,7 @@ async function main() {
   const { mailer, transport } = buildMailer(delivery);
   const email = emailDispatchFromEnv(process.env);
   log("worker.started", {
-    tickSeconds: TICK_MS / 1000, organisationId, transport,
+    tickSeconds: TICK_MS / 1000, organisationId, emailOrganisations, transport,
     delivery: delivery.mode, reason: delivery.mode === "suppress" ? delivery.reason : undefined,
     email: email.gate.mode,
     emailReason: email.gate.mode === "stub" ? email.gate.reason : undefined,
@@ -83,9 +85,16 @@ async function main() {
           appEnv: process.env.NEXT_PUBLIC_APP_ENV,
           boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
         } });
+      // Email-only drain for the other listed organisations: no reminder scan, no other outbox topic, nothing but `email.send`.
+      const otherEmails: Record<string, unknown> = {};
+      for (const other of emailOrganisations) {
+        const drained = await runEmailDrain(pool, { organisationId: other, today: londonToday(), mailer, delivery, email });
+        otherEmails[other] = drained.ok ? drained.summary : { failed: drained.error };
+      }
       // Counts only: no address, name or action title reaches the log.
       log("tick.complete", {
         emails: emails.ok ? emails.summary : { failed: emails.error },
+        ...(emailOrganisations.length > 0 ? { otherEmails } : {}),
         dueReminders: dueReminders.ok ? dueReminders.summary : { failed: dueReminders.error },
         reminders: reminders.ok
           ? reminders.summary.off ? { off: true }

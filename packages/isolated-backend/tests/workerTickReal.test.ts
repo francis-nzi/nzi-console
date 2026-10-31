@@ -5,7 +5,7 @@ import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } 
 import { emailDispatchFromEnv, sendEmail } from "../src/email";
 import { suppressingMailer } from "../src/mailer";
 import { withTenantWorker, withTenantWrite } from "../src/postgres";
-import { runReminderTick, runWorkerTick } from "../src/strategyReminderWorker";
+import { emailOrganisationsFrom, runEmailDrain, runReminderTick, runWorkerTick } from "../src/strategyReminderWorker";
 
 /**
  * The reminder worker's tick, as the role it really runs as (BUILD-fix-worker-tick-permission). The reminder tests run the tick
@@ -131,6 +131,62 @@ describe("the reminder worker's tick, as nzi_console_worker", { skip: TEST_DATAB
       assert.equal(tick.reminders.ok, false);
       assert.match(!tick.reminders.ok ? tick.reminders.error : "", /permission denied for table strategy_levers/);
       assert.equal((await q(`SELECT 1 FROM nzi_console.strategy_automation_log`)).length, 0, "the failed scan rolled back alone");
+    });
+  });
+
+  // The staging fault: staff invite from the real organisation, while the worker drained only NZI_DEMO_ORGANISATION_ID. The
+  // invitation sat `queued` for ever; the tick reported emails:{sent:0,stubbed:0} because it never looked at that organisation.
+  describe("another organisation's email (NZI_EMAIL_DRAIN_ORGANISATIONS)", () => {
+    const REAL = "real-org";
+    const queueReal = (to: string) => withTenantWrite(database.pool, REAL, (db) => sendEmail(db, REAL, { to, subject: "You are invited", text: "Hello" }));
+    before(async () => { await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [REAL]); });
+    beforeEach(async () => {
+      await q(`DELETE FROM nzi_console.organisation_reminder_settings WHERE organisation_id = $1`, [REAL]);
+    });
+
+    it("the reminder-organisation tick leaves it queued — the bug", async () => {
+      const invite = await queueReal("david@netzero.international");
+      const fetchImpl = resend();
+      await runWorkerTick(database.pool, { organisationId: ORG, today: TODAY, mailer: suppressingMailer(), email: emailDispatchFromEnv(KEYED, fetchImpl), env: ENV });
+      assert.deepEqual(fetchImpl.posted, []);
+      assert.equal(await status(invite.emailMessageId), "queued");
+    });
+
+    it("an email-only drain of that organisation sends the NZI invitation, stubs the client address, and touches nothing else", async () => {
+      const invite = await queueReal("david@netzero.international");
+      const client = await queueReal("someone@client.example");
+      for (const topic of ["scope.row.calculated", "client.updated"]) {
+        await q(`INSERT INTO nzi_console.transactional_outbox (organisation_id, outbox_id, topic, payload_json, correlation_id) VALUES ($1,$2,$3,'{}'::jsonb,'backlog')`, [REAL, `backlog-${topic}`, topic]);
+      }
+      const fetchImpl = resend();
+      const drained = await runEmailDrain(database.pool, {
+        organisationId: REAL, today: TODAY, mailer: suppressingMailer(), delivery: { mode: "suppress", reason: "test" }, email: emailDispatchFromEnv(KEYED, fetchImpl),
+      });
+      assert.deepEqual(drained.ok && drained.summary, { sent: 1, stubbed: 1, retried: 0, failed: 0 });
+      assert.deepEqual(fetchImpl.posted, ["david@netzero.international"], "the isolated narrowing still holds");
+      assert.equal(await status(invite.emailMessageId), "sent");
+      assert.equal(await status(client.emailMessageId), "stubbed");
+      const backlog = await q(`SELECT state FROM nzi_console.transactional_outbox WHERE organisation_id = $1 AND topic <> 'email.send'`, [REAL]);
+      assert.deepEqual(backlog.map((row) => row.state), ["pending", "pending"], "the standing backlog is not skipped, sent or claimed");
+      assert.equal((await q(`SELECT 1 FROM nzi_console.strategy_automation_log WHERE organisation_id = $1`, [REAL])).length, 0, "no reminder is scanned for it");
+      assert.equal((await q(`SELECT 1 FROM nzi_console.strategy_due_reminders WHERE organisation_id = $1`, [REAL])).length, 0);
+    });
+
+    it("with no key the same drain only records stubs, as everywhere", async () => {
+      const invite = await queueReal("david@netzero.international");
+      const fetchImpl = resend();
+      const drained = await runEmailDrain(database.pool, {
+        organisationId: REAL, today: TODAY, mailer: suppressingMailer(), delivery: { mode: "suppress", reason: "test" }, email: emailDispatchFromEnv({ ...KEYED, RESEND_API_KEY: "" }, fetchImpl),
+      });
+      assert.deepEqual(drained.ok && drained.summary, { sent: 0, stubbed: 1, retried: 0, failed: 0 });
+      assert.deepEqual(fetchImpl.posted, []);
+      assert.equal(await status(invite.emailMessageId), "stubbed");
+    });
+
+    it("reads the organisation list by name: trimmed, de-duplicated, never the reminder organisation, empty when unset", () => {
+      assert.deepEqual(emailOrganisationsFrom(" real-org , real-org,,tick-org ,other", ORG), ["real-org", "other"]);
+      assert.deepEqual(emailOrganisationsFrom(undefined, ORG), []);
+      assert.deepEqual(emailOrganisationsFrom("", ORG), []);
     });
   });
 

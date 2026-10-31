@@ -228,7 +228,7 @@ export async function runIsolatedCommand<T extends Record<string, unknown>>(stor
 }
 export { mailDelivery, smtpSettingsFrom, suppressingMailer, SmtpConfigurationError, type Mailer, type MailMessage, type MailDelivery } from "./mailer";
 export {
-  runReminderTick, runWorkerTick, scanClientReminders, drainOutbox, clientsWithPlans, REMINDER_TOPIC, MAX_SEND_ATTEMPTS,
+  emailOrganisationsFrom, runEmailDrain, runReminderTick, runWorkerTick, scanClientReminders, drainOutbox, clientsWithPlans, REMINDER_TOPIC, MAX_SEND_ATTEMPTS,
   type ReminderRunSummary, type WorkerTickSummary, type TickPart,
 } from "./strategyReminderWorker";
 export {

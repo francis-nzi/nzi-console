@@ -155,6 +155,12 @@ services:
         value: isolated-non-production
       - key: NZI_DEMO_ORGANISATION_ID
         value: demo-nzi-console
+      # Organisations whose QUEUED EMAIL (topic email.send, nothing else) this worker also delivers. Staff are invited from the
+      # real organisation, not the demo one, so without this its invitations sit `queued` for ever. Email only: the worker
+      # runs no reminder scan for these, and leaves their other outbox rows exactly as they are. The Resend gate still
+      # narrows the isolated boundary to @netzero.international.
+      - key: NZI_EMAIL_DRAIN_ORGANISATIONS
+        value: net-zero-international
       # Same non-production Supabase as the console. Never commit this value.
       - key: NZI_ISOLATED_DATABASE_URL
         sync: false

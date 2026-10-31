@@ -199,6 +199,12 @@ Before that the email drain ran after the scan in one transaction, so a failing 
 (`emails` / `reminders`, each a summary or `{ "failed": "…" }`) and never stops the other; 0183 also asserts at
 deploy that `nzi_console_worker` holds every privilege the tick needs.
 
+- `NZI_EMAIL_DRAIN_ORGANISATIONS` (`render.yaml`, comma-separated, committed): the organisations, besides
+  `NZI_DEMO_ORGANISATION_ID`, whose **`email.send` rows and nothing else** the worker delivers each tick
+  (`runEmailDrain`). Staff are invited from `net-zero-international`, not the demo organisation, so before this the
+  invitation stayed `queued` for ever and the tick reported `emails:{sent:0,stubbed:0}`. No reminder is scanned for
+  these organisations and none of their other outbox rows (a standing backlog in the tens of thousands) is touched; the
+  log line adds `otherEmails` per organisation. Listed by name, never discovered.
 - `RESEND_API_KEY` (dashboard, `sync: false`): **unset, every send is `stubbed`.**
 - `EMAIL_FROM` (dashboard, `sync: false`): the default sender on the verified domain, e.g.
   `Net Zero International <no-reply@netzero.international>`. Unset, sends are stubbed too.
