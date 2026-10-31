@@ -387,6 +387,37 @@ const partOf = async <T>(work: () => Promise<T>): Promise<TickPart<T>> => {
 };
 
 /**
+ * The extra organisations whose email the worker drains (`NZI_EMAIL_DRAIN_ORGANISATIONS`, comma-separated): trimmed,
+ * de-duplicated, and never the reminder organisation twice. Listed by name, never discovered, so what the worker may touch
+ * stays a reviewed setting.
+ */
+export const emailOrganisationsFrom = (value: string | undefined, reminderOrganisation: string): string[] =>
+  [...new Set((value ?? "").split(",").map((entry) => entry.trim()).filter((entry) => entry !== "" && entry !== reminderOrganisation))];
+
+/**
+ * Delivers one organisation's queued `email.send` rows and nothing else. This is the first part of {@link runWorkerTick},
+ * on its own, for an organisation whose email the worker drains but whose reminders it does not run.
+ *
+ * It selects `topic = 'email.send'` only, so it cannot touch, skip or send any other outbox row: a real organisation's
+ * standing backlog of domain events stays exactly as it is. No reminder is scanned and no `strategy_automation_log` row is
+ * written. The `email.send` handler's own gate (`emailDispatchFromEnv`) still decides who a message may reach.
+ */
+export async function runEmailDrain(pool: PoolLike, input: {
+  organisationId: string;
+  today: string;
+  mailer: Mailer;
+  delivery: MailDelivery;
+  email: EmailDispatch;
+  limit?: number;
+}): Promise<TickPart<ReminderRunSummary["emails"]>> {
+  const drained = await partOf(() => withTenantWorker(pool, input.organisationId, (db) => drainOutbox(db, {
+    organisationId: input.organisationId, today: input.today, mailer: input.mailer, delivery: input.delivery,
+    email: input.email, only: "email", limit: input.limit,
+  })));
+  return drained.ok ? { ok: true, summary: drained.summary.emails } : drained;
+}
+
+/**
  * One tick of the worker, in three transactions that cannot sink each other (BUILD-fix-worker-tick-permission; A3, R8).
  *
  * **Email first, on its own.** The `email.send` drain reads only the outbox and `email_messages`, so nothing reminder-side —
