@@ -1848,9 +1848,16 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-stage-sec.unnumbered:not(.done) .nz-stage-sec-n{display:none}
 /* C: a scope group collapses to its header, which carries the scope's summary. */
 .nz-acc-scopehead.toggle{width:calc(100% - 4px);border:0;background:transparent;font-family:inherit;cursor:pointer;padding:0;text-align:left}
-.nz-acc-scopehead.toggle:focus-visible{outline:2px solid var(--emerald);outline-offset:2px;border-radius:4px}
+.nz-acc-scopehead.toggle:has(.hmain:focus-visible){outline:2px solid var(--emerald);outline-offset:2px;border-radius:4px}
+.nz-acc-scopehead .hmain{display:flex;align-items:center;gap:9px;border:0;background:transparent;padding:0;font:inherit;letter-spacing:inherit;text-transform:inherit;color:inherit;cursor:pointer;text-align:left}
+.nz-acc-hmain{display:flex;align-items:center;gap:13px;flex:1;min-width:0;border:0;background:transparent;padding:0;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.nz-acc-h:has(.nz-acc-hmain:focus-visible){outline:2px solid var(--emerald);outline-offset:-2px}
+/* The WF pill: a link to the workflow doc, between the headline total and the chevron. Not a disclosure control. */
+.nz-wf{flex:none;order:3;font-size:11px;font-weight:700;line-height:1;letter-spacing:0;text-transform:none;text-decoration:none;padding:4px 8px;border-radius:999px;color:var(--pine);background:var(--mint);border:1px solid #BEE7D3}
+.nz-wf:hover{background:#CDEFDD}
+.nz-wf:focus-visible{outline:2px solid var(--emerald);outline-offset:2px}
 .nz-acc-scopehead .ssum{font-weight:600;letter-spacing:0;text-transform:none;color:var(--t3);font-size:11.5px}
-.nz-acc-scopehead .schev{flex:none;color:var(--t3);transition:transform .2s;order:3}
+.nz-acc-scopehead .schev{flex:none;color:var(--t3);transition:transform .2s;order:4}
 .nz-acc-scopehead.open .schev{transform:rotate(180deg)}
 /* Scope and category headers carry their total as the headline figure, at the right; the meta line holds the entry count (and, on a scope, its share). */
 .nz-acc-scopehead .stot,.nz-acc-total{order:2;flex:none;white-space:nowrap;font-weight:600;letter-spacing:0;text-transform:none;color:var(--t3);font-size:11.5px;font-variant-numeric:tabular-nums}
