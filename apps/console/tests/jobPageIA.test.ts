@@ -135,6 +135,17 @@ describe("C — two-level collapse", () => {
     assert.match(accordion, /% of total/);
   });
 
+  it("headers carry the total as the right-hand headline; the meta is the entry count and, on a scope, its share", () => {
+    // Scope: meta = "N entries · P% of total"; the total sits in its own element and is no longer in the meta.
+    const has = (needle: string) => assert.ok(accordion.includes(needle), `missing: ${needle}`);
+    has("<span className=\"ssum\">{summary.entries} {summary.entries === 1 ? \"entry\" : \"entries\"}{summary.sharePercent === null ? \"\" : ` · ${summary.sharePercent}% of total`}</span>");
+    has("<span className=\"stot\"><b>{num(summary.tco2e)}</b> tCO₂e</span>");
+    // Category: meta = the entry count; the total is its own element. Same figures, nothing new.
+    has("<span className=\"sum\">{entry.entryCount} {entry.entryCount === 1 ? \"entry\" : \"entries\"}</span>");
+    has("<span className=\"nz-acc-total\"><b>{num(entry.tco2e)}</b> tCO₂e</span>");
+    assert.ok(!accordion.includes("· {num(summary.tco2e)} tCO₂e") && !accordion.includes("· {num(entry.tco2e)} tCO₂e"), "the total is not in the meta line any more");
+  });
+
   it("offers Collapse all and Expand all over every scope and section", () => {
     assert.match(accordion, /onClick=\{\(\) => setAll\(false\)\}>Collapse all<\/button>/);
     assert.match(accordion, /onClick=\{\(\) => setAll\(true\)\}>Expand all<\/button>/);
