@@ -25,6 +25,7 @@ import { IntensityMetricIcon } from "../../clients/[clientId]/IntensityMetricIco
 import { formatDate } from "../../lib/formatDate";
 import { redirectIfPortalSessionEnded } from "../portalSessionClient";
 import { isPortalIntensity } from "./portalIntensityValidation";
+import { formatTco2e } from "../../lib/formatNumber";
 
 type Point = { year: number; intensity: ResolvedIntensity };
 type Resolved = Extract<ResolvedIntensity, { state: "resolved" }>;
@@ -36,9 +37,7 @@ type State =
   | { kind: "ready"; model: PortalIntensityReadModel };
 
 const fy = (year: number) => `FY${String(year).slice(-2)}`;
-const figure = (value: number) => value >= 100
-  ? Math.round(value).toLocaleString("en-GB")
-  : value.toLocaleString("en-GB", { maximumFractionDigits: 2 });
+const figure = formatTco2e;
 const isResolved = (point: Point): point is ResolvedPoint => point.intensity.state === "resolved";
 
 /**

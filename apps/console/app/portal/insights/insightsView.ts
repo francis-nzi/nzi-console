@@ -2,12 +2,13 @@
 // dashboard's own (`PortalAssuredDashboard`), never a new metric — each saying where it comes from. Pure, so tested. The
 // mockup's grounded assistant and knowledge library are staff-side today; the view says so rather than imitating them.
 import type { PortalAssuredDashboard } from "@nzi/contracts";
+import { formatTco2e } from "../../lib/formatNumber";
 
 export type Insight = { id: string; title: string; detail: string };
 type Published = Extract<PortalAssuredDashboard, { published: true }>;
 
 const share = (part: number, whole: number) => whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
-const tonnes = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: value >= 100 ? 0 : 1 });
+const tonnes = formatTco2e;
 const SCOPE: Record<"1" | "2" | "3", string> = { "1": "Scope 1 (direct)", "2": "Scope 2 (purchased energy)", "3": "Scope 3 (value chain)" };
 
 export function insightsFrom(dashboard: Published): Insight[] {

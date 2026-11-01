@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { JobEmissions } from "@nzi/isolated-backend";
+import { formatTco2e } from "../lib/formatNumber";
 
 /**
  * The emissions summary strip: the headline, the scope split and the three scope tiles (NZC-144).
@@ -40,8 +41,7 @@ const SCOPE_ORDER = ["1", "2", "3"] as const;
 /** Sub-scopes roll up to their leading digit, the way the scope colours do. */
 const bandOf = (scope: string): string => scope.trim().charAt(0);
 
-const figure = (value: number): string =>
-  value.toLocaleString("en-GB", { maximumFractionDigits: value >= 100 ? 0 : 2 });
+const figure = formatTco2e;
 
 type Band = { band: string; tco2e: number; marketTco2e: number; entries: number };
 

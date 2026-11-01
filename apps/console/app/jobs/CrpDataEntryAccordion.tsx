@@ -19,7 +19,7 @@ import {
   scopeSummary,
   visibleAccordionRows,
 } from "./dataEntryAccordion";
-import { formatQuantity, formatTonnes } from "../lib/formatNumber";
+import { formatQuantity, formatTco2e } from "../lib/formatNumber";
 import { EmissionEntryForm } from "./EmissionEntryForm";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { emissionEntryDraftToScopeRow, type EntryFactorRef } from "./emissionEntryModel";
@@ -36,7 +36,7 @@ const KIND_NOTE: Record<string, string> = {
 };
 
 const scopeColour = (scope: string) => (scope === "1" ? "var(--s1)" : scope === "2" ? "var(--s2)" : "var(--s3)");
-const num = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+const num = formatTco2e;
 
 export type AccordionLens = "category" | "attention";
 export type SiteContextOption = { id: string; label: string };
@@ -257,10 +257,9 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                         <b>{entry.category.name}
                           {entry.noData ? <span className="nz-chip-mini nodata">no data</span> : entry.needsAttention && audience === "crm" ? <span className="nz-chip-mini todo">{entry.needsAttention} to do</span> : null}
                         </b>
-                        <span className="sum">{entry.entryCount} {entry.entryCount === 1 ? "entry" : "entries"}</span>
+                        <span className="sum">{entry.entryCount} {entry.entryCount === 1 ? "entry" : "entries"} · <span className="nz-acc-compl"><span className="bar"><i style={{ width: `${entry.completeness}%` }} /></span>{entry.completeness}%</span></span>
                       </span>
                       <span className="nz-acc-total"><b>{num(entry.tco2e)}</b> tCO₂e</span>
-                      <span className="nz-acc-compl"><span className="bar"><i style={{ width: `${entry.completeness}%` }} /></span>{entry.completeness}%</span>
                       <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
                     </button>
                     {categoryOpen ? (
@@ -279,7 +278,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                                     <td className="num">{formatQuantity(row.quantity)}</td>
                                     <td>{row.unit ?? "—"}</td>
                                     <td>{row.factorLabel ?? <span className="nz-st nof">No factor</span>}</td>
-                                    <td className="num">{formatTonnes(row.overrideTco2e ?? row.calculatedTco2e)}</td>
+                                    <td className="num">{formatTco2e(row.overrideTco2e ?? row.calculatedTco2e)}</td>
                                     <td><span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{row.reviewStatus}</span></td>
                                   </tr>
                                 ))}
@@ -327,7 +326,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                                 <td>{row.sourceLabel}{row.enabled ? null : <div className="muted">Disabled</div>}</td>
                                 <td>{row.categoryPath.slice(0, 2).join(" › ") || "—"}</td>
                                 <td>{row.siteLabel ?? "Unallocated"}</td>
-                                <td className="num">{formatTonnes(row.overrideTco2e ?? row.calculatedTco2e)}</td>
+                                <td className="num">{formatTco2e(row.overrideTco2e ?? row.calculatedTco2e)}</td>
                                 <td><span className={`nz-st ${row.reviewStatus === "approved" ? "done" : row.reviewStatus === "rejected" ? "nof" : "est"}`}>{row.reviewStatus}</span></td>
                               </tr>
                             ))}

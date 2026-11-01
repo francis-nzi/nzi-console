@@ -140,8 +140,9 @@ describe("C — two-level collapse", () => {
     const has = (needle: string) => assert.ok(accordion.includes(needle), `missing: ${needle}`);
     has("<span className=\"ssum\">{summary.entries} {summary.entries === 1 ? \"entry\" : \"entries\"}{summary.sharePercent === null ? \"\" : ` · ${summary.sharePercent}% of total`}</span>");
     has("<span className=\"stot\"><b>{num(summary.tco2e)}</b> tCO₂e</span>");
-    // Category: meta = the entry count; the total is its own element. Same figures, nothing new.
-    has("<span className=\"sum\">{entry.entryCount} {entry.entryCount === 1 ? \"entry\" : \"entries\"}</span>");
+    // Category: meta = the entry count, then the completeness bar; the total is its own element. Same figures, nothing new.
+    has("<span className=\"sum\">{entry.entryCount} {entry.entryCount === 1 ? \"entry\" : \"entries\"} · <span className=\"nz-acc-compl\">");
+    assert.ok(!accordion.includes("</span>\n                      <span className=\"nz-acc-compl\">"), "completeness is not a right-hand item before the chevron");
     has("<span className=\"nz-acc-total\"><b>{num(entry.tco2e)}</b> tCO₂e</span>");
     assert.ok(!accordion.includes("· {num(summary.tco2e)} tCO₂e") && !accordion.includes("· {num(entry.tco2e)} tCO₂e"), "the total is not in the meta line any more");
   });

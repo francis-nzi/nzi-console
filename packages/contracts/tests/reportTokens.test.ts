@@ -24,11 +24,11 @@ const snapshot = {
 
 describe("report figure tokens (NZC-049)", () => {
   it("resolves totals, shares, targets and intensity from the reviewed snapshot", () => {
-    assert.equal(resolveReportToken("total", snapshot).value, "1,418 tCO₂e");
-    assert.equal(resolveReportToken("scope3", snapshot).value, "1,176 tCO₂e");
+    assert.equal(resolveReportToken("total", snapshot).value, "1,418.0 tCO₂e");
+    assert.equal(resolveReportToken("scope3", snapshot).value, "1,176.0 tCO₂e");
     assert.equal(resolveReportToken("scope3Pct", snapshot).value, "82.9%");
     assert.equal(resolveReportToken("reportingYear", snapshot).value, "2024");
-    assert.equal(resolveReportToken("baselineTotal", snapshot).value, "1,650 tCO₂e");
+    assert.equal(resolveReportToken("baselineTotal", snapshot).value, "1,650.0 tCO₂e");
     assert.equal(resolveReportToken("interimReductionPct", snapshot).value, "50%");
     assert.equal(resolveReportToken("netZeroYear", snapshot).value, "2045");
     assert.equal(resolveReportToken("intensityValue", snapshot).value, "70.9");
@@ -47,7 +47,7 @@ describe("report figure tokens (NZC-049)", () => {
 
   it("renders `<span data-token>` markers as locked value chips, leaving prose untouched", () => {
     const html = renderReportSectionBody('<p>The footprint is <span data-token="total"></span> for the year.</p>', snapshot);
-    assert.match(html, /class="nz-fig-token" data-token="total"[^>]*>1,418 tCO₂e<\/span>/);
+    assert.match(html, /class="nz-fig-token" data-token="total"[^>]*>1,418\.0 tCO₂e<\/span>/);
     assert.match(html, /^<p>The footprint is <span/);
     assert.match(html, /for the year\.<\/p>$/);
     // an unresolved token still renders, marked
@@ -99,7 +99,7 @@ describe("report figure tokens (NZC-049)", () => {
     );
     assert.match(edited, /Additional consultant sentence\./);
     const reRendered = renderReportSectionBody(edited, snapshot);
-    assert.match(reRendered, />1,418 tCO₂e</);
+    assert.match(reRendered, />1,418.0 tCO₂e</);
   });
 
   it("every token used in the catalogue is in the palette", () => {

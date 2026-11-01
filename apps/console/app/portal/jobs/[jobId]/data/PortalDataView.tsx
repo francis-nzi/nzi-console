@@ -21,7 +21,7 @@ import {
 import { rowSourceDetail } from "../../../../jobs/rowSourceDetail";
 import { RowHistory, RowHistoryList, type RowHistoryEntry, type RowHistoryState } from "../../../../jobs/RowHistory";
 import { formatDate, formatDateTime } from "../../../../lib/formatDate";
-import { formatQuantity, formatTonnes } from "../../../../lib/formatNumber";
+import { formatQuantity, formatTco2e } from "../../../../lib/formatNumber";
 import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
 import { usePortalSurface } from "../../../portalSurface";
 import { historyEntry, isPortalDataView, mayAskToReopen, mayDeactivate, portalQaGates, portalScopeRowFields, reviewLabel, rowDrawerSections, windowOpen } from "../../../data/portalDataView";
@@ -311,7 +311,7 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
         {sections.includes("factorCalculation") ? <Collapsible title="Factor & calculation">
           <div className="nz-kv"><span className="k">Emission factor</span><span className="v">{row.factorLabel ?? "No factor"}</span></div>
           <div className="nz-kv"><span className="k">Factor set</span><span className="v">{row.factorLabel ?? "—"}{row.factorVersion ? ` · ${row.factorVersion}` : ""}</span></div>
-          <div className="nz-kv"><span className="k">Calculated tCO₂e</span><span className="v">{row.calculatedTco2e === null ? `Calculated by ${adviserInline} on review` : formatTonnes(row.calculatedTco2e)}</span></div>
+          <div className="nz-kv"><span className="k">Calculated tCO₂e</span><span className="v">{row.calculatedTco2e === null ? `Calculated by ${adviserInline} on review` : formatTco2e(row.calculatedTco2e)}</span></div>
         </Collapsible> : null}
         {sections.includes("dataQuality") ? <Collapsible title="Data quality">
           <div className="nz-kv"><span className="k">Quality tier</span><span className="v">{row.qualityTier ?? `Set by ${adviserInline} on review`}</span></div>
@@ -352,7 +352,7 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
       <dl className="nz-pdv-facts">
         <div><dt>Activity</dt><dd>{formatQuantity(row.quantity)} {row.unit ?? ""}</dd></div>
         <div><dt>Factor</dt><dd>{row.factorLabel ?? "—"}</dd></div>
-        <div><dt>Emissions</dt><dd>{row.calculatedTco2e === null && row.overrideTco2e === null ? "Calculated on review" : `${formatTonnes(row.overrideTco2e ?? row.calculatedTco2e)} tCO₂e`}</dd></div>
+        <div><dt>Emissions</dt><dd>{row.calculatedTco2e === null && row.overrideTco2e === null ? "Calculated on review" : `${formatTco2e(row.overrideTco2e ?? row.calculatedTco2e)} tCO₂e`}</dd></div>
       </dl>
 
       {sections.includes("site") ? <section className="nz-pdv-sec" aria-label="Site"><h3>Site</h3><p>{row.siteLabel ?? "No particular site"}</p></section> : null}
@@ -360,7 +360,7 @@ export function PortalRowDrawer({ jobId, row, view, specs, refs, open, adviser, 
         {months.length ? <ul>{months.map((slot) => <li key={slot.month}>{slot.month}: {formatQuantity(slot.quantity)} {row.unit ?? ""}</li>)}</ul> : <p className="muted">Entered as one figure for the year.</p>}</section> : null}
       {sections.includes("factorCalculation") ? <section className="nz-pdv-sec" aria-label="Factor & calculation"><h3>Factor &amp; calculation</h3>
         <p>{row.factorLabel ?? "No factor"}{row.factorVersion ? ` · ${row.factorVersion}` : ""}</p>
-        <p className="muted">{row.calculatedTco2e === null ? `Not calculated yet: ${adviserInline} calculates it on review.` : `${formatTonnes(row.calculatedTco2e)} tCO₂e calculated.`}</p></section> : null}
+        <p className="muted">{row.calculatedTco2e === null ? `Not calculated yet: ${adviserInline} calculates it on review.` : `${formatTco2e(row.calculatedTco2e)} tCO₂e calculated.`}</p></section> : null}
       {sections.includes("dataQuality") ? <section className="nz-pdv-sec" aria-label="Data quality"><h3>Data quality</h3>
         <p>{row.qualityTier ?? `Set by ${adviserInline} on review.`}{row.dataConfidence ? ` · confidence ${row.dataConfidence}` : ""}</p></section> : null}
       {sections.includes("sourceDetail") ? <section className="nz-pdv-sec" aria-label={source.title}><h3>{source.title}</h3>

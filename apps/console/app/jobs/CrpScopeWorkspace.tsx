@@ -77,7 +77,7 @@ const reportedIntensityLabel = (target: IntensityTargetReadModel) => target.metr
 import {dataEntryAdapterEnabled} from "../lib/featureFlags";
 import {reportFeatureEnabled} from "../lib/reportFlags";
 import { formatDate, formatDateTime } from "../lib/formatDate";
-import { formatQuantity, formatTonnes } from "../lib/formatNumber";
+import { formatQuantity, formatTco2e, formatTonnes } from "../lib/formatNumber";
 
 const blank = (): ScopeRowWriteFields => ({
   scope: "1",
@@ -377,7 +377,7 @@ export function CrpScopeWorkspace({
   const openDataEntryAttention = () => { if (accordionOn) setAccordionLens("attention"); jumpToStage("Data entry"); };
   const stageSummary = {
     setup: `${selectedDatasets} dataset${selectedDatasets === 1 ? "" : "s"} · ${target ? `−${target.interimReductionPercent}% by ${target.interimYear}` : "no pathway"} · ${intensityTarget ? `intensity: ${reportedIntensityLabel(intensityTarget)}` : "no reported intensity"} · ${sites.length} site${sites.length === 1 ? "" : "s"} · ${purchasedGoodsCategories.length} PG&S`,
-    data: `${rows.length} source${rows.length === 1 ? "" : "s"} · ${totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })} tCO₂e${noFactorCount ? ` · ${noFactorCount} without a factor` : ""}`,
+    data: `${rows.length} source${rows.length === 1 ? "" : "s"} · ${formatTco2e(totalTco2e)} tCO₂e${noFactorCount ? ` · ${noFactorCount} without a factor` : ""}`,
     review: qa.independentReviewPending ? `${qa.independentReviewPending} pending · ${qa.approved} approved` : `${qa.approved} approved · review complete`,
     report: qa.readyForReporting ? "Evidence complete — ready to snapshot" : "Blocked until QA gates pass",
   };
@@ -611,7 +611,7 @@ export function CrpScopeWorkspace({
               <td>{r.unit ?? "—"}</td>
               <td>{r.factorLabel ?? "No factor"}</td>
               <td>{qualities.find((q) => q.value === r.qualityTier)?.label ?? "—"}</td>
-              <td>{formatTonnes(r.overrideTco2e ?? r.calculatedTco2e)}</td>
+              <td>{formatTco2e(r.overrideTco2e ?? r.calculatedTco2e)}</td>
               <td><span className={`nz-st ${r.reviewStatus === "approved" ? "done" : r.reviewStatus === "rejected" ? "nof" : "est"}`}>{r.reviewStatus}</span>{r.tdAddPrompt ? <> <span className="nz-st need" title="This 3.3 entry may not include transmission & distribution losses — consider whether T&D should be added">Add T&amp;D?</span></> : null}</td>
             </tr>
           ))}
@@ -794,7 +794,7 @@ export function CrpScopeWorkspace({
           </div>
         </section>
         <div className="nz-command-metrics">
-          <div><span>Reported emissions</span><strong>{totalTco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })}</strong><small>tCO₂e across enabled rows</small></div>
+          <div><span>Reported emissions</span><strong>{formatTco2e(totalTco2e)}</strong><small>tCO₂e across enabled rows</small></div>
           <button type="button" onClick={()=>openRegister("calculation")}><span>Evidence coverage</span><strong>{qa.enabled ? Math.round(((qa.enabled - qa.calculationMissing) / qa.enabled) * 100) : 0}%</strong><small>{qa.enabled - qa.calculationMissing} of {qa.enabled} calculated</small></button>
           <button type="button" onClick={()=>openRegister("review")}><span>Independent assurance</span><strong>{qa.enabled ? Math.round((qa.approved / qa.enabled) * 100) : 0}%</strong><small>{qa.approved} approved · {qa.pending} pending</small></button>
           <div><span>Reporting period</span><strong>{reportingYear}</strong><small>Annual disclosure cycle</small></div>

@@ -14,3 +14,12 @@ export const formatQuantity = (value: number | null | undefined): string => (usa
 
 /** A row's tCO₂e: thousands separators, at least two and at most six decimal places. */
 export const formatTonnes = (value: number | null | undefined): string => (usable(value) ? TONNES.format(value) : "—");
+
+const ONE_DP = new Intl.NumberFormat("en-GB", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/**
+ * The display format for every headline tCO₂e (and intensity) magnitude: thousands separators and exactly one decimal place.
+ * Round only here, from the unrounded value, and never sum rounded figures. Counts and percentages are not tCO₂e and stay whole
+ * numbers. The six-place `formatTonnes` stays for reconciliation surfaces, where a small figure must not read as zero.
+ */
+export const formatTco2e = (value: number | null | undefined): string => (usable(value) ? ONE_DP.format(value) : "—");

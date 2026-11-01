@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { isAssuredProvenance } from "@nzi/contracts";
 import type { FigureEvidence, FigureTier, ProvenanceSignature, ScopeFigureEvidence } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
+import { formatTco2e } from "../../lib/formatNumber";
 
 /**
  * NZC-005 — figure evidence surfaces (client workspace v8). A figure shows one of three
@@ -18,7 +19,7 @@ export function TierBadge({ tier }: { tier: FigureTier | null }) {
   return <span className={`nz-tier ${TIER_CLASS[tier]}`}>{tier === "Mixed" ? "Mixed tiers" : tier}</span>;
 }
 
-export const tonnes = (value: number) => `${value.toLocaleString("en-GB", { maximumFractionDigits: 1 })} tCO₂e`;
+export const tonnes = (value: number) => `${formatTco2e(value)} tCO₂e`;
 /** "FY24" for the reporting year a figure was resolved from. */
 export const fyLabel = (year: number) => `FY${String(year).slice(-2)}`;
 
