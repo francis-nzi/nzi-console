@@ -60,12 +60,17 @@ export async function readStoredFactors(db: Queryable, organisationId: string, d
     active: row.active, sourceLevels: row.source_levels ?? [], usedRows: Number(row.used) }));
 }
 
+/** The category-variant registry's suffixes, retired ones included — what 0170's guard parses against. */
+export async function readVariantSuffixes(db: Queryable): Promise<string[]> {
+  return (await db.query<{ suffix_code: string }>(`SELECT suffix_code FROM nzi_console.factor_category_variants ORDER BY suffix_code`)).rows.map((row) => row.suffix_code);
+}
+
 /** The factor report alone, read-only: the plan from the database as it stands, nothing written. */
 export async function planFromDatabase(pool: PoolLike, organisationId: string, flat: FlatFile, datasets: ReadonlyArray<string> = DESNZ_2019_DATASETS): Promise<{ plan: CorrectionPlan; consumers: string[] }> {
   let out!: { plan: CorrectionPlan; consumers: string[] };
   try {
     await withTenantWrite(pool, organisationId, async (db) => {
-      out = { plan: planCorrection(await readStoredFactors(db, organisationId, datasets), flat), consumers: (await consumerJobs(db, organisationId, datasets)).map((job) => job.jobNumber) };
+      out = { plan: planCorrection(await readStoredFactors(db, organisationId, datasets), flat, await readVariantSuffixes(db)), consumers: (await consumerJobs(db, organisationId, datasets)).map((job) => job.jobNumber) };
       throw new DryRunRollback();
     });
   } catch (error) {
@@ -102,7 +107,7 @@ async function correctOne(db: Queryable, input: Desnz2019Input, person: Awaited<
   const datasets = input.datasets ?? DESNZ_2019_DATASETS;
   const allowed = new Set(input.allowedJobs ?? DESNZ_2019_ALLOWED_JOBS);
 
-  const plan = planCorrection(await readStoredFactors(db, org, datasets), input.flat);
+  const plan = planCorrection(await readStoredFactors(db, org, datasets), input.flat, await readVariantSuffixes(db));
   if (input.expectedPlanSha && plan.sha256 !== input.expectedPlanSha)
     throw new Desnz2019Refused("PLAN_SHA_MISMATCH", `the plan built from the database hashes to ${plan.sha256}, not the signed ${input.expectedPlanSha}; nothing was written.`);
 
@@ -143,15 +148,22 @@ async function correctOne(db: Queryable, input: Desnz2019Input, person: Awaited<
     return { committed: input.commit, plan, consumers: consumers.map((job) => job.jobNumber), factorsUpdated: 0, rows: [], flaggedDeltas: [], flaggedSha: null, attestedRows: 0,
       jobTotals: [...jobTotals.values()].map((totals) => ({ ...totals, after: totals.before })), auditEvents: 0 };
 
-  // 1. The values, in place, each asserting the value it replaces.
+  // 1. The values, in place, each asserting the value it replaces. One statement per dataset: 0170's guard is a statement-level trigger, so a
+  //    base and its variants pass only when they change together (the plan sets each variant to its base's new value).
   let factorsUpdated = 0;
-  for (const line of changed) {
-    const updated = await db.query(
-      `UPDATE nzi_console.emission_factors SET kgco2e_per_unit = $4::numeric
-        WHERE organisation_id = $1 AND dataset_id = $2 AND factor_id = $3 AND kgco2e_per_unit = $5::numeric RETURNING factor_id`,
-      [org, line.datasetId, line.factorId, line.newValue, line.oldValue]);
-    if (updated.rows.length !== 1) throw new Desnz2019Refused("FACTOR_MOVED", `${line.datasetId} / ${line.factorId} no longer holds ${line.oldValue}; nothing was written.`);
-    factorsUpdated += 1;
+  for (const datasetId of new Set(changed.map((line) => line.datasetId))) {
+    const lines = changed.filter((line) => line.datasetId === datasetId);
+    const updated = await db.query<{ factor_id: string }>(
+      `UPDATE nzi_console.emission_factors f SET kgco2e_per_unit = v.new_value::numeric
+         FROM unnest($3::text[], $4::text[], $5::text[]) AS v(factor_id, new_value, old_value)
+        WHERE f.organisation_id = $1 AND f.dataset_id = $2 AND f.factor_id = v.factor_id AND f.kgco2e_per_unit = v.old_value::numeric RETURNING f.factor_id`,
+      [org, datasetId, lines.map((line) => line.factorId), lines.map((line) => line.newValue), lines.map((line) => line.oldValue)]);
+    if (updated.rows.length !== lines.length) {
+      const done = new Set(updated.rows.map((row) => row.factor_id));
+      const moved = lines.find((line) => !done.has(line.factorId))!;
+      throw new Desnz2019Refused("FACTOR_MOVED", `${datasetId} / ${moved.factorId} no longer holds ${moved.oldValue}; nothing was written.`);
+    }
+    factorsUpdated += lines.length;
   }
 
   // 2. Recalculate the rows on changed factors, as the re-ingest's own principal.

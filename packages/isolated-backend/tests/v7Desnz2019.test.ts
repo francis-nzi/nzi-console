@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
-import { correctionCsv, correctionMarkdown, FlatFileRefused, parseFlatFile, planCorrection, type FlatDocument } from "../src/v7Desnz2019";
-import { FLAT_DOC, flatFile, STORED } from "./support/desnz2019Fixture";
+import { correctionCsv, correctionMarkdown, FlatFileRefused, parseFlatFile, planCorrection, splitFactorId, type FlatDocument } from "../src/v7Desnz2019";
+import { FLAT_DOC, flatFile, STORED, UK_2019 } from "./support/desnz2019Fixture";
 
 /** The pure half of the 2019 correction: the flat file, the composite-key join, the three named rules, and the report that is signed. */
 describe("the DESNZ 2019 correction plan", () => {
@@ -44,6 +44,57 @@ describe("the DESNZ 2019 correction plan", () => {
   it("the waste rename applies to that one id only; the same path under another id is unmatched", () => {
     const other = planCorrection([{ ...STORED.find((entry) => entry.factorId === "uk-ghg-20_507_5283_15_1")!, factorId: "uk-ghg-20_507_5285_15_1" }], flatFile());
     assert.equal(other.lines[0]!.match, "UNMATCHED");
+  });
+
+  describe("category variants of a changed base (0110 / 0170)", () => {
+    const REGISTRY = ["-c", "-b", "-p"];
+    const DIESEL = "uk-ghg-1_101_1011_8_1";
+    const variant = (suffix: string, over: Partial<(typeof STORED)[number]> = {}) => ({ ...STORED.find((entry) => entry.factorId === DIESEL)!, factorId: `${DIESEL}${suffix}`, sourceLevels: [], usedRows: 0, ...over });
+    const withVariants = [...STORED, variant("-c"), variant("-b")];
+    const planned = planCorrection(withVariants, flatFile(), REGISTRY);
+    const at = (factorId: string) => planned.lines.find((entry) => entry.factorId === factorId)!;
+
+    it("a changed base brings its same-dataset variants to its new value, whatever their own join said", () => {
+      for (const suffix of ["-c", "-b"]) {
+        const entry = at(`${DIESEL}${suffix}`);
+        assert.deepEqual([entry.match, entry.oldValue, entry.newValue, entry.changes, entry.flatKey], ["VARIANT_OF_BASE", "2.54603", "2.59411", true, null]);
+      }
+      assert.equal(planned.counts.VARIANT_OF_BASE, 2);
+      assert.equal(planned.counts.changed, plan.counts.changed + 2);
+      assert.deepEqual([planned.counts.inUse, planned.counts.inUseChanged], [6, 4], "the variants are unused: no recalculation, nothing newly in use");
+    });
+
+    it("every base-and-variant group ends up with one value (the guard's invariant)", () => {
+      const final = (entry: (typeof planned.lines)[number]) => entry.newValue ?? entry.oldValue;
+      assert.equal(new Set([DIESEL, `${DIESEL}-c`, `${DIESEL}-b`].map((id) => final(at(id)))).size, 1);
+    });
+
+    it("a variant that matched the sheet on its own is overridden by its base, and says so", () => {
+      const own = planCorrection([...STORED, variant("-c", { sourceLevels: ["Fuels", "Liquid fuels", "Diesel (average biofuel blend)"], value: "9" })], flatFile(), REGISTRY).lines.find((entry) => entry.factorId === `${DIESEL}-c`)!;
+      assert.deepEqual([own.match, own.newValue], ["VARIANT_OF_BASE", "2.59411"]);
+    });
+
+    it("leaves alone a variant of an unchanged base, an unregistered tail, another dataset's variant, and a base with no registry", () => {
+      const electricity = "uk-ghg-7_400_4000_5_1";
+      const lines = planCorrection([...STORED, variant("-c", { factorId: `${electricity}-c`, value: "0.2556" }), variant("-demo", { factorId: `${DIESEL}-demo` }),
+        variant("-c", { datasetId: "nzi-gb-2019" })], flatFile(), REGISTRY).lines;
+      const find = (id: string, dataset = UK_2019) => lines.find((entry) => entry.factorId === id && entry.datasetId === dataset)!;
+      assert.equal(find(`${electricity}-c`).changes, false, "its base is already the real number");
+      assert.equal(find(`${DIESEL}-demo`).match, "UNMATCHED", "-demo is not a registered suffix");
+      assert.equal(find(`${DIESEL}-c`, "nzi-gb-2019").changes, false, "values in another dataset are independent");
+      assert.equal(planCorrection(withVariants, flatFile()).lines.find((entry) => entry.factorId === `${DIESEL}-c`)!.match, "UNMATCHED", "no registry, no variants");
+    });
+
+    it("the longest registered suffix wins and an id that is only a suffix has no base", () => {
+      assert.deepEqual(splitFactorId("diesel-vcd", ["-d", "-vcd"]), { base: "diesel", suffix: "-vcd" });
+      assert.deepEqual(splitFactorId("-c", ["-c"]), { base: "-c", suffix: null });
+      assert.deepEqual(splitFactorId("diesel-demo", ["-c"]), { base: "diesel-demo", suffix: null });
+    });
+
+    it("the plan sha moves, so the signed sha has to be re-signed", () => {
+      assert.notEqual(planned.sha256, plan.sha256);
+      assert.equal(planCorrection([...withVariants].reverse(), flatFile(), REGISTRY).sha256, planned.sha256);
+    });
   });
 
   it("counts, the sha and the report are deterministic and carry the signed facts", () => {
