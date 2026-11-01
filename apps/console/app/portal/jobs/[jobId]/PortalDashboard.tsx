@@ -31,8 +31,9 @@ import {
   portalDashboardManifest, sourceLine, surroundingsFrom, versusBaseline, yearOnYear,
   type Change, type DashboardSurroundings, type ReportComparison, type DashboardTask, type Fetched,
 } from "../../dashboardView";
+import { formatTco2e } from "../../../lib/formatNumber";
 
-const fmt = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 1 });
+const fmt = formatTco2e;
 const whole = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 0 });
 const pct = (value: number) => `${(value * 100).toLocaleString("en-GB", { maximumFractionDigits: 0 })}%`;
 const SCOPE_NAME: Record<"1" | "2" | "3", string> = { "1": "Scope 1 — direct", "2": "Scope 2 — purchased energy", "3": "Scope 3 — value chain" };

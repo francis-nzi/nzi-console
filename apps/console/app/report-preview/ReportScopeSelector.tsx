@@ -1,6 +1,7 @@
 "use client";
 
 import { reportScopeSummary, type reportScopeChoices, type ReportScope } from "@nzi/contracts";
+import { formatTco2e } from "../lib/formatNumber";
 
 type Choices = ReturnType<typeof reportScopeChoices>;
 
@@ -26,7 +27,7 @@ export function ReportScopeSelector({ choices, scope, onChange, disabled }: { ch
     </div>
     {scope.kind === "sites" ? <div className="nz-scope-sites" role="group" aria-label="Sites in this report">
       {choices.sites.map((site) => <button type="button" key={site.siteId} className="nz-scope-chip" aria-pressed={chosen.has(site.siteId)} disabled={disabled} onClick={() => toggle(site.siteId)}>
-        <i aria-hidden="true" />{site.label} <small className="num">{site.tco2e.toLocaleString("en-GB", { maximumFractionDigits: 1 })} t</small>
+        <i aria-hidden="true" />{site.label} <small className="num">{formatTco2e(site.tco2e)} t</small>
       </button>)}
     </div> : null}
     <p className="nz-scope-summary" role="status">{scope.kind === "sites" && chosen.size === 0 ? "Choose at least one site." : reportScopeSummary(choices, scope)}</p>

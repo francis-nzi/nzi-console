@@ -1856,6 +1856,8 @@ button.nz-metric-badge:hover{border-color:var(--pine);color:var(--pine)}
 .nz-acc-scopehead .stot,.nz-acc-total{order:2;flex:none;white-space:nowrap;font-weight:600;letter-spacing:0;text-transform:none;color:var(--t3);font-size:11.5px;font-variant-numeric:tabular-nums}
 .nz-acc-scopehead .stot b,.nz-acc-total b{font-size:18px;font-weight:800;letter-spacing:-.02em;color:var(--ink,var(--t1));margin-right:2px}
 .nz-acc-total{order:0;text-align:right}
+/* On a category row the completeness bar sits in the left meta, after the entry count. */
+.nz-acc-tt .sum .nz-acc-compl{display:inline-flex;vertical-align:middle;margin-left:2px}
 .nz-acc-tool .nz-acc-bulk{display:inline-flex;gap:6px;margin-left:auto}
 /* D: "Report & publish" is the report's state and one way on. */
 .nz-report-stage{padding:16px 18px}

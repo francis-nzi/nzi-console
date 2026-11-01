@@ -14,13 +14,14 @@ import {
   ALL_SITES, SCOPE_NAMES, metricFigures, metricFormsFor, metricFormOr, metricSites, metricTrend,
   type MetricChart, type MetricFilters, type MetricForm, type MetricMeasurement,
 } from "./metricsView";
+import { formatTco2e } from "../../lib/formatNumber";
 
 type Ready = { kind: "ready"; dashboard: Extract<PortalAssuredDashboard, { published: true }>; rows: MetricMeasurement[]; jobs: PortalJob[] };
 type State = { kind: "loading" } | { kind: "failed"; message: string } | { kind: "empty" } | Ready;
 
 const UNIT = "tCO₂e";
 const FORM_LABEL: Record<MetricForm, string> = { donut: "Donut", pie: "Pie", bar: "Bar", line: "Line", table: "Table" };
-const fmt = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: value >= 100 ? 0 : 1 });
+const fmt = formatTco2e;
 
 export function PortalMetrics({ jobId }: { jobId: string }) {
   const surface = usePortalSurface();

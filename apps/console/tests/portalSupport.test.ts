@@ -25,8 +25,8 @@ describe("Insights & Help, and the Files preview", () => {
   it("insights are read off the assured figures: the largest category and scope, against baseline, the largest site", () => {
     const insights = insightsFrom(dashboard());
     assert.deepEqual(insights.map((insight) => insight.id), ["largest-category", "largest-scope", "against-baseline", "largest-site"]);
-    assert.match(insights[0]!.detail, /^Purchased goods and services is 75% of your emissions \(150 tCO₂e\)/);
-    assert.match(insights[1]!.detail, /^Scope 3 \(value chain\) makes up 75% of your 200 tCO₂e\./);
+    assert.match(insights[0]!.detail, /^Purchased goods and services is 75% of your emissions \(150\.0 tCO₂e\)/);
+    assert.match(insights[1]!.detail, /^Scope 3 \(value chain\) makes up 75% of your 200\.0 tCO₂e\./);
     assert.match(insights[2]!.detail, /^Down 20% on your 2024 baseline — your interim target is −50% by 2030\./);
     assert.match(insights[3]!.detail, /^Bristol bakery accounts for 60%/);
   });

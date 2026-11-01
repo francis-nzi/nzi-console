@@ -55,7 +55,7 @@ export function resolveComposedToken(key: string, composition: ReportComposition
     case "interimReductionPct": return points?.interim ? figure(`${points.interim.pct}%`) : missing("No interim target was set for this client when the report was issued.");
     case "baselineYear": return points?.benchmark ? figure(yearLabel(composition, points.benchmark.year)) : missing("No baseline was set for this client when the report was issued.");
     case "baselineTotal": return points?.benchmark ? figure(tonnes(points.benchmark.totalTco2e)) : missing("No baseline was set for this client when the report was issued.");
-    case "intensityValue": return reported && reported.value !== null ? figure(reported.value.toLocaleString("en-GB", { maximumFractionDigits: 2 })) : missing("This report holds no reported intensity figure.");
+    case "intensityValue": return reported && reported.value !== null ? figure(f1(reported.value)) : missing("This report holds no reported intensity figure.");
     case "intensityUnit": return reported ? figure(reported.unit) : missing("This report holds no reported intensity measure.");
     case "intensityMeasures": {
       if (!intensity || intensity.metrics.length === 0) return missing("No intensity measures were set up for this client when the report was issued.");
