@@ -496,6 +496,11 @@ jobs:
       # the split tick dispatches it anyway and reports the reminder failure; and an email-side failure does not stop the scan.
       - name: The worker's tick runs as the worker role, and email is drained apart from the reminder scan
         run: npx tsx --test packages/isolated-backend/tests/workerTickReal.test.ts
+      # The owner-run outbox clean-up (skip:outbox-backlog): a dry run counts per topic and writes nothing; a commit skips only
+      # pending rows of unconsumed topics in the one organisation, in batches, changing state and nothing else; email.send and
+      # strategy.deadline.reminder stay pending; one counts-only audit event; a re-run marks nothing and records nothing.
+      - name: The outbox clean-up skips only unconsumed pending rows, and delivers nothing
+        run: npx tsx --test packages/isolated-backend/tests/outboxSkipReal.test.ts
       # 0184: the house email signature on the real send path — with nothing set, a send closes with the house standard
       # (Net Zero International, the NZI logo at the console origin, the website, the GDPR block) after a bulletproof button;
       # the values saved through the real profile command are used, both logos side by side; a non-https logo address is
