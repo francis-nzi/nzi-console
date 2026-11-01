@@ -236,7 +236,11 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                 <span className="sdot" style={{ background: scopeColour(group.scope) }} />{group.label}
                 {/* JW-10 — a scope with nothing in it is shown, and says so; it is never left out. */}
                 {scopeHasNoData(group) ? <span className="nz-chip-mini nodata" style={{ marginLeft: 8 }}>No data yet</span>
-                  : <span className="ssum">{summary.entries} {summary.entries === 1 ? "entry" : "entries"} · {num(summary.tco2e)} tCO₂e{summary.sharePercent === null ? "" : ` · ${summary.sharePercent}% of total`}</span>}
+                  : <>
+                    <span className="ssum">{summary.entries} {summary.entries === 1 ? "entry" : "entries"}{summary.sharePercent === null ? "" : ` · ${summary.sharePercent}% of total`}</span>
+                    {/* The total is the headline figure, at the right of the rule; the share moved into its old slot in the meta. */}
+                    <span className="stot"><b>{num(summary.tco2e)}</b> tCO₂e</span>
+                  </>}
                 <svg className="schev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
               </button>
               {scopeOpen ? <>
@@ -253,8 +257,9 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                         <b>{entry.category.name}
                           {entry.noData ? <span className="nz-chip-mini nodata">no data</span> : entry.needsAttention && audience === "crm" ? <span className="nz-chip-mini todo">{entry.needsAttention} to do</span> : null}
                         </b>
-                        <span className="sum">{entry.entryCount} {entry.entryCount === 1 ? "entry" : "entries"} · {num(entry.tco2e)} tCO₂e</span>
+                        <span className="sum">{entry.entryCount} {entry.entryCount === 1 ? "entry" : "entries"}</span>
                       </span>
+                      <span className="nz-acc-total"><b>{num(entry.tco2e)}</b> tCO₂e</span>
                       <span className="nz-acc-compl"><span className="bar"><i style={{ width: `${entry.completeness}%` }} /></span>{entry.completeness}%</span>
                       <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
                     </button>
