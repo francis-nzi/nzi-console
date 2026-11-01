@@ -55,6 +55,7 @@
     "extract:v7-manifest": "node scripts/v7-extract-manifest.mjs",
     "retire:demo-job-numbers": "tsx scripts/retire-demo-job-numbers.ts",
     "retire:category-variant": "tsx scripts/retire-category-variant.ts",
+    "skip:outbox-backlog": "tsx scripts/skip-outbox-backlog.ts",
     "enrol:staff": "tsx scripts/issue-staff-enrolment.ts",
     "staff:role": "tsx scripts/assign-staff-role.ts"
   },
