@@ -61,7 +61,7 @@ export type StoredFactor = {
   sourceLevels: string[]; usedRows: number;
 };
 
-export type MatchKind = "KEY" | "RULE_AIR_WITH_RF" | "RULE_GAS_GROSS_CV" | "RULE_WASTE_RENAME" | "UNMATCHED" | "AMBIGUOUS" | "NZI_CUSTOM" | "BLANK_IN_SOURCE";
+export type MatchKind = "KEY" | "RULE_AIR_WITH_RF" | "RULE_GAS_GROSS_CV" | "RULE_WASTE_RENAME" | "VARIANT_OF_BASE" | "UNMATCHED" | "AMBIGUOUS" | "NZI_CUSTOM" | "BLANK_IN_SOURCE";
 export type CorrectionLine = {
   datasetId: string; factorId: string; path: string; unit: string; active: boolean; usedRows: number;
   oldValue: string; newValue: string | null; pctChange: number | null; changes: boolean;
@@ -101,8 +101,21 @@ const same = (a: string, b: number) => Math.abs(Number(a) - b) <= 1e-9 * Math.ma
 /** The waste rename the ruling accepted: the one in-use "Household residual waste / Combustion" id, to 2019's "Municipal waste / Combustion". */
 export const WASTE_RENAME = { factorId: "uk-ghg-20_507_5283_15_1", to: ["Waste disposal", "Refuse", "Municipal waste", "Combustion"] as const };
 
-/** Build the correction plan for the stored factors of the 2019 datasets. Pure and deterministic; the report and its sha come from it. */
-export function planCorrection(stored: ReadonlyArray<StoredFactor>, flat: FlatFile): CorrectionPlan {
+/** A factor id split on the registry: the longest registered suffix that leaves a base, else the id is its own base (parseFactorId's rule, 0170). */
+export function splitFactorId(factorId: string, suffixes: ReadonlyArray<string>): { base: string; suffix: string | null } {
+  const suffix = [...suffixes].filter((candidate) => factorId.length > candidate.length && factorId.endsWith(candidate)).sort((a, b) => b.length - a.length || a.localeCompare(b))[0];
+  return suffix ? { base: factorId.slice(0, factorId.length - suffix.length), suffix } : { base: factorId, suffix: null };
+}
+
+/**
+ * Build the correction plan for the stored factors of the 2019 datasets. Pure and deterministic; the report and its sha come from it.
+ *
+ * `variantSuffixes` is the category-variant registry (0110), retired suffixes included. A base and every registered variant of it in one
+ * dataset must carry one value (0170's guard), so a changed base brings its same-dataset variants with it: each is planned at the base's
+ * new value (match `VARIANT_OF_BASE`), whatever its own join said. They are the same measured factor filed under another category, never
+ * a different number — so they are corrected, not matched against the sheet, and the guard is satisfied rather than relaxed.
+ */
+export function planCorrection(stored: ReadonlyArray<StoredFactor>, flat: FlatFile, variantSuffixes: ReadonlyArray<string> = []): CorrectionPlan {
   const lines: CorrectionLine[] = [];
   for (const factor of [...stored].sort((a, b) => a.datasetId.localeCompare(b.datasetId) || a.factorId.localeCompare(b.factorId))) {
     const base = { datasetId: factor.datasetId, factorId: factor.factorId, path: factor.label, unit: factor.activityUnit, active: factor.active, usedRows: factor.usedRows, oldValue: factor.value };
@@ -131,7 +144,17 @@ export function planCorrection(stored: ReadonlyArray<StoredFactor>, flat: FlatFi
     lines.push(line(found.length === 0 ? "UNMATCHED" : "AMBIGUOUS", null,
       found.length === 0 ? "no real 2019 row on the composite key; value left as it is" : `${found.length} real rows fit (${found.map((row) => displayPath(row)).slice(0, 3).join(" | ")}); value left as it is`));
   }
-  const counts = { KEY: 0, RULE_AIR_WITH_RF: 0, RULE_GAS_GROSS_CV: 0, RULE_WASTE_RENAME: 0, UNMATCHED: 0, AMBIGUOUS: 0, NZI_CUSTOM: 0, BLANK_IN_SOURCE: 0, changed: 0, alreadyEqual: 0, inUse: 0, inUseChanged: 0 };
+  const byId = new Map(lines.map((entry, index) => [`${entry.datasetId}	${entry.factorId}`, index]));
+  for (const [index, entry] of lines.entries()) {
+    const { base, suffix } = splitFactorId(entry.factorId, variantSuffixes);
+    if (suffix === null) continue;
+    const baseLine = lines[byId.get(`${entry.datasetId}	${base}`) ?? -1];
+    if (!baseLine?.changes || baseLine.newValue === null) continue;
+    const own = entry.newValue !== null && entry.newValue !== baseLine.newValue ? `; its own join said ${entry.newValue}, overridden by its base` : "";
+    lines[index] = { ...entry, newValue: baseLine.newValue, pctChange: pct(entry.oldValue, Number(baseLine.newValue)), changes: !same(entry.oldValue, Number(baseLine.newValue)),
+      match: "VARIANT_OF_BASE", flatKey: null, note: `${suffix} variant of ${base}: carries its base's corrected value (0110 / 0170)${own}` };
+  }
+  const counts = { KEY: 0, RULE_AIR_WITH_RF: 0, RULE_GAS_GROSS_CV: 0, RULE_WASTE_RENAME: 0, VARIANT_OF_BASE: 0, UNMATCHED: 0, AMBIGUOUS: 0, NZI_CUSTOM: 0, BLANK_IN_SOURCE: 0, changed: 0, alreadyEqual: 0, inUse: 0, inUseChanged: 0 };
   for (const entry of lines) {
     counts[entry.match] += 1;
     if (entry.newValue !== null) { if (entry.changes) counts.changed += 1; else counts.alreadyEqual += 1; }
@@ -164,7 +187,7 @@ export function correctionMarkdown(plan: CorrectionPlan, flat: FlatFile, extra: 
     "## Summary", "",
     `- ${plan.lines.length} stored factors: **${c.changed} change value**, ${c.alreadyEqual} already equal the real 2019 number, ${c.UNMATCHED} have no real counterpart, ${c.AMBIGUOUS} fit more than one real row, ${c.BLANK_IN_SOURCE} match a real row that carries no number, ${c.NZI_CUSTOM} are NZI-defined.`,
     `- In use (drive scope rows): **${c.inUse} factors, ${c.inUseChanged} change.** Unused factors are aligned where a match exists and reported where not; no id is added or retired.`,
-    `- Match kinds: ${c.KEY} clean key · ${c.RULE_AIR_WITH_RF} air With RF · ${c.RULE_GAS_GROSS_CV} gas Gross CV · ${c.RULE_WASTE_RENAME} waste rename.`, "",
+    `- Match kinds: ${c.KEY} clean key · ${c.RULE_AIR_WITH_RF} air With RF · ${c.RULE_GAS_GROSS_CV} gas Gross CV · ${c.RULE_WASTE_RENAME} waste rename · ${c.VARIANT_OF_BASE} category variants set to their base's value.`, "",
     "## The factors in use", "", table(inUse), "",
     "## Named rules applied", "", named.length ? table(named) : "None.", "",
     "## NZI-defined factors (not in the DESNZ file — flagged, not guessed)", "",

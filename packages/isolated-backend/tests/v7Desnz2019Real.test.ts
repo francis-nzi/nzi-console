@@ -22,6 +22,8 @@ const REASON = "align uk-ghg-gb-2019 to the real DESNZ 2019 edition (ruled 30 Oc
 const CROSSWALK_SHA = "d4c14407379377d20aeccebd9256eaf7ef7124846b07e05b3a0bf4afd233c8f2";
 const JOB = "j2019";
 const flat = flatFile();
+const DIESEL = "uk-ghg-1_101_1011_8_1";
+const VARIANT_SUFFIXES = ["-c", "-b"];
 
 type Seed = { id: string; factorId: string; datasetId: string; scope: string; category: string; label: string; qty: number; unit: string; oldValue: number };
 const SEEDS: Seed[] = [
@@ -63,6 +65,12 @@ describe("the 2019 dataset is corrected in place, recalculated and re-attested, 
       await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
         [ORG, factor.datasetId, factor.factorId, factor.label, factor.activityUnit, factor.value, factor.scopes, factor.sourceLevels]);
 
+    // The base's same-dataset category variants (0110), at the stored copy-of-2020 value and with no source levels — as on staging, they
+    // join to nothing on their own. 0170's guard refuses a base corrected without them, so the plan must carry them to the base's value.
+    for (const suffix of VARIANT_SUFFIXES)
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,$2,$3,$4,'litres',2.54603,'{1}','{}')`,
+        [ORG, UK_2019, `${DIESEL}${suffix}`, `Diesel variant ${suffix}`]);
+
     await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
       VALUES ($1,$2,'c1',1,'crp','CRP','open','Data entry',2019,'2019-01-01','2019-12-31','nzi-pro-v7','1','J000723')`, [ORG, JOB]);
     await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2019-01-01','2019-12-31','GB')`, [ORG, JOB]);
@@ -97,7 +105,7 @@ describe("the 2019 dataset is corrected in place, recalculated and re-attested, 
     const report = await run({ expectedPlanSha: await signed() });
     assert.equal(report.committed, false);
     assert.deepEqual(report.consumers, ["J000723"]);
-    assert.equal(report.factorsUpdated, 5, "diesel, gas, rail (and the unused air and waste) change");
+    assert.equal(report.factorsUpdated, 7, "diesel, gas, rail (and the unused air and waste) change, and diesel's two variants with it");
     const v7Of = Object.fromEntries(await Promise.all(SEEDS.map(async (seed) => [(await rowOf(seed.id)).id as string, seed.id])));
     const by = Object.fromEntries(report.rows.map((row) => [v7Of[row.rowId]!, row]));
     assert.deepEqual(Object.keys(by).sort(), ["r-diesel", "r-gas", "r-rail"], "only rows on a changed factor are recalculated; electricity and walking are not");
@@ -132,7 +140,8 @@ describe("the 2019 dataset is corrected in place, recalculated and re-attested, 
       [2.59411, 0.18385, 0.04115, 0.2556, 0], "the real 2019 numbers; electricity already equal; the NZI-defined walking factor untouched");
     assert.equal(await value("uk-ghg-21_316_3160_11_1"), 0.25493, "an unused air factor is aligned (With RF)");
     assert.equal(await value("uk-ghg-twin"), 1.5, "an ambiguous factor is left alone");
-    assert.equal(await count(`SELECT count(*) AS n FROM nzi_console.emission_factors WHERE organisation_id=$1`, [ORG]), STORED.length, "no id added or retired");
+    assert.equal(await count(`SELECT count(*) AS n FROM nzi_console.emission_factors WHERE organisation_id=$1`, [ORG]), STORED.length + VARIANT_SUFFIXES.length, "no id added or retired");
+    for (const suffix of VARIANT_SUFFIXES) assert.equal(await value(`${DIESEL}${suffix}`), 2.59411, "a variant carries its base's corrected value, so the guard passes rather than being relaxed");
     for (const id of ["r-diesel", "r-gas", "r-rail"]) {
       const row = await rowOf(id);
       assert.deepEqual([row.review_status, row.reviewed_by], ["approved", PERSON]);
