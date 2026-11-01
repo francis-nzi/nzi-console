@@ -9,6 +9,8 @@ import { useState } from "react";
 import { buildPortalDataEntryAccordion, type PortalBucket } from "./portalEntryGrouping";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { PortalCategoryEntry } from "./PortalCategoryEntry";
+import { categoryWorkflowHref, scopeWorkflowHref } from "../lib/workflowDocs";
+import { WorkflowPill } from "../jobs/WorkflowPill";
 import { PortalSpendEntry } from "./PortalSpendEntry";
 import { dataEntryAdapterEnabled } from "../lib/featureFlags";
 import type { OrganisationCopy } from "../lib/organisationName";
@@ -60,19 +62,22 @@ export function PortalDataEntryAccordion({
         if (!inScope.length) return null;
         return (
           <div key={scope}>
-            <div className="nz-acc-scopehead"><span className="sdot" style={{ background: scopeColour(scope) }} />Scope {scope}</div>
+            <div className="nz-acc-scopehead"><span className="sdot" style={{ background: scopeColour(scope) }} />Scope {scope}<WorkflowPill href={scopeWorkflowHref(scope)} label={`Scope ${scope}`} /></div>
             {inScope.map(section => {
               const isOpen = open.has(section.code);
               return (
                 <div key={section.code} className={`nz-acc-cat${isOpen ? " open" : ""}`} style={{ "--cc": scopeColour(scope) } as React.CSSProperties}>
-                  <button type="button" className="nz-acc-h" aria-expanded={isOpen} onClick={() => toggle(section.code)}>
-                    <span className="nz-acc-badge">{section.name.slice(0, 1)}</span>
-                    <span className="nz-acc-tt">
-                      <b>{section.name}</b>
-                      <span className="sum">{section.buckets.length} authorised {section.buckets.length === 1 ? "bucket" : "buckets"}</span>
-                    </span>
+                  <div className="nz-acc-h" onClick={() => toggle(section.code)}>
+                    <button type="button" className="nz-acc-hmain" aria-expanded={isOpen}>
+                      <span className="nz-acc-badge">{section.name.slice(0, 1)}</span>
+                      <span className="nz-acc-tt">
+                        <b>{section.name}</b>
+                        <span className="sum">{section.buckets.length} authorised {section.buckets.length === 1 ? "bucket" : "buckets"}</span>
+                      </span>
+                    </button>
+                    <WorkflowPill href={categoryWorkflowHref(section.code)} label={section.name} />
                     <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
-                  </button>
+                  </div>
                   {isOpen ? (
                     <div className="nz-acc-body">
                       <div className="nz-acc-kindnote">⌁ {kindNote(section.kind, org)}</div>

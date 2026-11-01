@@ -20,6 +20,8 @@ import {
   visibleAccordionRows,
 } from "./dataEntryAccordion";
 import { formatQuantity, formatTco2e } from "../lib/formatNumber";
+import { categoryWorkflowHref, scopeWorkflowHref } from "../lib/workflowDocs";
+import { WorkflowPill } from "./WorkflowPill";
 import { EmissionEntryForm } from "./EmissionEntryForm";
 import type { InputSpecCategory } from "@nzi/contracts";
 import { emissionEntryDraftToScopeRow, type EntryFactorRef } from "./emissionEntryModel";
@@ -232,17 +234,19 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
             return (
             <div key={group.scope}>
               {/* C: the scope is the first level — its header collapses the whole group and carries its summary. */}
-              <button type="button" className={`nz-acc-scopehead toggle${scopeOpen ? " open" : ""}`} aria-expanded={scopeOpen} onClick={() => toggle(scopeKey, scopeOpenByDefault(group))}>
-                <span className="sdot" style={{ background: scopeColour(group.scope) }} />{group.label}
-                {/* JW-10 — a scope with nothing in it is shown, and says so; it is never left out. */}
-                {scopeHasNoData(group) ? <span className="nz-chip-mini nodata" style={{ marginLeft: 8 }}>No data yet</span>
-                  : <>
-                    <span className="ssum">{summary.entries} {summary.entries === 1 ? "entry" : "entries"}{summary.sharePercent === null ? "" : ` · ${summary.sharePercent}% of total`}</span>
-                    {/* The total is the headline figure, at the right of the rule; the share moved into its old slot in the meta. */}
-                    <span className="stot"><b>{num(summary.tco2e)}</b> tCO₂e</span>
-                  </>}
+              {/* The row toggles; the button is its keyboard and screen-reader control (its click bubbles to the row), and the WF pill is a link beside it. */}
+              <div className={`nz-acc-scopehead toggle${scopeOpen ? " open" : ""}`} onClick={() => toggle(scopeKey, scopeOpenByDefault(group))}>
+                <button type="button" className="hmain" aria-expanded={scopeOpen}>
+                  <span className="sdot" style={{ background: scopeColour(group.scope) }} />{group.label}
+                  {/* JW-10 — a scope with nothing in it is shown, and says so; it is never left out. */}
+                  {scopeHasNoData(group) ? <span className="nz-chip-mini nodata" style={{ marginLeft: 8 }}>No data yet</span>
+                    : <span className="ssum">{summary.entries} {summary.entries === 1 ? "entry" : "entries"}{summary.sharePercent === null ? "" : ` · ${summary.sharePercent}% of total`}</span>}
+                </button>
+                {/* The total is the headline figure, at the right of the rule; the share moved into its old slot in the meta. */}
+                {scopeHasNoData(group) ? null : <span className="stot"><b>{num(summary.tco2e)}</b> tCO₂e</span>}
+                <WorkflowPill href={scopeWorkflowHref(group.scope)} label={group.label} />
                 <svg className="schev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
-              </button>
+              </div>
               {scopeOpen ? <>
               {group.categories.map(entry => {
                 const code = entry.category.code;
@@ -251,7 +255,8 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                 const sources = categorySources?.(entry.category, () => setImportFor(null)) ?? null;
                 return (
                   <div key={code} className={`nz-acc-cat${categoryOpen ? " open" : ""}`} style={{ "--cc": scopeColour(group.scope) } as React.CSSProperties}>
-                    <button type="button" className="nz-acc-h" aria-expanded={categoryOpen} onClick={() => toggle(code)}>
+                    <div className="nz-acc-h" onClick={() => toggle(code)}>
+                      <button type="button" className="nz-acc-hmain" aria-expanded={categoryOpen}>
                       <span className="nz-acc-badge">{entry.category.name.slice(0, 1)}</span>
                       <span className="nz-acc-tt">
                         <b>{entry.category.name}
@@ -260,8 +265,10 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
                         <span className="sum">{entry.entryCount} {entry.entryCount === 1 ? "entry" : "entries"} · <span className="nz-acc-compl"><span className="bar"><i style={{ width: `${entry.completeness}%` }} /></span>{entry.completeness}%</span></span>
                       </span>
                       <span className="nz-acc-total"><b>{num(entry.tco2e)}</b> tCO₂e</span>
+                      </button>
+                      <WorkflowPill href={categoryWorkflowHref(code)} label={entry.category.name} />
                       <svg className="nz-acc-chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M6 9l6 6 6-6" /></svg>
-                    </button>
+                    </div>
                     {categoryOpen ? (
                       <div className="nz-acc-body">
                         {entry.rows.length ? (
