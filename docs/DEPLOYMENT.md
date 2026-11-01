@@ -205,6 +205,9 @@ deploy that `nzi_console_worker` holds every privilege the tick needs.
   invitation stayed `queued` for ever and the tick reported `emails:{sent:0,stubbed:0}`. No reminder is scanned for
   these organisations and none of their other outbox rows (a standing backlog in the tens of thousands) is touched; the
   log line adds `otherEmails` per organisation. Listed by name, never discovered.
+  The backlog is cleared by hand, never by the tick: `npm run skip:outbox-backlog -w @nzi/isolated-backend` (dry run by default
+  — a per-topic count; `--commit` under `SEED_ACTOR_ID` marks `pending` rows `skipped` in batches and writes one counts-only audit
+  event). It skips every topic except `email.send` and `strategy.deadline.reminder`, delivers nothing, and touches only `state`.
 - `RESEND_API_KEY` (dashboard, `sync: false`): **unset, every send is `stubbed`.**
 - `EMAIL_FROM` (dashboard, `sync: false`): the default sender on the verified domain, e.g.
   `Net Zero International <no-reply@netzero.international>`. Unset, sends are stubbed too.
