@@ -70,6 +70,39 @@ describe("Portal Management (portal data-entry phase 1)", () => {
   });
 });
 
+describe("Portal Management → Users (redesign)", () => {
+  it("is live when its content is provided, and shows it in the tab", () => {
+    const users = createElement("p", null, "Users here");
+    const tabs = (html: string) => [...html.matchAll(/<button[^>]*role="tab"([^>]*)>([^<]*)<\/button>/g)].map((match) => [match[2], /aria-disabled="true"/.test(match[1]!)]);
+    assert.deepEqual(tabs(body({ users })).find((tab) => tab[0] === "Users"), ["Users", false]);
+    assert.match(panel(body({ users }, "users"), "users"), /Users here/);
+    assert.deepEqual(tabs(body()).find((tab) => tab[0] === "Users"), ["Users", true], "not selectable until it is given");
+  });
+
+  it("is this client's own invitations and its users' job access and data-entry windows — the platform components, scoped by a prop, not a copy", () => {
+    const area = read("apps/console/app/clients/[clientId]/PortalManagementArea.tsx");
+    assert.match(area, /users=\{<><PortalInviteAdmin clientId=\{clientId\} \/><PortalAccessAdmin clientId=\{clientId\} \/><\/>\}/);
+    assert.match(area, /import \{ PortalAccessAdmin \} from "\.\.\/\.\.\/platform\/PortalAccessAdmin";/);
+    const invite = read("apps/console/app/platform/PortalInviteAdmin.tsx");
+    assert.match(invite, /export function PortalInviteAdmin\(\{clientId:fixedClientId\}:\{clientId\?:string\}=\{\}\)/);
+    assert.match(invite, /useState\(fixedClientId\?\?""\)/);
+    assert.match(invite, /useEffect\(\(\)=>\{if\(fixedClientId\)return;fetch\("\/api\/isolated\/clients"/, "a fixed client needs no client list");
+    assert.match(invite, /\{fixedClientId\?null:<label className="nz-fl">Client<select/, "and no picker");
+    const access = read("apps/console/app/platform/PortalAccessAdmin.tsx");
+    assert.match(access, /export function PortalAccessAdmin\(\{clientId\}:\{clientId\?:string\}=\{\}\)/);
+    assert.match(access, /setUsers\(clientId\?body\.users\.filter\(\(user:PortalAccessUser\)=>user\.clientId===clientId\):body\.users\)/, "only this client's users");
+  });
+
+  it("changes nothing for Platform & audit, which still renders both unscoped over the same routes", () => {
+    const board = read("apps/console/app/platform/PlatformBoard.tsx");
+    assert.match(board, /<PortalInviteAdmin\s*\/>|<PortalInviteAdmin\/>/);
+    assert.match(board, /<PortalAccessAdmin\s*\/>|<PortalAccessAdmin\/>/);
+    const invite = read("apps/console/app/platform/PortalInviteAdmin.tsx");
+    assert.match(invite, /fetch\("\/api\/isolated\/portal-invitations"/);
+    assert.match(read("apps/console/app/platform/PortalAccessAdmin.tsx"), /fetch\("\/api\/isolated\/portal-access"/);
+  });
+});
+
 describe("Portal Management tabs (redesign)", () => {
   it("names the seven tabs in the designed order, with Visibility and Scopes & categories live and the rest not selectable yet", () => {
     const html = body();
