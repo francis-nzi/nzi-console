@@ -504,7 +504,7 @@ export type ScopeRowWriteFields = {
  * (`PORTAL_STAFF_ONLY_FIELDS`); the profile's detailed-drawer sections show a row's detail read-only and never widen this.
  */
 /** The templates a client may import from; one per kind, as each ships (travel first). */
-export const PORTAL_IMPORT_TEMPLATES = ["travel"] as const;
+export const PORTAL_IMPORT_TEMPLATES = ["travel", "commuting"] as const;
 export type PortalImportTemplate = (typeof PORTAL_IMPORT_TEMPLATES)[number];
 /** The most rows one import files; a larger file is split by the client. */
 export const PORTAL_IMPORT_MAX_ROWS = 500;

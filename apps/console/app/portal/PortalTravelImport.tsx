@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
 import { PORTAL_IMPORT_MAX_ROWS, travelModeLabel, type FactorOption } from "@nzi/contracts";
 import { travelTemplateCsv } from "../jobs/travelTemplate";
+import { importErrorText } from "./data/portalImportErrors";
 import { portalTravelRow, portalTravelTemplateName, previewPortalTravel, travelFactorOptions, type PortalTravelLine } from "./data/portalTravelImport";
 
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
@@ -47,7 +48,7 @@ export function PortalTravelImport({ base, factors, sites, reportingMonths, canI
       setLines([]);
       notice({ kind: "ok", text: `${result.data.count} trip${result.data.count === 1 ? "" : "s"} saved to Business Travel. They wait for ${adviser}'s review.` });
       await onImported();
-    } else setError(result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.message);
+    } else setError(importErrorText(result, ready.map((line) => line.row.rowNumber)));
   }
 
   return <div className="nz-travel-template">

@@ -227,7 +227,7 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
 
   // BRIEF-portal-data-entry-parity #3: a bulk import is the create, per row, in one transaction.
   describe("a bulk import (portal.scope.row.import)", () => {
-    const batch = (rows: CommandInputMap["portal.scope.row.create"][], jobId = JOB) => ({ jobId, template: "travel" as const, rows: rows.map(({ jobId: _job, ...fields }) => fields) });
+    const batch = (rows: CommandInputMap["portal.scope.row.create"][], jobId = JOB, template: "travel" | "commuting" = "travel") => ({ jobId, template, rows: rows.map(({ jobId: _job, ...fields }) => fields) });
     const count = async (label: string) => Number((await db.query(`SELECT count(*) FROM nzi_console.job_scope_rows WHERE job_id=$1 AND source_label=$2`, [JOB, label])).rows[0].count);
 
     it("files every row pending and client-provenanced, resolved as the single create resolves it, audited once and replayed idempotently", async () => {
@@ -248,6 +248,13 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
       assert.equal(replay.replayed, true);
       assert.deepEqual(replay.data.rowIds, outcome.data.rowIds);
       assert.equal(await count("Imp A"), 1, "a replay files nothing twice");
+    });
+
+    it("takes each template the contract names (travel, commuting) through the same path, and no other", async () => {
+      const outcome = await importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Imp commuting" })], JOB, "commuting"), portal());
+      assert.equal(outcome.data.template, "commuting");
+      assert.equal((await row(outcome.data.rowIds[0]!)).review_status, "pending");
+      assert.equal(await count("Imp commuting"), 1);
     });
 
     it("is all or none: one refused row, named by its index, leaves nothing of the others behind", async () => {
