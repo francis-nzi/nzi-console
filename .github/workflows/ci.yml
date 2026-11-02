@@ -219,6 +219,11 @@ jobs:
       # and the staff are unaffected; re-enabling needs no re-invite; every attempt is recorded and the network data nulled after 90 days.
       - name: A switched-off or expired client cannot sign in, its sessions die, and nobody else is affected
         run: npx tsx --test packages/isolated-backend/tests/portalAccessEnforcementReal.test.ts
+      # Portal spend import, Phase A (RULING-portal-import-spend): per-line pending scope rows filed where the staff allocation map routes
+      # them (never the register), a hidden category held without being named, duplicates read across the register AND the job's own
+      # spend rows, a carried-forward line never filled, the signed identity verified in the transaction.
+      - name: A client's spend import files pending rows where the staff map routes them, and nothing else
+        run: npx tsx --test packages/isolated-backend/tests/portalSpendImportReal.test.ts
       # The staff portal preview, job-aware (BUILD-staff-portal-preview-job-aware): each job-level client read previewed through a
       # second authorizer — support.portal_impersonate on the client, the job the client's — returning what the client's own read
       # returns, with no grant, user or window; never reachable by a portal principal; audited with the job; writing nothing.

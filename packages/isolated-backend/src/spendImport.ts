@@ -1,6 +1,7 @@
 import {
   importRowIssue,
   importRowStatus,
+  parseSpendImportNote,
   reconcileSpendImport,
   spendImportLineIdentity,
   reviewSpendImportRow,
@@ -93,6 +94,18 @@ export async function loadSpendImportContext(db: Queryable, organisationId: stri
   for (const r of existing.rows) {
     if (r.carry_key && r.quantity === null) { carriedLines.set(r.carry_key, [...(carriedLines.get(r.carry_key) ?? []), r.source_id]); continue; }
     const identity = spendImportLineIdentity({ description: r.source_name, netValue: r.quantity == null ? null : Number(r.quantity), glCode: r.source_subtype, invoiceDate: r.invoice_date });
+    existingLines.set(identity, (existingLines.get(identity) ?? 0) + 1);
+  }
+  // The client portal files spend lines as scope rows of their own (never into the register above), so they are lines the job holds too:
+  // a re-import, or staff over a client's import, must not file them twice. A scope row has no GL or invoice-date column; a portal import
+  // writes them into its note in a fixed shape (`spendImportNote`), read back here. A row is a spend line when it is live, enabled and in a currency.
+  const filed = await db.query<{ source_label: string; quantity: string | null; notes: string | null }>(
+    `SELECT source_label,quantity,notes FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND origin='live' AND enabled AND unit ~ '^[A-Z]{3}$' AND quantity IS NOT NULL`,
+    [organisationId, jobId],
+  );
+  for (const r of filed.rows) {
+    const read = parseSpendImportNote(r.notes);
+    const identity = spendImportLineIdentity({ description: r.source_label, netValue: Number(r.quantity), glCode: read?.glCode ?? null, invoiceDate: read?.invoiceDate ?? null });
     existingLines.set(identity, (existingLines.get(identity) ?? 0) + 1);
   }
   return {

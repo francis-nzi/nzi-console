@@ -83,6 +83,7 @@ export * from "./datasetMapping";
 export * from "./commands";
 export * from "./portalFiles";
 export * from "./portalClientAccess";
+export * from "./portalSpendImport";
 export * from "./contactConsent";
 export * from "./knowledge";
 export * from "./tours";

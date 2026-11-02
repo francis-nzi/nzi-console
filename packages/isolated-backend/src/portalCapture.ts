@@ -9,6 +9,7 @@ import { getPortalDataEntryAccess, type PortalDataEntryAccess } from "./portalAc
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 import { aggregateJobEmissions, type JobEmissions } from "./emissionsAggregation";
 import { openReopenRequestsByRow } from "./portalReopenRequests";
+import { importPortalSpendLines } from "./portalSpendImport";
 
 /**
  * Portal data-entry phase 2 — the client enters data on the job's own scope rows (RULING-portal-dataentry-02; BUILD-portal-
@@ -84,8 +85,17 @@ export function createPortalScopeRow(pool: PoolLike, input: CommandInputMap["por
  * runner as for any portal command. The rows are read and resolved on the client with the CRM's own template resolvers; this
  * command re-checks everything the create does, so the client's preview is a convenience and never the gate.
  */
-export function importPortalScopeRows(pool: PoolLike, input: CommandInputMap["portal.scope.row.import"], context: CommandContext): Promise<StoredOutcome<{ jobId: string; template: string; rowIds: string[]; count: number }>> {
-  return runPostgresCommand(pool, "portal.scope.row.import", input, context, async (db) => {
+type ImportData = { jobId: string; template: string; rowIds: string[]; count: number; alreadyImported?: number; matchesCarried?: number; blocked?: number };
+export function importPortalScopeRows(pool: PoolLike, input: CommandInputMap["portal.scope.row.import"], context: CommandContext, options: { spendSecret?: string } = {}): Promise<StoredOutcome<ImportData>> {
+  return runPostgresCommand<"portal.scope.row.import", ImportData>(pool, "portal.scope.row.import", input, context, async (db) => {
+    // A spend import is routed and filed by the server (RULING-portal-import-spend): the same create path per line, the lines reviewed against the job as it is now.
+    if (input.template === "spend") {
+      const result = await importPortalSpendLines(db, input, context, options.spendSecret, async (fields) => {
+        await requireShownCategory(db, context.portal!.clientId, fields);
+        return (await scopeRowCreateHandler(asCrmCreate({ ...fields, jobId: input.jobId }), context)(db)).data.rowId;
+      });
+      return { data: { jobId: input.jobId, template: input.template, ...result }, entityType: "job", entityId: input.jobId, topic: "portal.scope.row.imported" };
+    }
     const rowIds: string[] = [];
     for (const [index, row] of input.rows.entries()) {
       try {
