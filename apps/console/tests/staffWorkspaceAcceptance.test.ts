@@ -23,7 +23,7 @@ describe("staff workspace acceptance contracts",()=>{
   });
   it("hosts every record drawer in one place — no card owns a drawer, and there is no separate edit page",()=>{
     const shell=read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");
-    for(const kind of ["identity","targets","rebaseline","address","compliance","factors","portal","contact","site"])assert.ok(shell.includes(`drawer?.kind === "${kind}"`),kind);
+    for(const kind of ["identity","targets","rebaseline","address","compliance","factors","contact","site"])assert.ok(shell.includes(`drawer?.kind === "${kind}"`),kind);
     for(const card of ["ClientContacts.tsx","ClientSites.tsx","ClientTargets.tsx","ClientIdentity.tsx"]){
       assert.doesNotMatch(read(`apps/console/app/clients/[clientId]/${card}`),/<Drawer\b/,`${card} still owns a drawer`);
     }

@@ -104,14 +104,15 @@ describe("Portal Management → Users (redesign)", () => {
 });
 
 describe("Portal Management tabs (redesign)", () => {
-  it("names the seven tabs in the designed order, with Visibility and Scopes & categories live and the rest not selectable yet", () => {
+  it("names the seven tabs in the designed order, with Access, Visibility and Scopes & categories live and the rest not selectable yet", () => {
     const html = body();
     const tabs = [...html.matchAll(/<button[^>]*role="tab"([^>]*)>([^<]*)<\/button>/g)].map((match) => [match[2], /aria-disabled="true"/.test(match[1]!)]);
-    assert.deepEqual(tabs, [["Access", true], ["Users", true], ["Visibility", false], ["Scopes &amp; categories", false], ["Jobs", true], ["Files", true], ["History", true]]);
+    assert.deepEqual(tabs, [["Access", false], ["Users", true], ["Visibility", false], ["Scopes &amp; categories", false], ["Jobs", true], ["Files", true], ["History", true]]);
     assert.match(html, /role="tab"[^>]*aria-selected="true"[^>]*class="on">Visibility</);
     assert.match(body({ files: createElement("p", null, "Files here") }, "files"), /role="tab"[^>]*aria-controls="pm-panel-files"[^>]*>Files</);
     assert.doesNotMatch(body({ files: createElement("p", null, "Files here") }), /aria-disabled="true"[^>]*>Files</, "Files is live when it is on");
-    assert.match(body({}, "access"), /This tab is not available yet\./);
+    assert.match(body({}, "jobs"), /This tab is not available yet\./);
+    assert.match(panel(body({ access: createElement("p", null, "Access here") }, "access"), "access"), /Access here/);
   });
 
   it("draws the Visibility switches wordless — on = shown — with no area descriptions, no Datasets, no Setup and no default markers", () => {

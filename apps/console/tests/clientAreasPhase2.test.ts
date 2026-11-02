@@ -47,9 +47,12 @@ describe("client workspace phase 2 areas", () => {
     for (const field of ["Financial year end", "Reporting frameworks", "Certifications", "Primary Scope 3 categories", "Registered", "Billing"]) {
       assert.ok(profile.includes(field), field);
     }
-    for (const drawer of ["identity", "compliance", "address", "factors", "portal", "contact"]) {
+    for (const drawer of ["identity", "compliance", "address", "factors", "contact"]) {
       assert.match(profile, new RegExp(`kind: "${drawer}"`), drawer);
     }
+    // Portal access is no longer a drawer: its opener opens Portal Management → Access (RULING-portal-access-model).
+    assert.doesNotMatch(profile, /kind: "portal"/);
+    assert.match(profile, /onClick=\{onOpenPortal\}/);
     // One editor per thing: the area reads the record, it does not grow its own form.
     assert.doesNotMatch(profile, /<input|<textarea|putBrowserCommand/, "no second editor for the same fields");
     assert.match(profile, /GatedButton/, "editing is permission-gated");

@@ -9,14 +9,16 @@ import { portalFeatureEnabled } from "../../lib/portalFlags";
 import { useEditAccess, type EditAccess } from "../../lib/useEditAccess";
 import { PortalAccessAdmin } from "../../platform/PortalAccessAdmin";
 import { PortalInviteAdmin } from "../../platform/PortalInviteAdmin";
+import { PortalAccessTab } from "./PortalAccessTab";
+import { PmSwitch } from "./PmSwitch";
 import { PortalFilesPanel } from "./PortalFilesPanel";
 
 /**
  * Portal Management (DESIGN-portal-management; BRIEF-portal-management-redesign): what this client's portal offers them, over the
  * organisation's default, and which scopes and categories they see — as tabs: Access · Users · Visibility · Scopes & categories ·
- * Jobs · Files · History. Live: Visibility, Scopes & categories, Users (the invitations and per-user job access and data-entry windows
- * that Platform & audit has, scoped to this client — the same components, routes and audited commands, not a new auth path) and, when
- * on, Files. The others are named, and say so, until each ships.
+ * Jobs · Files · History. Live: Access (the client-level switch and record), Visibility, Scopes & categories, Users (the invitations and per-user job
+ * access and data-entry windows that Platform & audit has, scoped to this client — the same components, routes and audited commands, not a new
+ * auth path) and, when on, Files. The others are named, and say so, until each ships.
  *
  * Every change is a governed command, unchanged by the redesign:
  *   - a portal setting → client.portal.profile.set (portal.admin);
@@ -58,7 +60,7 @@ export function PortalManagementArea({ clientId, clientOwnerUserId, writeEnabled
   const [note, setNote] = useState("");
   const [pending, setPending] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
-  const [tab, setTab] = useState<PortalManagementTab>("visibility");
+  const [tab, setTab] = useState<PortalManagementTab>("access");
   const profileAccess = useEditAccess("portal.admin", writeEnabled, clientOwnerUserId);
   const visibilityAccess = useEditAccess("category.visibility", writeEnabled, clientOwnerUserId);
   const base = `/api/isolated/clients/${encodeURIComponent(clientId)}`;
@@ -98,15 +100,9 @@ export function PortalManagementArea({ clientId, clientOwnerUserId, writeEnabled
   }
 
   return <PortalManagementBody load={load} note={note} onNote={setNote} pending={pending} message={message} profileAccess={profileAccess} visibilityAccess={visibilityAccess}
-    tab={tab} onTab={setTab} files={portalFeatureEnabled("portal-files") ? <PortalFilesPanel clientId={clientId} access={profileAccess} /> : null}
+    tab={tab} onTab={setTab} access={<PortalAccessTab clientId={clientId} access={profileAccess} />} files={portalFeatureEnabled("portal-files") ? <PortalFilesPanel clientId={clientId} access={profileAccess} /> : null}
     users={<><PortalInviteAdmin clientId={clientId} /><PortalAccessAdmin clientId={clientId} /></>}
     onRetry={() => void refresh()} onSend={(key, path, input, done) => void send(key, path, input, done)} onResetAll={(commands) => void resetAll(commands)} />;
-}
-
-/** A wordless switch: on = shown. It carries only its name, for the screen reader and the tooltip. */
-function Switch({ name, on, blocked, onToggle, title }: { name: string; on: boolean; blocked: boolean; onToggle: () => void; title?: string }) {
-  return <button type="button" role="switch" aria-checked={on} aria-label={name} title={title} aria-disabled={blocked || undefined} className={`nz-pm-sw${on ? " on" : ""}`}
-    onClick={() => { if (!blocked) onToggle(); }} />;
 }
 
 const TABS: ReadonlyArray<{ id: PortalManagementTab; label: string }> = [
@@ -114,12 +110,14 @@ const TABS: ReadonlyArray<{ id: PortalManagementTab; label: string }> = [
   { id: "jobs", label: "Jobs" }, { id: "files", label: "Files" }, { id: "history", label: "History" },
 ];
 /** Tabs that are live in this step. The rest are named so the shape is visible, and are not selectable until they ship. */
-const LIVE: ReadonlySet<PortalManagementTab> = new Set(["visibility", "scopes"]);
+const LIVE: ReadonlySet<PortalManagementTab> = new Set(["access", "visibility", "scopes"]);
 
 /** The area, from props — everything it shows and every command it sends, with no fetching of its own (so it is testable). */
-export function PortalManagementBody({ load, note, onNote, pending, message, profileAccess, visibilityAccess, tab, onTab, files, users, onRetry, onSend, onResetAll }: {
+export function PortalManagementBody({ load, note, onNote, pending, message, profileAccess, visibilityAccess, tab, onTab, access, files, users, onRetry, onSend, onResetAll }: {
   load: PortalManagementLoad; note: string; onNote: (value: string) => void; pending: string | null; message: { tone: "ok" | "warn"; text: string } | null;
   profileAccess: EditAccess; visibilityAccess: EditAccess; tab: PortalManagementTab; onTab: (tab: PortalManagementTab) => void;
+  /** The Access tab's content: the client-level switch and record (it loads and saves for itself). */
+  access?: ReactNode;
   /** The Files tab's content, when it is on. */
   files?: ReactNode;
   /** The Users tab's content: this client's invitations and its users' job access and data-entry windows. */
@@ -135,6 +133,7 @@ export function PortalManagementBody({ load, note, onNote, pending, message, pro
       <Tabs items={items} value={tab} onChange={(id) => onTab(id as PortalManagementTab)} ariaLabel="Portal Management" idBase="pm" className="nz-tabs nz-pm-tabs" />
       {message ? <div className={`nz-banner ${message.tone}`} role={message.tone === "ok" ? "status" : "alert"}>{message.text}</div> : null}
 
+      <TabPanel id="access" idBase="pm" active={tab === "access"} ariaLabel="Access">{access}</TabPanel>
       <TabPanel id="visibility" idBase="pm" active={tab === "visibility"} ariaLabel="Visibility">
         <LoadGate load={load} onRetry={onRetry}>{(view) => <VisibilityTab view={view} note={note} onNote={onNote} pending={pending} access={profileAccess} onSend={onSend} onResetAll={onResetAll} />}</LoadGate>
       </TabPanel>
@@ -143,7 +142,7 @@ export function PortalManagementBody({ load, note, onNote, pending, message, pro
       </TabPanel>
       <TabPanel id="files" idBase="pm" active={tab === "files"} ariaLabel="Files">{files}</TabPanel>
       <TabPanel id="users" idBase="pm" active={tab === "users"} ariaLabel="Users">{users}</TabPanel>
-      {(["access", "jobs", "history"] as const).map((id) => <TabPanel key={id} id={id} idBase="pm" active={tab === id}><p className="sub" role="status">This tab is not available yet.</p></TabPanel>)}
+      {(["jobs", "history"] as const).map((id) => <TabPanel key={id} id={id} idBase="pm" active={tab === id}><p className="sub" role="status">This tab is not available yet.</p></TabPanel>)}
     </div>
   </section>;
 }
@@ -185,7 +184,7 @@ function VisibilityTab({ view, note, onNote, pending, access, onSend, onResetAll
     const on = entry.effectiveValue === ON_VALUE[key];
     return <div key={key} className="nz-pm-row" title={decidedTitle(entry.decision)}>
       <span className="nz-pm-name">{NAME[key]}</span>
-      <Switch name={NAME[key]!} on={on} blocked={blocked} onToggle={() => toggle(key, !on)} title={decidedTitle(entry.decision)} />
+      <PmSwitch name={NAME[key]!} on={on} blocked={blocked} onToggle={() => toggle(key, !on)} title={decidedTitle(entry.decision)} />
     </div>;
   };
   const detailed = byKey.get("entryDrawer")?.effectiveValue === ON_VALUE.entryDrawer;
@@ -220,7 +219,7 @@ function ScopesTab({ view, note, onNote, pending, access, onSend, onResetAll }: 
       <div className="nz-pm-row" title={decidedTitle(scope.decision)}>
         <span className="nz-pm-name">{scope.label}{scope.decision ? <span className="nz-pm-ov">Overridden · <button type="button" className="nz-pm-link" aria-disabled={blocked || undefined}
           onClick={() => { if (!blocked) onSend(`scope-${scope.scope}`, "/portal-profile/scopes", { scope: scope.scope, visible: null }, `${scope.label}: reset.`); }}>Reset</button></span> : null}</span>
-        <Switch name={scope.label} on={scope.effectiveVisible} blocked={blocked} title={decidedTitle(scope.decision)}
+        <PmSwitch name={scope.label} on={scope.effectiveVisible} blocked={blocked} title={decidedTitle(scope.decision)}
           onToggle={() => onSend(`scope-${scope.scope}`, "/portal-profile/scopes", { scope: scope.scope, visible: !scope.effectiveVisible }, `${scope.label}: ${scope.effectiveVisible ? "off" : "on"}.`)} />
       </div>
       {scope.categories.length ? <details className="nz-pm-cats">
@@ -230,7 +229,7 @@ function ScopesTab({ view, note, onNote, pending, access, onSend, onResetAll }: 
           return <div key={category.categoryCode} className="nz-pm-row" title={decidedTitle(category.decision)}>
             <span className="nz-pm-name">{category.name}{category.hiddenBy === "scope" ? <span className="nz-pm-dim"> (its scope is off)</span> : null}{category.decision ? <span className="nz-pm-ov">Overridden · <button type="button" className="nz-pm-link" aria-disabled={blocked || undefined}
               onClick={() => { if (!blocked) onSend(`cat-${category.categoryCode}`, "/category-visibility", { categoryCode: category.categoryCode, visible: null }, `${category.name}: reset.`); }}>Reset</button></span> : null}</span>
-            <Switch name={category.name} on={on} blocked={blocked} title={decidedTitle(category.decision)}
+            <PmSwitch name={category.name} on={on} blocked={blocked} title={decidedTitle(category.decision)}
               onToggle={() => onSend(`cat-${category.categoryCode}`, "/category-visibility", { categoryCode: category.categoryCode, visible: !on }, `${category.name}: ${on ? "off" : "on"}.`)} />
           </div>;
         })}</div>

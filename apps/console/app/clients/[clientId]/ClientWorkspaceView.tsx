@@ -34,7 +34,7 @@ import { PortalManagementArea } from "./PortalManagementArea";
 import { portalFeatureEnabled } from "../../lib/portalFlags";
 import { ContactForm } from "./ClientContacts";
 import { ClientLogoBadge, IdentityForm } from "./ClientIdentity";
-import { AddressForm, ComplianceForm, FactorsDrawerBody, PortalDrawerBody, RebaselineForm } from "./ClientRecordDrawers";
+import { AddressForm, ComplianceForm, FactorsDrawerBody, RebaselineForm } from "./ClientRecordDrawers";
 import { SiteForm } from "./ClientSites";
 import { TargetsForm } from "./ClientTargets";
 import { clientAreaGroups, isClientAreaId, type ClientAreaId } from "./clientAreas";
@@ -162,7 +162,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       <div className="nz-head-actions">
         {/* No "Edit client" here: the record is edited one thing at a time, in its own
             drawer, from the surface that shows it (v10). */}
-        <button type="button" className="nz-btn" onClick={() => openDrawer({ kind: "portal" })}>Portal access</button>
+        {canManagePortal ? <button type="button" className="nz-btn" onClick={() => selectArea("portal")}>Portal access</button> : null}
         {/* Read-only preview of what this client sees. Gated on the capability the matrix has
             always described as "enter a client's portal context" — see NZC-087. */}
         {canPreviewPortal ? <Link className="nz-btn" href={`/clients/${encodeURIComponent(client.id)}/portal-preview`}>Go to portal</Link> : null}
@@ -188,14 +188,14 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
             <OverviewArea workspace={workspace} jobs={jobs} today={today} access={access} onEvidence={() => setEvidenceKey("latest")} onDrawer={openDrawer} />
           </div>
           <aside className="nz-client-aside">
-            <OverviewAside workspace={workspace} today={today} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
+            <OverviewAside workspace={workspace} today={today} access={access} onDrawer={openDrawer} onOpenPortal={canManagePortal ? () => selectArea("portal") : undefined} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
           </aside>
         </div>
         : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} access={access.client} onDrawer={openDrawer} />
         : area === "reporting" ? <ReportingArea workspace={workspace} />
         : area === "strategies" ? <ReductionStrategiesArea workspace={workspace} today={today} access={access.actions} onDrawer={openStrategyDrawer} />
         : area === "srs" ? <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} onSaved={srsSaved} />
-        : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
+        : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} onOpenPortal={canManagePortal ? () => selectArea("portal") : undefined} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
         : area === "comms" ? <CommsArea workspace={workspace} />
         : area === "files" ? <FilesArea workspace={workspace} />
         : area === "ai" ? <AiProfileArea workspace={workspace} />
@@ -214,7 +214,6 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       {drawer?.kind === "address" ? <AddressForm client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "compliance" ? <ComplianceForm client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "factors" ? <FactorsDrawerBody clientId={client.id} onClose={closeDrawer} /> : null}
-      {drawer?.kind === "portal" ? <PortalDrawerBody client={client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "intensity-target" ? (() => { const metric = workspace.intensityMetrics.find((item) => item.key === drawer.metricKey); return metric ? <IntensityTargetForm key={drawer.metricKey} clientId={client.id} metric={metric} target={workspace.intensityTargets?.find((item) => item.metricKey === drawer.metricKey) ?? null} access={access.target} onClose={closeDrawer} onSaved={saved} /> : null; })() : null}
       {drawer?.kind === "reporting-template" ? <ReportingTemplateForm key={`template-${workspace.reportingTemplate.latestVersion}`} clientId={client.id} template={workspace.reportingTemplate} access={access.client} onClose={closeDrawer} onSaved={saved} /> : null}
       {drawer?.kind === "reporting-template-initialise" ? <ReportingTemplateInitialiseForm clientId={client.id} template={workspace.reportingTemplate} jobs={jobs} access={access.client} onClose={closeDrawer} onSaved={saved} /> : null}

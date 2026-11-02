@@ -119,7 +119,9 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
 }
 
 /** The right-hand column: the client's own record surfaces, each edited in a drawer. */
-export function OverviewAside({ workspace, today, access, onDrawer, factorsEnabled, geocodingEnabled = false }: {
+export function OverviewAside({ workspace, today, access, onDrawer, onOpenPortal, factorsEnabled, geocodingEnabled = false }: {
+  /** Opens Portal Management → Access; absent when the viewer cannot manage this client's portal. */
+  onOpenPortal?: () => void;
   geocodingEnabled?: boolean;
   workspace: ClientWorkspaceReadModel;
   today: string;
@@ -148,7 +150,7 @@ export function OverviewAside({ workspace, today, access, onDrawer, factorsEnabl
         <div className="nz-kv"><span className="k">Address</span><span className="v"><button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "address" })}>{client.profile.registeredCity?.trim() ? `${client.profile.registeredCity} · edit` : "Add"}</button></span></div>
         <div className="nz-kv"><span className="k">Compliance</span><span className="v"><button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "compliance" })}>{client.profile.reportingFrameworks?.length ? `${client.profile.reportingFrameworks.length} framework${client.profile.reportingFrameworks.length === 1 ? "" : "s"} · edit` : "Add"}</button></span></div>
         {factorsEnabled ? <div className="nz-kv"><span className="k">Client factors</span><span className="v"><button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "factors" })}>Manage</button></span></div> : null}
-        <div className="nz-kv"><span className="k">Portal access</span><span className="v"><button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "portal" })}>Open</button></span></div>
+        {onOpenPortal ? <div className="nz-kv"><span className="k">Portal access</span><span className="v"><button type="button" className="nz-editlink" onClick={onOpenPortal}>Open</button></span></div> : null}
       </div>
     </section>
   </>;

@@ -1,4 +1,5 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
+import { PORTAL_ACCESS_NOTES_MAX, PORTAL_ACCESS_NOTE_MAX, PORTAL_ACCESS_PAYMENT_REF_MAX, PORTAL_PAYMENT_STATUSES, type PortalClientAccessChanges } from "./portalClientAccess";
 import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, type PortalFileIngest } from "./portalFiles";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
@@ -263,6 +264,7 @@ export type CommandKey =
   | "subject.review.decide"
   | "client.category.visibility.set"
   | "client.portal.profile.set"
+  | "client.portal.access.set"
   | "portal.file.upload"
   | "portal.file.download"
   | "client.file.deliver"
@@ -1181,6 +1183,8 @@ export type CommandInputMap = {
   "client.portal.profile.set":{clientId:string;profileKey:string;value:string|null;note?:string|null};
   // Portal files (BRIEF-portal-files-secure-upload-storage). An upload's bytes never travel in a command: the ingest gate has already
   // stored, scanned and decided them, and the command records that outcome (audited, tenant-scoped, idempotent).
+  /** Portal Management → Access: the client-level switch and record. `expectedVersion` is null while the client has no record yet (the defaults). */
+  "client.portal.access.set":{clientId:string;expectedVersion:number|null;changes:PortalClientAccessChanges;note?:string|null};
   "portal.file.upload":{clientId:string;ingest:PortalFileIngest};
   "portal.file.download":{clientId:string;fileId:string};
   "client.file.deliver":{clientId:string;ingest:PortalFileIngest};
@@ -1326,6 +1330,24 @@ const baseIssues = (context: CommandContext, reasonRequired: boolean) => {
 const staffNameIssues = (issues: CommandIssue[], name: unknown) => {
   if (!text(name)) issues.push({ field: "displayName", code: "REQUIRED", message: "A name is required." });
   else if ((name as string).trim().length > STAFF_NAME_MAX) issues.push({ field: "displayName", code: "INVALID", message: `A name is at most ${STAFF_NAME_MAX} characters.` });
+};
+/** The Access tab's save: a non-empty set of well-formed changes, a version or null, a short reason. The handler decides what actually changed. */
+const portalAccessIssues = (input: { clientId: string; expectedVersion: number | null; changes: PortalClientAccessChanges; note?: string | null }, context: CommandContext) => {
+  const issues = baseIssues(context, false);
+  required(issues, "clientId", input.clientId);
+  if (input.expectedVersion !== null && !(Number.isInteger(input.expectedVersion) && input.expectedVersion > 0)) issues.push({ field: "expectedVersion", code: "INVALID", message: "The version is a whole number, or null before the first save." });
+  const changes = input.changes as Record<string, unknown> | null;
+  const known = ["enabled", "trained", "expiresAt", "userCap", "paymentStatus", "paymentRef", "notes"];
+  if (!changes || typeof changes !== "object" || Object.keys(changes).length === 0) { issues.push({ field: "changes", code: "REQUIRED", message: "Nothing to save." }); return issues; }
+  for (const key of Object.keys(changes)) if (!known.includes(key)) issues.push({ field: `changes.${key}`, code: "UNKNOWN", message: "That is not an access setting." });
+  for (const key of ["enabled", "trained"]) if (key in changes && typeof changes[key] !== "boolean") issues.push({ field: `changes.${key}`, code: "INVALID", message: "This is on or off." });
+  if ("expiresAt" in changes && changes.expiresAt !== null && (typeof changes.expiresAt !== "string" || Number.isNaN(Date.parse(changes.expiresAt)))) issues.push({ field: "changes.expiresAt", code: "INVALID", message: "The expiry is a date and time, or blank for none." });
+  if ("userCap" in changes && changes.userCap !== null && !(Number.isInteger(changes.userCap) && (changes.userCap as number) >= 0)) issues.push({ field: "changes.userCap", code: "INVALID", message: "The number of users is a whole number, or blank." });
+  if ("paymentStatus" in changes && changes.paymentStatus !== null && !(PORTAL_PAYMENT_STATUSES as readonly unknown[]).includes(changes.paymentStatus)) issues.push({ field: "changes.paymentStatus", code: "INVALID", message: "Payment status is unpaid, paid or waived." });
+  if ("paymentRef" in changes && changes.paymentRef !== null && (typeof changes.paymentRef !== "string" || changes.paymentRef.length > PORTAL_ACCESS_PAYMENT_REF_MAX)) issues.push({ field: "changes.paymentRef", code: "TOO_LONG", message: `The reference is at most ${PORTAL_ACCESS_PAYMENT_REF_MAX} characters.` });
+  if ("notes" in changes && (typeof changes.notes !== "string" || changes.notes.length > PORTAL_ACCESS_NOTES_MAX)) issues.push({ field: "changes.notes", code: "TOO_LONG", message: `Notes are at most ${PORTAL_ACCESS_NOTES_MAX} characters.` });
+  if (typeof input.note === "string" && input.note.length > PORTAL_ACCESS_NOTE_MAX) issues.push({ field: "note", code: "TOO_LONG", message: `A reason is at most ${PORTAL_ACCESS_NOTE_MAX} characters.` });
+  return issues;
 };
 const fileRefIssues = (input: { clientId: string; fileId: string }, context: CommandContext, reasonRequired = false) => {
   const issues = baseIssues(context, reasonRequired);
@@ -3302,6 +3324,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
    * entry drawer, the detailed drawer's sections, the deactivate action — is portal administration, so `portal.admin`, as
    * the brief has it. Milestones is never `edit`: refused here and by the table (decision 3).
    */
+  "client.portal.access.set": { key: "client.portal.access.set", label: "Set a client's portal access", permission: "portal.admin", reasonRequired: false, transaction: "client portal access record + one decision per changed field + (on switch-off or expiry) the client's live sessions ended + audit + outbox + idempotency", auditAction: "client_portal_access_set", validate: (input, context) => portalAccessIssues(input, context) },
   "portal.file.upload": { key: "portal.file.upload", label: "Upload a file in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "file record (quarantined or released by the gate) + audit + outbox + idempotency", auditAction: "portal_file_uploaded", validate: (input, context) => fileIngestIssues(input, context) },
   "portal.file.download": { key: "portal.file.download", label: "Download a file in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "signed URL for a released file + audit + outbox + idempotency", auditAction: "portal_file_downloaded", validate: (input, context) => fileRefIssues(input, context) },
   "client.file.deliver": { key: "client.file.deliver", label: "Share a file with the client portal", permission: "portal.admin", reasonRequired: false, transaction: "file record (quarantined or released by the gate) + audit + outbox + idempotency", auditAction: "client_file_delivered", validate: (input, context) => fileIngestIssues(input, context) },

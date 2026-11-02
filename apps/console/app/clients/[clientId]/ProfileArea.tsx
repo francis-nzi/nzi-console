@@ -17,7 +17,9 @@ import type { DrawerRequest } from "./clientDrawers";
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const monthName = (month: number | null | undefined) => month && month >= 1 && month <= 12 ? MONTHS[month - 1]! : null;
 
-export function ProfileArea({ workspace, access, onDrawer, factorsEnabled, geocodingEnabled = false }: {
+export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factorsEnabled, geocodingEnabled = false }: {
+  /** Opens Portal Management → Access; absent when the viewer cannot manage this client's portal. */
+  onOpenPortal?: () => void;
   geocodingEnabled?: boolean;
   workspace: ClientWorkspaceReadModel;
   access: { client: EditAccess; contact: EditAccess };
@@ -113,7 +115,7 @@ export function ProfileArea({ workspace, access, onDrawer, factorsEnabled, geoco
         </section>
 
         <section className="nz-panel">
-          <CardHead eyebrow="Client experience" title="Portal access" right={<button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "portal" })}>Open</button>} />
+          <CardHead eyebrow="Client experience" title="Portal access" right={onOpenPortal ? <button type="button" className="nz-editlink" onClick={onOpenPortal}>Open</button> : undefined} />
           <div style={{ padding: "6px 16px 12px" }}>
             <p className="sub" style={{ margin: "6px 0" }}>Portal users, their job-level access and data-entry windows.</p>
           </div>
