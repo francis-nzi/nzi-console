@@ -71,6 +71,7 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   job_milestones: { periodBound: false, why: "re-anchored by this command (J6)" },
   job_stage_history: { periodBound: false, why: "a record of stage moves, not of the period" },
   portal_access_grants: { periodBound: false, why: "who may see the job, not what it measured" },
+  portal_files: { periodBound: false, why: "a document shared for the job, not data measured for the period" },
   lca_assessments: { periodBound: false, why: "LCA has no reporting period" },
   job_consultancy_details: { periodBound: false, why: "consultancy has no reporting period" },
   consultancy_deliverables: { periodBound: false, why: "consultancy has no reporting period" },

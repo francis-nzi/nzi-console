@@ -29,6 +29,10 @@ export type PortalFeature =
   // The portal shell (BUILD-portal-shell-lookandfeel): MOCKUP-client-portal.html's left-rail app shell as the portal chrome, with
   // the views in its main pane — in the client portal and in the staff preview. Dark by absence: declared here only, not in
   // render.yaml (#503/#505); Francis adds the token in the dashboard. Off, the portal is exactly as before.
+  // Portal files (BRIEF-portal-files-secure-upload-storage): the Files tab, the client's upload and the audited download. Dark by absence: declared
+  // here only, not in render.yaml; Francis adds the token in the dashboard (and the storage configuration) when the store is ready. Off, every
+  // file route is 404.
+  | "portal-files"
   | "portal-shell";
 
 const enabled = (): Set<string> =>

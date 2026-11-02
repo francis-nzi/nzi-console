@@ -1,4 +1,5 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
+import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, type PortalFileIngest } from "./portalFiles";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
 import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
@@ -262,6 +263,12 @@ export type CommandKey =
   | "subject.review.decide"
   | "client.category.visibility.set"
   | "client.portal.profile.set"
+  | "portal.file.upload"
+  | "portal.file.download"
+  | "client.file.deliver"
+  | "client.file.download"
+  | "client.file.rescan"
+  | "client.file.deactivate"
   | "client.portal.scope.visibility.set"
   | "client.factor.alias.set"
   | "factor.applicability.add"
@@ -1172,6 +1179,14 @@ export type CommandInputMap = {
    * withdraws the decision and returns the key to the org default — the `client.category.visibility.set` shape.
    */
   "client.portal.profile.set":{clientId:string;profileKey:string;value:string|null;note?:string|null};
+  // Portal files (BRIEF-portal-files-secure-upload-storage). An upload's bytes never travel in a command: the ingest gate has already
+  // stored, scanned and decided them, and the command records that outcome (audited, tenant-scoped, idempotent).
+  "portal.file.upload":{clientId:string;ingest:PortalFileIngest};
+  "portal.file.download":{clientId:string;fileId:string};
+  "client.file.deliver":{clientId:string;ingest:PortalFileIngest};
+  "client.file.download":{clientId:string;fileId:string};
+  "client.file.rescan":{clientId:string;fileId:string};
+  "client.file.deactivate":{clientId:string;fileId:string};
   /** Whether this client sees a scope (and so its categories) at all. `visible: null` withdraws, back to the default: visible. */
   "client.portal.scope.visibility.set":{clientId:string;scope:string;visible:boolean|null;note?:string|null};
   /** What this client calls a shared dataset factor. `label: null` withdraws the alias. */
@@ -1311,6 +1326,28 @@ const baseIssues = (context: CommandContext, reasonRequired: boolean) => {
 const staffNameIssues = (issues: CommandIssue[], name: unknown) => {
   if (!text(name)) issues.push({ field: "displayName", code: "REQUIRED", message: "A name is required." });
   else if ((name as string).trim().length > STAFF_NAME_MAX) issues.push({ field: "displayName", code: "INVALID", message: `A name is at most ${STAFF_NAME_MAX} characters.` });
+};
+const fileRefIssues = (input: { clientId: string; fileId: string }, context: CommandContext, reasonRequired = false) => {
+  const issues = baseIssues(context, reasonRequired);
+  required(issues, "clientId", input.clientId); required(issues, "fileId", input.fileId);
+  return issues;
+};
+/** The recorded outcome of the ingest gate: its shape must be one the gate can produce, so a forged one is refused at the command too. */
+const fileIngestIssues = (input: { clientId: string; ingest: PortalFileIngest }, context: CommandContext) => {
+  const issues = baseIssues(context, false);
+  required(issues, "clientId", input.clientId);
+  const file = input.ingest;
+  if (!file || typeof file !== "object") { issues.push({ field: "ingest", code: "REQUIRED", message: "The file's record is missing." }); return issues; }
+  required(issues, "ingest.fileId", file.fileId); required(issues, "ingest.fileName", file.fileName);
+  if (!/^[0-9a-f]{64}$/.test(String(file.sha256))) issues.push({ field: "ingest.sha256", code: "INVALID", message: "The file's hash is missing." });
+  if (!Number.isInteger(file.sizeBytes) || file.sizeBytes < 0 || file.sizeBytes > PORTAL_FILE_MAX_BYTES) issues.push({ field: "ingest.sizeBytes", code: "INVALID", message: "The file's size is not one that is accepted." });
+  if (!(FILE_STORAGE_PROVIDERS as readonly string[]).includes(file.storageProvider)) issues.push({ field: "ingest.storageProvider", code: "INVALID", message: "That storage is not known." });
+  if (!(["quarantined", "released", "rejected"] as readonly string[]).includes(file.status)) issues.push({ field: "ingest.status", code: "INVALID", message: "A new file is held, released or rejected." });
+  else if (file.status === "released" && (!file.externalItemId || file.flag)) issues.push({ field: "ingest.status", code: "INVALID", message: "A released file has bytes and no flag." });
+  else if (file.status === "rejected" && !(PORTAL_FILE_FLAGS as readonly string[]).includes(file.flag ?? "")) issues.push({ field: "ingest.flag", code: "INVALID", message: "A rejected file says why." });
+  else if (file.status === "quarantined" && !file.externalItemId) issues.push({ field: "ingest.status", code: "INVALID", message: "A held file has bytes." });
+  if (file.status !== "rejected" && !(PORTAL_FILE_ALLOWED_TYPES as readonly string[]).includes(file.contentType)) issues.push({ field: "ingest.contentType", code: "INVALID", message: "That file type is not accepted." });
+  return issues;
 };
 const required = (issues: CommandIssue[], field: string, value: unknown) => { if (!text(value)) issues.push({ field, code: "REQUIRED", message: `${field} is required.` }); };
 /** Dedup slice 5 Step B: a (factor, suffix) pair's shape. Whether the factor is a base is the registry's question, asked by the handler. */
@@ -3265,6 +3302,12 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
    * entry drawer, the detailed drawer's sections, the deactivate action — is portal administration, so `portal.admin`, as
    * the brief has it. Milestones is never `edit`: refused here and by the table (decision 3).
    */
+  "portal.file.upload": { key: "portal.file.upload", label: "Upload a file in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "file record (quarantined or released by the gate) + audit + outbox + idempotency", auditAction: "portal_file_uploaded", validate: (input, context) => fileIngestIssues(input, context) },
+  "portal.file.download": { key: "portal.file.download", label: "Download a file in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "signed URL for a released file + audit + outbox + idempotency", auditAction: "portal_file_downloaded", validate: (input, context) => fileRefIssues(input, context) },
+  "client.file.deliver": { key: "client.file.deliver", label: "Share a file with the client portal", permission: "portal.admin", reasonRequired: false, transaction: "file record (quarantined or released by the gate) + audit + outbox + idempotency", auditAction: "client_file_delivered", validate: (input, context) => fileIngestIssues(input, context) },
+  "client.file.download": { key: "client.file.download", label: "Download a portal file", permission: "portal.admin", reasonRequired: false, transaction: "signed URL for a released file + audit + outbox + idempotency", auditAction: "client_file_downloaded", validate: (input, context) => fileRefIssues(input, context) },
+  "client.file.rescan": { key: "client.file.rescan", label: "Scan a held portal file again", permission: "portal.admin", reasonRequired: false, transaction: "file record (released, rejected or still held) + audit + outbox + idempotency", auditAction: "client_file_rescanned", validate: (input, context) => fileRefIssues(input, context) },
+  "client.file.deactivate": { key: "client.file.deactivate", label: "Withdraw a portal file", permission: "portal.admin", reasonRequired: true, transaction: "deactivation (never deletion; the record and bytes are kept) + audit + outbox + idempotency", auditAction: "client_file_deactivated", validate: (input, context) => fileRefIssues(input, context, true) },
   "client.portal.profile.set":{key:"client.portal.profile.set",label:"Decide what a client's portal offers",permission:"portal.admin",reasonRequired:false,transaction:"client portal profile decision + audit + outbox + idempotency",auditAction:"client_portal_profile_set",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);required(issues,"profileKey",input.profileKey);if(input.profileKey&&!isPortalProfileKey(input.profileKey))issues.push({field:"profileKey",code:"UNKNOWN",message:"That is not a portal setting."});else if(input.profileKey&&input.value!==null&&!isPortalProfileValue(input.profileKey as PortalProfileKey,input.value))issues.push({field:"value",code:input.profileKey==="milestones"&&input.value==="edit"?"MILESTONES_VIEW_ONLY":"INVALID",message:input.profileKey==="milestones"&&input.value==="edit"?"Milestones are view-only for a client: they can be shown or hidden, never edited.":"That value is not one this setting takes."});if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
   /**
    * The scope above the category switch, and the same kind of decision — what a client is shown — so the same capability
