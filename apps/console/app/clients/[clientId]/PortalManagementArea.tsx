@@ -7,13 +7,16 @@ import { Tabs, TabPanel } from "@nzi/ui";
 import { formatDate } from "../../lib/formatDate";
 import { portalFeatureEnabled } from "../../lib/portalFlags";
 import { useEditAccess, type EditAccess } from "../../lib/useEditAccess";
+import { PortalAccessAdmin } from "../../platform/PortalAccessAdmin";
+import { PortalInviteAdmin } from "../../platform/PortalInviteAdmin";
 import { PortalFilesPanel } from "./PortalFilesPanel";
 
 /**
  * Portal Management (DESIGN-portal-management; BRIEF-portal-management-redesign): what this client's portal offers them, over the
  * organisation's default, and which scopes and categories they see — as tabs: Access · Users · Visibility · Scopes & categories ·
- * Jobs · Files · History. This is the first step: the shell, Visibility and Scopes & categories. The other tabs are named, and say
- * so, until each ships (Users still lives in Platform & audit).
+ * Jobs · Files · History. Live: Visibility, Scopes & categories, Users (the invitations and per-user job access and data-entry windows
+ * that Platform & audit has, scoped to this client — the same components, routes and audited commands, not a new auth path) and, when
+ * on, Files. The others are named, and say so, until each ships.
  *
  * Every change is a governed command, unchanged by the redesign:
  *   - a portal setting → client.portal.profile.set (portal.admin);
@@ -96,6 +99,7 @@ export function PortalManagementArea({ clientId, clientOwnerUserId, writeEnabled
 
   return <PortalManagementBody load={load} note={note} onNote={setNote} pending={pending} message={message} profileAccess={profileAccess} visibilityAccess={visibilityAccess}
     tab={tab} onTab={setTab} files={portalFeatureEnabled("portal-files") ? <PortalFilesPanel clientId={clientId} access={profileAccess} /> : null}
+    users={<><PortalInviteAdmin clientId={clientId} /><PortalAccessAdmin clientId={clientId} /></>}
     onRetry={() => void refresh()} onSend={(key, path, input, done) => void send(key, path, input, done)} onResetAll={(commands) => void resetAll(commands)} />;
 }
 
@@ -113,15 +117,17 @@ const TABS: ReadonlyArray<{ id: PortalManagementTab; label: string }> = [
 const LIVE: ReadonlySet<PortalManagementTab> = new Set(["visibility", "scopes"]);
 
 /** The area, from props — everything it shows and every command it sends, with no fetching of its own (so it is testable). */
-export function PortalManagementBody({ load, note, onNote, pending, message, profileAccess, visibilityAccess, tab, onTab, files, onRetry, onSend, onResetAll }: {
+export function PortalManagementBody({ load, note, onNote, pending, message, profileAccess, visibilityAccess, tab, onTab, files, users, onRetry, onSend, onResetAll }: {
   load: PortalManagementLoad; note: string; onNote: (value: string) => void; pending: string | null; message: { tone: "ok" | "warn"; text: string } | null;
   profileAccess: EditAccess; visibilityAccess: EditAccess; tab: PortalManagementTab; onTab: (tab: PortalManagementTab) => void;
   /** The Files tab's content, when it is on. */
-  files?: ReactNode; onRetry: () => void;
+  files?: ReactNode;
+  /** The Users tab's content: this client's invitations and its users' job access and data-entry windows. */
+  users?: ReactNode; onRetry: () => void;
   /** `path` is relative to the client's API base: /portal-profile, /portal-profile/scopes, /category-visibility. */
   onSend: Send; onResetAll: (commands: Command[]) => void;
 }) {
-  const live = new Set<PortalManagementTab>([...LIVE, ...(files ? (["files"] as const) : [])]);
+  const live = new Set<PortalManagementTab>([...LIVE, ...(files ? (["files"] as const) : []), ...(users ? (["users"] as const) : [])]);
   const items = TABS.map((entry) => ({ id: entry.id, label: entry.label, disabled: !live.has(entry.id) }));
   return <section className="nz-panel nz-pm" aria-labelledby="area-portal">
     <div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="area-portal">Portal Management</h2></div>
@@ -136,7 +142,8 @@ export function PortalManagementBody({ load, note, onNote, pending, message, pro
         <LoadGate load={load} onRetry={onRetry}>{(view) => <ScopesTab view={view} note={note} onNote={onNote} pending={pending} access={visibilityAccess} onSend={onSend} onResetAll={onResetAll} />}</LoadGate>
       </TabPanel>
       <TabPanel id="files" idBase="pm" active={tab === "files"} ariaLabel="Files">{files}</TabPanel>
-      {(["access", "users", "jobs", "history"] as const).map((id) => <TabPanel key={id} id={id} idBase="pm" active={tab === id}><p className="sub" role="status">This tab is not available yet.</p></TabPanel>)}
+      <TabPanel id="users" idBase="pm" active={tab === "users"} ariaLabel="Users">{users}</TabPanel>
+      {(["access", "jobs", "history"] as const).map((id) => <TabPanel key={id} id={id} idBase="pm" active={tab === id}><p className="sub" role="status">This tab is not available yet.</p></TabPanel>)}
     </div>
   </section>;
 }
