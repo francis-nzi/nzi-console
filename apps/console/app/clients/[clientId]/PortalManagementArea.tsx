@@ -8,6 +8,7 @@ import {
 import { formatDate } from "../../lib/formatDate";
 import { portalFeatureEnabled } from "../../lib/portalFlags";
 import { useEditAccess, type EditAccess } from "../../lib/useEditAccess";
+import { PortalFilesPanel } from "./PortalFilesPanel";
 
 /**
  * Portal Management (portal data-entry phase 1; BUILD-portal-dataentry-phase1 §5): what this client's portal offers them,
@@ -63,8 +64,12 @@ export function PortalManagementArea({ clientId, clientOwnerUserId, writeEnabled
     else setMessage({ tone: "warn", text: errorText(result) });
   }
 
-  return <PortalManagementBody load={load} note={note} onNote={setNote} pending={pending} message={message} profileAccess={profileAccess} visibilityAccess={visibilityAccess}
-    onRetry={() => void refresh()} onSend={(key, path, input, done) => void send(key, `${base}${path}`, input, done)} />;
+  return <>
+    <PortalManagementBody load={load} note={note} onNote={setNote} pending={pending} message={message} profileAccess={profileAccess} visibilityAccess={visibilityAccess}
+      onRetry={() => void refresh()} onSend={(key, path, input, done) => void send(key, `${base}${path}`, input, done)} />
+    {/* Files (BRIEF-portal-files-secure-upload-storage): its own section until the tabs shell lands, then the Files tab. Dark until `portal-files` is on. */}
+    {portalFeatureEnabled("portal-files") ? <PortalFilesPanel clientId={clientId} access={profileAccess} /> : null}
+  </>;
 }
 
 /** The area, from props — everything it shows and every command it sends, with no fetching of its own (so it is testable). */

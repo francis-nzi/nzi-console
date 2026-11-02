@@ -257,6 +257,14 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "subject.review.decide": organisation,
   "client.category.visibility.set": client,
   "client.portal.profile.set": client,
+  // Portal files: all on a client. A portal user's two are held, like the plan's, to their own client and an active account — the
+  // handler then holds the file's own job grant (`portalFiles.ts`), so no data-entry window applies to sharing a document.
+  "portal.file.upload": client,
+  "portal.file.download": client,
+  "client.file.deliver": client,
+  "client.file.download": client,
+  "client.file.rescan": client,
+  "client.file.deactivate": client,
   "client.portal.scope.visibility.set": client,
   "client.factor.alias.set": client,
   // Dedup slice 5 Step B: a factor's applicability is organisation-wide reference data, as the category registry is.
@@ -388,6 +396,8 @@ async function authorizePortalCommand<K extends CommandKey>(db: Queryable, key: 
   if (context.portal.portalUserId !== context.actorId) throw new AuthorizationError("tenant", "The command's portal identity belongs to a different user.");
   const subject = subjectOf[key](input);
   if ((commandDefinitions[key] as { permission: string }).permission === "portal.plan") return authorizePortalPlanCommand(db, subject, context);
+  // Portal files: the client's own, by an active user — the same session rule as the plan; the file's job grant is the handler's.
+  if (key === "portal.file.upload" || key === "portal.file.download") return authorizePortalPlanCommand(db, subject, context);
   if (subject.kind !== "job") throw new AuthorizationError("tenant", TENANT_REFUSED);
   const access = await resolveAccess(db, context.organisationId, context.actorId, "job", subject.id);
   if (access.clientId !== context.portal.clientId) throw new AuthorizationError("tenant", "This job is not available to your account.");

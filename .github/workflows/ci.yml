@@ -209,6 +209,11 @@ jobs:
       # scope ∧ category profile, the staff-only fields and the client's own pending rows; read without staff identity.
       - name: A client's entry lands on the shared rows pending, gated and never self-reviewed
         run: npx tsx --test packages/isolated-backend/tests/portalCaptureReal.test.ts
+      # Portal files (BRIEF-portal-files-secure-upload-storage): a quarantined, rejected or withdrawn file is never served; an infected,
+      # oversize or disallowed upload is refused and flagged; a clean one releases, is hashed and is served only by a signed, time-limited
+      # URL; every upload, delivery, download, re-scan and withdrawal is audited (with no URL or storage id); tenancy is isolated.
+      - name: A portal file is served only once released, by a signed URL, audited and tenant-isolated
+        run: npx tsx --test packages/isolated-backend/tests/portalFilesReal.test.ts
       # The staff portal preview, job-aware (BUILD-staff-portal-preview-job-aware): each job-level client read previewed through a
       # second authorizer — support.portal_impersonate on the client, the job the client's — returning what the client's own read
       # returns, with no grant, user or window; never reachable by a portal principal; audited with the job; writing nothing.

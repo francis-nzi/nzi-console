@@ -31,6 +31,8 @@ export * from "./postgresCommands";
 export * from "./categoryVisibility";
 export * from "./portalProfile";
 export * from "./portalCapture";
+export * from "./portalFiles";
+export * from "./fileStorage";
 export * from "./dataSubjects";
 export * from "./subjectCrypto";
 export * from "./piiInventory";

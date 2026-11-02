@@ -1,0 +1,184 @@
+import { PORTAL_FILE_URL_TTL_MAX_SECONDS, PORTAL_FILE_URL_TTL_SECONDS, type CommandContext, type CommandInputMap, type PortalFileDirection, type PortalFileFlag, type PortalFileIngest, type PortalFileRecord, type PortalFileStatus } from "@nzi/contracts";
+import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
+import type { PortalPrincipal } from "./auth";
+import { rescanFile, type StorageAdapter } from "./fileStorage";
+import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
+import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
+
+/**
+ * Portal files — the records and the audited commands around them (BRIEF-portal-files-secure-upload-storage). The bytes are the storage
+ * adapter's and the gate's (`fileStorage/`); this file records what the gate decided and controls who may be given a signed URL.
+ *
+ *  - **Upload / deliver** record the gate's outcome. The command re-validates its shape (a forged ingest is refused) and ties the file to
+ *    its client and, if named, a job of that client. Whatever the gate decided — released, held or rejected — is audited.
+ *  - **Download** issues a signed URL for a **released** file only, per access, and audits it. The URL is never in the audit data.
+ *  - **Rescan** takes a held file through the same decision as on arrival. **Deactivate** withdraws one — the record and bytes are kept.
+ *  - A portal user sees a deliverable if it is client-wide or for a job they hold a live grant on, and the client uploads of jobs they
+ *    hold a grant on; never another client's, never a file that has not been released (their own are listed with their state).
+ *
+ * Every function that touches bytes is handed the adapter — nothing here names a provider.
+ */
+type FileRow = {
+  file_id: string; client_id: string; job_id: string | null; direction: PortalFileDirection; status: PortalFileStatus; file_name: string; content_type: string;
+  size_bytes: string; sha256: string; storage_provider: string; external_item_id: string | null; flag: PortalFileFlag | null; flag_detail: string | null;
+  uploaded_by: string; uploaded_by_principal: "staff" | "portal"; uploaded_at: Date; released_at: Date | null; deactivated_at: Date | null; deactivated_by: string | null;
+};
+const COLUMNS = `file_id,client_id,job_id,direction,status,file_name,content_type,size_bytes::text AS size_bytes,sha256,storage_provider,external_item_id,flag,flag_detail,uploaded_by,uploaded_by_principal,uploaded_at,released_at,deactivated_at,deactivated_by`;
+const iso = (value: Date | string | null) => (value ? new Date(value).toISOString() : null);
+const toRecord = (row: FileRow): PortalFileRecord => ({
+  fileId: row.file_id, clientId: row.client_id, jobId: row.job_id, direction: row.direction, status: row.status, fileName: row.file_name, contentType: row.content_type,
+  sizeBytes: Number(row.size_bytes), sha256: row.sha256, flag: row.flag, flagDetail: row.flag_detail, uploadedBy: row.uploaded_by, uploadedByPrincipal: row.uploaded_by_principal,
+  uploadedAt: iso(row.uploaded_at)!, releasedAt: iso(row.released_at), deactivatedAt: iso(row.deactivated_at), deactivatedBy: row.deactivated_by,
+});
+const refuse = (field: string, code: string, message: string) => new CommandValidationError([{ field, code, message }]);
+const NOT_FOUND = () => refuse("fileId", "NOT_FOUND", "That file was not found.");
+const FILE_NOT_AVAILABLE = () => refuse("fileId", "FILE_NOT_AVAILABLE", "That file isn't available to download.");
+
+/** The job, if one is named, must be the client's own. */
+async function requireClientJob(db: Queryable, context: CommandContext, clientId: string, jobId: string | null): Promise<void> {
+  if (!jobId) return;
+  const job = await db.query(`SELECT 1 FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2 AND client_id = $3`, [context.organisationId, jobId, clientId]);
+  if (!job.rows[0]) throw refuse("ingest.jobId", "NOT_FOUND", "That job was not found.");
+}
+/** A portal user's live grant on a job — any window: sharing a document is not data entry. */
+async function portalHoldsJob(db: Queryable, context: CommandContext, jobId: string): Promise<boolean> {
+  const held = await db.query(
+    `SELECT 1 FROM nzi_console.portal_access_grants g JOIN nzi_console.portal_users u ON (u.organisation_id, u.portal_user_id, u.client_id) = (g.organisation_id, g.portal_user_id, g.client_id)
+      WHERE g.organisation_id = $1 AND g.portal_user_id = $2 AND g.client_id = $3 AND g.job_id = $4 AND g.revoked_at IS NULL AND u.status = 'active'`,
+    [context.organisationId, context.actorId, context.portal!.clientId, jobId]);
+  return !!held.rows[0];
+}
+
+async function insertFile(db: Queryable, context: CommandContext, clientId: string, direction: PortalFileDirection, ingest: PortalFileIngest): Promise<void> {
+  await db.query(
+    `INSERT INTO nzi_console.portal_files (organisation_id,file_id,client_id,job_id,direction,status,file_name,content_type,size_bytes,sha256,storage_provider,external_item_id,flag,flag_detail,uploaded_by,uploaded_by_principal,released_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,CASE WHEN $6 = 'released' THEN now() END)`,
+    [context.organisationId, ingest.fileId, clientId, ingest.jobId, direction, ingest.status, ingest.fileName, ingest.contentType, ingest.sizeBytes, ingest.sha256, ingest.storageProvider,
+      ingest.externalItemId, ingest.flag, ingest.flagDetail?.slice(0, 500) ?? null, context.actorId, context.principal === "portal" ? "portal" : "staff"]);
+}
+const recorded = (clientId: string, ingest: PortalFileIngest, topic: string) => ({
+  // What is audited: the outcome and the evidence of the file (its hash), never the bytes and never a storage identifier.
+  data: { fileId: ingest.fileId, clientId, jobId: ingest.jobId, fileName: ingest.fileName, contentType: ingest.contentType, sizeBytes: ingest.sizeBytes, sha256: ingest.sha256, status: ingest.status, flag: ingest.flag },
+  entityType: "portal_file", entityId: ingest.fileId, topic,
+});
+
+/** A client's upload, as the gate decided it. The client must hold a live grant on the job it names; a portal upload names one. */
+export function recordPortalFileUpload(pool: PoolLike, input: CommandInputMap["portal.file.upload"], context: CommandContext): Promise<StoredOutcome<ReturnType<typeof recorded>["data"]>> {
+  return runPostgresCommand(pool, "portal.file.upload", input, context, async (db) => {
+    if (!input.ingest.jobId) throw refuse("ingest.jobId", "REQUIRED", "Choose the job this file is for.");
+    await requireClientJob(db, context, input.clientId, input.ingest.jobId);
+    if (!(await portalHoldsJob(db, context, input.ingest.jobId))) throw refuse("ingest.jobId", "NOT_FOUND", "That job was not found.");
+    await insertFile(db, context, input.clientId, "client_upload", input.ingest);
+    return recorded(input.clientId, input.ingest, "portal.file.uploaded");
+  });
+}
+
+/** A deliverable NZI shares with the client, as the gate decided it (portal.admin on this client). */
+export function recordClientFileDelivery(pool: PoolLike, input: CommandInputMap["client.file.deliver"], context: CommandContext): Promise<StoredOutcome<ReturnType<typeof recorded>["data"]>> {
+  return runPostgresCommand(pool, "client.file.deliver", input, context, async (db) => {
+    const client = await db.query(`SELECT 1 FROM nzi_console.clients WHERE organisation_id = $1 AND client_id = $2`, [context.organisationId, input.clientId]);
+    if (!client.rows[0]) throw refuse("clientId", "NOT_FOUND", "Client was not found.");
+    await requireClientJob(db, context, input.clientId, input.ingest.jobId);
+    await insertFile(db, context, input.clientId, "deliverable", input.ingest);
+    return recorded(input.clientId, input.ingest, "client.file.delivered");
+  });
+}
+
+async function loadFile(db: Queryable, context: CommandContext, clientId: string, fileId: string): Promise<FileRow> {
+  const row = (await db.query<FileRow>(`SELECT ${COLUMNS} FROM nzi_console.portal_files WHERE organisation_id = $1 AND client_id = $2 AND file_id = $3 FOR UPDATE`, [context.organisationId, clientId, fileId])).rows[0];
+  if (!row) throw NOT_FOUND();
+  return row;
+}
+
+/** Whether a portal user may be given a released file: client-wide deliverables, else the job's grant. Their own client's, always. */
+async function portalMayHave(db: Queryable, context: CommandContext, file: FileRow): Promise<boolean> {
+  if (file.client_id !== context.portal!.clientId) return false;
+  return file.job_id === null ? file.direction === "deliverable" : portalHoldsJob(db, context, file.job_id);
+}
+
+export type FileDownload = { url: string; expiresAt: string; fileName: string; contentType: string };
+const ttl = (requested?: number) => Math.min(Math.max(requested ?? PORTAL_FILE_URL_TTL_SECONDS, 10), PORTAL_FILE_URL_TTL_MAX_SECONDS);
+
+async function issue(db: Queryable, context: CommandContext, file: FileRow, adapter: StorageAdapter, capture: { value: FileDownload | null }) {
+  if (file.status !== "released" || !file.external_item_id) throw FILE_NOT_AVAILABLE();
+  const signed = await adapter.signedUrl(file.external_item_id, ttl());
+  capture.value = { url: signed.url, expiresAt: signed.expiresAt, fileName: file.file_name, contentType: file.content_type };
+  // Audited: who, which file, its hash and when the access lapses — never the URL itself.
+  return { data: { fileId: file.file_id, clientId: file.client_id, jobId: file.job_id, direction: file.direction, sha256: file.sha256, expiresAt: signed.expiresAt }, entityType: "portal_file", entityId: file.file_id, topic: "portal.file.downloaded" };
+}
+
+/** A signed URL for a released file, for a portal user entitled to it. `download` is null when the command was replayed (sign again). */
+export async function issuePortalFileDownload(pool: PoolLike, input: CommandInputMap["portal.file.download"], context: CommandContext, adapterFor: (provider: string) => StorageAdapter) {
+  const capture: { value: FileDownload | null } = { value: null };
+  const outcome = await runPostgresCommand(pool, "portal.file.download", input, context, async (db) => {
+    const file = await loadFile(db, context, input.clientId, input.fileId);
+    if (!(await portalMayHave(db, context, file))) throw NOT_FOUND();
+    return issue(db, context, file, adapterFor(file.storage_provider), capture);
+  });
+  return { outcome, download: capture.value };
+}
+export async function issueClientFileDownload(pool: PoolLike, input: CommandInputMap["client.file.download"], context: CommandContext, adapterFor: (provider: string) => StorageAdapter) {
+  const capture: { value: FileDownload | null } = { value: null };
+  const outcome = await runPostgresCommand(pool, "client.file.download", input, context, async (db) => {
+    const file = await loadFile(db, context, input.clientId, input.fileId);
+    return issue(db, context, file, adapterFor(file.storage_provider), capture);
+  });
+  return { outcome, download: capture.value };
+}
+
+/** Take a held file through the gate's decision again (the scanner was still working, or had failed). */
+export function rescanClientFile(pool: PoolLike, input: CommandInputMap["client.file.rescan"], context: CommandContext, adapterFor: (provider: string) => StorageAdapter) {
+  return runPostgresCommand(pool, "client.file.rescan", input, context, async (db) => {
+    const file = await loadFile(db, context, input.clientId, input.fileId);
+    if (file.status !== "quarantined" || !file.external_item_id) throw refuse("fileId", "NOT_HELD", "Only a held file is scanned again.");
+    const adapter = adapterFor(file.storage_provider);
+    const decided = await rescanFile(adapter, { fileId: file.file_id, jobId: file.job_id, fileName: file.file_name, contentType: file.content_type, sizeBytes: Number(file.size_bytes), sha256: file.sha256,
+      storageProvider: adapter.provider, externalItemId: file.external_item_id, status: "quarantined", flag: file.flag, flagDetail: file.flag_detail });
+    await db.query(
+      `UPDATE nzi_console.portal_files SET status = $4, flag = $5, flag_detail = $6, external_item_id = $7, released_at = CASE WHEN $4 = 'released' THEN now() END WHERE organisation_id = $1 AND client_id = $2 AND file_id = $3`,
+      [context.organisationId, input.clientId, input.fileId, decided.status, decided.flag, decided.flagDetail?.slice(0, 500) ?? null, decided.externalItemId]);
+    return { data: { fileId: file.file_id, clientId: file.client_id, sha256: file.sha256, status: decided.status, flag: decided.flag }, entityType: "portal_file", entityId: file.file_id, topic: "client.file.rescanned" };
+  });
+}
+
+/** Withdraw a file from service. Kept: the record and the bytes stay, so the trail is whole. */
+export function deactivateClientFile(pool: PoolLike, input: CommandInputMap["client.file.deactivate"], context: CommandContext, adapterFor: (provider: string) => StorageAdapter) {
+  return runPostgresCommand(pool, "client.file.deactivate", input, context, async (db) => {
+    const file = await loadFile(db, context, input.clientId, input.fileId);
+    if (file.status === "deactivated") throw refuse("fileId", "ALREADY_DEACTIVATED", "That file is already withdrawn.");
+    if (file.external_item_id) await adapterFor(file.storage_provider).deactivate(file.external_item_id);
+    await db.query(
+      `UPDATE nzi_console.portal_files SET status = 'deactivated', deactivated_at = now(), deactivated_by = $4, deactivated_reason = $5 WHERE organisation_id = $1 AND client_id = $2 AND file_id = $3`,
+      [context.organisationId, input.clientId, input.fileId, context.actorId, context.reason?.slice(0, 500) ?? null]);
+    return { data: { fileId: file.file_id, clientId: file.client_id, sha256: file.sha256, previousStatus: file.status }, entityType: "portal_file", entityId: file.file_id, topic: "client.file.deactivated" };
+  });
+}
+
+// ── Reads ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The Files tab: everything for one client, both directions, every status, under portal.admin on this client. */
+export function listPortalFilesForStaff(pool: PoolLike, holder: CapabilityHolder, clientId: string): Promise<PortalFileRecord[]> {
+  return withTenantRead(pool, holder.organisationId, async (db) => {
+    await assertCapabilityOnClient(db, holder, "portal.admin", { clientId });
+    return (await db.query<FileRow>(`SELECT ${COLUMNS} FROM nzi_console.portal_files WHERE organisation_id = $1 AND client_id = $2 ORDER BY uploaded_at DESC`, [holder.organisationId, clientId])).rows.map(toRecord);
+  });
+}
+
+/**
+ * What a portal user sees: released deliverables for their client (client-wide, or for a job they hold) and released client files of jobs
+ * they hold, plus their own uploads in any state so a refusal is explained. A withdrawn file is not shown. Never another client's.
+ */
+export function listPortalFiles(pool: PoolLike, principal: PortalPrincipal): Promise<PortalFileRecord[]> {
+  return withTenantRead(pool, principal.organisationId, async (db) => {
+    const rows = (await db.query<FileRow>(
+      `SELECT ${COLUMNS} FROM nzi_console.portal_files f
+        WHERE f.organisation_id = $1 AND f.client_id = $2 AND f.status <> 'deactivated'
+          AND ((f.status = 'released' AND ((f.job_id IS NULL AND f.direction = 'deliverable')
+                 OR f.job_id IN (SELECT g.job_id FROM nzi_console.portal_access_grants g WHERE g.organisation_id = $1 AND g.portal_user_id = $3 AND g.client_id = $2 AND g.revoked_at IS NULL)))
+               OR (f.direction = 'client_upload' AND f.uploaded_by = $3))
+        ORDER BY f.uploaded_at DESC`,
+      [principal.organisationId, principal.clientId, principal.userId])).rows;
+    // The client never sees a storage identifier or a staff name: toRecord carries neither, and a staff uploader is shown as NZI.
+    return rows.map(toRecord).map((record) => (record.uploadedByPrincipal === "staff" ? { ...record, uploadedBy: "NZI", deactivatedBy: null } : record));
+  });
+}
