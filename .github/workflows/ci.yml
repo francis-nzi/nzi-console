@@ -214,6 +214,11 @@ jobs:
       # URL; every upload, delivery, download, re-scan and withdrawal is audited (with no URL or storage id); tenancy is isolated.
       - name: A portal file is served only once released, by a signed URL, audited and tenant-isolated
         run: npx tsx --test packages/isolated-backend/tests/portalFilesReal.test.ts
+      # Client portal access (RULING-portal-access-model): the master switch and expiry are enforced at login, at MFA completion and on
+      # every request of a live session; the refusal is a bad password's; a switch-off ends the client's sessions; another client's users
+      # and the staff are unaffected; re-enabling needs no re-invite; every attempt is recorded and the network data nulled after 90 days.
+      - name: A switched-off or expired client cannot sign in, its sessions die, and nobody else is affected
+        run: npx tsx --test packages/isolated-backend/tests/portalAccessEnforcementReal.test.ts
       # The staff portal preview, job-aware (BUILD-staff-portal-preview-job-aware): each job-level client read previewed through a
       # second authorizer — support.portal_impersonate on the client, the job the client's — returning what the client's own read
       # returns, with no grant, user or window; never reachable by a portal principal; audited with the job; writing nothing.

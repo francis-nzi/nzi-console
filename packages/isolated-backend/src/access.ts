@@ -259,6 +259,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.portal.profile.set": client,
   // Portal files: all on a client. A portal user's two are held, like the plan's, to their own client and an active account — the
   // handler then holds the file's own job grant (`portalFiles.ts`), so no data-entry window applies to sharing a document.
+  "client.portal.access.set": client,
   "portal.file.upload": client,
   "portal.file.download": client,
   "client.file.deliver": client,

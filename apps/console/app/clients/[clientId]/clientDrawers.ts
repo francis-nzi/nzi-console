@@ -11,7 +11,6 @@ export type DrawerRequest =
   | { kind: "address" }
   | { kind: "compliance" }
   | { kind: "factors" }
-  | { kind: "portal" }
   | { kind: "intensity-metrics" }
   | { kind: "intensity-target"; metricKey: string }
   | { kind: "reporting-template" }
@@ -28,7 +27,6 @@ export const drawerLabel = (request: DrawerRequest): string => {
     case "address": return "Registered address";
     case "compliance": return "Compliance";
     case "factors": return "Client factors";
-    case "portal": return "Portal access";
     case "intensity-metrics": return "Intensity metrics";
     case "intensity-target": return "Intensity target";
     case "reporting-template": return "Reporting template";

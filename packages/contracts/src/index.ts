@@ -82,6 +82,7 @@ export * from "./factorVariants";
 export * from "./datasetMapping";
 export * from "./commands";
 export * from "./portalFiles";
+export * from "./portalClientAccess";
 export * from "./contactConsent";
 export * from "./knowledge";
 export * from "./tours";

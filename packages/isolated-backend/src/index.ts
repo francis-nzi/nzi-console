@@ -32,6 +32,8 @@ export * from "./categoryVisibility";
 export * from "./portalProfile";
 export * from "./portalCapture";
 export * from "./portalFiles";
+export * from "./portalClientAccess";
+export * from "./portalLoginEvents";
 export * from "./fileStorage";
 export * from "./dataSubjects";
 export * from "./subjectCrypto";

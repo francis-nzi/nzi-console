@@ -2,7 +2,6 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { GatedButton } from "@nzi/ui";
 import { patchBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import {
@@ -213,13 +212,3 @@ export function FactorsDrawerBody({ clientId, onClose }: { clientId: string; onC
   </DrawerFrame>;
 }
 
-/** Portal access is administered in Platform & audit; this says so rather than duplicating it. */
-export function PortalDrawerBody({ client, onClose }: { client: ClientScreenReadModel; onClose: () => void }) {
-  return <DrawerFrame kicker="Client experience" title="Portal access" onClose={onClose}
-    footer={<Link className="nz-btn pri nz-dact-fit" href="/platform">Manage access &amp; invites</Link>}>
-    <p className="nz-hint" style={{ marginTop: 0 }}>Portal users are a separate principal type with their own identity, so they are administered in <b>Platform &amp; audit</b>: invitations, job-level access and data-entry windows, each audited.</p>
-    <div className="nz-kv"><span className="k">Client</span><span className="v">{client.name}</span></div>
-    <div className="nz-kv"><span className="k">Invite candidates</span><span className="v">Contacts marked <b>Portal candidate</b></span></div>
-    <p className="nz-maps">Mark a contact as a portal candidate on this client&apos;s Contacts card, then invite them from Platform &amp; audit.</p>
-  </DrawerFrame>;
-}
