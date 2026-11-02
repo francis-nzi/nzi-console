@@ -76,6 +76,7 @@ export type CommandKey =
   | "scope.row.discard"
   | "scope.row.deactivate"
   | "portal.scope.row.create"
+  | "portal.scope.row.import"
   | "portal.scope.row.update"
   | "portal.scope.row.deactivate"
   | "portal.scope.row.reopen.request"
@@ -502,6 +503,11 @@ export type ScopeRowWriteFields = {
  * placement, grouping and pairing, assist records, a conversion's source quantity. Sent anyway, any of them is refused
  * (`PORTAL_STAFF_ONLY_FIELDS`); the profile's detailed-drawer sections show a row's detail read-only and never widen this.
  */
+/** The templates a client may import from; one per kind, as each ships (travel first). */
+export const PORTAL_IMPORT_TEMPLATES = ["travel"] as const;
+export type PortalImportTemplate = (typeof PORTAL_IMPORT_TEMPLATES)[number];
+/** The most rows one import files; a larger file is split by the client. */
+export const PORTAL_IMPORT_MAX_ROWS = 500;
 export type PortalScopeRowFields = Omit<ScopeRowWriteFields, (typeof PORTAL_STAFF_ONLY_FIELDS)[number]>;
 export const PORTAL_STAFF_ONLY_FIELDS = [
   "capturedVia", "assistRecord", "overrideTco2e", "overrideReason", "factorSource", "clientFactorId", "isCustomEntry", "applyPct",
@@ -774,6 +780,8 @@ export type CommandInputMap = {
    * own handlers. A client row always lands pending, client-provenanced, and is never reviewed by the client.
    */
   "portal.scope.row.create": { jobId: string } & PortalScopeRowFields;
+  /** A bulk import from a template (BRIEF-portal-data-entry-parity #3): each row is one `portal.scope.row.create`, all in one transaction. */
+  "portal.scope.row.import": { jobId: string; template: PortalImportTemplate; rows: PortalScopeRowFields[] };
   /** Only a row a client captured, still pending, in a category the client sees (settled 22 Oct). */
   "portal.scope.row.update": { jobId: string; rowId: string; expectedVersion: number } & PortalScopeRowFields;
   /** Off by default (profile `deactivate`); the same row rule as update, with a reason as staff give one. */
@@ -1932,6 +1940,19 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   // the open window and the profile, never a staff capability. The row rules are the CRM's own (scopeRowIssues), less the
   // staff-only fields, and every client row is categorised: the category is what the profile gates.
   "portal.scope.row.create": { key: "portal.scope.row.create", label: "Enter a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "scope row (pending, client-provenanced) + audit + outbox + idempotency", auditAction: "portal_scope_row_created", validate: (input, context) => { const issues = [...baseIssues(context, false), ...portalStaffOnlyIssues(input as Record<string, unknown>), ...scopeRowIssues({ ...input, qualityTier: null })]; required(issues, "jobId", input.jobId); required(issues, "categoryCode", input.categoryCode); return issues; } },
+  "portal.scope.row.import": { key: "portal.scope.row.import", label: "Import a template of figures in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "scope rows (pending, client-provenanced), all or none + audit + outbox + idempotency", auditAction: "portal_scope_rows_imported", validate: (input, context) => {
+    const issues = [...baseIssues(context, false)];
+    required(issues, "jobId", input.jobId);
+    if (!(PORTAL_IMPORT_TEMPLATES as readonly string[]).includes(input.template)) issues.push({ field: "template", code: "INVALID", message: "That template can't be imported here." });
+    if (!Array.isArray(input.rows) || input.rows.length === 0) issues.push({ field: "rows", code: "REQUIRED", message: "The import has no rows." });
+    else if (input.rows.length > PORTAL_IMPORT_MAX_ROWS) issues.push({ field: "rows", code: "TOO_MANY", message: `An import files at most ${PORTAL_IMPORT_MAX_ROWS} rows at a time.` });
+    else input.rows.forEach((row, index) => {
+      const own = [...portalStaffOnlyIssues(row as Record<string, unknown>), ...scopeRowIssues({ ...row, qualityTier: null })];
+      required(own, "categoryCode", row.categoryCode);
+      for (const issue of own) issues.push({ ...issue, field: `rows[${index}].${issue.field}` });
+    });
+    return issues;
+  } },
   "portal.scope.row.update": { key: "portal.scope.row.update", label: "Change a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "versioned scope row (back to pending) + audit + outbox + idempotency", auditAction: "portal_scope_row_updated", validate: (input, context) => { const issues = [...baseIssues(context, false), ...portalStaffOnlyIssues(input as Record<string, unknown>), ...scopeRowIssues({ ...input, qualityTier: null })]; required(issues, "jobId", input.jobId); required(issues, "rowId", input.rowId); required(issues, "categoryCode", input.categoryCode); if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." }); return issues; } },
   "portal.scope.row.deactivate": { key: "portal.scope.row.deactivate", label: "Deactivate a figure in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: true, transaction: "deactivation (never deletion; figures kept) + audit + outbox + idempotency", auditAction: "portal_scope_row_deactivated", validate: (input, context) => scopeRowStateIssues(input, context, true) },
   // Data entry D3 (R6): after review an entry is the CRM's to change; the client asks — the request, with their reason, goes to the

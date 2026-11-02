@@ -77,6 +77,29 @@ export function createPortalScopeRow(pool: PoolLike, input: CommandInputMap["por
   });
 }
 
+/**
+ * A bulk import from an issued template (BRIEF-portal-data-entry-parity #3). Every row takes exactly the create's path — the shown-
+ * category gate, the staff-only fields fixed, the CRM's own row handler, pending and never reviewed — and the rows commit together
+ * or not at all: one refused row (its index named) leaves nothing behind. Authority, the open window and idempotency come from the
+ * runner as for any portal command. The rows are read and resolved on the client with the CRM's own template resolvers; this
+ * command re-checks everything the create does, so the client's preview is a convenience and never the gate.
+ */
+export function importPortalScopeRows(pool: PoolLike, input: CommandInputMap["portal.scope.row.import"], context: CommandContext): Promise<StoredOutcome<{ jobId: string; template: string; rowIds: string[]; count: number }>> {
+  return runPostgresCommand(pool, "portal.scope.row.import", input, context, async (db) => {
+    const rowIds: string[] = [];
+    for (const [index, row] of input.rows.entries()) {
+      try {
+        await requireShownCategory(db, context.portal!.clientId, row);
+        rowIds.push((await scopeRowCreateHandler(asCrmCreate({ ...row, jobId: input.jobId }), context)(db)).data.rowId);
+      } catch (error) {
+        if (error instanceof CommandValidationError) throw new CommandValidationError(error.issues.map((issue) => ({ ...issue, field: `rows[${index}].${issue.field}` })));
+        throw error;
+      }
+    }
+    return { data: { jobId: input.jobId, template: input.template, rowIds, count: rowIds.length }, entityType: "job", entityId: input.jobId, topic: "portal.scope.row.imported" };
+  });
+}
+
 export function updatePortalScopeRow(pool: PoolLike, input: CommandInputMap["portal.scope.row.update"], context: CommandContext): Promise<StoredOutcome<UpdateScopeRowResult>> {
   return runPostgresCommand(pool, "portal.scope.row.update", input, context, async (db) => {
     await requireClientEditableRow(db, context, input.jobId, input.rowId);

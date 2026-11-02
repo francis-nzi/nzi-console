@@ -23,6 +23,8 @@ import { RowHistory, RowHistoryList, type RowHistoryEntry, type RowHistoryState 
 import { formatDate, formatDateTime } from "../../../../lib/formatDate";
 import { formatQuantity, formatTco2e } from "../../../../lib/formatNumber";
 import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
+import { dataEntryAdapterEnabled } from "../../../../lib/featureFlags";
+import { PortalTravelImport } from "../../../PortalTravelImport";
 import { usePortalSurface } from "../../../portalSurface";
 import { historyEntry, isPortalDataView, mayAskToReopen, mayDeactivate, portalQaGates, portalScopeRowFields, reviewLabel, rowDrawerSections, windowOpen } from "../../../data/portalDataView";
 
@@ -94,6 +96,13 @@ export function PortalDataView({ jobId }: { jobId: string }) {
     else setFormError(errorText(result));
   }
 
+  // Bulk import (BRIEF-portal-data-entry-parity #3): one "Import & templates" per kind, as each ships — Business Travel first. The
+  // template can be downloaded any time; the upload and the confirm need the entry window (the command refuses otherwise too).
+  const categoryImport = (category: ApplicableCategory): { title: string; body: React.ReactNode } | null =>
+    category.code === "3.6" && dataEntryAdapterEnabled("travel")
+      ? { title: `${category.name} — import & templates`, body: <PortalTravelImport base={base} factors={view.factors} sites={view.sites.map((entry) => ({ id: entry.id, name: entry.name }))}
+          reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> }
+      : null;
   const crmParity = portalFeatureEnabled("portal-shell");
   // R4: the CRM's right-hand overlay drawer (`nz-site-drawer`, with its scrim), at the portal drawer's width.
   const drawerClass = crmParity ? "nz-site-drawer nz-pdv-drawer" : "nz-pdv-drawer";
@@ -134,7 +143,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
         onAddEntry={(category) => { setOpenRowId(null); setFormError(""); setAdding(category); }}
         sites={view.sites.map((entry) => ({ id: entry.id, label: entry.name }))} siteId={siteId}
         factors={refs} reportingMonths={view.reportingMonths} purchasedGoodsCategories={view.purchasedGoodsCategories}
-        notice={setNotice} />
+        notice={setNotice} categoryImport={categoryImport} />
 
       {/* Polish fix 5: the CRM's Review & QA, after data capture as in the CRM — its gate list over the client's own rows,
           read-only and stripped (`portalQaGates`). The client's sign-off action is phase 4; nothing here acts. */}

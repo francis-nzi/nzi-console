@@ -64,6 +64,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   // Portal data-entry phase 2: a client's writes concern the job, resolved as any job command — and then held to the portal
   // user's own access grant on it (`authorizePortalCommand`), never a staff scope.
   "portal.scope.row.create": job,
+  "portal.scope.row.import": job,
   "portal.scope.row.update": job,
   "portal.scope.row.deactivate": job,
   "portal.scope.row.reopen.request": job,
