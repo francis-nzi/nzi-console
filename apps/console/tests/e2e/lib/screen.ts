@@ -25,11 +25,18 @@ export async function expandJobStage(page: Page, stageId: string): Promise<void>
   }
 }
 
+// A category header is a row (.nz-acc-h) that toggles; its control is the button inside it (button.nz-acc-hmain), which carries
+// aria-expanded. The synthetic Imported / Unsorted sections have no workflow doc, so they keep a single button.nz-acc-h that is its own
+// control. A scope header is .nz-acc-scopehead with its control button.hmain. The WF pill is a sibling link, never the control.
+export const CATEGORY_ROW = ".nz-acc-h";
+export const SCOPE_CONTROL = "section#data-entry-accordion .nz-acc-scopehead button.hmain";
+export const categoryControl = (row: Locator): Locator => row.locator("xpath=self::button | .//button[contains(@class,'nz-acc-hmain')]").first();
+
 // DESIGN-job-data-entry-usability C: a scope whose data is in with nothing to do starts collapsed, hiding its category cards.
 // Open every collapsed scope — scopes only, never a card, so a spec's card assertions still start from rest. By index: a
 // `[aria-expanded='false']` locator re-resolves and would move on after each click.
 export async function openAccordionScopes(page: Page): Promise<void> {
-  const scopes = page.locator("section#data-entry-accordion button.nz-acc-scopehead");
+  const scopes = page.locator(SCOPE_CONTROL);
   for (let index = 0; index < (await scopes.count()); index += 1) {
     const scope = scopes.nth(index);
     if ((await scope.getAttribute("aria-expanded")) === "true") continue;
@@ -46,9 +53,10 @@ export async function openCategorySources(page: Page, category: RegExp): Promise
   await accordion.waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
   if ((await accordion.count()) === 0) return null;
   await openAccordionScopes(page);
-  const header = accordion.locator("button.nz-acc-h", { hasText: category }).first();
+  const header = accordion.locator(CATEGORY_ROW, { hasText: category }).first();
   if ((await header.count()) === 0) return null;
-  if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+  const control = categoryControl(header);
+  if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
   const trigger = header.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]").first().getByRole("button", { name: "Sources", exact: true });
   if ((await trigger.count()) === 0) return null;
   await trigger.click();

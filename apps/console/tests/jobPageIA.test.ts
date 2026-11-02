@@ -129,7 +129,9 @@ describe("C — two-level collapse", () => {
   });
 
   it("renders the scope as a toggle over its categories, with the person's choice winning over the default", () => {
-    assert.match(accordion, /<button type="button" className=\{`nz-acc-scopehead toggle\$\{scopeOpen \? " open" : ""\}`\} aria-expanded=\{scopeOpen\} onClick=\{\(\) => toggle\(scopeKey, scopeOpenByDefault\(group\)\)\}>/);
+    // The row toggles; its button is the keyboard/AT control (aria-expanded) and the WF pill is a sibling link, so the link is never nested in a button.
+    assert.match(accordion, /<div className=\{`nz-acc-scopehead toggle\$\{scopeOpen \? " open" : ""\}`\} onClick=\{\(\) => toggle\(scopeKey, scopeOpenByDefault\(group\)\)\}>/);
+    assert.match(accordion, /<button type="button" className="hmain" aria-expanded=\{scopeOpen\}>/);
     assert.match(accordion, /\{scopeOpen \? <>\n\s+\{group\.categories\.map/);
     assert.match(accordion, /const isOpen = \(key: string, byDefault = false\) => opened\.get\(key\) \?\? byDefault;/);
     assert.match(accordion, /% of total/);

@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen, openAccordionScopes, openCategorySources } from "./lib/screen";
+import { CATEGORY_ROW, categoryControl, collectPageErrors, expectHealthyScreen, openAccordionScopes, openCategorySources } from "./lib/screen";
 
 // Data-entry UX review (docs/_handoff_DATA_ENTRY_UX_review.md) — the row-detail
 // drawer.
@@ -21,10 +21,10 @@ const KEY_LABELS = ["Site", "Scope", "Category", "Report label", "Quantity", "Uo
 const SECTIONS = ["Factor & calculation", "Data quality", "Apportionment & site", "Monthly activity", "Evidence & provenance"];
 
 async function openFirstRowDrawer(page: Page, accordion: Locator): Promise<Locator> {
-  const headers = accordion.locator("button.nz-acc-h");
+  const headers = accordion.locator(CATEGORY_ROW);
   for (let i = 0; i < (await headers.count()); i += 1) {
-    const header = headers.nth(i);
-    if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+    const control = categoryControl(headers.nth(i));
+    if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
   }
   const firstRow = accordion.locator("tr.row").first();
   test.skip((await firstRow.count()) === 0, "no category rows on this job");
@@ -47,9 +47,9 @@ async function openAccordion(page: Page): Promise<{ accordion: Locator; errors: 
   await accordion.or(failed).first().waitFor({ state: "visible", timeout: 15_000 }).catch(() => undefined);
   test.skip((await accordion.count()) === 0, "data-entry-accordion not enabled on target");
   // C: scopes collapse; open them (scopes only) so the category cards are on screen.
-  await expect(accordion.locator("button.nz-acc-scopehead").first()).toBeVisible({ timeout: 20_000 });
+  await expect(accordion.locator(".nz-acc-scopehead button.hmain").first()).toBeVisible({ timeout: 20_000 });
   await openAccordionScopes(page);
-  await expect(accordion.locator("button.nz-acc-h").first()).toBeVisible({ timeout: 20_000 });
+  await expect(accordion.locator(CATEGORY_ROW).first()).toBeVisible({ timeout: 20_000 });
   return { accordion, errors };
 }
 
@@ -60,10 +60,10 @@ test.describe("Data-entry row-detail drawer", () => {
     const { accordion, errors } = await openAccordion(page);
 
     // Expand every category card so their row tables are in the DOM.
-    const headers = accordion.locator("button.nz-acc-h");
+    const headers = accordion.locator(CATEGORY_ROW);
     for (let i = 0; i < (await headers.count()); i += 1) {
-      const header = headers.nth(i);
-      if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+      const control = categoryControl(headers.nth(i));
+      if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
     }
 
     // A row that is NOT "needs attention": enabled, calculated, and approved —
@@ -161,10 +161,10 @@ test.describe("Data-entry row-detail drawer", () => {
 
   test("item 2 — the Source detail section title adapts to the row type", async ({ page }) => {
     const { accordion } = await openAccordion(page);
-    const headers = accordion.locator("button.nz-acc-h");
+    const headers = accordion.locator(CATEGORY_ROW);
     for (let i = 0; i < (await headers.count()); i += 1) {
-      const header = headers.nth(i);
-      if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+      const control = categoryControl(headers.nth(i));
+      if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
     }
     // A Purchased Goods & Services row → "Spend detail (PG&S)" section.
     const pgsCard = accordion.locator(".nz-acc-cat", { has: page.locator(".nz-acc-h", { hasText: /Purchased Goods/i }) });
@@ -179,10 +179,10 @@ test.describe("Data-entry row-detail drawer", () => {
 
   test("item 3 — the category kind-note is an ⓘ, not a standing paragraph", async ({ page }) => {
     const { accordion } = await openAccordion(page);
-    const headers = accordion.locator("button.nz-acc-h");
+    const headers = accordion.locator(CATEGORY_ROW);
     for (let i = 0; i < (await headers.count()); i += 1) {
-      const header = headers.nth(i);
-      if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+      const control = categoryControl(headers.nth(i));
+      if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
     }
     // The always-visible instruction strip is gone everywhere...
     await expect(accordion.locator(".nz-acc-kindnote")).toHaveCount(0);

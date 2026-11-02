@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJob } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen, openAccordionScopes } from "./lib/screen";
+import { CATEGORY_ROW, categoryControl, collectPageErrors, expectHealthyScreen, openAccordionScopes } from "./lib/screen";
 import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 
 // UX1 flip acceptance — the CRP scope→category data-entry accordion
@@ -40,18 +40,19 @@ async function openJobAccordion(page: Page): Promise<{ accordion: Locator; error
     "data-entry-accordion not enabled on target, or its category view failed to load",
   );
   // C: scopes collapse; open them (scopes only) so the category cards are on screen.
-  await expect(accordion.locator("button.nz-acc-scopehead").first()).toBeVisible({ timeout: 20_000 });
+  await expect(accordion.locator(".nz-acc-scopehead button.hmain").first()).toBeVisible({ timeout: 20_000 });
   await openAccordionScopes(page);
-  await expect(accordion.locator("button.nz-acc-h").first()).toBeVisible({ timeout: 20_000 });
+  await expect(accordion.locator(CATEGORY_ROW).first()).toBeVisible({ timeout: 20_000 });
   return { accordion, errors };
 }
 
 /** Expand a category card by its taxonomy name; skip the leg if the job doesn't include it. */
 async function expandCategory(accordion: Locator, name: string): Promise<Locator | null> {
-  const header = accordion.locator("button.nz-acc-h", { hasText: name }).first();
+  const header = accordion.locator(CATEGORY_ROW, { hasText: name }).first();
   if ((await header.count()) === 0) return null;
-  if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
-  await expect(header).toHaveAttribute("aria-expanded", "true");
+  const control = categoryControl(header);
+  if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
+  await expect(control).toHaveAttribute("aria-expanded", "true");
   return header.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]").first();
 }
 
@@ -70,14 +71,15 @@ test.describe("UX1 — CRP data-entry accordion rendered acceptance", () => {
     await expect(byCategory).toHaveAttribute("aria-selected", "true");
     await expect(accordion.locator(".nz-acc")).toBeVisible();
 
-    const first = accordion.locator("button.nz-acc-h").first();
-    await first.click();
-    await expect(first).toHaveAttribute("aria-expanded", "true");
+    const first = accordion.locator(CATEGORY_ROW).first();
+    const control = categoryControl(first);
+    await control.click();
+    await expect(control).toHaveAttribute("aria-expanded", "true");
     await expect(
       first.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]"),
     ).toBeVisible();
-    await first.click();
-    await expect(first).toHaveAttribute("aria-expanded", "false");
+    await control.click();
+    await expect(control).toHaveAttribute("aria-expanded", "false");
 
     // The exception-first lens is a second view over the same rows.
     await needsAttention.click();
@@ -192,7 +194,33 @@ test.describe("UX1 — CRP data-entry accordion rendered acceptance", () => {
 
   test("the accordion holds the column at every breakpoint", async ({ page }) => {
     const { accordion } = await openJobAccordion(page);
-    await accordion.locator("button.nz-acc-h").first().click();
+    await categoryControl(accordion.locator(CATEGORY_ROW).first()).click();
     await expectNoHorizontalOverflow(page, "accordion");
   });
+
+  // The WF pill is a link beside the toggle, not part of it: it opens the workflow doc in a new tab and leaves the section as it was.
+  for (const level of ["scope", "category"] as const) {
+    test(`the ${level} WF pill opens its workflow doc in a new tab and does not toggle the section`, async ({ page }) => {
+      const { accordion } = await openJobAccordion(page);
+      const row = accordion.locator(level === "scope" ? ".nz-acc-scopehead" : CATEGORY_ROW).filter({ has: page.locator("a.nz-wf") }).first();
+      test.skip((await row.count()) === 0, `no ${level} header with a mapped workflow doc on this job`);
+      const control = level === "scope" ? row.locator("button.hmain") : categoryControl(row);
+      const before = await control.getAttribute("aria-expanded");
+      const pill = row.locator("a.nz-wf");
+      await expect(pill).toHaveText("WF");
+      await expect(pill).toHaveAttribute("target", "_blank");
+      const href = await pill.getAttribute("href");
+      expect(href, "the pill links to a hosted workflow doc").toMatch(/^\/workflows\/WF-[\w.-]+\.html$/);
+
+      const [doc] = await Promise.all([page.context().waitForEvent("page"), pill.click()]);
+      await doc.waitForLoadState("domcontentloaded");
+      expect(new URL(doc.url()).pathname).toBe(href);
+      await expect(doc.locator("body")).not.toBeEmpty();
+      await doc.close();
+
+      // The click stopped at the pill: the section is exactly as it was, and the app page is still the one on screen.
+      await expect(control).toHaveAttribute("aria-expanded", before!);
+      await expect(accordion).toBeVisible();
+    });
+  }
 });
