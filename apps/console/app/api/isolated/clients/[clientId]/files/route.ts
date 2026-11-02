@@ -1,4 +1,4 @@
-import { configuredStorageAdapter, ingestFile, listPortalFilesForStaff, recordClientFileDelivery } from "@nzi/isolated-backend";
+import { configuredScanner, configuredStorageAdapter, ingestFile, listPortalFilesForStaff, recordClientFileDelivery } from "@nzi/isolated-backend";
 import { authFailure } from "../../../../../lib/authResponse";
 import { requireCommandPrincipal } from "../../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../../lib/commandResponse";
@@ -26,7 +26,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ cli
     const { clientId } = await params;
     const { fileName, bytes, fields } = await readUpload(request);
     const adapter = configuredStorageAdapter();
-    const ingest = await ingestFile({ adapter, organisationId: principal.organisationId, clientId, jobId: String(fields.get("jobId") ?? "").trim() || null, fileName, bytes });
+    const scanner = configuredScanner();
+    const ingest = await ingestFile({ adapter, scanner, organisationId: principal.organisationId, clientId, jobId: String(fields.get("jobId") ?? "").trim() || null, fileName, bytes });
     const outcome = await recordClientFileDelivery(isolatedPool(), { clientId, ingest }, commandContext(request, principal));
     await withdrawIfReplayed(adapter, ingest, outcome.replayed);
     return commandSuccess(outcome);

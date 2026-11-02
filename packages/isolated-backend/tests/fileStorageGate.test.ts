@@ -5,8 +5,8 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { PORTAL_FILE_MAX_BYTES, safeFileName } from "@nzi/contracts";
 import {
-  configuredStorageAdapter, eicarTestSignature, FileStorageUnavailableError, ingestFile, LocalStorageAdapter, rescanFile, sha256Hex, sniffUpload, SharePointStorageAdapter,
-  zipEntryNames, type ScanVerdict,
+  configuredStorageAdapter, EicarDevScanner, eicarTestSignature, FileStorageUnavailableError, ingestFile, LocalStorageAdapter, rescanFile, sha256Hex, sniffUpload, SharePointStorageAdapter,
+  zipEntryNames, type ScanVerdict, type Scanner,
 } from "../src/fileStorage";
 
 /**
@@ -76,13 +76,16 @@ describe("the upload policy decides from the bytes, never the name", () => {
   });
 });
 
-describe("the gate: quarantine until clean, and a quarantined file is never served", () => {
-  const input = (adapter: LocalStorageAdapter, data: Uint8Array, name = "evidence.pdf") => ({ adapter, organisationId: "org-1", clientId: "c-1", jobId: "j-1", fileName: name, bytes: data });
+describe("the gate: a positive scan, quarantine until clean, and a quarantined file is never served", () => {
+  const input = (adapter: LocalStorageAdapter, scanner: Scanner, data: Uint8Array, name = "evidence.pdf") => ({ adapter, scanner, organisationId: "org-1", clientId: "c-1", jobId: "j-1", fileName: name, bytes: data });
+  const clean: Scanner = { scan: async () => ({ state: "clean" }) };
+  const down: Scanner = { scan: async () => ({ state: "unknown", detail: "down" }) };
+  const eicarAware = new EicarDevScanner();
 
-  it("releases a clean file: stored, scanned, promoted, hashed, and served only through a signed, time-limited URL", async () => {
+  it("releases a file only on the scanner's positive clean: stored, scanned, promoted, hashed, and served only through a signed, time-limited URL", async () => {
     let now = 1_000_000;
     const adapter = new LocalStorageAdapter({ now: () => now });
-    const file = await ingestFile(input(adapter, PDF));
+    const file = await ingestFile(input(adapter, clean, PDF));
     assert.deepEqual([file.status, file.flag, file.contentType, file.sha256, file.storageProvider], ["released", null, "application/pdf", sha256Hex(PDF), "local"]);
     assert.equal(adapter.areaOf(file.externalItemId!), "released");
     const signed = await adapter.signedUrl(file.externalItemId!, 60);
@@ -92,44 +95,94 @@ describe("the gate: quarantine until clean, and a quarantined file is never serv
     assert.equal(adapter.fetchSigned("local://download/forged"), null);
   });
 
-  it("refuses and flags an infected file: withdrawn from quarantine, never released, never served", async () => {
+  it("scans the bytes the gate holds, before promote: the scanner sees the file while it is still quarantined", async () => {
     const adapter = new LocalStorageAdapter();
-    const file = await ingestFile(input(adapter, bytes(`%PDF-1.4 ${eicarTestSignature()}`)));
+    const seen: Array<{ bytes: Uint8Array; area: string | null }> = [];
+    let id = "";
+    const spy: Scanner = { scan: async (data) => { seen.push({ bytes: data, area: adapter.areaOf(id) }); return { state: "clean" }; } };
+    const originalPut = adapter.putQuarantined.bind(adapter);
+    adapter.putQuarantined = async (args) => { const stored = await originalPut(args); id = stored.externalItemId; return stored; };
+    await ingestFile(input(adapter, spy, PDF));
+    assert.deepEqual(seen.map((entry) => [entry.area, sha256Hex(entry.bytes)]), [["quarantine", sha256Hex(PDF)]]);
+  });
+
+  it("refuses and flags an infected file (EICAR): withdrawn from quarantine, never released, never served", async () => {
+    const adapter = new LocalStorageAdapter();
+    const file = await ingestFile(input(adapter, eicarAware, bytes(`%PDF-1.4 ${eicarTestSignature()}`)));
     assert.deepEqual([file.status, file.flag], ["rejected", "infected"]);
     assert.equal(adapter.areaOf(file.externalItemId!), "deactivated");
     await assert.rejects(adapter.signedUrl(file.externalItemId!, 60), /not available to serve/);
   });
 
-  it("refuses oversize, disallowed and executable files before they are stored, and flags each", async () => {
+  it("refuses executable and disallowed files before they are stored or scanned, and flags each", async () => {
     const adapter = new LocalStorageAdapter();
-    const exe = await ingestFile(input(adapter, new Uint8Array([0x4d, 0x5a, 0, 0]), "setup.exe"));
-    const archive = await ingestFile(input(adapter, zip(["a.txt"]), "all.zip"));
+    let scans = 0;
+    const counting: Scanner = { scan: async () => { scans += 1; return { state: "clean" }; } };
+    const exe = await ingestFile(input(adapter, counting, new Uint8Array([0x4d, 0x5a, 0, 0]), "setup.exe"));
+    const archive = await ingestFile(input(adapter, counting, zip(["a.txt"]), "all.zip"));
     for (const [file, flag] of [[exe, "executable"], [archive, "type_not_allowed"]] as const) {
       assert.deepEqual([file.status, file.flag, file.externalItemId], ["rejected", flag, null]);
       assert.match(file.sha256, /^[0-9a-f]{64}$/, "a refused file is still evidenced by its hash");
     }
+    assert.equal(scans, 0);
   });
 
-  it("holds a file the scanner cannot decide: quarantined, non-servable, then released by a re-scan once it can", async () => {
-    let verdict: ScanVerdict = { state: "unknown", detail: "Waiting for the scan." };
-    const adapter = new LocalStorageAdapter({ scanner: () => verdict });
-    const held = await ingestFile(input(adapter, PDF));
-    assert.deepEqual([held.status, held.flag], ["quarantined", "scan_inconclusive"]);
-    assert.equal(adapter.areaOf(held.externalItemId!), "quarantine");
-    await assert.rejects(adapter.signedUrl(held.externalItemId!, 60), /not available to serve/, "a quarantined file is never served");
+  it("holds a file when the scanner is down, times out, refuses the size, or throws: quarantined and non-servable, never released on a failed scan", async () => {
+    const cases: Array<[string, Scanner, string]> = [
+      ["unreachable", { scan: async () => ({ state: "unknown", detail: "The scanner could not be reached (ECONNREFUSED)." }) }, "scan_inconclusive"],
+      ["timeout", { scan: async () => ({ state: "unknown", detail: "The scanner did not answer within 50 ms." }) }, "scan_inconclusive"],
+      ["oversize", { scan: async () => ({ state: "unknown", detail: "The file is larger than the scanner will accept." }) }, "scan_inconclusive"],
+      ["throws", { scan: async () => { throw new Error("boom"); } }, "scan_failed"],
+    ];
+    for (const [name, scanner, flag] of cases) {
+      const adapter = new LocalStorageAdapter();
+      const held = await ingestFile(input(adapter, scanner, PDF));
+      assert.deepEqual([held.status, held.flag], ["quarantined", flag], name);
+      assert.equal(adapter.areaOf(held.externalItemId!), "quarantine", name);
+      await assert.rejects(adapter.signedUrl(held.externalItemId!, 60), /not available to serve/, `${name}: never served`);
+    }
+  });
+
+  it("re-scans a held file from the store's bytes, and releases it once the scanner says clean, and only then", async () => {
+    let verdict: ScanVerdict = { state: "unknown", detail: "down" };
+    const scanner: Scanner = { scan: async () => verdict };
+    const adapter = new LocalStorageAdapter();
+    const held = await ingestFile(input(adapter, scanner, PDF));
+    assert.equal(held.status, "quarantined");
+    const still = await rescanFile(adapter, scanner, { ...held, externalItemId: held.externalItemId! });
+    assert.equal(still.status, "quarantined", "a second failed scan does not release");
     verdict = { state: "clean" };
-    const released = await rescanFile(adapter, { ...held, externalItemId: held.externalItemId! });
+    const released = await rescanFile(adapter, scanner, { ...held, externalItemId: held.externalItemId! });
     assert.deepEqual([released.status, released.flag], ["released", null]);
     assert.ok(await adapter.signedUrl(released.externalItemId!, 60));
+
+    const lateAdapter = new LocalStorageAdapter();
+    const lateHeld = await ingestFile(input(lateAdapter, down, PDF));
+    const refused = await rescanFile(lateAdapter, { scan: async () => ({ state: "infected", detail: "Win.Test" }) }, { ...lateHeld, externalItemId: lateHeld.externalItemId! });
+    assert.deepEqual([refused.status, refused.flag], ["rejected", "infected"]);
   });
 
-  it("holds, rather than releases, when the scan fails or the release cannot be made", async () => {
-    const broken = new LocalStorageAdapter({ scanner: () => { throw new Error("scanner down"); } });
-    const failed = await ingestFile(input(broken, PDF));
-    assert.deepEqual([failed.status, failed.flag], ["quarantined", "scan_failed"]);
+  it("holds a file that cannot be read back for a re-scan", async () => {
+    const adapter = new LocalStorageAdapter();
+    const held = await ingestFile(input(adapter, down, PDF));
+    const result = await rescanFile(adapter, clean, { ...held, externalItemId: "local-missing" });
+    assert.deepEqual([result.status, result.flag], ["quarantined", "scan_failed"]);
+  });
+
+  it("makes the scanner authoritative: the provider's flag can refuse a file the scanner passed, but its clean or doubt never decides release", async () => {
+    const flagging = new LocalStorageAdapter({ scanner: () => ({ state: "infected", detail: "provider flag" }) });
+    const refused = await ingestFile(input(flagging, clean, PDF));
+    assert.deepEqual([refused.status, refused.flag], ["rejected", "infected"]);
+    const providerClean = new LocalStorageAdapter({ scanner: () => ({ state: "clean" }) });
+    assert.equal((await ingestFile(input(providerClean, down, PDF))).status, "quarantined", "provider clean is not release");
+    const providerDoubt = new LocalStorageAdapter({ scanner: () => ({ state: "unknown", detail: "within the dwell" }) });
+    assert.equal((await ingestFile(input(providerDoubt, clean, PDF))).status, "released", "provider doubt does not hold a file the scanner passed");
+  });
+
+  it("holds, rather than releases, when the release cannot be made", async () => {
     const adapter = new LocalStorageAdapter();
     adapter.promote = async () => { throw new Error("move failed"); };
-    const stuck = await ingestFile(input(adapter, PDF));
+    const stuck = await ingestFile(input(adapter, clean, PDF));
     assert.deepEqual([stuck.status, stuck.flag], ["quarantined", "scan_failed"]);
     await assert.rejects(adapter.signedUrl(stuck.externalItemId!, 60));
   });

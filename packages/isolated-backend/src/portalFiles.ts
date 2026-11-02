@@ -1,7 +1,7 @@
 import { PORTAL_FILE_URL_TTL_MAX_SECONDS, PORTAL_FILE_URL_TTL_SECONDS, type CommandContext, type CommandInputMap, type PortalFileDirection, type PortalFileFlag, type PortalFileIngest, type PortalFileRecord, type PortalFileStatus } from "@nzi/contracts";
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
 import type { PortalPrincipal } from "./auth";
-import { rescanFile, type StorageAdapter } from "./fileStorage";
+import { rescanFile, type Scanner, type StorageAdapter } from "./fileStorage";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 
@@ -127,12 +127,12 @@ export async function issueClientFileDownload(pool: PoolLike, input: CommandInpu
 }
 
 /** Take a held file through the gate's decision again (the scanner was still working, or had failed). */
-export function rescanClientFile(pool: PoolLike, input: CommandInputMap["client.file.rescan"], context: CommandContext, adapterFor: (provider: string) => StorageAdapter) {
+export function rescanClientFile(pool: PoolLike, input: CommandInputMap["client.file.rescan"], context: CommandContext, adapterFor: (provider: string) => StorageAdapter, scanner: Scanner) {
   return runPostgresCommand(pool, "client.file.rescan", input, context, async (db) => {
     const file = await loadFile(db, context, input.clientId, input.fileId);
     if (file.status !== "quarantined" || !file.external_item_id) throw refuse("fileId", "NOT_HELD", "Only a held file is scanned again.");
     const adapter = adapterFor(file.storage_provider);
-    const decided = await rescanFile(adapter, { fileId: file.file_id, jobId: file.job_id, fileName: file.file_name, contentType: file.content_type, sizeBytes: Number(file.size_bytes), sha256: file.sha256,
+    const decided = await rescanFile(adapter, scanner, { fileId: file.file_id, jobId: file.job_id, fileName: file.file_name, contentType: file.content_type, sizeBytes: Number(file.size_bytes), sha256: file.sha256,
       storageProvider: adapter.provider, externalItemId: file.external_item_id, status: "quarantined", flag: file.flag, flagDetail: file.flag_detail });
     await db.query(
       `UPDATE nzi_console.portal_files SET status = $4, flag = $5, flag_detail = $6, external_item_id = $7, released_at = CASE WHEN $4 = 'released' THEN now() END WHERE organisation_id = $1 AND client_id = $2 AND file_id = $3`,

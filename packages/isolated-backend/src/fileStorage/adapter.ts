@@ -21,8 +21,13 @@ export interface StorageAdapter {
   readonly provider: FileStorageProvider;
   /** Store the bytes in the non-servable quarantine area. `key` is a server-built, tenant-prefixed path; returns the provider's opaque item id. */
   putQuarantined(input: { key: string; bytes: Uint8Array; contentType: string }): Promise<{ externalItemId: string }>;
-  /** The explicit scan step — a verdict, never a default. A provider that cannot decide says `unknown`, not `clean`. */
+  /**
+   * The provider's own verdict, **secondary only**: the gate releases on the `Scanner`'s positive `clean` (`scanner.ts`), and uses this
+   * only to refuse an item the provider itself flags. A provider that cannot decide says `unknown`, not `clean`.
+   */
   scan(externalItemId: string): Promise<ScanVerdict>;
+  /** The item's bytes, for a re-scan of a held file (the gate has the bytes at ingest; later it must read them back). Never served to a user. */
+  read(externalItemId: string): Promise<Uint8Array>;
   /** Move a scanned-clean item out of quarantine so it can be served. Returns its (possibly new) item id. */
   promote(externalItemId: string): Promise<{ externalItemId: string }>;
   /** A time-limited URL for one access to a released item. Throws for anything still in quarantine or deactivated. */

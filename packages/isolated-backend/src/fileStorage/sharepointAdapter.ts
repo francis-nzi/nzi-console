@@ -7,10 +7,9 @@ import { FileStorageUnavailableError } from "./adapter";
  *
  * How the contract maps:
  *  - **quarantine**: the item is uploaded into a `quarantine` folder of the configured drive, and never linked from there;
- *  - **scan**: Microsoft 365 scans uploads asynchronously and marks a detected item with a `malware` facet. Graph has no "scanned clean"
- *    signal, so absence of the facet is not proof: an item is `clean` only once it has sat in quarantine for the dwell period with no
- *    facet, and `unknown` (stays quarantined, scanned again) before that. A deployment that needs a stronger guarantee adds a scanner
- *    here without touching the gate;
+ *  - **scan** (secondary only): Microsoft 365 scans uploads asynchronously and marks a detected item with a `malware` facet. Graph has
+ *    no "scanned clean" signal, so this verdict is defence in depth — the gate releases on the positive `Scanner` (ClamAV), uses this
+ *    only to refuse an item 365 itself flags, and never releases on it. (Its dwell-then-clean answer is therefore not a release signal);
  *  - **promote** moves the item to the `released` folder; **deactivate** moves it to `deactivated` (kept, never deleted);
  *  - **signedUrl**: Graph's pre-authenticated download URL for one access. Its lifetime is Microsoft's (short, about an hour) and cannot
  *    be shortened, so the reported expiry is the provider's, not the caller's TTL — recorded honestly rather than promised.
@@ -63,6 +62,10 @@ export class SharePointStorageAdapter implements StorageAdapter {
     const age = (this.now() - Date.parse(item.createdDateTime ?? "")) / 1000;
     const dwell = this.config.scanDwellSeconds ?? 120;
     return Number.isFinite(age) && age >= dwell ? { state: "clean" } : { state: "unknown", detail: "Waiting for the Microsoft 365 scan to finish." };
+  }
+
+  async read(externalItemId: string): Promise<Uint8Array> {
+    return new Uint8Array(await (await this.call(`/items/${encodeURIComponent(externalItemId)}/content`)).arrayBuffer());
   }
 
   private async move(externalItemId: string, folder: string) {
