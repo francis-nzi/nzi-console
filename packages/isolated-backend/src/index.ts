@@ -35,6 +35,7 @@ export * from "./portalFiles";
 export * from "./portalClientAccess";
 export * from "./portalLoginEvents";
 export * from "./portalSpendImport";
+export * from "./portalReset";
 export * from "./fileStorage";
 export * from "./dataSubjects";
 export * from "./subjectCrypto";

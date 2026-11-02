@@ -267,6 +267,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.file.rescan": client,
   "client.file.deactivate": client,
   "client.portal.scope.visibility.set": client,
+  "client.portal.profile.reset": client,
+  "client.portal.visibility.reset": client,
   "client.factor.alias.set": client,
   // Dedup slice 5 Step B: a factor's applicability is organisation-wide reference data, as the category registry is.
   "factor.applicability.add": organisation,

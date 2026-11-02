@@ -5,7 +5,7 @@ import { commandGrantForRole, PORTAL_PROFILE_DEFAULT, PORTAL_PROFILE_KEYS, PORTA
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import {
   AuthorizationError, CommandValidationError, effectivePortalProfile, getPortalProfileForStaff, listInputSpec, portalFacingProfile,
-  portalProfileStaffView, setClientCategoryVisibility, setClientPortalProfile, setClientPortalScopeVisibility,
+  portalProfileStaffView, resetClientPortalProfile, resetClientPortalVisibility, setClientCategoryVisibility, setClientPortalProfile, setClientPortalScopeVisibility,
 } from "../src/index";
 
 /**
@@ -229,5 +229,70 @@ describe("the client portal profile and scope register (portal data-entry phase 
       const granted = await db.query<{ granted: boolean }>(`SELECT has_table_privilege('nzi_console_app','nzi_console.${table}','DELETE') AS granted`);
       assert.equal(granted.rows[0]!.granted, false, table);
     }
+  });
+
+  // Portal Management → "Reset all to default": one atomic command and one audit event per tab, replacing N withdrawals.
+  describe("Reset all to default", () => {
+    const RESET_CLIENT = "client-reset";
+    const live = async (table: string, key: string) => (await db.query<{ k: string }>(`SELECT ${key} AS k FROM nzi_console.${table} WHERE client_id=$1 AND active ORDER BY ${key}`, [RESET_CLIENT])).rows.map((row) => row.k);
+    const audit = async (action: string) => (await db.query<{ after_json: { reset: string[]; count: number; note: string | null } }>(`SELECT after_json FROM nzi_console.audit_events WHERE action=$1 AND entity_id=$2`, [action, RESET_CLIENT])).rows;
+
+    before(async () => {
+      await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status,owner_user_id) VALUES ($1,$2,'Reset Co','active',$3)`, [ORG, RESET_CLIENT, CONSULTANT]);
+    });
+
+    it("withdraws every active portal-setting decision in one transaction with one audit event naming each key, and leaves Datasets and Setup alone", async () => {
+      let n = 0;
+      const set = (key: string, value: string) => setClientPortalProfile(pool, { clientId: RESET_CLIENT, profileKey: key, value }, context(`zrs-${n += 1}`));
+      for (const [key, value] of [["time", "visible"], ["entryDrawer", "detailed"], ["dataQuality", "visible"], ["deactivate", "enabled"], ["setup", "visible"], ["datasets", "visible"]] as const) await set(key, value);
+      const before = (await db.query(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE entity_id=$1`, [RESET_CLIENT])).rows[0].n;
+      const outcome = await resetClientPortalProfile(pool, { clientId: RESET_CLIENT, note: "Starting again" }, context("zrs-reset-1"));
+      assert.deepEqual([outcome.data.reset, outcome.data.count], [["dataQuality", "deactivate", "entryDrawer", "time"], 4]);
+      assert.deepEqual(await live("client_portal_profile_decisions", "profile_key"), ["datasets", "setup"], "the screen no longer offers these, so a reset of what it shows must not reach them");
+      assert.equal((await db.query(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE entity_id=$1`, [RESET_CLIENT])).rows[0].n, before + 1, "one audit event, not four");
+      const [event] = await audit("client_portal_profile_reset");
+      assert.deepEqual([event!.after_json.reset.length, event!.after_json.note], [4, "Starting again"]);
+      assert.deepEqual((await db.query(`SELECT profile_key, decided_by FROM nzi_console.client_portal_profile_decisions WHERE client_id=$1 AND NOT active AND profile_key='time'`, [RESET_CLIENT])).rows, [{ profile_key: "time", decided_by: ACTOR }], "withdrawn and kept, with who withdrew it");
+      assert.equal((await effectivePortalProfile(db, RESET_CLIENT)).time, PORTAL_PROFILE_DEFAULT.time, "back to the default");
+      assert.deepEqual(await topics("client_portal_profile_decisions").then((all) => all.filter((topic) => topic === "client.portal.profile.reset")), ["client.portal.profile.reset"]);
+    });
+
+    it("refuses a reset with nothing to reset, rather than recording a no-op", async () => {
+      await assert.rejects(resetClientPortalProfile(pool, { clientId: RESET_CLIENT }, context("zrs-reset-2")), (error) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === "NOTHING_TO_RESET"));
+      await assert.rejects(resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrs-reset-3")), (error) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === "NOTHING_TO_RESET"));
+      await assert.rejects(resetClientPortalProfile(pool, { clientId: "no-such-client" }, context("zrs-reset-4")), AuthorizationError, "a client that is not in this organisation is refused before anything is read");
+    });
+
+    it("withdraws every scope and category decision together, and a different client's decisions are untouched", async () => {
+      await setClientPortalScopeVisibility(pool, { clientId: RESET_CLIENT, scope: "1", visible: false }, context("zrv-1"));
+      await setClientCategoryVisibility(pool, { clientId: RESET_CLIENT, categoryCode: scope3Category, visible: false }, context("zrv-2"));
+      await setClientCategoryVisibility(pool, { clientId: CLIENT, categoryCode: scope3Category, visible: false }, context("zrv-3"));
+      const before = (await db.query(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE entity_id=$1`, [RESET_CLIENT])).rows[0].n;
+      const outcome = await resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrv-reset-1"));
+      assert.deepEqual([outcome.data.reset, outcome.data.count], [["scope:1", `category:${scope3Category}`], 2]);
+      assert.deepEqual([await live("client_portal_scope_visibility", "scope"), await live("client_category_visibility", "category_code")], [[], []]);
+      assert.equal((await db.query(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE entity_id=$1`, [RESET_CLIENT])).rows[0].n, before + 1);
+      assert.deepEqual(await db.query(`SELECT client_id FROM nzi_console.client_category_visibility WHERE active AND category_code=$1`, [scope3Category]).then((result) => result.rows.map((row) => row.client_id)), [CLIENT], "another client's decision stays");
+      assert.ok((await portalProfileStaffView(db, RESET_CLIENT)).scopes.every((scope) => scope.effectiveVisible && scope.decision === null));
+    });
+
+    it("is permissioned like the commands it replaces: the profile reset is portal.admin on this client, the visibility reset is category.visibility", async () => {
+      await setClientPortalProfile(pool, { clientId: RESET_CLIENT, profileKey: "time", value: "visible" }, context("zrs-t4"));
+      await setClientPortalScopeVisibility(pool, { clientId: RESET_CLIENT, scope: "2", visible: false }, context("zrv-t4"));
+      await assert.rejects(resetClientPortalProfile(pool, { clientId: RESET_CLIENT }, context("zrs-reset-5", "reviewer", "reviewer-a")), AuthorizationError);
+      await assert.rejects(resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrv-reset-5", "reviewer", "reviewer-a")), AuthorizationError);
+      // A consultant who owns the client may; one who does not own it may not (own-clients).
+      assert.equal((await resetClientPortalProfile(pool, { clientId: RESET_CLIENT }, context("zrs-reset-6", "consultant"))).data.count, 1);
+      await db.query(`UPDATE nzi_console.clients SET owner_user_id = NULL WHERE client_id = $1`, [RESET_CLIENT]);
+      await assert.rejects(resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrv-reset-6", "consultant")), AuthorizationError);
+      assert.equal((await resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrv-reset-7"))).data.count, 1, "an admin may");
+    });
+
+    it("replays idempotently: the same key resets once", async () => {
+      await setClientPortalProfile(pool, { clientId: RESET_CLIENT, profileKey: "milestones", value: "hidden" }, context("zrs-t5"));
+      const first = await resetClientPortalProfile(pool, { clientId: RESET_CLIENT }, context("zrs-reset-7"));
+      const replay = await resetClientPortalProfile(pool, { clientId: RESET_CLIENT }, context("zrs-reset-7"));
+      assert.deepEqual([replay.replayed, replay.data.reset], [true, first.data.reset]);
+    });
   });
 });
