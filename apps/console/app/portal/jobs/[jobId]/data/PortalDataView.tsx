@@ -25,6 +25,7 @@ import { formatQuantity, formatTco2e } from "../../../../lib/formatNumber";
 import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
 import { dataEntryAdapterEnabled } from "../../../../lib/featureFlags";
 import { PortalCommutingImport } from "../../../PortalCommutingImport";
+import { PortalSpendImport } from "../../../PortalSpendImport";
 import { PortalTravelImport } from "../../../PortalTravelImport";
 import { PortalVehicleImport } from "../../../PortalVehicleImport";
 import { usePortalSurface } from "../../../portalSurface";
@@ -110,6 +111,10 @@ export function PortalDataView({ jobId }: { jobId: string }) {
         reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> };
     if (category.code === "1.company-vehicles" && dataEntryAdapterEnabled("vehicle"))
       return { title, body: <PortalVehicleImport base={base} factors={view.factors} sites={view.sites.map((entry) => ({ id: entry.id, name: entry.name }))}
+        reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> };
+    // Spend (3.1): the paste and the CSV in one tab. Roll-forward and the ledger adapter stay staff-only (RULING-portal-import-spend).
+    if (category.code === "3.1" && dataEntryAdapterEnabled("spend-import"))
+      return { title, body: <PortalSpendImport base={base} factors={view.factors} categories={view.purchasedGoodsCategories.map((entry) => ({ id: entry.id, name: entry.name }))}
         reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> };
     return null;
   };

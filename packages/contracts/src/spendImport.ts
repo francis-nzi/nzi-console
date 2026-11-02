@@ -107,7 +107,9 @@ export type ImportRowIssueCode =
   | "DESCRIPTION_REQUIRED" | "NET_VALUE_INVALID" | "VAT_PERCENT_INVALID"
   | "INVOICE_DATE_INVALID" | "CATEGORY_UNRESOLVED" | "FACTOR_UNRESOLVED"
   | "INVOICE_DATE_OUTSIDE_PERIOD" | "DUPLICATE_IN_FILE" | "NON_POSITIVE_NET"
-  | "YOY_VARIANCE" | "ALREADY_IMPORTED" | "FACTOR_NOT_IN_CATEGORY" | "VAT_NOT_APPLICABLE";
+  | "YOY_VARIANCE" | "ALREADY_IMPORTED" | "FACTOR_NOT_IN_CATEGORY" | "VAT_NOT_APPLICABLE"
+  /** The client portal only: the line's category is not one the client is shown, or its factor is not one they may use — held, and said without saying why. */
+  | "NOT_IMPORTABLE_HERE";
 
 export type ImportRowIssueSeverity = "blocker" | "advisory";
 
@@ -121,7 +123,7 @@ export const IMPORT_ROW_ISSUE_SEVERITY: Record<ImportRowIssueCode, ImportRowIssu
   // D3 (R2): said on the line, and the line is not imported again — reconciled by reading first (`reconcileSpendImport`).
   YOY_VARIANCE: "advisory", ALREADY_IMPORTED: "advisory",
   // D2: a line routed to a category its factor cannot price is held; VAT on a line whose category takes none is dropped, said aloud.
-  FACTOR_NOT_IN_CATEGORY: "blocker", VAT_NOT_APPLICABLE: "advisory",
+  FACTOR_NOT_IN_CATEGORY: "blocker", VAT_NOT_APPLICABLE: "advisory", NOT_IMPORTABLE_HERE: "blocker",
 };
 
 export type ImportRowIssue = { code: ImportRowIssueCode; severity: ImportRowIssueSeverity; message: string };

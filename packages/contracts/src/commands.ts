@@ -1,5 +1,6 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { PORTAL_ACCESS_NOTES_MAX, PORTAL_ACCESS_NOTE_MAX, PORTAL_ACCESS_PAYMENT_REF_MAX, PORTAL_PAYMENT_STATUSES, type PortalClientAccessChanges } from "./portalClientAccess";
+import type { PortalSpendImportPayload } from "./portalSpendImport";
 import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, type PortalFileIngest } from "./portalFiles";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
@@ -513,7 +514,7 @@ export type ScopeRowWriteFields = {
  * (`PORTAL_STAFF_ONLY_FIELDS`); the profile's detailed-drawer sections show a row's detail read-only and never widen this.
  */
 /** The templates a client may import from; one per kind, as each ships (travel first). */
-export const PORTAL_IMPORT_TEMPLATES = ["travel", "commuting", "vehicles"] as const;
+export const PORTAL_IMPORT_TEMPLATES = ["travel", "commuting", "vehicles", "spend"] as const;
 export type PortalImportTemplate = (typeof PORTAL_IMPORT_TEMPLATES)[number];
 /** The most rows one import files; a larger file is split by the client. */
 export const PORTAL_IMPORT_MAX_ROWS = 500;
@@ -790,7 +791,8 @@ export type CommandInputMap = {
    */
   "portal.scope.row.create": { jobId: string } & PortalScopeRowFields;
   /** A bulk import from a template (BRIEF-portal-data-entry-parity #3): each row is one `portal.scope.row.create`, all in one transaction. */
-  "portal.scope.row.import": { jobId: string; template: PortalImportTemplate; rows: PortalScopeRowFields[] };
+  /** For `template: "spend"` the rows are built on the server from `spend.lines` (routed by the staff allocation map, never by the client) and `rows` is empty. */
+  "portal.scope.row.import": { jobId: string; template: PortalImportTemplate; rows: PortalScopeRowFields[]; spend?: PortalSpendImportPayload };
   /** Only a row a client captured, still pending, in a category the client sees (settled 22 Oct). */
   "portal.scope.row.update": { jobId: string; rowId: string; expectedVersion: number } & PortalScopeRowFields;
   /** Off by default (profile `deactivate`); the same row rule as update, with a reason as staff give one. */
@@ -1348,6 +1350,14 @@ const portalAccessIssues = (input: { clientId: string; expectedVersion: number |
   if ("notes" in changes && (typeof changes.notes !== "string" || changes.notes.length > PORTAL_ACCESS_NOTES_MAX)) issues.push({ field: "changes.notes", code: "TOO_LONG", message: `Notes are at most ${PORTAL_ACCESS_NOTES_MAX} characters.` });
   if (typeof input.note === "string" && input.note.length > PORTAL_ACCESS_NOTE_MAX) issues.push({ field: "note", code: "TOO_LONG", message: `A reason is at most ${PORTAL_ACCESS_NOTE_MAX} characters.` });
   return issues;
+};
+/** A spend import carries its lines and the server-issued token, and no pre-built rows: the server routes and files them. */
+const portalSpendImportIssues = (input: { rows?: unknown[]; spend?: PortalSpendImportPayload }, issues: CommandIssue[]) => {
+  const spend = input.spend;
+  if (!spend || typeof spend.token !== "string" || !spend.token.trim()) { issues.push({ field: "spend.token", code: "REQUIRED", message: "The import's identity is missing." }); return; }
+  if (!Array.isArray(spend.lines) || spend.lines.length === 0) issues.push({ field: "spend.lines", code: "REQUIRED", message: "The import has no lines." });
+  else if (spend.lines.length > PORTAL_IMPORT_MAX_ROWS) issues.push({ field: "spend.lines", code: "TOO_MANY", message: `An import files at most ${PORTAL_IMPORT_MAX_ROWS} lines at a time.` });
+  if (Array.isArray(input.rows) && input.rows.length > 0) issues.push({ field: "rows", code: "NOT_ALLOWED", message: "A spend import files its own rows." });
 };
 const fileRefIssues = (input: { clientId: string; fileId: string }, context: CommandContext, reasonRequired = false) => {
   const issues = baseIssues(context, reasonRequired);
@@ -2003,7 +2013,8 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = [...baseIssues(context, false)];
     required(issues, "jobId", input.jobId);
     if (!(PORTAL_IMPORT_TEMPLATES as readonly string[]).includes(input.template)) issues.push({ field: "template", code: "INVALID", message: "That template can't be imported here." });
-    if (!Array.isArray(input.rows) || input.rows.length === 0) issues.push({ field: "rows", code: "REQUIRED", message: "The import has no rows." });
+    if (input.template === "spend") portalSpendImportIssues(input, issues);
+    else if (!Array.isArray(input.rows) || input.rows.length === 0) issues.push({ field: "rows", code: "REQUIRED", message: "The import has no rows." });
     else if (input.rows.length > PORTAL_IMPORT_MAX_ROWS) issues.push({ field: "rows", code: "TOO_MANY", message: `An import files at most ${PORTAL_IMPORT_MAX_ROWS} rows at a time.` });
     else input.rows.forEach((row, index) => {
       const own = [...portalStaffOnlyIssues(row as Record<string, unknown>), ...scopeRowIssues({ ...row, qualityTier: null })];
