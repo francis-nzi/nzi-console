@@ -35,6 +35,12 @@ export class LocalStorageAdapter implements StorageAdapter {
     return new TextDecoder("latin1").decode(item.bytes).includes(EICAR) ? { state: "infected", detail: "EICAR test signature" } : { state: "clean" };
   }
 
+  async read(externalItemId: string): Promise<Uint8Array> {
+    const item = this.items.get(externalItemId);
+    if (!item) throw new Error("The item was not found.");
+    return new Uint8Array(item.bytes);
+  }
+
   async promote(externalItemId: string) {
     const item = this.items.get(externalItemId);
     if (!item || item.area !== "quarantine") throw new Error("Only a quarantined item can be promoted.");

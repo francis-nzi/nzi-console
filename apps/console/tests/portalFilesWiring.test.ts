@@ -44,6 +44,15 @@ describe("portal files routes", () => {
   });
 });
 
+describe("the scanner is part of every route that ingests or re-checks a file", () => {
+  it("calls configuredScanner (so an unconfigured scanner is a 503, never a silent skip)", () => {
+    for (const path of fileRoutes) {
+      const text = readFileSync(path, "utf8");
+      if (/ingestFile\(|rescanClientFile\(/.test(text)) assert.match(text, /configuredScanner\(\)/, path);
+    }
+  });
+});
+
 describe("the Files panel", () => {
   const panel = source("app/clients/[clientId]/PortalFilesPanel.tsx");
   it("is shown only when portal-files is on, inside Portal Management", () => {

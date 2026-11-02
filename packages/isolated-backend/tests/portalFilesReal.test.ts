@@ -5,7 +5,7 @@ import { commandGrantForRole, type CommandContext } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import {
   AuthorizationError, CommandValidationError, deactivateClientFile, eicarTestSignature, ingestFile, issueClientFileDownload, issuePortalFileDownload, listPortalFilesForStaff, listPortalFiles,
-  LocalStorageAdapter, recordClientFileDelivery, recordPortalFileUpload, rescanClientFile, type PortalPrincipal, type ScanVerdict,
+  LocalStorageAdapter, recordClientFileDelivery, recordPortalFileUpload, rescanClientFile, type PortalPrincipal, type ScanVerdict, type Scanner,
 } from "../src/index";
 
 /**
@@ -27,7 +27,9 @@ describe("portal files: records, audited access, and the gate's guarantee", { sk
   let db: pg.Client;
   let keys = 0;
   let verdict: ScanVerdict = { state: "clean" };
-  const adapter = new LocalStorageAdapter({ scanner: (data) => (new TextDecoder("latin1").decode(data).includes(eicarTestSignature()) ? { state: "infected", detail: "test signature" } : verdict) });
+  const adapter = new LocalStorageAdapter();
+  // The positive scanner the gate releases on (ClamAV in a deployment; its protocol is proved in clamAvScanner.test.ts).
+  const scanner: Scanner = { scan: async (data) => (new TextDecoder("latin1").decode(data).includes(eicarTestSignature()) ? { state: "infected", detail: "test signature" } : verdict) };
   const adapterFor = () => adapter;
   const portal = (userId = USER, clientId = CLIENT): CommandContext => {
     keys += 1;
@@ -37,7 +39,7 @@ describe("portal files: records, audited access, and the gate's guarantee", { sk
     keys += 1;
     return { organisationId: ORG, actorId: STAFF, principal: "staff", idempotencyKey: `sf-${keys}`, correlationId: `corr-sf-${keys}`, grant: commandGrantForRole("admin", ORG, STAFF), ...(reason ? { reason } : {}) };
   };
-  const ingest = (data: Uint8Array, name: string, jobId: string | null = JOB, clientId = CLIENT) => ingestFile({ adapter, organisationId: ORG, clientId, jobId, fileName: name, bytes: data });
+  const ingest = (data: Uint8Array, name: string, jobId: string | null = JOB, clientId = CLIENT) => ingestFile({ adapter, scanner, organisationId: ORG, clientId, jobId, fileName: name, bytes: data });
   const audit = async (fileId: string) => (await db.query(`SELECT principal_type, action, after_json FROM nzi_console.audit_events WHERE entity_id=$1 ORDER BY occurred_at`, [fileId])).rows;
   const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [];
 
@@ -115,12 +117,12 @@ describe("portal files: records, audited access, and the gate's guarantee", { sk
     assert.deepEqual([outcome.data.status, outcome.data.flag], ["quarantined", "scan_inconclusive"]);
     await assert.rejects(issuePortalFileDownload(database.pool, { clientId: CLIENT, fileId: held }, portal(), adapterFor), (e) => codes(e).includes("FILE_NOT_AVAILABLE"));
     await assert.rejects(issueClientFileDownload(database.pool, { clientId: CLIENT, fileId: held }, staff(), adapterFor), (e) => codes(e).includes("FILE_NOT_AVAILABLE"));
-    const stillHeld = await rescanClientFile(database.pool, { clientId: CLIENT, fileId: held }, staff(), adapterFor);
+    const stillHeld = await rescanClientFile(database.pool, { clientId: CLIENT, fileId: held }, staff(), adapterFor, scanner);
     assert.equal(stillHeld.data.status, "quarantined");
     verdict = { state: "clean" };
-    const released2 = await rescanClientFile(database.pool, { clientId: CLIENT, fileId: held }, staff(), adapterFor);
+    const released2 = await rescanClientFile(database.pool, { clientId: CLIENT, fileId: held }, staff(), adapterFor, scanner);
     assert.deepEqual([released2.data.status, released2.data.flag], ["released", null]);
-    await assert.rejects(rescanClientFile(database.pool, { clientId: CLIENT, fileId: held }, staff(), adapterFor), (e) => codes(e).includes("NOT_HELD"));
+    await assert.rejects(rescanClientFile(database.pool, { clientId: CLIENT, fileId: held }, staff(), adapterFor, scanner), (e) => codes(e).includes("NOT_HELD"));
   });
 
   it("serves a released file only through a signed, time-limited URL — to the client with the grant and to staff — and audits each access without the URL", async () => {

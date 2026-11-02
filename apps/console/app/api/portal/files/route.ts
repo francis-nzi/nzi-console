@@ -1,4 +1,4 @@
-import { configuredStorageAdapter, ingestFile, listPortalFiles, recordPortalFileUpload } from "@nzi/isolated-backend";
+import { configuredScanner, configuredStorageAdapter, ingestFile, listPortalFiles, recordPortalFileUpload } from "@nzi/isolated-backend";
 import { commandSuccess } from "../../../lib/commandResponse";
 import { readUpload, requirePortalFiles, uploadFailure, withdrawIfReplayed } from "../../../lib/fileUpload";
 import { isolatedPool } from "../../../lib/isolatedDatabase";
@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     const { fileName, bytes, fields } = await readUpload(request);
     const jobId = String(fields.get("jobId") ?? "").trim() || null;
     const adapter = configuredStorageAdapter();
-    const ingest = await ingestFile({ adapter, organisationId: user.organisationId, clientId: user.clientId, jobId, fileName, bytes });
+    const scanner = configuredScanner();
+    const ingest = await ingestFile({ adapter, scanner, organisationId: user.organisationId, clientId: user.clientId, jobId, fileName, bytes });
     const outcome = await recordPortalFileUpload(isolatedPool(), { clientId: user.clientId, ingest }, portalCommandContext(request, user));
     await withdrawIfReplayed(adapter, ingest, outcome.replayed);
     return commandSuccess(outcome);
