@@ -227,7 +227,7 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
 
   // BRIEF-portal-data-entry-parity #3: a bulk import is the create, per row, in one transaction.
   describe("a bulk import (portal.scope.row.import)", () => {
-    const batch = (rows: CommandInputMap["portal.scope.row.create"][], jobId = JOB, template: "travel" | "commuting" = "travel") => ({ jobId, template, rows: rows.map(({ jobId: _job, ...fields }) => fields) });
+    const batch = (rows: CommandInputMap["portal.scope.row.create"][], jobId = JOB, template: "travel" | "commuting" | "vehicles" = "travel") => ({ jobId, template, rows: rows.map(({ jobId: _job, ...fields }) => fields) });
     const count = async (label: string) => Number((await db.query(`SELECT count(*) FROM nzi_console.job_scope_rows WHERE job_id=$1 AND source_label=$2`, [JOB, label])).rows[0].count);
 
     it("files every row pending and client-provenanced, resolved as the single create resolves it, audited once and replayed idempotently", async () => {
@@ -250,11 +250,25 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
       assert.equal(await count("Imp A"), 1, "a replay files nothing twice");
     });
 
-    it("takes each template the contract names (travel, commuting) through the same path, and no other", async () => {
+    it("takes each template the contract names (travel, commuting, vehicles) through the same path, and no other", async () => {
       const outcome = await importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Imp commuting" })], JOB, "commuting"), portal());
       assert.equal(outcome.data.template, "commuting");
       assert.equal((await row(outcome.data.rowIds[0]!)).review_status, "pending");
       assert.equal(await count("Imp commuting"), 1);
+      assert.equal((await importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Imp vehicles" })], JOB, "vehicles"), portal())).data.template, "vehicles");
+    });
+
+    it("files a row carrying the whole reporting period's months (a vehicle's monthly mileage): the quantity is their total, pending", async () => {
+      const months = Array.from({ length: 12 }, (_, index) => `2026-${String(index + 1).padStart(2, "0")}`);
+      const slots = months.map((month, index) => ({ month, quantity: index === 3 ? null : (index + 1) * 10 }));
+      const outcome = await importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Imp monthly", quantity: null as never, monthlyActivity: slots })]), portal());
+      const stored = await row(outcome.data.rowIds[0]!);
+      assert.equal(Number(stored.quantity), 780 - 40, "a blank month counts as nothing");
+      assert.equal(stored.review_status, "pending");
+      // A vector that is not the whole period, in order, is refused for the row it is on — and nothing is saved.
+      await assert.rejects(importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Imp short", quantity: null as never, monthlyActivity: slots.slice(0, 3) })]), portal()),
+        (error) => error instanceof CommandValidationError && error.issues.some((issue) => issue.field.startsWith("rows[0].") || issue.code === "REPORTING_PERIOD_MISMATCH"));
+      assert.equal(await count("Imp short"), 0);
     });
 
     it("is all or none: one refused row, named by its index, leaves nothing of the others behind", async () => {
@@ -269,7 +283,7 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
       await assert.rejects(importPortalScopeRows(database.pool, batch([gas()]), staff()), AuthorizationError);
       await assert.rejects(importPortalScopeRows(database.pool, batch([{ ...gas(), qualityTier: "measured" } as never]), portal()), (error) => codes(error).includes("STAFF_ONLY_FIELD") || error instanceof CommandValidationError);
       await assert.rejects(importPortalScopeRows(database.pool, { jobId: JOB, template: "travel", rows: [] }, portal()), (error) => codes(error).includes("REQUIRED"));
-      await assert.rejects(importPortalScopeRows(database.pool, { jobId: JOB, template: "vehicle" as never, rows: [gas()] }, portal()), (error) => codes(error).includes("INVALID"));
+      await assert.rejects(importPortalScopeRows(database.pool, { jobId: JOB, template: "bogus" as never, rows: [gas()] }, portal()), (error) => codes(error).includes("INVALID"));
       await assert.rejects(importPortalScopeRows(database.pool, { jobId: JOB, template: "travel", rows: Array.from({ length: 501 }, () => gas()) }, portal()), (error) => codes(error).includes("TOO_MANY"));
       await db.query(`UPDATE nzi_console.portal_access_grants SET data_entry_expires_at = now() - interval '1 minute', data_entry_starts_at = now() - interval '2 days' WHERE grant_id='grant-pc'`);
       await assert.rejects(importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Closed window" })]), portal()), /not open just now/);
