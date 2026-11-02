@@ -199,8 +199,8 @@ describe("the client's Data view (portal data-entry phase 2)", () => {
       assert.match(read("apps/console/app/portal/PortalHome.tsx"), /portalFeatureEnabled\("portal-data"\)\?<a className="nz-btn" href=\{`\/portal\/jobs\/\$\{job\.id\}\/data`\}>Your data<\/a>:null/);
     });
 
-    it("Portal Management and the preview say the settings are in force once the view is on (§6)", () => {
-      assert.match(read("apps/console/app/clients/[clientId]/PortalManagementArea.tsx"), /portalFeatureEnabled\("portal-data"\) \? "These settings are in force in the client's portal/);
+    it("the preview says the settings are in force once the view is on (§6); Portal Management no longer carries that explainer — its switches are wordless (redesign)", () => {
+      assert.doesNotMatch(read("apps/console/app/clients/[clientId]/PortalManagementArea.tsx"), /These settings are in force/);
       assert.match(read("apps/console/app/clients/[clientId]/portal-preview/PortalPreview.tsx"), /portalFeatureEnabled\("portal-data"\) \? "These settings are in force in the portal\."/);
     });
 
