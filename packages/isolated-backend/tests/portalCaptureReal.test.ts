@@ -8,7 +8,7 @@ import { commandGrantForRole, type CommandContext, type CommandInputMap, type Po
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import {
   AuthorizationError, CommandValidationError, createPortalScopeRow, createScopeRow, deactivatePortalScopeRow, getPortalDataView, getPortalRowHistory,
-  listInputSpecForClient, listJobFactorOptions, setClientCategoryVisibility, setClientPortalProfile, setClientPortalScopeVisibility, updatePortalScopeRow, updateScopeRow,
+  importPortalScopeRows, listInputSpecForClient, listJobFactorOptions, setClientCategoryVisibility, setClientPortalProfile, setClientPortalScopeVisibility, updatePortalScopeRow, updateScopeRow,
   type PortalPrincipal,
 } from "../src/index";
 
@@ -222,6 +222,56 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
       const theirs = await getPortalRowHistory(database.pool, portalPrincipal, JOB, staffRow);
       assert.deepEqual(theirs.map((entry) => entry.who), ["adviser"]);
       assert.doesNotMatch(JSON.stringify(theirs), new RegExp(STAFF));
+    });
+  });
+
+  // BRIEF-portal-data-entry-parity #3: a bulk import is the create, per row, in one transaction.
+  describe("a bulk import (portal.scope.row.import)", () => {
+    const batch = (rows: CommandInputMap["portal.scope.row.create"][], jobId = JOB) => ({ jobId, template: "travel" as const, rows: rows.map(({ jobId: _job, ...fields }) => fields) });
+    const count = async (label: string) => Number((await db.query(`SELECT count(*) FROM nzi_console.job_scope_rows WHERE job_id=$1 AND source_label=$2`, [JOB, label])).rows[0].count);
+
+    it("files every row pending and client-provenanced, resolved as the single create resolves it, audited once and replayed idempotently", async () => {
+      const context = portal();
+      const input = batch([gas({ sourceLabel: "Imp A", quantity: 10 }), gas({ sourceLabel: "Imp B", quantity: 20 })]);
+      const outcome = await importPortalScopeRows(database.pool, input, context);
+      assert.equal(outcome.data.count, 2);
+      const single = await createPortalScopeRow(database.pool, gas({ sourceLabel: "Imp single", quantity: 10 }), portal());
+      const [imported, alone] = [await row(outcome.data.rowIds[0]!), await row(single.data.rowId)];
+      for (const column of ["factor_id", "dataset_id", "factor_version", "factor_label", "filed_suffix_code", "unit", "quantity", "category_code", "level_1", "level_2", "scope", "review_status"]) assert.deepEqual(imported[column], alone[column], column);
+      assert.equal(imported.review_status, "pending");
+      assert.equal(imported.reviewed_by, null);
+      assert.equal(imported.provenance_json.capturedAs, "client-portal");
+      assert.equal(imported.provenance_json.capturedBy, undefined);
+      const audit = (await db.query(`SELECT principal_type, action FROM nzi_console.audit_events WHERE correlation_id=$1`, [context.correlationId])).rows;
+      assert.deepEqual(audit, [{ principal_type: "portal", action: "portal_scope_rows_imported" }]);
+      const replay = await importPortalScopeRows(database.pool, input, context);
+      assert.equal(replay.replayed, true);
+      assert.deepEqual(replay.data.rowIds, outcome.data.rowIds);
+      assert.equal(await count("Imp A"), 1, "a replay files nothing twice");
+    });
+
+    it("is all or none: one refused row, named by its index, leaves nothing of the others behind", async () => {
+      await assert.rejects(importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Atomic good" }), gas({ sourceLabel: "Atomic bad", unit: "litres" })]), portal()),
+        (error) => error instanceof CommandValidationError && error.issues.some((issue) => issue.field.startsWith("rows[1].")));
+      assert.equal(await count("Atomic good"), 0);
+    });
+
+    it("holds the create's gates: window, grant, tenancy, shown category, staff-only fields, batch size", async () => {
+      await assert.rejects(importPortalScopeRows(database.pool, batch([gas()], UNGRANTED_JOB), portal()), AuthorizationError);
+      await assert.rejects(importPortalScopeRows(database.pool, batch([gas()], OTHER_JOB), portal()), AuthorizationError);
+      await assert.rejects(importPortalScopeRows(database.pool, batch([gas()]), staff()), AuthorizationError);
+      await assert.rejects(importPortalScopeRows(database.pool, batch([{ ...gas(), qualityTier: "measured" } as never]), portal()), (error) => codes(error).includes("STAFF_ONLY_FIELD") || error instanceof CommandValidationError);
+      await assert.rejects(importPortalScopeRows(database.pool, { jobId: JOB, template: "travel", rows: [] }, portal()), (error) => codes(error).includes("REQUIRED"));
+      await assert.rejects(importPortalScopeRows(database.pool, { jobId: JOB, template: "vehicle" as never, rows: [gas()] }, portal()), (error) => codes(error).includes("INVALID"));
+      await assert.rejects(importPortalScopeRows(database.pool, { jobId: JOB, template: "travel", rows: Array.from({ length: 501 }, () => gas()) }, portal()), (error) => codes(error).includes("TOO_MANY"));
+      await db.query(`UPDATE nzi_console.portal_access_grants SET data_entry_expires_at = now() - interval '1 minute', data_entry_starts_at = now() - interval '2 days' WHERE grant_id='grant-pc'`);
+      await assert.rejects(importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Closed window" })]), portal()), /not open just now/);
+      await db.query(`UPDATE nzi_console.portal_access_grants SET data_entry_expires_at = now() + interval '30 days' WHERE grant_id='grant-pc'`);
+      assert.equal(await count("Closed window"), 0);
+      await setClientCategoryVisibility(database.pool, { clientId: CLIENT, categoryCode: "1.natural-gas", visible: false }, staff());
+      await assert.rejects(importPortalScopeRows(database.pool, batch([gas({ sourceLabel: "Hidden category" })]), portal()), (error) => codes(error).some((code) => /CATEGORY_NOT_AVAILABLE/.test(code)));
+      await setClientCategoryVisibility(database.pool, { clientId: CLIENT, categoryCode: "1.natural-gas", visible: null }, staff());
+      assert.equal(await count("Hidden category"), 0);
     });
   });
 });
