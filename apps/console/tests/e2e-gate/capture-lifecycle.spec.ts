@@ -37,15 +37,17 @@ const drawer = (page: Page) => page.locator("aside.nz-drawer");
  */
 async function openCard(page: Page, name: string) {
   // By index, not by `[aria-expanded='false']`: a locator re-resolves, so "the first closed scope" would move on after a click.
-  const scopes = page.locator("button.nz-acc-scopehead");
+  const scopes = page.locator(".nz-acc-scopehead button.hmain");
   for (let index = 0; index < (await scopes.count()); index += 1) {
     const scope = scopes.nth(index);
     if ((await scope.getAttribute("aria-expanded")) === "true") continue;
     await scope.click();
     await expect(scope).toHaveAttribute("aria-expanded", "true");
   }
-  const header = page.locator("button.nz-acc-h").filter({ hasText: name }).first();
-  await expect(header).toBeVisible();
+  // A category header is a row that toggles; the button inside it (nz-acc-hmain) is the control and carries aria-expanded.
+  const row = page.locator(".nz-acc-h").filter({ hasText: name }).first();
+  await expect(row).toBeVisible();
+  const header = row.locator("button.nz-acc-hmain");
   // Only act if it is closed: clicking an open card would collapse it, and a test that toggles twice
   // depending on the order it ran in is a flaky test with extra steps.
   if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
@@ -70,7 +72,7 @@ test("the drawer is closed at rest, and the shell knows it", async ({ page }) =>
   await expect(page.locator(".nz-app.no-drawer")).toHaveCount(1);
 
   // And every card is collapsed, which is the same rule one level down.
-  const expanded = page.locator("button.nz-acc-h[aria-expanded='true']");
+  const expanded = page.locator("button.nz-acc-hmain[aria-expanded='true'], button.nz-acc-h[aria-expanded='true']");
   await expect(expanded).toHaveCount(0);
 });
 

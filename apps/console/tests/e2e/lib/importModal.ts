@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { openAccordionScopes } from "./screen";
+import { CATEGORY_ROW, categoryControl, openAccordionScopes } from "./screen";
 
 // Data-entry UX review item 4: the bulk adapters (spend ledger / spend import /
 // roll-forward / commuting / vehicle) moved from the always-open category card
@@ -22,9 +22,10 @@ export async function openImportModal(
   if ((await accordion.count()) === 0) return true; // legacy flat surface — panel is inline
   await openAccordionScopes(page); // C: a collapsed scope hides its cards
 
-  const header = accordion.locator("button.nz-acc-h", { hasText: category }).first();
+  const header = accordion.locator(CATEGORY_ROW, { hasText: category }).first();
   if ((await header.count()) === 0) return false;
-  if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
+  const control = categoryControl(header);
+  if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
   const body = header.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]").first();
 
   const trigger = body.getByRole("button", { name: /Import & templates/ });

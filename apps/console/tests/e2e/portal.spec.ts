@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { portalAccount } from "./lib/accounts";
 import { discoverPortalJob } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen } from "./lib/screen";
+import { CATEGORY_ROW, categoryControl, collectPageErrors, expectHealthyScreen } from "./lib/screen";
 import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 
 test.describe("M1 — client portal renders for a granted user", () => {
@@ -66,9 +66,10 @@ test.describe("UX1 — client-portal data-entry accordion rendered acceptance", 
       "portal accordion not shown (data-entry-accordion off, window closed, or no authorised buckets)",
     );
 
-    const header = accordion.locator("button.nz-acc-h").first();
-    if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
-    await expect(header).toHaveAttribute("aria-expanded", "true");
+    const header = accordion.locator(CATEGORY_ROW).first();
+    const control = categoryControl(header);
+    if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
+    await expect(control).toHaveAttribute("aria-expanded", "true");
 
     const body = header.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]");
     // The shared capture form, or the re-homed spend surface — never a crash.

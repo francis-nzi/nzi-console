@@ -1,7 +1,7 @@
 import { test, expect, type Locator, type Page } from "@playwright/test";
 import { staffAccount } from "./lib/accounts";
 import { discoverCrpJobAtStage } from "./lib/discover";
-import { collectPageErrors, expectHealthyScreen, openAccordionScopes } from "./lib/screen";
+import { CATEGORY_ROW, categoryControl, collectPageErrors, expectHealthyScreen, openAccordionScopes } from "./lib/screen";
 import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 
 // DA4 — lean capture + drawer refine (NZC-058; docs/ACCEPTANCE_DA4_LEAN_CAPTURE.md).
@@ -19,10 +19,11 @@ import { expectNoHorizontalOverflow, scanWithBaseline } from "./lib/axe";
 
 /** Expand a category card by its taxonomy name; null if the job doesn't include it. */
 async function expandCategory(accordion: Locator, name: string): Promise<Locator | null> {
-  const header = accordion.locator("button.nz-acc-h", { hasText: name }).first();
+  const header = accordion.locator(CATEGORY_ROW, { hasText: name }).first();
   if ((await header.count()) === 0) return null;
-  if ((await header.getAttribute("aria-expanded")) !== "true") await header.click();
-  await expect(header).toHaveAttribute("aria-expanded", "true");
+  const control = categoryControl(header);
+  if ((await control.getAttribute("aria-expanded")) !== "true") await control.click();
+  await expect(control).toHaveAttribute("aria-expanded", "true");
   return header.locator("xpath=following-sibling::div[contains(@class,'nz-acc-body')]").first();
 }
 
@@ -37,7 +38,7 @@ async function openLeanCapture(page: Page): Promise<{ form: Locator; body: Locat
   await expectHealthyScreen(page);
 
   const accordion = page.locator("section#data-entry-accordion");
-  await accordion.locator("button.nz-acc-scopehead").first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => undefined);
+  await accordion.locator(".nz-acc-scopehead button.hmain").first().waitFor({ state: "visible", timeout: 20_000 }).catch(() => undefined);
   await openAccordionScopes(page);
 
   let body: Locator | null = null;
