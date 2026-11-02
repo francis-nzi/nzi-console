@@ -68,8 +68,9 @@ export function parseCommutingLedger(text: string): CommutingRow[] {
       else if (/mode|transport|method|commute/.test(cell) && !/distance/.test(cell)) index.mode = position;
       else if (/distance|km|mile/.test(cell) && !/unit/.test(cell)) index.distance = position;
       else if (/unit/.test(cell)) index.unit = position;
-      else if (/day/.test(cell)) index.wfhDays = position;
+      // Hours first: "WFH hours per day" holds "day" too, and read as days it overwrote the days column (the template's own header).
       else if (/hour/.test(cell)) index.wfhHours = position;
+      else if (/day/.test(cell)) index.wfhDays = position;
     });
   }
 

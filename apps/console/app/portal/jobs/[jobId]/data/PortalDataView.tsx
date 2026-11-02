@@ -24,6 +24,7 @@ import { formatDate, formatDateTime } from "../../../../lib/formatDate";
 import { formatQuantity, formatTco2e } from "../../../../lib/formatNumber";
 import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
 import { dataEntryAdapterEnabled } from "../../../../lib/featureFlags";
+import { PortalCommutingImport } from "../../../PortalCommutingImport";
 import { PortalTravelImport } from "../../../PortalTravelImport";
 import { usePortalSurface } from "../../../portalSurface";
 import { historyEntry, isPortalDataView, mayAskToReopen, mayDeactivate, portalQaGates, portalScopeRowFields, reviewLabel, rowDrawerSections, windowOpen } from "../../../data/portalDataView";
@@ -98,11 +99,16 @@ export function PortalDataView({ jobId }: { jobId: string }) {
 
   // Bulk import (BRIEF-portal-data-entry-parity #3): one "Import & templates" per kind, as each ships — Business Travel first. The
   // template can be downloaded any time; the upload and the confirm need the entry window (the command refuses otherwise too).
-  const categoryImport = (category: ApplicableCategory): { title: string; body: React.ReactNode } | null =>
-    category.code === "3.6" && dataEntryAdapterEnabled("travel")
-      ? { title: `${category.name} — import & templates`, body: <PortalTravelImport base={base} factors={view.factors} sites={view.sites.map((entry) => ({ id: entry.id, name: entry.name }))}
-          reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> }
-      : null;
+  const categoryImport = (category: ApplicableCategory): { title: string; body: React.ReactNode } | null => {
+    const title = `${category.name} — import & templates`;
+    if (category.code === "3.6" && dataEntryAdapterEnabled("travel"))
+      return { title, body: <PortalTravelImport base={base} factors={view.factors} sites={view.sites.map((entry) => ({ id: entry.id, name: entry.name }))}
+        reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> };
+    if (category.code === "3.7" && dataEntryAdapterEnabled("commuting"))
+      return { title, body: <PortalCommutingImport base={base} factors={view.factors} existingCommuters={view.rows.filter((row) => row.scope === "3.7" || row.categoryCode === "3.7").length}
+        reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> };
+    return null;
+  };
   const crmParity = portalFeatureEnabled("portal-shell");
   // R4: the CRM's right-hand overlay drawer (`nz-site-drawer`, with its scrim), at the portal drawer's width.
   const drawerClass = crmParity ? "nz-site-drawer nz-pdv-drawer" : "nz-pdv-drawer";
