@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import { AppShell, TopBar, WorkspaceRail, type Crumb } from "@nzi/ui";
-import { NAV, USER } from "../lib/nav";
+import { AppShell, TopBar, type Crumb } from "@nzi/ui";
+import { StaffRail } from "../lib/StaffRail";
 import { crumbTrail } from "../lib/crumbTrail";
 
 /**
@@ -12,7 +12,7 @@ import { crumbTrail } from "../lib/crumbTrail";
  * No "use client": the picker renders it on the server; the job-aware states render it from the client once the job is read.
  */
 export function PrepareFrame({ crumbs, children }: { crumbs: Crumb[]; children: ReactNode }) {
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="reports" user={USER} />}>
+  return <AppShell rail={<StaffRail activeId="reports" />}>
     <TopBar crumbs={crumbTrail(crumbs)} />
     <div className="nz-preview-canvas">{children}</div>
   </AppShell>;

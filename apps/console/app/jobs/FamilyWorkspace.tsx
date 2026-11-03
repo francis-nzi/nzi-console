@@ -1,9 +1,9 @@
-import { AppShell, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, TopBar } from "@nzi/ui";
 import type { ReactNode } from "react";
 import { JobClientMark } from "./JobClientMark";
 import { LogTimeButton } from "./JobTimePanel";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
-import { NAV, USER } from "../lib/nav";
+import { StaffRail } from "../lib/StaffRail";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
 import { WorkflowStageControl } from "./WorkflowStageControl";
 import { RENDERER_VERSION, TOKENS_VERSION, TrainingAttendance, type TrainingAttendanceData } from "@nzi/charts";
@@ -12,7 +12,7 @@ import { formatDate } from "../lib/formatDate";
 export function FamilyWorkspace({ job, milestones }: { job: FamilyJob; milestones?: ReactNode }) {
   const { header } = job;
   const meta = jobFamilyMeta[header.family];
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
+  return <AppShell rail={<StaffRail activeId="jobs" />}>
     <TopBar crumbs={crumbTrail(jobCrumbs(header))} />
     <div className="nz-head nz-family-head"><div className="nz-job-heading"><div className="nz-job-client"><JobClientMark header={header} /><div><div className="nz-family-titleline"><span className="nz-eyebrow">{meta.label}</span><span className="nz-st est">{meta.code}</span></div><h1>{header.number} — {header.title}</h1><div className="sub">{header.client} · owner: {header.owner} · due {formatDate(header.dueDate)}</div></div></div><span className="nz-head-actions"><LogTimeButton jobId={header.id} /><span className="nz-status"><span className="d" />{header.workflowStage}</span></span></div></div>
     <WorkflowStageControl job={job} />

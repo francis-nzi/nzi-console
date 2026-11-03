@@ -7,8 +7,8 @@ import { postBrowserCommand } from "@nzi/api-client";
 import { jobFamilyMeta, type JobFamily } from "@nzi/mock-data";
 import type { ClientScreenReadModel, JobListPage, JobListRow, JobSetupOptions } from "@nzi/isolated-backend";
 import Link from "next/link";
-import { AppShell, DataList, RiskBadge, RiskLegend, SmartSearch, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
-import { NAV, USER } from "../lib/nav";
+import { AppShell, DataList, RiskBadge, RiskLegend, SmartSearch, TopBar, type DataListColumn, type DataListFilter } from "@nzi/ui";
+import { StaffRail } from "../lib/StaffRail";
 import { formatDate } from "../lib/formatDate";
 import { clientJobsHref, crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { useTeamOptions } from "../clients/useReferenceOptions";
@@ -157,7 +157,7 @@ export function JobsIndex({ page, query, clients, setup = { jobTypes: [], templa
     { key: "risk", label: "Risk", allLabel: "All risk levels", value: query.filters.risk?.[0] ?? "", options: page.filterOptions.risk },
   ];
 
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
+  return <AppShell rail={<StaffRail activeId="jobs" />}>
     <TopBar crumbs={crumbTrail(scopedClient
       ? [{ label: "Clients", href: "/clients" },
          { label: scopedClient.name ?? "This client", href: `/clients/${encodeURIComponent(scopedClient.id)}` },

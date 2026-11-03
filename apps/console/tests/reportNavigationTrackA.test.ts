@@ -28,7 +28,7 @@ describe("Track A: report navigation", () => {
 
   it("addendum #2: every report-preparation state sits in the console chrome, with the Reports rail item current", () => {
     const frame = read("apps/console/app/report-preview/PrepareFrame.tsx");
-    assert.match(frame, /<AppShell rail=\{<WorkspaceRail sections=\{NAV\} activeId="reports" user=\{USER\} \/>\}>/);
+    assert.match(frame, /<AppShell rail=\{<StaffRail activeId="reports" \/>\}>/, "the signed-in rail, with Reports current");
     assert.match(frame, /<TopBar crumbs=\{crumbTrail\(crumbs\)\} \/>/);
     assert.match(frame, /<div className="nz-preview-canvas">\{children\}<\/div>/, "the canvas is the inner container, not the page");
     const page = read("apps/console/app/report-preview/page.tsx");

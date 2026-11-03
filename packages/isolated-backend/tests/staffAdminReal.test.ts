@@ -3,7 +3,7 @@ import { after, before, describe, it } from "node:test";
 import { clientListSpec, commandGrantForRole, defaultListQuery, staffListSpec, type CommandContext, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { figuresIn, plaintextIn } from "./support/payloadScan";
-import { resolveStaffPrincipal } from "../src/auth";
+import { resolveStaffPrincipal, staffDisplayName } from "../src/auth";
 import { listClients } from "../src/listReads";
 import { CommandValidationError } from "../src/postgresCommands";
 import { withTenantRead, withTenantWrite } from "../src/postgres";

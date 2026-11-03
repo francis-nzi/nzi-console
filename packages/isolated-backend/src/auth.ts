@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type { Capability, CapabilityGrant, CapabilityScope, CommandGrant, CommandKey, StaffRole } from "@nzi/contracts";
 import { grantFor, isCapability, isStaffRole, staffCapabilityOf } from "@nzi/contracts";
 import type { PoolLike, Queryable } from "./postgres";
-import { withAuthTransaction } from "./postgres";
+import { withAuthTransaction, withTenantRead } from "./postgres";
 
 export type { StaffRole };
 export type StaffSession = { sessionId: string; userId: string; organisationId: string; issuedAt: number; expiresAt: number };
@@ -119,4 +119,11 @@ export function authorizeCommand(principal: StaffPrincipal, key: CommandKey): vo
 export function assertSameOrigin(origin: string | null, configuredBaseUrl: string | undefined): void {
   if (!origin || !configuredBaseUrl) throw new AuthenticationError("A trusted request origin is required.");
   if (new URL(origin).origin !== new URL(configuredBaseUrl).origin) throw new AuthenticationError("Request origin is not trusted.");
+}
+
+/** The signed-in member of staff's own display name, for the console chrome (rail chip, greeting). Null when none is recorded. Read-only. */
+export async function staffDisplayName(pool: PoolLike, principal: Pick<StaffPrincipal, "organisationId" | "userId">): Promise<string | null> {
+  const row = (await withTenantRead(pool, principal.organisationId, (db) =>
+    db.query<{ display_name: string | null }>(`SELECT display_name FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2`, [principal.organisationId, principal.userId]))).rows[0];
+  return row?.display_name?.trim() || null;
 }
