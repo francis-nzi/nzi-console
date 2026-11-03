@@ -49,3 +49,21 @@ export async function purgePortalLoginNetworkData(pool: PoolLike, organisationId
   return withTenantTransaction(pool, organisationId, "nzi_console_worker", "write", async (db) =>
     Number((await db.query<{ purged: number }>(`SELECT nzi_console.purge_portal_login_event_network_data($1,$2::timestamptz) AS purged`, [organisationId, cutoff.toISOString()])).rows[0]!.purged));
 }
+
+export type LoginEventRetentionRun = { organisationId: string; cutoff: string } & ({ ok: true; purged: number } | { ok: false; error: string });
+
+/**
+ * The worker's daily retention tick: for each organisation the worker serves, null the IP and user-agent of login events older than the
+ * 90-day cutoff (`purgePortalLoginNetworkData`). Nothing else on an event changes - outcome, time, user and the address hash stay.
+ * One organisation failing is reported against it and never stops the others; a same-day re-run changes nothing (the function only
+ * touches rows that still hold network data). The result carries counts and ids, never an address or user-agent.
+ */
+export async function runLoginEventRetention(pool: PoolLike, organisationIds: readonly string[], now = new Date()): Promise<LoginEventRetentionRun[]> {
+  const cutoff = new Date(now.getTime() - PORTAL_LOGIN_NETWORK_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const runs: LoginEventRetentionRun[] = [];
+  for (const organisationId of new Set(organisationIds)) {
+    try { runs.push({ organisationId, cutoff, ok: true, purged: await purgePortalLoginNetworkData(pool, organisationId, now) }); }
+    catch (error) { runs.push({ organisationId, cutoff, ok: false, error: error instanceof Error ? error.message : String(error) }); }
+  }
+  return runs;
+}

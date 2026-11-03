@@ -1,6 +1,6 @@
 import pg from "pg";
 import {
-  emailDispatchFromEnv, emailOrganisationsFrom, mailDelivery, runEmailDrain, runWorkerTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
+  emailDispatchFromEnv, emailOrganisationsFrom, mailDelivery, runEmailDrain, runLoginEventRetention, runWorkerTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
   type Mailer,
 } from "../src/index";
 import { smtpMailer } from "../src/smtpMailer";
@@ -19,6 +19,10 @@ import { smtpMailer } from "../src/smtpMailer";
  *
  * **Email (`email.send`).** The same drain also delivers queued email over Resend (`email.ts`). Its gate is decided once,
  * here: no `RESEND_API_KEY` stubs every send; with one, the isolated boundary sends only to the NZI domain and stubs the rest.
+ *
+ * **Login-event retention.** Once per London day (the first tick of it), for the organisation above and each email-drain organisation,
+ * the IP and user-agent of portal login events older than 90 days are nulled (`runLoginEventRetention`). Idempotent, so a restart or a
+ * same-day retry changes nothing; a failure is logged against its organisation and retried on the next tick. Counts only in the log.
  *
  * **Secrets.** SMTP settings and the Resend key are read from the environment and never logged. The startup
  * line says whether a transport was configured, never what it was configured with.
@@ -75,8 +79,16 @@ async function main() {
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
 
+  let retentionDay: string | null = null;
   while (!stopping) {
     try {
+      // Daily, before the rest of the tick and on its own: a retention failure is reported, never fatal to email or reminders.
+      const day = londonToday();
+      if (retentionDay !== day) {
+        const runs = await runLoginEventRetention(pool, [organisationId, ...emailOrganisations]);
+        for (const run of runs) log("login-events.retention", run.ok ? { organisationId: run.organisationId, purged: run.purged, cutoff: run.cutoff } : { organisationId: run.organisationId, failed: run.error, cutoff: run.cutoff });
+        if (runs.every((run) => run.ok)) retentionDay = day;
+      }
       // Email and reminders in their own transactions, email first: a reminder-side failure is reported, never fatal to email.
       // A3's due-date reminders link to the portal at the console's own address — the same variable the console uses.
       const { emails, dueReminders, reminders } = await runWorkerTick(pool, { organisationId, today: londonToday(), mailer, email,

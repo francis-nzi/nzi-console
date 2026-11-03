@@ -11,7 +11,7 @@ import { encryptTotpSecret, generateTotpSecret, hashPassword, totpCode } from ".
 import { AuthenticationError, AuthorizationError, CommandValidationError, VersionConflictError } from "../src/index";
 import { resolvePortalPrincipal } from "../src/auth";
 import { completePortalMfa, completeStaffMfa, InvalidLoginError, provisionStaffCredential, startPortalLogin, startStaffLogin } from "../src/login";
-import { getClientPortalAccess, purgePortalLoginNetworkData, setClientPortalAccess, loginEmailHash } from "../src/index";
+import { getClientPortalAccess, purgePortalLoginNetworkData, runLoginEventRetention, setClientPortalAccess, loginEmailHash } from "../src/index";
 
 /**
  * The client-level portal access switch, against a real database (RULING-portal-access-model): the master switch and expiry are
@@ -234,6 +234,43 @@ describe("client portal access: enforcement, the decision log and the login reco
       assert.ok(row.outcome);
       assert.ok(Number((await q(`SELECT count(*) AS n FROM nzi_console.portal_login_events WHERE ip IS NOT NULL`))[0]!.n) > 0, "recent ones keep theirs");
       assert.equal(await purgePortalLoginNetworkData(database.pool, ORG, new Date()), 0, "idempotent");
+    });
+  });
+
+  describe("the worker's daily retention tick (runLoginEventRetention)", () => {
+    const OTHER = "retention-other-org";
+    const insert = (organisationId: string, eventId: string, daysAgo: number, network = true) => q(
+      `INSERT INTO nzi_console.portal_login_events (organisation_id,event_id,occurred_at,outcome,portal_user_id,client_id,email_hash,ip,user_agent)
+       VALUES ($1,$2, now() - ($3 || ' days')::interval, 'bad_password','pu-x','cl-x',$4,$5,$6)`,
+      [organisationId, eventId, String(daysAgo), loginEmailHash("someone@example.test"), network ? "198.51.100.7" : null, network ? "ua/2.0" : null]);
+    const row = async (organisationId: string, eventId: string) => (await q<Record<string, any>>(`SELECT * FROM nzi_console.portal_login_events WHERE organisation_id=$1 AND event_id=$2`, [organisationId, eventId]))[0]!;
+
+    it("nulls only ip and user-agent, only past the 90-day cutoff, per organisation, and changes nothing else", async () => {
+      await q(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [OTHER]);
+      await q(`SELECT nzi_console.provision_organisation($1)`, [OTHER]);
+      await insert(ORG, "ret-old", 100); await insert(ORG, "ret-edge-in", 89); await insert(ORG, "ret-already", 120, false);
+      await insert(OTHER, "ret-other-old", 100);
+      const before = await row(ORG, "ret-old");
+      const now = new Date();
+      const runs = await runLoginEventRetention(database.pool, [ORG], now);
+      assert.deepEqual(runs.map((run) => [run.organisationId, run.ok, run.ok ? run.purged : null]), [[ORG, true, runs[0]!.ok ? (runs[0] as { purged: number }).purged : null]]);
+      assert.ok(runs[0]!.ok && runs[0]!.purged >= 1);
+      assert.equal(runs[0]!.cutoff, new Date(now.getTime() - 90 * 86_400_000).toISOString(), "cutoff is now minus 90 days");
+      const after = await row(ORG, "ret-old");
+      assert.deepEqual([after.ip, after.user_agent], [null, null]);
+      for (const column of ["outcome", "occurred_at", "portal_user_id", "client_id", "email_hash"]) assert.deepEqual(after[column], before[column], `${column} untouched`);
+      assert.equal((await row(ORG, "ret-edge-in")).ip, "198.51.100.7", "89 days old keeps its network data");
+      assert.equal((await row(OTHER, "ret-other-old")).ip, "198.51.100.7", "another organisation is not reached by this organisation's run");
+    });
+
+    it("is idempotent, serves each organisation it is given, and one failing organisation does not stop the rest", async () => {
+      const again = await runLoginEventRetention(database.pool, [ORG, ORG], new Date());
+      assert.deepEqual(again.map((run) => [run.organisationId, run.ok && run.purged]), [[ORG, 0]], "a same-day re-run changes nothing; a repeated id runs once");
+      const both = await runLoginEventRetention(database.pool, ["no-such-org", OTHER], new Date());
+      assert.equal(both.length, 2);
+      assert.ok(both[1]!.ok && both[1]!.purged >= 1, "the organisation after a failing or empty one is still served");
+      assert.equal((await row(OTHER, "ret-other-old")).ip, null);
+      assert.equal(JSON.stringify(both).includes("198.51.100.7"), false, "the result carries counts and ids, never network data");
     });
   });
 
