@@ -453,6 +453,32 @@ describe("erasure: the right to be forgotten (NZC-136)", { skip: DATABASE_URL ? 
     assert.equal(rows[0]!.status, "erasure-partial");
   });
 
+  it("keeps a portal sign-in record's time and result, lets its network data expire, and is not made a blocker by either", async () => {
+    // The default (a carve-out register entry each, both pending counsel): erasure never writes to portal_login_events - it is
+    // append-only - so every column of it is accounted for as retained, under the carve-out that states why, and none is pending.
+    await db.query(
+      `INSERT INTO nzi_console.portal_login_events (organisation_id,event_id,outcome,portal_user_id,client_id,ip,user_agent) VALUES ($1,'ev-erasure-1','success','portal-2','client-1','203.0.113.5','test/1.0')`, [ORG]);
+    const manifest = await eraseSubjectData(database.pool, admin, {
+      organisationId: ORG, subjectId: SIMPLE, requestRef: "RTBF-2026-0002b", keys,
+    }).finally(() => db.query(`DELETE FROM nzi_console.portal_login_events WHERE organisation_id=$1 AND event_id='ev-erasure-1'`, [ORG]));
+    const stillThere = (await db.query(`SELECT count(*)::int AS n FROM nzi_console.portal_login_events WHERE event_id='ev-erasure-1'`)).rows[0]!.n;
+    assert.equal(stillThere, 0, "(cleanup ran after the erasure, which had left the row alone)");
+    const entry = (column: string) => manifest.entries.find((candidate) => candidate.table === "portal_login_events" && candidate.column === column)!;
+    for (const column of ["occurred_at", "outcome"]) {
+      assert.equal(entry(column).outcome, "retained", column);
+      assert.match(entry(column).because, /portal-login-security-audit/);
+    }
+    for (const column of ["ip", "user_agent"]) {
+      assert.equal(entry(column).outcome, "retained", column);
+      assert.match(entry(column).because, /portal-login-network-data/);
+    }
+    assert.equal(entry("email_hash").outcome, "retained");
+    assert.match(entry("email_hash").because, /no portal user|pseudonymous/i);
+    assert.ok(manifest.entries.filter((candidate) => candidate.table === "portal_login_events").every((candidate) => candidate.outcome !== "pending"),
+      "neither carve-out turns the sign-in record into a reason to refuse or stall an erasure");
+    assert.deepEqual(manifest.completeness.unaccountedFor, []);
+  });
+
   it("completes once the determinations land, which is what makes the block a block", async () => {
     // The other half. A gate that never lifts is indistinguishable from a gate that is stuck, and a test
     // that only proves refusal would pass against code that refuses everything for ever. So this stands

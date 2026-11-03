@@ -182,6 +182,36 @@ export const RETENTION_CARVEOUTS: ReadonlyArray<RetentionCarveout> = [
     auditLabel: "Financial records retained",
   },
   {
+    key: "portal-login-security-audit",
+    appliesTo: { table: "portal_login_events", columns: ["occurred_at", "outcome"], subjectClass: "client-staff" },
+    basis: "PENDING_NZC_139",
+    basisNote:
+      "A record that a sign-in was attempted, when, and how it ended is the audit trail a client's staff access is judged by - " +
+      "including a switched-off client's refused attempts - and an attempt cannot be audited if the person's own can be removed on " +
+      "request. DEFAULT, NOT A DECISION: erasure keeps outcome and occurred_at and keeps the event's pointer to the portal user, which " +
+      "dangles to the tombstone once the identity is shredded. Whether the pointer should also be cut on an erasure request is " +
+      "Francis's and counsel's call; cutting it would need a confined write path (the table is append-only), which does not exist.",
+    // How long is not stated anywhere yet: the Access ruling says "the normal audit horizon" and no such horizon is defined in code.
+    retention: { kind: "PENDING_NZC_139" },
+    onErasure: "retain",
+    auditLabel: "Sign-in attempts retained as a security record (time and result only)",
+  },
+  {
+    key: "portal-login-network-data",
+    appliesTo: { table: "portal_login_events", columns: ["ip", "user_agent"], subjectClass: "client-staff" },
+    basis: "PENDING_NZC_139",
+    basisNote:
+      "The network address and browser of a sign-in are personal data kept to investigate misuse, and are already time-limited: the " +
+      "reminder worker nulls them 90 days after the event (RULING-portal-access-model; migration 0199's purge function). DEFAULT, NOT A " +
+      "DECISION: an erasure request does not null them early - the table is append-only and no write path exists - so they expire on the " +
+      "same clock as everyone's, within 90 days. Whether that satisfies an erasure request, or an earlier confined null is wanted, " +
+      "is counsel's call.",
+    // Real: the 90 days is enforced by the worker's daily tick, not just declared.
+    retention: { kind: "fixed-period", months: 3, from: "occurred_at (the worker nulls ip and user_agent at 90 days)" },
+    onErasure: "shred-after-retention",
+    auditLabel: "Network address and browser of a sign-in, nulled within 90 days of the attempt",
+  },
+  {
     key: "legacy-report-records-of-account",
     appliesTo: { table: "legacy_report_versions", columns: ["payload_sealed", "particulars_sealed"], subjectClass: "any" },
     basis: "PENDING_NZC_139",

@@ -4,6 +4,7 @@ import {
   attributableColumns, attributionOf, indexColumnOf, isAttributable, PII_COLUMNS, PII_TABLES,
   sealedColumnOf, unattributableColumns,
 } from "../src/piiInventory";
+import { carveoutsFor } from "../src/retentionCarveouts";
 import { SEALABLE_ROWS, SEALED_COLUMNS, UNSEALED_PII_FOUND } from "../src/piiSealing";
 import { INDEXED_COLUMNS } from "../src/subjectCrypto";
 
@@ -209,6 +210,28 @@ describe("the PII inventory (NZC-125)", () => {
       assert.match(listed!.note, /NZC-\d{3}/,
         `${column.table}.${column.column} is listed without citing the decision it waits on`);
     }
+  });
+
+  it("registers the portal sign-in record (0199) as the Access ruling classed it", () => {
+    const columns = PII_COLUMNS.filter((column) => column.table === "portal_login_events");
+    assert.deepEqual(columns.map((column) => column.column).sort(), ["email_hash", "ip", "occurred_at", "outcome", "user_agent"]);
+    assert.deepEqual(PII_TABLES.portal_login_events!.attribution, { kind: "pointer", via: "portal_user_id", subjectTable: "portal_users" }, "portal_user_id is the subject pointer");
+    assert.equal(PII_TABLES.portal_login_events!.appendOnly, true);
+    const by = (name: string) => columns.find((column) => column.column === name)!;
+    // The pseudonymous hash is not exported per subject: it is not attributable, and says why.
+    assert.equal(isAttributable(by("email_hash")), false);
+    assert.equal(by("email_hash").erasure, "not-attributable");
+    // The rest are the subject's own events: exported, retained on a basis that a carve-out states.
+    for (const name of ["ip", "user_agent", "outcome", "occurred_at"]) {
+      assert.equal(isAttributable(by(name)), true, name);
+      assert.equal(by(name).erasure, "retain-with-basis", name);
+      assert.equal(carveoutsFor("portal_login_events", name).length, 1, `${name} is covered by exactly one carve-out`);
+    }
+    assert.equal(carveoutsFor("portal_login_events", "ip")[0]!.key, "portal-login-network-data");
+    assert.equal(carveoutsFor("portal_login_events", "ip")[0]!.onErasure, "shred-after-retention", "time-limited, not kept");
+    assert.equal(carveoutsFor("portal_login_events", "outcome")[0]!.key, "portal-login-security-audit");
+    assert.equal(carveoutsFor("portal_login_events", "outcome")[0]!.onErasure, "retain");
+    assert.equal(carveoutsFor("portal_login_events", "email_hash").length, 0, "nothing is claimed over the hash");
   });
 
   it("reports what it can and cannot reach, so the split is visible rather than inferred", () => {

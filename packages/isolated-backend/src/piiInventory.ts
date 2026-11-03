@@ -249,6 +249,14 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
     appendOnly: true,
   },
 
+  // Every portal sign-in attempt (0199). The portal user it names is the subject; an attempt that names no user (an address that
+  // matched nobody) is not reached from anyone. Append-only: the runtime roles insert, and only the worker's confined purge function
+  // changes a row (nulling ip and user_agent past 90 days), so erasure never writes to this table.
+  portal_login_events: {
+    keyColumns: ["event_id"], attribution: { kind: "pointer", via: "portal_user_id", subjectTable: "portal_users" },
+    appendOnly: true,
+  },
+
   // Reachable once a named change lands.
   training_bookings: {
     keyColumns: ["booking_id"],
@@ -377,6 +385,23 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
   { table: "portal_report_comments", column: "author_display_name", label: "A comment you wrote", stage: "deferred", erasure: "association-to-tombstone",
     storage: sealed("author_display_name_sealed"),
     because: "author_id names the author; a staff author's display name is their role rather than their name. The comment *body* may itself contain personal data, which is a content-sealing question and not this one" },
+
+  // ── Portal sign-in record (0199) — see the carve-outs 'portal-login-security-audit' and 'portal-login-network-data' ──
+  { table: "portal_login_events", column: "occurred_at", label: "When a sign-in was attempted", stage: "deferred", erasure: "retain-with-basis",
+    storage: { kind: "plaintext" },
+    because: "the security-audit record of an attempt: kept with the outcome, not erased on request; the carve-out states the basis (pending)" },
+  { table: "portal_login_events", column: "outcome", label: "What happened to a sign-in attempt", stage: "deferred", erasure: "retain-with-basis",
+    storage: { kind: "plaintext" },
+    because: "as occurred_at: success, wrong password, locked, and the like - the audit record that an attempt happened and how it ended" },
+  { table: "portal_login_events", column: "ip", label: "Network address a sign-in came from", stage: "deferred", erasure: "retain-with-basis",
+    storage: { kind: "plaintext" },
+    because: "personal data kept 90 days and then nulled by the worker's daily retention tick; the table is append-only, so an erasure request does not null it earlier - it expires on the same clock for everyone (carve-out 'portal-login-network-data')" },
+  { table: "portal_login_events", column: "user_agent", label: "Browser a sign-in came from", stage: "deferred", erasure: "retain-with-basis",
+    storage: { kind: "plaintext" }, because: "as ip: kept 90 days then nulled" },
+  { table: "portal_login_events", column: "email_hash", label: "Hashed address of a sign-in that matched no user", stage: "deferred", erasure: "not-attributable",
+    storage: { kind: "digest" },
+    attribution: { kind: "none", because: "a SHA-256 of an address that matched no portal user, written only when there is no user to point at: pseudonymous, and no subject path reaches it" },
+    because: "pseudonymous and not subject-linkable: it is recorded only for an attempt that named no user, so it is not in a person's export. It is an unsalted hash, so anyone holding the address can recompute it - held, and said to be held" },
 
   // ── Reachable once the registry can name the table ───────────────────────────────────
   { table: "training_bookings", column: "person_name", label: "Name on a training booking", stage: "deferred", erasure: "not-attributable",
