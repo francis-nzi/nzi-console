@@ -154,7 +154,20 @@ test.describe("Data-entry row-detail drawer", () => {
     test.skip((await info.count()) === 0, "no info tooltip in this section");
     await info.locator("button.nz-infotip-btn").click();
     await expect(info).toHaveClass(/open/);
-    await expect(info.locator(".nz-infotip-pop")).toBeVisible();
+    await expect(page.locator("body > .nz-infotip-float")).toBeVisible();
+    // Guard: an open i-pill must not sit inside a clipping ancestor (the card-clipped popover bug) and must be fully on screen.
+    const clipped = await page.locator(".nz-infotip-float").evaluate((el) => {
+      const hidden: string[] = [];
+      for (let node = el.parentElement; node; node = node.parentElement) {
+        const o = getComputedStyle(node);
+        if ([o.overflow, o.overflowX, o.overflowY].some((v) => v === "hidden" || v === "clip")) hidden.push(node.tagName + "." + node.className);
+      }
+      const r = el.getBoundingClientRect();
+      const inside = r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
+      return { hidden, inside };
+    });
+    expect(clipped.hidden, "no overflow:hidden ancestor").toEqual([]);
+    expect(clipped.inside, "popover is inside the viewport").toBe(true);
     await page.keyboard.press("Escape");
     await expect(info).not.toHaveClass(/open/);
   });

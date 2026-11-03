@@ -165,9 +165,12 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-infotip{position:relative;display:inline-flex;vertical-align:middle}
 .nz-infotip-btn{width:15px;height:15px;border-radius:50%;border:1px solid var(--line);background:#fff;color:var(--t3);font-size:10px;font-weight:800;font-style:normal;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
 .nz-infotip-btn:hover,.nz-infotip-btn:focus-visible{border-color:var(--pine);color:var(--pine)}
-.nz-infotip-pop{position:absolute;z-index:20;top:calc(100% + 6px);left:0;width:230px;max-width:60vw;background:var(--midnight);color:#fff;font-size:11.5px;font-weight:400;line-height:1.45;letter-spacing:0;text-transform:none;padding:8px 10px;border-radius:8px;box-shadow:0 8px 24px rgba(11,27,43,.22)}
-.nz-infotip:not(.open) .nz-infotip-pop{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;box-shadow:none}
-.nz-infotip-pop::before{content:"";position:absolute;top:-5px;left:10px;border:5px solid transparent;border-bottom-color:var(--midnight)}
+.nz-infotip-pop{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* The visible popover is drawn in a portal on <body> and fixed to the viewport (InfoTip.tsx), so no card, panel or drawer ancestor can clip it. */
+.nz-infotip-float{position:fixed;z-index:1000;width:230px;max-width:calc(100vw - 16px);box-sizing:border-box;background:var(--midnight);color:#fff;font-size:11.5px;font-weight:400;line-height:1.45;letter-spacing:0;text-transform:none;text-align:left;padding:8px 10px;border-radius:8px;box-shadow:0 8px 24px rgba(11,27,43,.22);pointer-events:auto}
+.nz-infotip-float::before{content:"";position:absolute;left:var(--arrow-left,10px);border:5px solid transparent}
+.nz-infotip-float.below::before{top:-10px;border-bottom-color:var(--midnight)}
+.nz-infotip-float.above::before{bottom:-10px;border-top-color:var(--midnight)}
 
 /* "Import & templates" modal (item 4) — a centered dialog whose root div is the backdrop */
 .nz-import-modal{position:fixed;inset:0;z-index:60;display:grid;place-items:start center;padding:5vh 16px;background:rgba(11,27,43,.42);overflow:auto}
