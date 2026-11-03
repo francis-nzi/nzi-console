@@ -482,6 +482,41 @@ describe("the subject access response (NZC-134)", { skip: DATABASE_URL ? false :
     assert.equal(persistence.subject_export_artifacts, "p", "and the record that it happened must be permanent");
   });
 
+  it("includes the person's own portal sign-in events - result, time and network data while retained - and not the pseudonymous hash or anyone else's", async () => {
+    const hash = "b".repeat(64);
+    await db.query(`INSERT INTO nzi_console.portal_users (organisation_id,portal_user_id,client_id,email_normalized,display_name,status) VALUES ($1,'portal-9','client-1','other@example.test','Someone Else','active')`, [ORG]);
+    const insert = (id: string, user: string | null, outcome: string, ip: string | null, agent: string | null, emailHash: string | null) => db.query(
+      `INSERT INTO nzi_console.portal_login_events (organisation_id,event_id,occurred_at,outcome,portal_user_id,client_id,email_hash,ip,user_agent) VALUES ($1,$2,'2026-10-01T09:00:00Z',$3,$4,'client-1',$5,$6,$7)`,
+      [ORG, id, outcome, user, emailHash, ip, agent]);
+    await insert("ev-mine-recent", "portal-1", "success", "203.0.113.5", "Mozilla/5.0 test", null);
+    await insert("ev-mine-expired", "portal-1", "bad_password", null, null, null);
+    await insert("ev-theirs", "portal-9", "success", "198.51.100.9", "Other/1.0", null);
+    await insert("ev-unmatched", null, "unknown_user", "192.0.2.77", "Probe/1.0", hash);
+    try {
+      const { exportId } = await produce();
+      const { document } = await fetch(exportId);
+      const events = document.records.filter((record) => record.source === "portal_login_events");
+      assert.equal(events.length, 2, "exactly the person's own two events");
+      assert.ok(events.every((record) => record.reach === "pointer"));
+      const value = (record: (typeof events)[number], column: string) => record.data.find((datum) => datum.provenance.column === column)?.value;
+      const recent = events.find((record) => value(record, "outcome") === "success")!;
+      assert.equal(value(recent, "ip"), "203.0.113.5");
+      assert.equal(value(recent, "user_agent"), "Mozilla/5.0 test");
+      assert.ok(value(recent, "occurred_at"), "the time is shown");
+      const expired = events.find((record) => value(record, "outcome") === "bad_password")!;
+      assert.equal(value(expired, "ip") ?? null, null, "once the network data is nulled it is simply not there");
+      const text = JSON.stringify(document);
+      for (const absent of ["198.51.100.9", "Other/1.0", "192.0.2.77", "Probe/1.0", hash]) assert.ok(!text.includes(absent), `${absent} is not in this person's export`);
+      assert.ok(events.every((record) => record.data.every((datum) => datum.provenance.column !== "email_hash")), "the pseudonymous hash is not exported per subject");
+      const held = document.heldButNotShown.find((entry) => entry.provenance.table === "portal_login_events" && entry.provenance.column === "email_hash");
+      assert.ok(held, "but it is declared as held, not silently omitted");
+      assert.equal(held!.kind, "not-attributable-to-you");
+    } finally {
+      await db.query(`DELETE FROM nzi_console.portal_login_events WHERE organisation_id=$1 AND event_id LIKE 'ev-%'`, [ORG]);
+      await db.query(`DELETE FROM nzi_console.portal_users WHERE organisation_id=$1 AND portal_user_id='portal-9'`, [ORG]);
+    }
+  });
+
   it("has a window that is short and stated in one place", () => {
     // Not an arbitrary assertion: the TTL is the retention position, so a change to it should be a
     // deliberate edit here as well as there.
