@@ -24,6 +24,7 @@ import { formatDate, formatDateTime } from "../../../../lib/formatDate";
 import { formatQuantity, formatTco2e } from "../../../../lib/formatNumber";
 import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
 import { dataEntryAdapterEnabled } from "../../../../lib/featureFlags";
+import { PortalBoundaryStrip } from "../../../PortalBoundaryStrip";
 import { PortalCommutingImport } from "../../../PortalCommutingImport";
 import { PortalSpendImport } from "../../../PortalSpendImport";
 import { PortalTravelImport } from "../../../PortalTravelImport";
@@ -128,6 +129,7 @@ export function PortalDataView({ jobId }: { jobId: string }) {
           <span className="nz-eyebrow">Your data</span>
           <h1 className="nz-pd-client">Data entry</h1>
           <p className="nz-pd-meta">{surface.readOnly ? "Staff preview · read-only — each portal user's entry window is set in Portal Management" : view.access ? view.access.state === "open" ? `Open for entry until ${formatDate(view.access.expiresAt.slice(0, 10))}` : `Opens for entry on ${formatDate(view.access.startsAt.slice(0, 10))}` : "Not open for entry just now — you can still see your data"}</p>
+          <PortalBoundaryStrip boundary={view.boundary} />
         </div>
         {crmParity ? null : (
           <label className="nz-pdv-site">Site

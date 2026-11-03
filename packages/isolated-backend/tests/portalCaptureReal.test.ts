@@ -213,6 +213,18 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
       await assert.rejects(getPortalDataView(database.pool, portalPrincipal, OTHER_JOB), AuthorizationError);
     });
 
+    it("the job header's boundary: the period and the included sites by name only — never an id, an excluded or archived site, or another client's (RULING-portal-setup-replacement)", async () => {
+      const site = (id: string, name: string, client: string, archived = false) => db.query(
+        `INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by,archived) VALUES ($1,$2,$3,$4,$5,$6)`, [ORG, id, client, name, STAFF, archived]);
+      await site("bnd-hq", "Head Office", CLIENT); await site("bnd-depot", "Depot", CLIENT); await site("bnd-shut", "Closed unit", CLIENT);
+      await site("bnd-old", "Archived site", CLIENT, true); await site("bnd-theirs", "Other client site", OTHER_CLIENT);
+      await db.query(`INSERT INTO nzi_console.job_site_inclusions (organisation_id,job_id,site_id,version,included,reason,decided_by,correlation_id) VALUES ($1,$2,'bnd-shut',1,false,'Sold in March',$3,'bnd-1')`, [ORG, JOB, STAFF]);
+      const view = await getPortalDataView(database.pool, portalPrincipal, JOB);
+      assert.deepEqual(view.boundary, { reportingFrom: "2026-01-01", reportingTo: "2026-12-31", siteNames: ["Depot", "Head Office"] });
+      assert.deepEqual(Object.keys(view.boundary).sort(), ["reportingFrom", "reportingTo", "siteNames"], "names and dates only — no ids, addresses or reasons");
+      await assert.rejects(getPortalDataView(database.pool, portalPrincipal, OTHER_JOB), AuthorizationError, "no cross-client reach");
+    });
+
     it("a row's History for the client: what happened and when, by you or your adviser — never a name", async () => {
       const mine = (await createPortalScopeRow(database.pool, gas({ sourceLabel: "Historied" }), portal())).data.rowId;
       await updatePortalScopeRow(database.pool, { ...gas({ sourceLabel: "Historied", quantity: 1500 }), rowId: mine, expectedVersion: 1 }, portal());

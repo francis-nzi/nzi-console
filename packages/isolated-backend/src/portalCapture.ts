@@ -9,6 +9,7 @@ import { getPortalDataEntryAccess, type PortalDataEntryAccess } from "./portalAc
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 import { aggregateJobEmissions, type JobEmissions } from "./emissionsAggregation";
 import { openReopenRequestsByRow } from "./portalReopenRequests";
+import { dateOnly } from "./dates";
 import { importPortalSpendLines } from "./portalSpendImport";
 
 /**
@@ -176,7 +177,14 @@ export type PortalDataView = {
   sites: Array<{ id: string; name: string }>;
   purchasedGoodsCategories: Array<{ id: string; name: string }>;
   reportingMonths: string[];
+  /** The read-only boundary summary for the job header (RULING-portal-setup-replacement): the period and the included sites by name. */
+  boundary: PortalBoundary;
 };
+/**
+ * The job's reporting period and the names of its included sites — what the removed "Setup" profile key stood for, as a mirror of what
+ * staff set in the CRM. Names only: no ids, no addresses, no excluded or archived sites. `null` dates when no period is configured.
+ */
+export type PortalBoundary = { reportingFrom: string | null; reportingTo: string | null; siteNames: string[] };
 export async function getPortalDataView(pool: PoolLike, principal: PortalPrincipal, jobId: string, now = new Date()): Promise<PortalDataView> {
   const access = await getPortalDataEntryAccess(pool, principal, jobId, now);
   return withTenantRead(pool, principal.organisationId, async (db) => {
@@ -216,6 +224,8 @@ export async function assemblePortalDataView(db: Queryable, organisationId: stri
     portalFacingProfile(db, clientId), clientCategoryGate(db, clientId), listJobApplicableCategories(db, jobId, "crm"),
     listScopeRows(db, jobId), listJobFactorOptions(db, jobId), listJobSites(db, jobId), listJobPurchasedGoodsCategories(db, jobId), listJobReportingMonths(db, jobId),
   ]);
+  const period = (await db.query<{ reporting_from: Date | string; reporting_to: Date | string }>(
+    `SELECT reporting_from, reporting_to FROM nzi_console.job_emissions_config WHERE job_id = $1`, [jobId])).rows[0];
   const categories = crm.categories.filter((category) => gate.shows(category.code, category.scope));
   const visible = await visibleRowIds(db, clientId, jobId, rows);
   const emissions = await aggregateJobEmissions(db, { organisationId, jobId, siteId: null, rowIds: visible });
@@ -230,6 +240,10 @@ export async function assemblePortalDataView(db: Queryable, organisationId: stri
     factors: factors.filter((factor) => factor.factorSource !== "client"),
     sites: sites.filter((site) => site.included !== false).map((site) => ({ id: site.id, name: site.name })),
     purchasedGoodsCategories: pgs, reportingMonths: months,
+    boundary: {
+      reportingFrom: period ? dateOnly(period.reporting_from) : null, reportingTo: period ? dateOnly(period.reporting_to) : null,
+      siteNames: sites.filter((site) => site.included !== false).map((site) => site.name),
+    },
   };
 }
 
