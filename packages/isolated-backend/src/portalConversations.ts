@@ -3,6 +3,7 @@ import { attachmentState, type CommandContext, type CommandInputMap, type Portal
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
 import { AuthorizationError, type PortalPrincipal } from "./auth";
 import { VersionConflictError } from "./errors";
+import { queueMessageNotification } from "./portalMessageNotifications";
 import { insertFile } from "./portalFiles";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
@@ -20,6 +21,8 @@ import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "
  *  - **Attachments (M3):** a message may carry files. Each is an ordinary `portal_files` row that arrived through the file gate (quarantined, scanned,
  *    released only when clean) and is linked to the message in one transaction with it; it is served by the existing signed-URL download, only once
  *    released, and only to whoever may see the thread. A client's attachment is a `client_upload`, an adviser's a `deliverable`.
+ *  - **Notification (M4):** a message queues a notify-only email for the other side - one pending row per thread, so a burst is one email - which the
+ *    worker sends after a short window: clients only if they have consented (NZC-076), staff internally. See portalMessageNotifications.ts.
  *  - **Names:** a message stores its author's id only. A portal user reads "You" / "A colleague" / their adviser; staff read names joined here.
  */
 type ThreadRow = {
@@ -96,6 +99,8 @@ async function appendMessage(db: Queryable, context: CommandContext, thread: Loc
     `INSERT INTO nzi_console.portal_messages (organisation_id, message_id, thread_id, seq, author_principal, author_id, body, legacy_comment_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
     [context.organisationId, messageId, thread.thread_id, seq, author, context.actorId, body, legacyCommentId]);
   const fileEvents = await attachFiles(db, context, thread, messageId, author, attachments);
+  // Notify-only email to the other side (M4): queued here - one pending row per thread and audience - and sent by the worker after the window.
+  await queueMessageNotification(db, context.organisationId, thread, author);
   await db.query(
     `UPDATE nzi_console.portal_threads SET message_count = $4, last_message_at = now(), state = $5, resolved_at = NULL, version = version + 1,
             response_target_at = CASE WHEN $5 = 'awaiting_nzi' THEN nzi_console.portal_response_target(now()) END

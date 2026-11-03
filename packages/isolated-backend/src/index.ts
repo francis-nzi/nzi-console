@@ -73,6 +73,7 @@ export * from "./datasetSelection";
 export * from "./jobDatasetUpdate";
 export * from "./staffAdmin";
 export * from "./staffCredentialReset";
+export * from "./portalMessageNotifications";
 export * from "./organisationSettings";
 export { loadV7Lookups, planV7Lookups, V7_LOOKUP_TABLES, V7_LOOKUP_TABLE_NAMES } from "./v7LookupLoad";
 export { loadV7ClientLinks, planClientLinks } from "./v7ClientLinkLoad";

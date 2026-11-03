@@ -22,6 +22,8 @@ describe("the registry", () => {
       "strategy.reminder.approaching", "strategy.reminder.overdue", "staff.invitation",
       // Phase 2's transactional keys (BUILD-message-templates-phase2, R3).
       "portal.access.invite", "password.reset.staff", "password.reset.portal", "message.notification",
+      // Messages M4: the internal side of a new-message notification, to the adviser.
+      "portal.message.staff-notification",
       // Data entry D3 (R6): a client's request to reopen a reviewed entry, to the CRM.
       "portal.data.reopen-request",
     ]);
