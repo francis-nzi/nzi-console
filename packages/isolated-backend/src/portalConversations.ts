@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
-import type { CommandContext, CommandInputMap, PortalMessage, PortalMessageAuthor, PortalThreadDetail, PortalThreadScope, PortalThreadState, PortalThreadSubject, PortalThreadSummary } from "@nzi/contracts";
+import { attachmentState, type CommandContext, type CommandInputMap, type PortalFileIngest, type PortalFileStatus, type PortalMessage, type PortalMessageAttachment, type PortalMessageAuthor, PortalThreadDetail, PortalThreadScope, PortalThreadState, PortalThreadSubject, PortalThreadSummary } from "@nzi/contracts";
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
 import { AuthorizationError, type PortalPrincipal } from "./auth";
 import { VersionConflictError } from "./errors";
+import { insertFile } from "./portalFiles";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 
@@ -16,6 +17,9 @@ import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "
  *    clears it; a post to a Resolved thread reopens it. Staff may set the owner and the state by hand. The target is surfaced, not enforced.
  *  - **The report bridge:** a thread with `report_version_id` is also the report page's comments. A report comment is mirrored in by the
  *    database function (0201); a message written here is mirrored out as a comment, so the two surfaces stay one conversation.
+ *  - **Attachments (M3):** a message may carry files. Each is an ordinary `portal_files` row that arrived through the file gate (quarantined, scanned,
+ *    released only when clean) and is linked to the message in one transaction with it; it is served by the existing signed-URL download, only once
+ *    released, and only to whoever may see the thread. A client's attachment is a `client_upload`, an adviser's a `deliverable`.
  *  - **Names:** a message stores its author's id only. A portal user reads "You" / "A colleague" / their adviser; staff read names joined here.
  */
 type ThreadRow = {
@@ -72,7 +76,8 @@ async function portalMayHave(db: Queryable, context: CommandContext, thread: Loc
 }
 
 /** Append one message and move the thread: who spoke last decides the state; a client post sets the target, a staff post clears it. */
-async function appendMessage(db: Queryable, context: CommandContext, thread: Locked, author: "portal" | "staff", body: string): Promise<{ messageId: string; seq: number; state: PortalThreadState }> {
+type FileEvent = { action: string; entityType: string; entityId: string; before: Record<string, unknown>; after: Record<string, unknown> };
+async function appendMessage(db: Queryable, context: CommandContext, thread: Locked, author: "portal" | "staff", body: string, attachments: readonly PortalFileIngest[] = []): Promise<{ messageId: string; seq: number; state: PortalThreadState; fileEvents: FileEvent[] }> {
   const messageId = randomUUID(), seq = thread.message_count + 1;
   const state: PortalThreadState = author === "portal" ? "awaiting_nzi" : "awaiting_client";
   let legacyCommentId: string | null = null;
@@ -90,16 +95,40 @@ async function appendMessage(db: Queryable, context: CommandContext, thread: Loc
   await db.query(
     `INSERT INTO nzi_console.portal_messages (organisation_id, message_id, thread_id, seq, author_principal, author_id, body, legacy_comment_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
     [context.organisationId, messageId, thread.thread_id, seq, author, context.actorId, body, legacyCommentId]);
+  const fileEvents = await attachFiles(db, context, thread, messageId, author, attachments);
   await db.query(
     `UPDATE nzi_console.portal_threads SET message_count = $4, last_message_at = now(), state = $5, resolved_at = NULL, version = version + 1,
             response_target_at = CASE WHEN $5 = 'awaiting_nzi' THEN nzi_console.portal_response_target(now()) END
       WHERE organisation_id = $1 AND client_id = $2 AND thread_id = $3`,
     [context.organisationId, thread.client_id, thread.thread_id, seq, state]);
-  return { messageId, seq, state };
+  return { messageId, seq, state, fileEvents };
 }
-const recorded = (clientId: string, threadId: string, data: Record<string, unknown>, topic: string) => ({
+
+/**
+ * Record each attachment as a portal file (the gate's decision, whatever it was) and link it to the message. The file must be the thread's own: its
+ * job is the thread's job, so a client cannot attach into another job's folder and a forged ingest naming another job is refused. Each file gets its
+ * own audit event, in the shape the Files history reads (uploaded -> scanned -> released), so an attachment's trail is the same as any file's.
+ */
+async function attachFiles(db: Queryable, context: CommandContext, thread: Locked, messageId: string, author: "portal" | "staff", attachments: readonly PortalFileIngest[]): Promise<FileEvent[]> {
+  const events: FileEvent[] = [];
+  for (const [index, ingest] of attachments.entries()) {
+    if ((ingest.jobId ?? null) !== (thread.job_id ?? null)) throw refuse(`attachments[${index}].ingest.jobId`, "NOT_FOUND", "That file does not belong with this conversation.");
+    await insertFile(db, context, thread.client_id, author === "portal" ? "client_upload" : "deliverable", ingest, "other");
+    await db.query(
+      `INSERT INTO nzi_console.portal_message_attachments (organisation_id, message_id, file_id, position) VALUES ($1,$2,$3,$4)`,
+      [context.organisationId, messageId, ingest.fileId, index + 1]);
+    events.push({
+      action: author === "portal" ? "portal_file_uploaded" : "client_file_delivered", entityType: "portal_file", entityId: ingest.fileId, before: {},
+      // The outcome and the file's hash - never the bytes, a storage identifier, or the message text.
+      after: { fileId: ingest.fileId, clientId: thread.client_id, jobId: ingest.jobId, fileName: ingest.fileName, contentType: ingest.contentType, sizeBytes: ingest.sizeBytes, sha256: ingest.sha256, status: ingest.status, flag: ingest.flag, messageId },
+    });
+  }
+  return events;
+}
+const recorded = (clientId: string, threadId: string, data: Record<string, unknown>, topic: string, fileEvents: FileEvent[] = []) => ({
   // What is audited: the ids and the state - never the text of the message.
   data: { clientId, threadId, ...data }, entityType: "portal_thread", entityId: threadId, topic,
+  ...(fileEvents.length ? { governedEvents: fileEvents } : {}),
 });
 
 async function startThread(db: Queryable, context: CommandContext, input: CommandInputMap["portal.thread.start"], author: "portal" | "staff") {
@@ -113,9 +142,9 @@ async function startThread(db: Queryable, context: CommandContext, input: Comman
      VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,$9,$10)`,
     [context.organisationId, threadId, input.clientId, input.jobId ? "job" : "client", input.jobId, input.subjectCode, input.title.trim(), author === "staff" ? context.actorId : null, author, context.actorId]);
   const thread: Locked = { thread_id: threadId, client_id: input.clientId, scope: input.jobId ? "job" : "client", job_id: input.jobId, state: "open", message_count: 0, version: 1, owner_id: null, report_version_id: null };
-  const posted = await appendMessage(db, context, thread, author, input.body.trim());
-  return recorded(input.clientId, threadId, { scope: thread.scope, jobId: input.jobId, subjectCode: input.subjectCode, messageId: posted.messageId, state: posted.state },
-    author === "portal" ? "portal.thread.started" : "client.thread.started");
+  const posted = await appendMessage(db, context, thread, author, input.body.trim(), input.attachments);
+  return recorded(input.clientId, threadId, { scope: thread.scope, jobId: input.jobId, subjectCode: input.subjectCode, messageId: posted.messageId, state: posted.state, attachments: input.attachments?.length ?? 0 },
+    author === "portal" ? "portal.thread.started" : "client.thread.started", posted.fileEvents);
 }
 
 /** A client user starts a conversation - on a job they hold, or for the whole organisation. */
@@ -131,17 +160,17 @@ export function postPortalMessage(pool: PoolLike, input: CommandInputMap["portal
   return runPostgresCommand(pool, "portal.message.post", input, context, async (db) => {
     const thread = await lockThread(db, context.organisationId, input.clientId, input.threadId);
     if (!(await portalMayHave(db, context, thread))) throw NOT_FOUND();
-    const posted = await appendMessage(db, context, thread, "portal", input.body.trim());
-    return recorded(input.clientId, input.threadId, { messageId: posted.messageId, seq: posted.seq, state: posted.state, previousState: thread.state }, "portal.message.posted");
+    const posted = await appendMessage(db, context, thread, "portal", input.body.trim(), input.attachments);
+    return recorded(input.clientId, input.threadId, { messageId: posted.messageId, seq: posted.seq, state: posted.state, previousState: thread.state, attachments: input.attachments?.length ?? 0 }, "portal.message.posted", posted.fileEvents);
   });
 }
 export function postClientMessage(pool: PoolLike, input: CommandInputMap["client.message.post"], context: CommandContext): Promise<StoredOutcome<Record<string, unknown>>> {
   return runPostgresCommand(pool, "client.message.post", input, context, async (db) => {
     const thread = await lockThread(db, context.organisationId, input.clientId, input.threadId);
-    const posted = await appendMessage(db, context, thread, "staff", input.body.trim());
+    const posted = await appendMessage(db, context, thread, "staff", input.body.trim(), input.attachments);
     // The first adviser to reply to an unowned conversation owns it: someone is accountable for the answer.
     if (!thread.owner_id) await db.query(`UPDATE nzi_console.portal_threads SET owner_id = $4 WHERE organisation_id = $1 AND client_id = $2 AND thread_id = $3`, [context.organisationId, input.clientId, input.threadId, context.actorId]);
-    return recorded(input.clientId, input.threadId, { messageId: posted.messageId, seq: posted.seq, state: posted.state, previousState: thread.state, ownerClaimed: !thread.owner_id }, "client.message.posted");
+    return recorded(input.clientId, input.threadId, { messageId: posted.messageId, seq: posted.seq, state: posted.state, previousState: thread.state, ownerClaimed: !thread.owner_id, attachments: input.attachments?.length ?? 0 }, "client.message.posted", posted.fileEvents);
   });
 }
 
@@ -220,6 +249,23 @@ export function listPortalThreads(pool: PoolLike, principal: PortalPrincipal, op
 const authorOf = (row: { author_principal: "portal" | "staff"; author_id: string }, viewerId: string): PortalMessageAuthor =>
   row.author_principal === "staff" ? "adviser" : row.author_id === viewerId ? "you" : "colleague";
 
+/** A thread's attachments by message, in the order attached - the gate's status as a state, never a storage identifier or a hash. */
+async function attachmentsByMessage(db: Queryable, organisationId: string, threadId: string): Promise<Map<string, PortalMessageAttachment[]>> {
+  const rows = (await db.query<{ message_id: string; file_id: string; file_name: string; content_type: string; size_bytes: string; status: PortalFileStatus }>(
+    `SELECT a.message_id, f.file_id, f.file_name, f.content_type, f.size_bytes::text AS size_bytes, f.status
+       FROM nzi_console.portal_message_attachments a
+       JOIN nzi_console.portal_messages m ON (m.organisation_id, m.message_id) = (a.organisation_id, a.message_id)
+       JOIN nzi_console.portal_files f ON (f.organisation_id, f.file_id) = (a.organisation_id, a.file_id)
+      WHERE m.organisation_id = $1 AND m.thread_id = $2 ORDER BY m.seq, a.position`, [organisationId, threadId])).rows;
+  const byMessage = new Map<string, PortalMessageAttachment[]>();
+  for (const row of rows) {
+    const list = byMessage.get(row.message_id) ?? [];
+    list.push({ fileId: row.file_id, fileName: row.file_name, contentType: row.content_type, sizeBytes: Number(row.size_bytes), state: attachmentState(row.status) });
+    byMessage.set(row.message_id, list);
+  }
+  return byMessage;
+}
+
 /** One thread and its messages for a portal user entitled to it (the list's rule); anything else is refused. */
 export function getPortalThread(pool: PoolLike, principal: PortalPrincipal, threadId: string): Promise<PortalThreadDetail> {
   return withTenantRead(pool, principal.organisationId, async (db) => {
@@ -227,9 +273,10 @@ export function getPortalThread(pool: PoolLike, principal: PortalPrincipal, thre
     if (!row) throw new AuthorizationError("tenant", "That conversation is not available to your account.");
     const messages = (await db.query<{ message_id: string; seq: number; author_principal: "portal" | "staff"; author_id: string; body: string; created_at: Date | string }>(
       `SELECT message_id, seq, author_principal, author_id, body, created_at FROM nzi_console.portal_messages WHERE organisation_id = $1 AND thread_id = $2 ORDER BY seq`, [principal.organisationId, threadId])).rows;
+    const attachments = await attachmentsByMessage(db, principal.organisationId, threadId);
     return {
       thread: toSummary(row, false),
-      messages: messages.map((message): PortalMessage => ({ messageId: message.message_id, seq: message.seq, body: message.body, createdAt: iso(message.created_at)!, author: authorOf(message, principal.userId), authorPrincipal: message.author_principal })),
+      messages: messages.map((message): PortalMessage => ({ messageId: message.message_id, seq: message.seq, body: message.body, createdAt: iso(message.created_at)!, author: authorOf(message, principal.userId), authorPrincipal: message.author_principal, attachments: attachments.get(message.message_id) ?? [] })),
     };
   });
 }
@@ -257,9 +304,10 @@ export function getClientThread(pool: PoolLike, holder: CapabilityHolder, client
               CASE WHEN x.author_principal = 'portal' THEN (SELECT u.display_name FROM nzi_console.portal_users u WHERE (u.organisation_id, u.portal_user_id) = (x.organisation_id, x.author_id))
                    ELSE (SELECT m.display_name FROM nzi_console.memberships m WHERE (m.organisation_id, m.user_id) = (x.organisation_id, x.author_id)) END AS author_name
          FROM nzi_console.portal_messages x WHERE x.organisation_id = $1 AND x.thread_id = $2 ORDER BY x.seq`, [holder.organisationId, threadId])).rows;
+    const attachments = await attachmentsByMessage(db, holder.organisationId, threadId);
     return {
       thread: toSummary(row, true),
-      messages: messages.map((message): PortalMessage => ({ messageId: message.message_id, seq: message.seq, body: message.body, createdAt: iso(message.created_at)!, author: message.author_principal === "staff" ? "adviser" : "colleague", authorPrincipal: message.author_principal, authorName: message.author_name })),
+      messages: messages.map((message): PortalMessage => ({ messageId: message.message_id, seq: message.seq, body: message.body, createdAt: iso(message.created_at)!, author: message.author_principal === "staff" ? "adviser" : "colleague", authorPrincipal: message.author_principal, authorName: message.author_name, attachments: attachments.get(message.message_id) ?? [] })),
     };
   });
 }

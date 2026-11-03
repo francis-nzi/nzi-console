@@ -1,4 +1,6 @@
 import { getPortalThread, postPortalMessage } from "@nzi/isolated-backend";
+import { readMessageRequest, recordWithAttachments } from "../../../../lib/messageForm";
+import { uploadFailure } from "../../../../lib/fileUpload";
 import { commandSuccess } from "../../../../lib/commandResponse";
 import { conversationsOff, requireConversations } from "../../../../lib/conversations";
 import { isolatedPool } from "../../../../lib/isolatedDatabase";
@@ -17,14 +19,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ thre
   } catch (error) { return conversationsOff(error) ?? portalCommandFailure(error); }
 }
 
-/** Write in a conversation (portal.message.post). Body: { body }. */
+/** Write in a conversation (portal.message.post). Body: { body } as JSON, or a multipart form with `body` and `file` parts (attachments, M3). */
 export async function POST(request: Request, { params }: { params: Promise<{ threadId: string }> }) {
   try {
     requireConversations();
     requirePortalOrigin(request);
     const user = await currentPortalUserForData(request);
     const { threadId } = await params;
-    const body = await request.json().catch(() => ({})) as { body?: unknown };
-    return commandSuccess(await postPortalMessage(isolatedPool(), { clientId: user.clientId, threadId, body: String(body.body ?? "") }, portalCommandContext(request, user)));
-  } catch (error) { return conversationsOff(error) ?? portalCommandFailure(error); }
+    // The thread is read first - which refuses one this user may not see - so no file is stored for a conversation they cannot write in.
+    const message = await readMessageRequest(request, { organisationId: user.organisationId, clientId: user.clientId, jobIdFor: async () => (await getPortalThread(isolatedPool(), user, threadId)).thread.jobId });
+    return commandSuccess(await recordWithAttachments(message, () => postPortalMessage(isolatedPool(), {
+      clientId: user.clientId, threadId, body: String(message.fields.body ?? ""), ...(message.ingests.length ? { attachments: message.ingests } : {}),
+    }, portalCommandContext(request, user))));
+  } catch (error) { return conversationsOff(error) ?? uploadFailure(error) ?? portalCommandFailure(error); }
 }

@@ -224,6 +224,11 @@ jobs:
       # page's comments and their thread as one conversation both ways, and the configurable subject tags.
       - name: A client's conversations are seen only by those entitled, move with who spoke last, and are one thread with the report comments
         run: npx tsx --test packages/isolated-backend/tests/portalConversationsReal.test.ts
+      # Message attachments (RULING-portal-messages, M3; 0205): a file sent with a message is a portal file through the exact files gate - recorded with the
+      # message in one command, quarantined until clean, served only once released and only by signed URL, never to a user who cannot see the thread,
+      # never held or infected; each file keeps its own audit trail; a forged ingest, another job's file, too many files or a repeat is refused whole.
+      - name: A message's attachments go through the files gate and are served only once released, only to the thread's readers
+        run: npx tsx --test packages/isolated-backend/tests/portalMessageAttachmentsReal.test.ts
       # Portal updates (RULING-portal-messages, M2): notices derived at read time from events that already exist (a published report, a reviewer's
       # decision on the client's own entries, a closing data-entry window, a live broadcast), the exact scope, no reviewer note, nothing stored
       # or emitted for a notice, and a per-user seen watermark that only moves forward.

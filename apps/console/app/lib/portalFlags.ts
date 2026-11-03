@@ -37,6 +37,10 @@ export type PortalFeature =
   // absence: declared here only; Francis adds the token in the dashboard. Off, Messages is the report-comments thread it has been and every
   // conversation route is 404. (The report page and its Messages tab are unaffected either way: a report comment is mirrored into its thread.)
   | "portal-conversations"
+  // Message attachments (RULING-portal-messages, M3): files sent with a conversation message, through the files gate. Dark by absence, and needs
+  // portal-conversations AND portal-files as well - the file gate (quarantine, scan, signed URL) is the dependency, so this stays off until the
+  // managed scanner/storage decision. Off, a message is text only and a multipart message request is 404.
+  | "portal-message-attachments"
   | "portal-shell";
 
 const enabled = (): Set<string> =>

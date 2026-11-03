@@ -1,4 +1,6 @@
 import { listClientThreads, startClientThread } from "@nzi/isolated-backend";
+import { readMessageRequest, recordWithAttachments } from "../../../../../lib/messageForm";
+import { uploadFailure } from "../../../../../lib/fileUpload";
 import { authFailure } from "../../../../../lib/authResponse";
 import { requireCommandPrincipal } from "../../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../../lib/commandResponse";
@@ -18,13 +20,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ clie
   } catch (error) { return conversationsOff(error) ?? authFailure(error); }
 }
 
-/** Start a conversation with the client (client.thread.start). Body: { jobId, subjectCode, title, body }. */
+/** Start a conversation with the client (client.thread.start). Body: { jobId, subjectCode, title, body } as JSON, or the same as a multipart form with `file` parts (attachments, M3). */
 export async function POST(request: Request, { params }: { params: Promise<{ clientId: string }> }) {
   try {
     requireConversations();
     const principal = await requireCommandPrincipal(request, "client.thread.start");
     const { clientId } = await params;
-    const body = await request.json().catch(() => ({})) as { jobId?: string | null; subjectCode?: unknown; title?: unknown; body?: unknown };
-    return commandSuccess(await startClientThread(isolatedPool(), { clientId, jobId: body.jobId ?? null, subjectCode: String(body.subjectCode ?? ""), title: String(body.title ?? ""), body: String(body.body ?? "") }, commandContext(request, principal)));
-  } catch (error) { return conversationsOff(error) ?? commandFailure(error); }
+    const message = await readMessageRequest(request, { organisationId: principal.organisationId, clientId, jobIdFor: (fields) => (fields.jobId as string | null | undefined) ?? null });
+    const { fields } = message;
+    return commandSuccess(await recordWithAttachments(message, () => startClientThread(isolatedPool(), {
+      clientId, jobId: (fields.jobId as string | null | undefined) ?? null, subjectCode: String(fields.subjectCode ?? ""), title: String(fields.title ?? ""), body: String(fields.body ?? ""),
+      ...(message.ingests.length ? { attachments: message.ingests } : {}),
+    }, commandContext(request, principal))));
+  } catch (error) { return conversationsOff(error) ?? uploadFailure(error) ?? commandFailure(error); }
 }

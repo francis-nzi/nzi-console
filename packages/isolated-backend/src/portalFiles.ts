@@ -51,7 +51,7 @@ async function portalHoldsJob(db: Queryable, context: CommandContext, jobId: str
   return !!held.rows[0];
 }
 
-async function insertFile(db: Queryable, context: CommandContext, clientId: string, direction: PortalFileDirection, ingest: PortalFileIngest, category: PortalFileCategory): Promise<void> {
+export async function insertFile(db: Queryable, context: CommandContext, clientId: string, direction: PortalFileDirection, ingest: PortalFileIngest, category: PortalFileCategory): Promise<void> {
   await db.query(
     `INSERT INTO nzi_console.portal_files (organisation_id,file_id,client_id,job_id,direction,status,file_name,content_type,size_bytes,sha256,storage_provider,external_item_id,flag,flag_detail,uploaded_by,uploaded_by_principal,released_at,category)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,CASE WHEN $6 = 'released' THEN now() END,$17)`,
@@ -95,7 +95,16 @@ async function loadFile(db: Queryable, context: CommandContext, clientId: string
 /** Whether a portal user may be given a released file: client-wide deliverables, else the job's grant. Their own client's, always. */
 async function portalMayHave(db: Queryable, context: CommandContext, file: FileRow): Promise<boolean> {
   if (file.client_id !== context.portal!.clientId) return false;
-  return file.job_id === null ? file.direction === "deliverable" : portalHoldsJob(db, context, file.job_id);
+  if (file.job_id === null ? file.direction === "deliverable" : await portalHoldsJob(db, context, file.job_id)) return true;
+  // A message attachment (M3) is the thread's: whoever may see the thread may be given the file - never anyone else, whatever its direction.
+  return !!(await db.query(
+    `SELECT 1 FROM nzi_console.portal_message_attachments a
+       JOIN nzi_console.portal_messages m ON (m.organisation_id, m.message_id) = (a.organisation_id, a.message_id)
+       JOIN nzi_console.portal_threads t ON (t.organisation_id, t.thread_id) = (m.organisation_id, m.thread_id)
+      WHERE a.organisation_id = $1 AND a.file_id = $2 AND t.client_id = $3
+        AND (t.scope = 'client' OR t.job_id IN (SELECT g.job_id FROM nzi_console.portal_access_grants g JOIN nzi_console.portal_users u ON (u.organisation_id, u.portal_user_id, u.client_id) = (g.organisation_id, g.portal_user_id, g.client_id)
+                                                 WHERE g.organisation_id = $1 AND g.portal_user_id = $4 AND g.client_id = $3 AND g.revoked_at IS NULL AND u.status = 'active'))`,
+    [context.organisationId, file.file_id, file.client_id, context.actorId])).rows[0];
 }
 
 export type FileDownload = { url: string; expiresAt: string; fileName: string; contentType: string };

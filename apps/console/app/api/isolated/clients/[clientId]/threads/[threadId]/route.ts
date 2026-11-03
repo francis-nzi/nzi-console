@@ -1,4 +1,6 @@
 import { getClientThread, postClientMessage, updateClientThread } from "@nzi/isolated-backend";
+import { readMessageRequest, recordWithAttachments } from "../../../../../../lib/messageForm";
+import { uploadFailure } from "../../../../../../lib/fileUpload";
 import type { PortalThreadState } from "@nzi/contracts";
 import { authFailure } from "../../../../../../lib/authResponse";
 import { requireCommandPrincipal } from "../../../../../../lib/commandAuth";
@@ -21,15 +23,17 @@ export async function GET(request: Request, { params }: Params) {
   } catch (error) { return conversationsOff(error) ?? authFailure(error); }
 }
 
-/** Reply to the client (client.message.post). Body: { body }. */
+/** Reply to the client (client.message.post). Body: { body } as JSON, or a multipart form with `body` and `file` parts (attachments, M3). */
 export async function POST(request: Request, { params }: Params) {
   try {
     requireConversations();
     const principal = await requireCommandPrincipal(request, "client.message.post");
     const { clientId, threadId } = await params;
-    const body = await request.json().catch(() => ({})) as { body?: unknown };
-    return commandSuccess(await postClientMessage(isolatedPool(), { clientId, threadId, body: String(body.body ?? "") }, commandContext(request, principal)));
-  } catch (error) { return conversationsOff(error) ?? commandFailure(error); }
+    const message = await readMessageRequest(request, { organisationId: principal.organisationId, clientId, jobIdFor: async () => (await getClientThread(isolatedPool(), principal, clientId, threadId)).thread.jobId });
+    return commandSuccess(await recordWithAttachments(message, () => postClientMessage(isolatedPool(), {
+      clientId, threadId, body: String(message.fields.body ?? ""), ...(message.ingests.length ? { attachments: message.ingests } : {}),
+    }, commandContext(request, principal))));
+  } catch (error) { return conversationsOff(error) ?? uploadFailure(error) ?? commandFailure(error); }
 }
 
 /** Assign and/or set the state (client.thread.update). Body: { expectedVersion, ownerId?, state? }. */

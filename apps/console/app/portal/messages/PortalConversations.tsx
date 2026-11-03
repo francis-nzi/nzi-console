@@ -5,6 +5,7 @@ import { postBrowserCommand } from "@nzi/api-client";
 import type { PortalThreadDetail, PortalThreadSubject, PortalThreadSummary } from "@nzi/contracts";
 import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 import { formatDate, formatDateTime } from "../../lib/formatDate";
+import { AttachmentList, AttachmentPicker, sendMessageForm } from "../../lib/MessageAttachments";
 import { clientAuthorLabel, clientStateLabel, filterBySubject, isSubjectList, isThreadDetail, isThreadList, pickThread, targetNote } from "./conversationsModel";
 
 /**
@@ -23,6 +24,8 @@ export function PortalConversations({ jobId }: { jobId: string }) {
   const [detail, setDetail] = useState<Load<PortalThreadDetail>>({ state: "loading" });
   const [filter, setFilter] = useState<string>("all");
   const [draft, setDraft] = useState("");
+  const [draftFiles, setDraftFiles] = useState<File[]>([]);
+  const [newFiles, setNewFiles] = useState<File[]>([]);
   const [composing, setComposing] = useState(false);
   const [form, setForm] = useState({ subjectCode: "", title: "", body: "", wholeOrganisation: false });
   const [busy, setBusy] = useState(false);
@@ -59,6 +62,13 @@ export function PortalConversations({ jobId }: { jobId: string }) {
     event.preventDefault();
     if (!current || !draft.trim()) return;
     setBusy(true); setNotice(null);
+    // With files, the message goes as a form (each file through the gate, recorded with the message); without, exactly as before.
+    if (draftFiles.length) {
+      const sent = await sendMessageForm(`${api}/${encodeURIComponent(current)}`, { body: draft.trim() }, draftFiles, crypto.randomUUID());
+      setBusy(false);
+      if (sent.ok) { setDraft(""); setDraftFiles([]); await refresh(current); await openThread(current); } else setNotice({ tone: "warn", text: sent.message });
+      return;
+    }
     const result = await postBrowserCommand(`${api}/${encodeURIComponent(current)}`, { body: draft.trim() }, crypto.randomUUID());
     setBusy(false);
     if (result.state === "success") { setDraft(""); await refresh(current); await openThread(current); }
@@ -68,7 +78,17 @@ export function PortalConversations({ jobId }: { jobId: string }) {
   async function startNew(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setNotice(null);
-    const result = await postBrowserCommand<{ threadId: string }>(api, { jobId: form.wholeOrganisation ? null : jobId, subjectCode: form.subjectCode, title: form.title.trim(), body: form.body.trim() }, crypto.randomUUID());
+    const fields = { jobId: form.wholeOrganisation ? null : jobId, subjectCode: form.subjectCode, title: form.title.trim(), body: form.body.trim() };
+    if (newFiles.length) {
+      const sent = await sendMessageForm(api, fields, newFiles, crypto.randomUUID());
+      setBusy(false);
+      if (sent.ok) {
+        setComposing(false); setNewFiles([]); setForm({ subjectCode: "", title: "", body: "", wholeOrganisation: false }); setNotice({ tone: "ok", text: `Your conversation has been sent to ${org.short}.` });
+        await refresh(typeof sent.data.threadId === "string" ? sent.data.threadId : undefined);
+      } else setNotice({ tone: "warn", text: sent.message });
+      return;
+    }
+    const result = await postBrowserCommand<{ threadId: string }>(api, fields, crypto.randomUUID());
     setBusy(false);
     if (result.state === "success") {
       setComposing(false); setForm({ subjectCode: "", title: "", body: "", wholeOrganisation: false }); setNotice({ tone: "ok", text: `Your conversation has been sent to ${org.short}.` });
@@ -102,6 +122,7 @@ export function PortalConversations({ jobId }: { jobId: string }) {
             <option value="">Choose a subject…</option>{subjects.map((subject) => <option key={subject.code} value={subject.code}>{subject.label}</option>)}</select></label>
           <label>Title<input className="nz-in" required maxLength={160} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
           <label>Message<textarea className="nz-in" required rows={4} maxLength={4000} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} /></label>
+          <AttachmentPicker files={newFiles} onChange={setNewFiles} disabled={busy} />
           <label className="nzp-conv-check"><input type="checkbox" checked={form.wholeOrganisation} onChange={(event) => setForm({ ...form, wholeOrganisation: event.target.checked })} /> This is not about this job — it is for our whole organisation</label>
           <button type="submit" className="nz-btn pri" disabled={busy || !form.subjectCode || !form.title.trim() || !form.body.trim()}>{busy ? "Sending…" : "Send"}</button>
         </form>
@@ -140,12 +161,14 @@ export function PortalConversations({ jobId }: { jobId: string }) {
                   <li key={message.messageId} className={`nzp-conv-msg ${message.author}`}>
                     <div className="nz-hint">{clientAuthorLabel(message.author, org.Short)} · {formatDateTime(message.createdAt)}</div>
                     <p>{message.body}</p>
+                    <AttachmentList attachments={message.attachments ?? []} downloadPath={(fileId) => `/api/portal/files/${encodeURIComponent(fileId)}/download`} />
                   </li>
                 ))}
               </ol>
               <form onSubmit={send} className="nzp-conv-composer">
                 <label className="nz-sr" htmlFor="conv-draft">Your message</label>
                 <textarea id="conv-draft" className="nz-in" rows={3} maxLength={4000} placeholder={open.thread.state === "resolved" ? "Write to reopen this conversation…" : "Write a reply…"} value={draft} onChange={(event) => setDraft(event.target.value)} />
+                <AttachmentPicker files={draftFiles} onChange={setDraftFiles} disabled={busy} />
                 <button type="submit" className="nz-btn pri" disabled={busy || !draft.trim()}>{busy ? "Sending…" : "Send"}</button>
               </form>
             </>

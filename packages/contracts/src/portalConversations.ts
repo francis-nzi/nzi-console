@@ -32,6 +32,8 @@ export const PORTAL_SUBJECT_CODE_PATTERN = /^[a-z][a-z0-9_]{0,39}$/;
 
 export const PORTAL_MESSAGE_MAX = 4000;
 export const PORTAL_THREAD_TITLE_MAX = 160;
+/** Attachments (M3): at most this many files go with one message. Each is held to the file gate's own size and type rules. */
+export const PORTAL_MESSAGE_MAX_ATTACHMENTS = 5;
 /** The response target, in working days from the client's last message. A date to look at, not an obligation enforced here. */
 export const PORTAL_RESPONSE_TARGET_WORKING_DAYS = 2; // computed by `nzi_console.portal_response_target` (migration 0201) - one definition, in the database
 
@@ -56,6 +58,19 @@ export type PortalThreadSummary = {
 
 /** Who wrote a message, from the reader's side. */
 export type PortalMessageAuthor = "you" | "colleague" | "adviser";
+/**
+ * What a reader is told about an attachment: it is **available** (released by the file gate - the only state that can be downloaded),
+ * **scanning** (held while it is checked), **blocked** (it did not pass; never the scanner's detail) or **withdrawn** (staff took it
+ * out of service). No storage identifier, no URL, no hash: a download is asked for by file id and answered with a short-lived signed URL.
+ */
+export const PORTAL_ATTACHMENT_STATES = ["available", "scanning", "blocked", "withdrawn"] as const;
+export type PortalAttachmentState = (typeof PORTAL_ATTACHMENT_STATES)[number];
+export type PortalMessageAttachment = { fileId: string; fileName: string; contentType: string; sizeBytes: number; state: PortalAttachmentState };
+/** A file's gate status as an attachment state: only a released file is available; a held one is scanning, a refused one blocked. */
+export function attachmentState(status: "quarantined" | "released" | "rejected" | "deactivated"): PortalAttachmentState {
+  return status === "released" ? "available" : status === "quarantined" ? "scanning" : status === "rejected" ? "blocked" : "withdrawn";
+}
+
 export type PortalMessage = {
   messageId: string; seq: number; body: string; createdAt: string;
   /** Client read: you / a colleague / the adviser. Staff read: portal or staff, with the name below. */
@@ -63,6 +78,8 @@ export type PortalMessage = {
   authorPrincipal: "portal" | "staff";
   /** Staff read only - joined at read from the person's own record, never stored with the message. */
   authorName?: string | null;
+  /** Files sent with the message (M3), in the order attached. Empty when none, or while attachments are off. */
+  attachments: PortalMessageAttachment[];
 };
 
 export type PortalThreadDetail = { thread: PortalThreadSummary; messages: PortalMessage[] };
