@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
+import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { type PortalDecisionRecord, type PortalProfileStaffView } from "@nzi/contracts";
 import { Tabs, TabPanel } from "@nzi/ui";
 import { formatDate } from "../../lib/formatDate";
@@ -52,7 +52,8 @@ const errorText = (result: BrowserCommandResult<unknown>) =>
 const decidedTitle = (decision: PortalDecisionRecord<unknown> | null) =>
   decision ? `Decided by ${decision.decidedByName ?? decision.decidedBy} · ${formatDate(decision.decidedAt.slice(0, 10))}${decision.note ? ` · “${decision.note}”` : ""}` : undefined;
 
-type Command = { key: string; path: string; input: Record<string, unknown> };
+/** Which tab a "Reset all to default" belongs to: the portal settings, or the scopes and categories. */
+export type ResetGroup = "visibility" | "scopes";
 type Send = (key: string, path: string, input: Record<string, unknown>, done: string) => void;
 
 export function PortalManagementArea({ clientId, clientOwnerUserId, writeEnabled }: { clientId: string; clientOwnerUserId: string | null; writeEnabled: boolean }) {
@@ -84,25 +85,19 @@ export function PortalManagementArea({ clientId, clientOwnerUserId, writeEnabled
     else setMessage({ tone: "warn", text: errorText(result) });
   }
 
-  /** One withdrawal per decision, in order; stops at the first refusal and says how far it got. Refreshes once. */
-  async function resetAll(commands: Command[]) {
-    if (!commands.length) return;
+  /** One atomic command per tab, one audit event for the whole reset (client.portal.profile.reset / client.portal.visibility.reset). */
+  async function resetAll(group: ResetGroup) {
     setPending("reset"); setMessage(null);
-    let done = 0;
-    for (const command of commands) {
-      const result = await putBrowserCommand(`${base}${command.path}`, { ...command.input, note: note.trim() || null }, crypto.randomUUID());
-      if (result.state !== "success") { setPending(null); setMessage({ tone: "warn", text: `${done} of ${commands.length} returned to default; then: ${errorText(result)}` }); await refresh(); return; }
-      done += 1;
-    }
-    setPending(null); setNote("");
-    setMessage({ tone: "ok", text: `${done} setting${done === 1 ? "" : "s"} returned to default.` });
-    await refresh();
+    const result = await postBrowserCommand<{ count: number }>(`${base}/portal-profile/reset`, { group, note: note.trim() || null }, crypto.randomUUID());
+    setPending(null);
+    if (result.state === "success") { setNote(""); setMessage({ tone: "ok", text: `${result.data.count} setting${result.data.count === 1 ? "" : "s"} returned to default.` }); await refresh(); }
+    else setMessage({ tone: "warn", text: errorText(result) });
   }
 
   return <PortalManagementBody load={load} note={note} onNote={setNote} pending={pending} message={message} profileAccess={profileAccess} visibilityAccess={visibilityAccess}
     tab={tab} onTab={setTab} access={<PortalAccessTab clientId={clientId} access={profileAccess} />} files={portalFeatureEnabled("portal-files") ? <PortalFilesPanel clientId={clientId} access={profileAccess} /> : null}
     users={<><PortalInviteAdmin clientId={clientId} /><PortalAccessAdmin clientId={clientId} /></>}
-    onRetry={() => void refresh()} onSend={(key, path, input, done) => void send(key, path, input, done)} onResetAll={(commands) => void resetAll(commands)} />;
+    onRetry={() => void refresh()} onSend={(key, path, input, done) => void send(key, path, input, done)} onResetAll={(group) => void resetAll(group)} />;
 }
 
 const TABS: ReadonlyArray<{ id: PortalManagementTab; label: string }> = [
@@ -123,7 +118,7 @@ export function PortalManagementBody({ load, note, onNote, pending, message, pro
   /** The Users tab's content: this client's invitations and its users' job access and data-entry windows. */
   users?: ReactNode; onRetry: () => void;
   /** `path` is relative to the client's API base: /portal-profile, /portal-profile/scopes, /category-visibility. */
-  onSend: Send; onResetAll: (commands: Command[]) => void;
+  onSend: Send; onResetAll: (group: ResetGroup) => void;
 }) {
   const live = new Set<PortalManagementTab>([...LIVE, ...(files ? (["files"] as const) : []), ...(users ? (["users"] as const) : [])]);
   const items = TABS.map((entry) => ({ id: entry.id, label: entry.label, disabled: !live.has(entry.id) }));
@@ -172,7 +167,7 @@ function ResetAll({ count, blocked, onReset }: { count: number; blocked: boolean
 }
 
 function VisibilityTab({ view, note, onNote, pending, access, onSend, onResetAll }: {
-  view: PortalProfileStaffView; note: string; onNote: (value: string) => void; pending: string | null; access: EditAccess; onSend: Send; onResetAll: (commands: Command[]) => void;
+  view: PortalProfileStaffView; note: string; onNote: (value: string) => void; pending: string | null; access: EditAccess; onSend: Send; onResetAll: (group: ResetGroup) => void;
 }) {
   const entries = view.profile.filter((entry) => !(HIDDEN_PROFILE_KEYS as readonly string[]).includes(entry.key));
   const byKey = new Map(entries.map((entry) => [entry.key as string, entry]));
@@ -188,11 +183,11 @@ function VisibilityTab({ view, note, onNote, pending, access, onSend, onResetAll
     </div>;
   };
   const detailed = byKey.get("entryDrawer")?.effectiveValue === ON_VALUE.entryDrawer;
-  const decided: Command[] = entries.filter((entry) => entry.decision !== null).map((entry) => ({ key: entry.key, path: "/portal-profile", input: { profileKey: entry.key, value: null } }));
+  const decided = entries.filter((entry) => entry.decision !== null);
   return <div className="nz-pm-tab">
     <Reason note={note} onNote={onNote} />
     <AccessNote access={access} what="portal settings" />
-    <div className="nz-pm-grouphead"><h3>Areas</h3><ResetAll count={decided.length} blocked={blocked} onReset={() => onResetAll(decided)} /></div>
+    <div className="nz-pm-grouphead"><h3>Areas</h3><ResetAll count={decided.length} blocked={blocked} onReset={() => onResetAll("visibility")} /></div>
     {row("time")}{row("milestones")}
     <div className="nz-pm-grouphead"><h3>Entry</h3></div>
     {row("entryDrawer")}
@@ -204,17 +199,14 @@ function VisibilityTab({ view, note, onNote, pending, access, onSend, onResetAll
 }
 
 function ScopesTab({ view, note, onNote, pending, access, onSend, onResetAll }: {
-  view: PortalProfileStaffView; note: string; onNote: (value: string) => void; pending: string | null; access: EditAccess; onSend: Send; onResetAll: (commands: Command[]) => void;
+  view: PortalProfileStaffView; note: string; onNote: (value: string) => void; pending: string | null; access: EditAccess; onSend: Send; onResetAll: (group: ResetGroup) => void;
 }) {
   const blocked = access.state !== "allowed" || pending !== null;
-  const decided: Command[] = view.scopes.flatMap((scope) => [
-    ...(scope.decision ? [{ key: `scope-${scope.scope}`, path: "/portal-profile/scopes", input: { scope: scope.scope, visible: null } }] : []),
-    ...scope.categories.filter((category) => category.decision).map((category) => ({ key: `cat-${category.categoryCode}`, path: "/category-visibility", input: { categoryCode: category.categoryCode, visible: null } })),
-  ]);
+  const decided = view.scopes.flatMap((scope) => [...(scope.decision ? [scope.scope] : []), ...scope.categories.filter((category) => category.decision).map((category) => category.categoryCode)]);
   return <div className="nz-pm-tab">
     <Reason note={note} onNote={onNote} />
     <AccessNote access={access} what="what this client is shown" />
-    <div className="nz-pm-grouphead"><h3>Scopes &amp; categories</h3><ResetAll count={decided.length} blocked={blocked} onReset={() => onResetAll(decided)} /></div>
+    <div className="nz-pm-grouphead"><h3>Scopes &amp; categories</h3><ResetAll count={decided.length} blocked={blocked} onReset={() => onResetAll("scopes")} /></div>
     {view.scopes.map((scope) => <div key={scope.scope} className="nz-pm-scope">
       <div className="nz-pm-row" title={decidedTitle(scope.decision)}>
         <span className="nz-pm-name">{scope.label}{scope.decision ? <span className="nz-pm-ov">Overridden · <button type="button" className="nz-pm-link" aria-disabled={blocked || undefined}

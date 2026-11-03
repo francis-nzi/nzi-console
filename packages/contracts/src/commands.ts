@@ -273,6 +273,8 @@ export type CommandKey =
   | "client.file.rescan"
   | "client.file.deactivate"
   | "client.portal.scope.visibility.set"
+  | "client.portal.profile.reset"
+  | "client.portal.visibility.reset"
   | "client.factor.alias.set"
   | "factor.applicability.add"
   | "factor.applicability.retire"
@@ -1195,6 +1197,10 @@ export type CommandInputMap = {
   "client.file.deactivate":{clientId:string;fileId:string};
   /** Whether this client sees a scope (and so its categories) at all. `visible: null` withdraws, back to the default: visible. */
   "client.portal.scope.visibility.set":{clientId:string;scope:string;visible:boolean|null;note?:string|null};
+  /** Portal Management → "Reset all to default": every portal setting this screen offers returns to the default, in one atomic command with one audit event. */
+  "client.portal.profile.reset":{clientId:string;note?:string|null};
+  /** The same for the Scopes & categories tab: every scope and category decision is withdrawn. */
+  "client.portal.visibility.reset":{clientId:string;note?:string|null};
   /** What this client calls a shared dataset factor. `label: null` withdraws the alias. */
   "client.factor.alias.set":{clientId:string;factorId:string;label:string|null};
   /**
@@ -3347,6 +3353,8 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
    * The scope above the category switch, and the same kind of decision — what a client is shown — so the same capability
    * as `client.category.visibility.set`: `category.visibility` (NZC-110; settled 22 Oct, portal-dataentry-phase1-GROUNDING).
    */
+  "client.portal.profile.reset":{key:"client.portal.profile.reset",label:"Reset a client's portal settings to the default",permission:"portal.admin",reasonRequired:false,transaction:"every active portal-setting decision withdrawn (kept in the record) + one audit event + outbox + idempotency",auditAction:"client_portal_profile_reset",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
+  "client.portal.visibility.reset":{key:"client.portal.visibility.reset",label:"Reset what a client is shown to the default",permission:"category.visibility",reasonRequired:false,transaction:"every active scope and category decision withdrawn (kept in the record) + one audit event + outbox + idempotency",auditAction:"client_portal_visibility_reset",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
   "client.portal.scope.visibility.set":{key:"client.portal.scope.visibility.set",label:"Decide whether a client sees a scope",permission:"category.visibility",reasonRequired:false,transaction:"client portal scope visibility + audit + outbox + idempotency",auditAction:"client_portal_scope_visibility_set",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);required(issues,"scope",input.scope);if(input.scope&&!isPortalScope(input.scope))issues.push({field:"scope",code:"UNKNOWN",message:"A scope is 1, 2 or 3."});if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
   /**
    * Naming, not measuring. It carries `clientfactor.manage` rather than a capability of its own:

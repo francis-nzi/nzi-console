@@ -167,21 +167,28 @@ describe("Portal Management tabs (redesign)", () => {
     for (const state of ["loading", "denied", "failed"] as const) assert.doesNotMatch(panel(body({ load: { state } }), "visibility"), /role="switch"|Reset all/);
   });
 
-  it("each switch sends its own governed command, through its own route; Reset all withdraws each decision once and refreshes once", () => {
+  it("each switch sends its own governed command, through its own route; Reset all is one atomic command per tab and refreshes once", () => {
     const source = read("apps/console/app/clients/[clientId]/PortalManagementArea.tsx");
     assert.match(source, /onSend\(key, "\/portal-profile", \{ profileKey: key, value: on \? ON_VALUE\[key\] : OFF_VALUE\[key\] \}/);
     assert.match(source, /"\/portal-profile\/scopes", \{ scope: scope\.scope, visible: !scope\.effectiveVisible \}/);
     assert.match(source, /"\/category-visibility", \{ categoryCode: category\.categoryCode, visible: !on \}/);
-    assert.match(source, /\{ profileKey: entry\.key, value: null \}/);
+    // The per-row "Reset" on a scope or category is still its own withdrawal; the tab-level reset is no longer N of them.
     assert.match(source, /\{ scope: scope\.scope, visible: null \}/);
     assert.match(source, /\{ categoryCode: category\.categoryCode, visible: null \}/);
+    assert.doesNotMatch(source, /\{ profileKey: entry\.key, value: null \}/, "the interim N-withdrawals loop is gone");
     const resetAll = source.slice(source.indexOf("async function resetAll"), source.indexOf("return <PortalManagementBody"));
-    assert.equal((resetAll.match(/await refresh\(\)/g) ?? []).length, 2, "refreshed once on success and once if it stops early — never per decision");
-    assert.match(resetAll, /for \(const command of commands\)/);
+    assert.equal((resetAll.match(/await refresh\(\)/g) ?? []).length, 1, "one command, one refresh");
+    assert.match(resetAll, /postBrowserCommand<\{ count: number \}>\(`\$\{base\}\/portal-profile\/reset`, \{ group, note: note\.trim\(\) \|\| null \}/);
+    assert.doesNotMatch(resetAll, /for \(const|putBrowserCommand/, "not a loop of withdrawals");
+    assert.match(source, /onReset=\{\(\) => onResetAll\("visibility"\)\}/);
+    assert.match(source, /onReset=\{\(\) => onResetAll\("scopes"\)\}/);
     const routes = "apps/console/app/api/isolated/clients/[clientId]";
     assert.match(read(`${routes}/portal-profile/route.ts`), /requireCommandPrincipal\(request, "client\.portal\.profile\.set"\)/);
     assert.match(read(`${routes}/portal-profile/route.ts`), /getPortalProfileForStaff\(isolatedPool\(\), principal, clientId\)/);
     assert.match(read(`${routes}/portal-profile/scopes/route.ts`), /requireCommandPrincipal\(request, "client\.portal\.scope\.visibility\.set"\)/);
+    const reset = read(`${routes}/portal-profile/reset/route.ts`);
+    assert.match(reset, /requireCommandPrincipal\(request, "client\.portal\.profile\.reset"\)/);
+    assert.match(reset, /requireCommandPrincipal\(request, "client\.portal\.visibility\.reset"\)/);
     assert.match(read(`${routes}/category-visibility/route.ts`), /requireCommandPrincipal\(request, "client\.category\.visibility\.set"\)/);
   });
 
