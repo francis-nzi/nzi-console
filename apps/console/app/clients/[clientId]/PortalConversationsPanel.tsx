@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState, type FormEvent } from "react";
 import { PORTAL_THREAD_STATES, type PortalThreadDetail, type PortalThreadState, type PortalThreadSubject, type PortalThreadSummary } from "@nzi/contracts";
 import { formatDate, formatDateTime } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
+import { AttachmentList, AttachmentPicker, sendMessageForm } from "../../lib/MessageAttachments";
 import { isSubjectList, isThreadDetail, isThreadList, STAFF_STATE_LABEL, targetNote } from "../../portal/messages/conversationsModel";
 
 /**
@@ -23,6 +24,8 @@ export function PortalConversationsPanel({ clientId, access }: { clientId: strin
   const [draft, setDraft] = useState("");
   const [composing, setComposing] = useState(false);
   const [form, setForm] = useState({ subjectCode: "", jobId: "", title: "", body: "" });
+  const [replyFiles, setReplyFiles] = useState<File[]>([]);
+  const [newFiles, setNewFiles] = useState<File[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "warn"; text: string } | null>(null);
 
@@ -58,9 +61,11 @@ export function PortalConversationsPanel({ clientId, access }: { clientId: strin
     event.preventDefault();
     if (!current || !draft.trim()) return;
     setBusy(true); setMessage(null);
-    const result = await call("POST", `${base}/${encodeURIComponent(current)}`, { body: draft.trim() });
+    const result = replyFiles.length
+      ? await sendMessageForm(`${base}/${encodeURIComponent(current)}`, { body: draft.trim() }, replyFiles, crypto.randomUUID())
+      : await call("POST", `${base}/${encodeURIComponent(current)}`, { body: draft.trim() });
     setBusy(false);
-    if (result.ok) { setDraft(""); await refresh(); await openThread(current); } else setMessage({ tone: "warn", text: result.message! });
+    if (result.ok) { setDraft(""); setReplyFiles([]); await refresh(); await openThread(current); } else setMessage({ tone: "warn", text: result.message! });
   }
   async function change(thread: PortalThreadSummary, changes: { ownerId?: string | null; state?: PortalThreadState }) {
     setBusy(true); setMessage(null);
@@ -71,9 +76,10 @@ export function PortalConversationsPanel({ clientId, access }: { clientId: strin
   async function startNew(event: FormEvent) {
     event.preventDefault();
     setBusy(true); setMessage(null);
-    const result = await call("POST", base, { jobId: form.jobId || null, subjectCode: form.subjectCode, title: form.title.trim(), body: form.body.trim() });
+    const fields = { jobId: form.jobId || null, subjectCode: form.subjectCode, title: form.title.trim(), body: form.body.trim() };
+    const result = newFiles.length ? await sendMessageForm(base, fields, newFiles, crypto.randomUUID()) : await call("POST", base, fields);
     setBusy(false);
-    if (result.ok) { setComposing(false); setForm({ subjectCode: "", jobId: "", title: "", body: "" }); setMessage({ tone: "ok", text: "The conversation has been started." }); await refresh(); if (typeof result.data?.threadId === "string") setCurrent(result.data.threadId); }
+    if (result.ok) { setComposing(false); setNewFiles([]); setForm({ subjectCode: "", jobId: "", title: "", body: "" }); setMessage({ tone: "ok", text: "The conversation has been started." }); await refresh(); if (typeof result.data?.threadId === "string") setCurrent(result.data.threadId); }
     else setMessage({ tone: "warn", text: result.message! });
   }
   return <section className="nz-panel nz-pm" aria-labelledby="pm-messages">
@@ -88,6 +94,7 @@ export function PortalConversationsPanel({ clientId, access }: { clientId: strin
         <label>Job<select className="nz-sel" value={form.jobId} onChange={(event) => setForm({ ...form, jobId: event.target.value })}><option value="">Whole organisation</option>{list.value.jobs.map((j) => <option key={j.jobId} value={j.jobId}>{j.jobNumber} · {j.title}</option>)}</select></label>
         <label>Title<input className="nz-in" required maxLength={160} value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
         <label>Message<textarea className="nz-in" required rows={4} maxLength={4000} value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} /></label>
+        <AttachmentPicker files={newFiles} onChange={setNewFiles} disabled={busy} />
         <button type="submit" className="nz-btn pri" disabled={busy || !form.subjectCode || !form.title.trim() || !form.body.trim()}>{busy ? "Sending…" : "Send to the client"}</button>
       </form> : null}
 
@@ -116,10 +123,11 @@ export function PortalConversationsPanel({ clientId, access }: { clientId: strin
               <label>Owner<select className="nz-sel" disabled={!allowed || busy} value={detail.value.thread.ownerId ?? ""} onChange={(event) => void change(detail.value.thread, { ownerId: event.target.value || null })}><option value="">Unassigned</option>{list.value.staff.map((member) => <option key={member.userId} value={member.userId}>{member.displayName}</option>)}</select></label>
               <label>State<select className="nz-sel" disabled={!allowed || busy} value={detail.value.thread.state} onChange={(event) => void change(detail.value.thread, { state: event.target.value as PortalThreadState })}>{PORTAL_THREAD_STATES.map((state) => <option key={state} value={state}>{STAFF_STATE_LABEL[state]}</option>)}</select></label>
             </div>
-            <ol className="nz-conv-messages">{detail.value.messages.map((m) => <li key={m.messageId}><div className="nz-hint">{m.authorName ?? (m.authorPrincipal === "staff" ? "Adviser" : "Client user")} · {m.authorPrincipal === "staff" ? "adviser" : "client"} · {formatDateTime(m.createdAt)}</div><p>{m.body}</p></li>)}</ol>
+            <ol className="nz-conv-messages">{detail.value.messages.map((m) => <li key={m.messageId}><div className="nz-hint">{m.authorName ?? (m.authorPrincipal === "staff" ? "Adviser" : "Client user")} · {m.authorPrincipal === "staff" ? "adviser" : "client"} · {formatDateTime(m.createdAt)}</div><p>{m.body}</p><AttachmentList attachments={m.attachments ?? []} downloadPath={(fileId) => `/api/isolated/clients/${encodeURIComponent(clientId)}/files/${encodeURIComponent(fileId)}/download`} /></li>)}</ol>
             <form onSubmit={reply}>
               <label className="nz-sr" htmlFor="staff-conv-draft">Your reply</label>
               <textarea id="staff-conv-draft" className="nz-in" rows={3} maxLength={4000} disabled={!allowed} placeholder="Reply to the client…" value={draft} onChange={(event) => setDraft(event.target.value)} />
+              <AttachmentPicker files={replyFiles} onChange={setReplyFiles} disabled={!allowed || busy} />
               <button type="submit" className="nz-btn pri" disabled={!allowed || busy || !draft.trim()}>{busy ? "Sending…" : "Send to the client"}</button>
             </form>
           </> : null}

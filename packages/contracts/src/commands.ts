@@ -1,7 +1,7 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { PORTAL_ACCESS_NOTES_MAX, PORTAL_ACCESS_NOTE_MAX, PORTAL_ACCESS_PAYMENT_REF_MAX, PORTAL_PAYMENT_STATUSES, type PortalClientAccessChanges } from "./portalClientAccess";
 import type { PortalSpendImportPayload } from "./portalSpendImport";
-import { PORTAL_MESSAGE_MAX, PORTAL_SUBJECT_CODE_PATTERN, PORTAL_THREAD_STATES, PORTAL_THREAD_TITLE_MAX, type PortalThreadState } from "./portalConversations";
+import { PORTAL_MESSAGE_MAX, PORTAL_MESSAGE_MAX_ATTACHMENTS, PORTAL_SUBJECT_CODE_PATTERN, PORTAL_THREAD_STATES, PORTAL_THREAD_TITLE_MAX, type PortalThreadState } from "./portalConversations";
 import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, isPortalFileCategory, type PortalFileCategory, type PortalFileIngest } from "./portalFiles";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
@@ -1200,13 +1200,13 @@ export type CommandInputMap = {
   "client.portal.access.set":{clientId:string;expectedVersion:number|null;changes:PortalClientAccessChanges;note?:string|null};
   "portal.file.upload":{clientId:string;ingest:PortalFileIngest;category: PortalFileCategory};
   // Portal conversations (RULING-portal-messages, M1). A message is append-only; a thread is a subject, a scope, an owner and a state.
-  "portal.thread.start":{clientId:string;jobId:string|null;subjectCode:string;title:string;body:string};
-  "portal.message.post":{clientId:string;threadId:string;body:string};
+  "portal.thread.start":{clientId:string;jobId:string|null;subjectCode:string;title:string;body:string;attachments?:PortalFileIngest[]};
+  "portal.message.post":{clientId:string;threadId:string;body:string;attachments?:PortalFileIngest[]};
   "portal.thread.read":{clientId:string;threadId:string};
   /** The Updates feed has been seen through this moment (the newest notice the user was shown). Only moves a watermark forward. */
   "portal.notices.seen":{clientId:string;seenThrough:string};
-  "client.thread.start":{clientId:string;jobId:string|null;subjectCode:string;title:string;body:string};
-  "client.message.post":{clientId:string;threadId:string;body:string};
+  "client.thread.start":{clientId:string;jobId:string|null;subjectCode:string;title:string;body:string;attachments?:PortalFileIngest[]};
+  "client.message.post":{clientId:string;threadId:string;body:string;attachments?:PortalFileIngest[]};
   /** Staff set the owner and/or the state. `ownerId: null` unassigns. `expectedVersion` is the thread version the staff member saw. */
   "client.thread.update":{clientId:string;threadId:string;expectedVersion:number;ownerId?:string|null;state?:PortalThreadState};
   /** The CRM-configurable subject tags: add one, rename it, reorder it, or turn it off (never deleted - a thread keeps its tag). */
@@ -1390,7 +1390,23 @@ const bodyIssues = (issues: CommandIssue[], field: string, value: unknown) => {
   if (typeof value !== "string" || !value.trim()) issues.push({ field, code: "REQUIRED", message: "Write a message." });
   else if (value.trim().length > PORTAL_MESSAGE_MAX) issues.push({ field, code: "TOO_LONG", message: `A message is at most ${PORTAL_MESSAGE_MAX} characters.` });
 };
-const threadStartIssues = (input: { clientId: string; jobId: string | null; subjectCode: string; title: string; body: string }, context: CommandContext) => {
+/**
+ * Files sent with a message: at most {@link PORTAL_MESSAGE_MAX_ATTACHMENTS}, each the recorded outcome of the ingest gate, so a forged one
+ * is refused here as it is at portal.file.upload. (The thread's own job and client are checked by the command, against the database.)
+ */
+const attachmentIssues = (issues: CommandIssue[], attachments: PortalFileIngest[] | undefined, clientId: string, context: CommandContext) => {
+  if (attachments === undefined) return;
+  if (!Array.isArray(attachments)) { issues.push({ field: "attachments", code: "INVALID", message: "Attachments are a list of files." }); return; }
+  if (attachments.length > PORTAL_MESSAGE_MAX_ATTACHMENTS) issues.push({ field: "attachments", code: "TOO_MANY", message: `A message takes at most ${PORTAL_MESSAGE_MAX_ATTACHMENTS} attachments.` });
+  const seen = new Set<string>();
+  attachments.forEach((ingest, index) => {
+    for (const issue of fileIngestIssues({ clientId, ingest }, context)) {
+      if (issue.field.startsWith("ingest")) issues.push({ ...issue, field: `attachments[${index}].${issue.field}` });
+    }
+    if (ingest && typeof ingest.fileId === "string") { if (seen.has(ingest.fileId)) issues.push({ field: `attachments[${index}].ingest.fileId`, code: "DUPLICATE", message: "The same file is attached twice." }); seen.add(ingest.fileId); }
+  });
+};
+const threadStartIssues = (input: { clientId: string; jobId: string | null; subjectCode: string; title: string; body: string; attachments?: PortalFileIngest[] }, context: CommandContext) => {
   const issues = baseIssues(context, false);
   required(issues, "clientId", input.clientId);
   if (input.jobId !== null && !text(input.jobId)) issues.push({ field: "jobId", code: "INVALID", message: "Choose a job, or none for the whole organisation." });
@@ -1398,12 +1414,14 @@ const threadStartIssues = (input: { clientId: string; jobId: string | null; subj
   if (typeof input.title !== "string" || !input.title.trim()) issues.push({ field: "title", code: "REQUIRED", message: "Give the conversation a title." });
   else if (input.title.trim().length > PORTAL_THREAD_TITLE_MAX) issues.push({ field: "title", code: "TOO_LONG", message: `A title is at most ${PORTAL_THREAD_TITLE_MAX} characters.` });
   bodyIssues(issues, "body", input.body);
+  attachmentIssues(issues, input.attachments, input.clientId, context);
   return issues;
 };
-const threadPostIssues = (input: { clientId: string; threadId: string; body: string }, context: CommandContext) => {
+const threadPostIssues = (input: { clientId: string; threadId: string; body: string; attachments?: PortalFileIngest[] }, context: CommandContext) => {
   const issues = baseIssues(context, false);
   required(issues, "clientId", input.clientId); required(issues, "threadId", input.threadId);
   bodyIssues(issues, "body", input.body);
+  attachmentIssues(issues, input.attachments, input.clientId, context);
   return issues;
 };
 const noticesSeenIssues = (input: { clientId: string; seenThrough: string }, context: CommandContext) => {

@@ -73,7 +73,8 @@ describe("the Conversations lane", () => {
     const source = read("app/portal/messages/PortalConversations.tsx");
     assert.match(source, /useOrganisationName\(\)/);
     assert.doesNotMatch(source.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ""), /\bNZI\b(?![-_])/, "D3b: the organisation is named from its profile, never typed");
-    assert.match(source, /postBrowserCommand<\{ threadId: string \}>\(api, \{ jobId: form\.wholeOrganisation \? null : jobId,/, "a conversation is on this job, or for the whole organisation");
+    assert.match(source, /const fields = \{ jobId: form\.wholeOrganisation \? null : jobId,/, "a conversation is on this job, or for the whole organisation");
+    assert.match(source, /postBrowserCommand<\{ threadId: string \}>\(api, fields,/);
     assert.match(source, /\/read`, \{\}, crypto\.randomUUID\(\)/, "reading is the audited command");
     assert.doesNotMatch(source, /staff-|authorName|userId/, "no staff name or id reaches the client's view");
     assert.match(source, /formatDateTime\(message\.createdAt\)/, "dd/mm/yyyy (NZC-040)");
