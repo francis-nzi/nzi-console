@@ -83,7 +83,7 @@ export function JobTypesBoard({ page, pickers, templates, catalogue, query, edit
 
     <div className="nz-a-hint-strip">
       <span aria-hidden="true">i</span>
-      <div>v7’s job types arrive with the jobs-configuration import, matched by name — never guessed. A type’s <b>milestone template</b> is where a new job of that type will take its schedule from once the milestone command lands; until then it is recorded, not yet applied.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
+      <div>A type’s <b>milestone template</b> is where a new job of that type will take its schedule from once the milestone command lands; until then it is recorded, not yet applied.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
     </div>
 
     {notice ? <div className="nz-a-notice" role="status">{notice}</div> : null}
@@ -113,7 +113,7 @@ export function JobTypesBoard({ page, pickers, templates, catalogue, query, edit
         onPageSize={nav.pageSize}
         onClear={query.search || status || family ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No job types yet</b><span>{editing.allowed ? "Add the first one, or import v7’s." : "Job types arrive with the v7 jobs-configuration import."}</span></>
+          ? <><b>No job types yet</b><span>{editing.allowed ? "Add the first one." : ""}</span></>
           : <><b>No job types match</b><span>Clear the search or the filters to see every job type.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
@@ -275,13 +275,13 @@ function JobTypeDrawer({ row, pickers, editing, template, catalogue, onClose, on
     </FieldRow>
     <FieldRow>
       <SelectField label="VAT rate" value={draft.vatRateId} placeholder="None" options={vatOptions}
-        hint={pickers.vatRates.length === 0 ? "No VAT rates yet — they arrive with the v7 import." : undefined}
+        hint={pickers.vatRates.length === 0 ? "No VAT rates yet." : undefined}
         error={issues.vatRateId} disabled={readOnly} onChange={(vatRateId) => setDraft({ ...draft, vatRateId })} />
       <SelectField label="Milestone template" value={draft.templateId} placeholder="None" options={templateOptions}
-        hint={pickers.milestoneTemplates.length === 0 ? "No templates yet — they arrive with Milestone templates and the v7 import." : "A new job of this type starts from it."}
+        hint={pickers.milestoneTemplates.length === 0 ? "No templates yet — add one under Milestone templates." : "A new job of this type starts from it."}
         error={issues.milestoneTemplateId} disabled={readOnly} onChange={(templateId) => setDraft({ ...draft, templateId })} />
     </FieldRow>
-    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : "Added here"} readOnly /> : null}
+    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported" : "Added here"} readOnly /> : null}
     {!isNew ? <Switch label="Active" description="Available when creating a new job. Inactive types leave the pickers but still show on existing jobs." checked={draft.active}
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}
     {deactivating ? <TextAreaField label="Reason for deactivating" hint="Required — it is recorded in the audit log." value={draft.reason} rows={2} required

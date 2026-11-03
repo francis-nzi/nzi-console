@@ -71,7 +71,7 @@ export function CurrenciesBoard({ page, query, editing }: { page: CurrencyPage; 
         onPageSize={nav.pageSize}
         onClear={query.search || status ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No currencies yet</b><span>{editing.allowed ? "Add the first one — it becomes the default." : "Currencies arrive with the v7 currencies import."}</span></>
+          ? <><b>No currencies yet</b><span>{editing.allowed ? "Add the first one — it becomes the default." : ""}</span></>
           : <><b>No currencies match</b><span>Clear the search or the filter to see every currency.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
@@ -171,7 +171,7 @@ function CurrencyDrawer({ row, editing, onClose, onSaved }: { row: CurrencyRow |
     <TextField label="Symbol" mono value={draft.symbol} required maxLength={CURRENCY_SYMBOL_MAX} placeholder="e.g. £, €, or the code" error={issues.symbol}
       hint="What every amount and intensity unit is written with — “£m”, or “AED m” for a code." readOnly={readOnly} onChange={(symbol) => setDraft({ ...draft, symbol })} />
     {isNew ? <p className="nz-a-hint">A new currency is the default only when it is the organisation’s first; otherwise make it the default once it is saved.</p> : null}
-    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : row.provenance === "seeded" ? "Seeded (0145)" : "Added here"} readOnly /> : null}
+    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported" : row.provenance === "seeded" ? "Seeded (0145)" : "Added here"} readOnly /> : null}
     {!isNew && !isDefault ? <Switch label="Make this the default" description="The current default stops being one. A default is always active." checked={draft.makeDefault}
       disabled={readOnly || !draft.active} onChange={(makeDefault) => setDraft({ ...draft, makeDefault, active: makeDefault ? true : draft.active, reason: "" })} /> : null}
     {!isNew && !isDefault ? <Switch label="Active" description="Inactive currencies leave the pickers; clients already holding one keep it." checked={draft.active}

@@ -61,7 +61,7 @@ export function LookupsBoard({ categories, page, query, category, editing }: {
 
     <div className="nz-a-hint-strip">
       <span aria-hidden="true">i</span>
-      <div>These values were <b>seeded</b> for this organisation, and v7’s are matched onto them by exact label when they are imported — anything unmatched is reported, never guessed. Imported clients are linked to them by a separate, reported backfill.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
+      <div>These values were <b>seeded</b> for this organisation.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
     </div>
 
     <nav className="nz-a-catbar" aria-label="Lookups">
@@ -94,7 +94,7 @@ export function LookupsBoard({ categories, page, query, category, editing }: {
         onPageSize={nav.pageSize}
         onClear={query.search || status ? () => nav.clear({ category: [category] }) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No {current.label.toLowerCase()} yet</b><span>{editing.allowed ? "Add the first value, or import v7’s." : "Values arrive with the v7 import."}</span></>
+          ? <><b>No {current.label.toLowerCase()} yet</b><span>{editing.allowed ? "Add the first value." : ""}</span></>
           : <><b>No values match</b><span>Clear the search or the filter to see every value.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
@@ -190,12 +190,12 @@ function ValueDrawer({ row, category, editing, onClose, onSaved }: {
     <FieldRow>
       <NumberField label="Sort order" hint={isNew ? "Blank: after the last value." : undefined} value={draft.sortOrder} min={0} step={10}
         error={issues.sortOrder} disabled={readOnly} onChange={(sortOrder) => setDraft({ ...draft, sortOrder })} />
-      <TextField label="Source" value={isNew ? "Added here" : row.provenance === "v7" ? "Imported · v7" : row.provenance === "added" ? "Added here" : "Seeded"} readOnly />
+      <TextField label="Source" value={isNew ? "Added here" : row.provenance === "v7" ? "Imported" : row.provenance === "added" ? "Added here" : "Seeded"} readOnly />
     </FieldRow>
     {activity ? <Switch label="Billable by default" description="Time logged as this activity starts billable or not; each entry can still say otherwise." checked={draft.billableDefault}
       disabled={readOnly} onChange={(billableDefault) => setDraft({ ...draft, billableDefault })} /> : null}
     {issues.billableDefault ? <div className="nz-a-error" role="alert">{issues.billableDefault}</div> : null}
-    {row?.ownerClient ? <TextField label="Portfolio owner" hint="The client that owns this portfolio, from v7." value={row.ownerClient} readOnly /> : null}
+    {row?.ownerClient ? <TextField label="Portfolio owner" hint="The client that owns this portfolio." value={row.ownerClient} readOnly /> : null}
     {!isNew ? <Switch label="Active" description="Inactive values leave the pickers but still show on existing records." checked={draft.active}
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}
     {deactivating ? <TextAreaField label="Reason for deactivating" hint="Required — it is recorded in the audit log." value={draft.reason} rows={2} required

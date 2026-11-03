@@ -16,7 +16,7 @@ const SCOPES: ReportingTemplateScope[] = ["1", "2", "3"];
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
 const originText = (template: NonNullable<Template["current"]>) =>
-  template.origin === "manual" ? "set by hand" : `${template.origin === "v7-import" ? "imported from v7 history on" : "initialised from"} ${template.originJobNumber ?? "a job"}`;
+  template.origin === "manual" ? "set by hand" : `${template.origin === "v7-import" ? "imported from history on" : "initialised from"} ${template.originJobNumber ?? "a job"}`;
 
 /** The card on the Overview: the template in force, grouped scope → category → line, or how to start one. */
 export function ReportingTemplateCard({ template, access, onEdit, onInitialise }: {
@@ -158,7 +158,7 @@ export function ReportingTemplateInitialiseForm({ clientId, template, jobs, acce
   return <>
     <div className="nz-dh"><div className="k">Reporting</div><h3>Initialise from a job</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
     <div className="nz-db">
-      <p className="sub">The job&rsquo;s enabled entries become the template&rsquo;s lines — one per distinct activity, with its category, labels, site and factor. Entries imported from v7 have no category, so they come in &ldquo;to categorise&rdquo;. {template.current ? "This writes a new version; the current one stays in the record." : ""}</p>
+      <p className="sub">The job&rsquo;s enabled entries become the template&rsquo;s lines — one per distinct activity, with its category, labels, site and factor. Imported entries have no category, so they come in &ldquo;to categorise&rdquo;. {template.current ? "This writes a new version; the current one stays in the record." : ""}</p>
       {crp.length === 0
         ? <p className="sub">This client has no CRP jobs to build from.</p>
         : <label className="nz-fl"><span>Job</span>

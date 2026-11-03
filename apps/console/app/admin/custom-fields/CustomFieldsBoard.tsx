@@ -92,7 +92,7 @@ export function CustomFieldsBoard({ page, query, editing }: { page: CustomFieldP
         onPageSize={nav.pageSize}
         onClear={query.search || status || entity ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No custom fields yet</b><span>{editing.allowed ? "Add the first one, or import v7’s." : "Definitions arrive with the v7 custom-field import."}</span></>
+          ? <><b>No custom fields yet</b><span>{editing.allowed ? "Add the first one." : ""}</span></>
           : <><b>No fields match</b><span>Clear the search or the filters to see every field.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
@@ -245,7 +245,7 @@ function FieldDrawer({ row, editing, defaultEntity, onClose, onSaved }: {
         placeholder={draft.type === "date" ? "YYYY-MM-DD" : "None"} hint="Applied once, when a record is created." error={issues.defaultValue}
         onChange={(defaultValue) => setDraft({ ...draft, defaultValue })} />}
 
-    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : "Added here"} readOnly /> : null}
+    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported" : "Added here"} readOnly /> : null}
     {!isNew ? <Switch label="Active" description="An inactive field leaves the forms; values already entered are kept." checked={draft.active}
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}
     {deactivating ? <TextAreaField label="Reason for deactivating" hint="Required — it is recorded in the audit log." value={draft.reason} rows={2} required

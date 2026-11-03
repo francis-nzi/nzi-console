@@ -22,7 +22,7 @@ describe("A1: a job's report link follows its state — never an empty preview",
     assert.deepEqual(reportLinkFor(row({ hasSnapshot: true })), { kind: "prepare", label: "Prepare report", href: "/report-preview?jobId=j1" });
   });
   it("imported v7 → its record of account, with no link (the content is sealed, Q1 (b))", () => {
-    assert.deepEqual(reportLinkFor(row({ v7Record: true })), { kind: "v7-record", label: "v7 record of account · awaiting re-compose", href: null });
+    assert.deepEqual(reportLinkFor(row({ v7Record: true })), { kind: "v7-record", label: "Earlier record of account · awaiting re-compose", href: null });
   });
   it("nothing yet → add evidence on the job", () => {
     assert.deepEqual(reportLinkFor(row()), { kind: "add-evidence", label: "Add evidence", href: "/jobs/j1" });
@@ -100,8 +100,8 @@ describe("A3: the filter lives in the URL", () => {
 
 describe("Q1 (b): the v7 record of account, from its unsealed metadata", () => {
   it("says what there is — version, status, finalised date — and never offers to open it", () => {
-    assert.equal(v7RecordLine({ version: 2, status: "final", finalisedAt: "2025-03-31T10:00:00.000Z", dataHash: "abc" }), "Record of account: NZ Insights Pro v7 report, version 2 · final · finalised 2025-03-31.");
-    assert.equal(v7RecordLine(null), "Record of account: imported from NZ Insights Pro v7 (no v7 report version was issued for it).");
+    assert.equal(v7RecordLine({ version: 2, status: "final", finalisedAt: "2025-03-31T10:00:00.000Z", dataHash: "abc" }), "Record of account: issued report, version 2 · final · finalised 2025-03-31.");
+    assert.equal(v7RecordLine(null), "Record of account: imported (no report version was issued for it).");
     assert.doesNotMatch(v7RecordLine({ version: 1, status: "draft", finalisedAt: null, dataHash: null }), /open|view/i);
   });
 });

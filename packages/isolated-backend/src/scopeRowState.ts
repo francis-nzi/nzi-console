@@ -38,7 +38,7 @@ async function lockRow(db: Queryable, context: CommandContext, input: RowRef, ac
   if (!row) throw new CommandValidationError([{ field: "rowId", code: "NOT_FOUND", message: "Scope row was not found for this job." }]);
   if (row.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, row.version);
   if (row.origin === "migrated") {
-    throw new CommandValidationError([{ field: "rowId", code: "ROW_LOCKED", message: "This row was imported from v7 — it is fixed history and cannot be removed or deactivated here." }]);
+    throw new CommandValidationError([{ field: "rowId", code: "ROW_LOCKED", message: "This row was imported — it is fixed history and cannot be removed or deactivated here." }]);
   }
   if (row.reingested_from_row_id && !isV7ReingestPrincipal(context)) {
     throw new CommandValidationError([{ field: "rowId", code: REINGESTED_ROW_ATTEST_ONLY, message: reingestedRowMessage(act) }]);

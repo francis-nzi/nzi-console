@@ -121,7 +121,7 @@ function ReportRegisterRow({ job }: { job: ReportStatusRow }) {
   return <tr>
     <td>
       <Link className="nz-register-job" href={`/jobs/${job.jobId}`}>{job.jobNumber}</Link>
-      {job.legacyJobNumber && job.legacyJobNumber !== job.jobNumber ? <span className="muted"> · v7 {job.legacyJobNumber}</span> : null}
+      {job.legacyJobNumber && job.legacyJobNumber !== job.jobNumber ? <span className="muted"> · formerly {job.legacyJobNumber}</span> : null}
       <div className="muted">{job.client}{job.title ? ` · ${job.title}` : ""}</div>
       <span className={`nz-register-eligibility ${eligibility}`}>{reportEligibilityLabels[eligibility]}</span>
     </td>

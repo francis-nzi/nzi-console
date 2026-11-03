@@ -39,7 +39,7 @@ export function MilestoneTemplatesBoard({ templates, editing }: { templates: Mil
 
     <div className="nz-a-hint-strip">
       <span aria-hidden="true">i</span>
-      <div>Offsets count days from a job’s anchor — the later of its start date and reporting-period start, as v7 counts them. A new job will be scheduled from its job type’s template, else the default, once the milestone command lands; editing a template never moves an existing job’s dates.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
+      <div>Offsets count days from a job’s anchor — the later of its start date and reporting-period start. A new job will be scheduled from its job type’s template, else the default, once the milestone command lands; editing a template never moves an existing job’s dates.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
     </div>
     {templates.length > 0 && !hasDefault ? <div className="nz-a-hint-strip warn" role="note">
       <span aria-hidden="true">!</span>
@@ -49,7 +49,7 @@ export function MilestoneTemplatesBoard({ templates, editing }: { templates: Mil
     {notice ? <div className="nz-a-notice" role="status">{notice}</div> : null}
 
     {templates.length === 0
-      ? <div className="nz-a-placeholder"><h2>No milestone templates yet</h2><p>{editing.allowed ? "Add the first one, or import v7’s with the jobs-configuration import." : "Templates arrive with the v7 jobs-configuration import."}</p></div>
+      ? <div className="nz-a-placeholder"><h2>No milestone templates yet</h2><p>{editing.allowed ? "Add the first one." : ""}</p></div>
       : <ul className="nz-a-mt-grid" aria-label="Milestone templates">
         {templates.map((template) => {
           const scheduled = template.items.filter((item) => item.included);

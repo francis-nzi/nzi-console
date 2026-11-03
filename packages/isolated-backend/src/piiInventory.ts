@@ -321,7 +321,7 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
   // Records of account, sealed under their own key rather than a person's.
   legacy_report_versions: {
     keyColumns: ["legacy_report_id"],
-    attribution: { kind: "none", because: "an imported v7 report is a record of account, not a data subject (decision 10): the people it names are not linked to it, and its key is the report's own" },
+    attribution: { kind: "none", because: "an imported report is a record of account, not a data subject (decision 10): the people it names are not linked to it, and its key is the report's own" },
     appendOnly: true,
   },
 
@@ -447,7 +447,7 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
     storage: { kind: "plaintext" }, because: "the address an email went to, kept in the clear while the send log has no subject path (0178); sealing it comes with the phase that links a send to its person. The body is cleared once the send resolves, so the address and subject are all that stay" },
   // Staff, not client data, and unsealed by ruling (PR 2, R4): the name v7 recorded against a completed milestone.
   { table: "job_milestones", column: "completed_by_label", label: "Milestone completed by", stage: "deferred", erasure: "not-attributable",
-    storage: { kind: "plaintext" }, because: "a staff member's name as v7 recorded it, kept in the clear by ruling (R4); free text with no reliable subject" },
+    storage: { kind: "plaintext" }, because: "a staff member's name as the previous system recorded it, kept in the clear by ruling (R4); free text with no reliable subject" },
   // D4 (R1, 0196): a company vehicle's registration — sealed under the client's own vehicle key, the plaintext cleared by the write
   // that seals it. Not a subject's: the keeper is not in our data. A commuter's name or an invoice date in the same column (other
   // categories) is not a registration and is not sealed.
@@ -517,7 +517,7 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
   // ── Records of account, sealed under the document's own key (0135, NZC-166) ──────────
   { table: "legacy_report_versions", column: "payload_sealed", label: "A historical report that names you",
     stage: "sealed", erasure: "retain-with-basis", storage: { kind: "document-sealed", keyColumn: "content_key_wrapped" },
-    because: "v7's report snapshot, sealed whole under the report's own content key. A report is a signed record of account, so personal data inside it is retained (NZC-166); shredding its key is reserved for where retention is not lawful" },
+    because: "the previous system's report snapshot, sealed whole under the report's own content key. A report is a signed record of account, so personal data inside it is retained (NZC-166); shredding its key is reserved for where retention is not lawful" },
   { table: "legacy_report_versions", column: "particulars_sealed", label: "Your name on a historical report's record",
     stage: "sealed", erasure: "retain-with-basis", storage: { kind: "document-sealed", keyColumn: "content_key_wrapped" },
     because: "who generated, reviewed and finalised the version, its notes and the PDF's link — sealed under the same content key, retained with the report (NZC-166)" },
@@ -583,15 +583,15 @@ export const PII_HOSTING_DECISIONS: ReadonlyArray<PiiHostingDecision> = [
   {
     population: "Clients",
     accepted: "2026-09-28",
-    admits: "The v7 client and job import (docs/CLIENT_JOB_IMPORT_DESIGN.md): active clients' contacts and sites, full job history, historical emissions and published report snapshots.",
+    admits: "The client and job import (docs/CLIENT_JOB_IMPORT_DESIGN.md): active clients' contacts and sites, full job history, historical emissions and published report snapshots.",
     terms: "Personal data sealed on write; boundary-guarded to isolated-non-production; loaded only from the Render Shell; the extract never committed.",
     commitment: REPLICATE,
   },
   {
     population: "Suppliers",
     accepted: "2026-10-01",
-    admits: "The v7 supplier import (admin E4, ruled E-Q6/E-Q7): the named contacts at suppliers — name, email and phone.",
-    terms: "Sealed per person on load and on write (NZC-119), each contact its own subject, erased by key-shred; never in a _handoff extract or report; the address and notes v7 held are not imported.",
+    admits: "The supplier import (admin E4, ruled E-Q6/E-Q7): the named contacts at suppliers — name, email and phone.",
+    terms: "Sealed per person on load and on write (NZC-119), each contact its own subject, erased by key-shred; never in a _handoff extract or report; the address and notes the previous system held are not imported.",
     commitment: REPLICATE,
   },
 ];

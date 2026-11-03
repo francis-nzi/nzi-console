@@ -18,7 +18,7 @@ export const reportStageLabels: Record<ReportStage, string> = {
   "awaiting-client": "Awaiting client approval",
   "changes-requested": "Changes requested",
   "client-approved": "Client approved",
-  "v7-record": "Issued in NZ Insights Pro v7",
+  "v7-record": "Issued before the console",
 };
 
 /** What the platform knows about one CRP job's report, as read. */

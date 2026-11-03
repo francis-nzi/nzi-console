@@ -215,7 +215,7 @@ describe("the v7 book runner, against a real database", { skip: TEST_DATABASE_UR
       gapKeys: plan.gaps.map((gap) => gap.gapKey), acknowledgedDeltas: plan.deltas!.flagged }, reviewer());
     assert.deepEqual([outcome.data.approved, outcome.data.acknowledgedDeltas], [2, ["job", "d-gas"]]);
     const note = (await db.query(`SELECT reviewer_note FROM nzi_console.scope_row_review_history WHERE job_id='drift-job' LIMIT 1`)).rows[0]!.reviewer_note as string;
-    assert.match(note, /2 emission delta\(s\) against v7 investigated/);
+    assert.match(note, /2 emission delta\(s\) against the previous system investigated/);
     const snapshot = await createReviewedCrpSnapshot(database.pool, { jobId: "drift-job", expectedJobVersion: 1 }, reviewer());
     assert.ok(snapshot.data.snapshotId, "the normal snapshot path");
     const workspace = await withTenantRead(database.pool, ORG, (client) => getClientWorkspace(client, CLIENT));

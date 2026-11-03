@@ -16,7 +16,7 @@ const PHRASES: Array<[RegExp, string]> = [
   [/^reference\.value\.deactivated$/, "deactivated a lookup value"],
   [/^reference\.value\.reinstated$/, "reinstated a lookup value"],
   [/^team\.roster\.imported$/, "imported the team roster"],
-  [/^milestones\.imported$/, "backfilled milestones from v7"],
+  [/^milestones\.imported$/, "backfilled milestones"],
   [/^staff\.invite/, "invited a staff member"],
   [/^staff\.enrolment\.issue$/, "issued a sign-in enrolment"],
   [/^staff\.enrolment\.revoke$/, "revoked a sign-in enrolment"],

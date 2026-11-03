@@ -521,35 +521,35 @@ function ReingestAttestPanel({ jobId, readKey, onAttested }: { jobId: string; re
   const blockedReason = plan.reviewerRefusal ?? (plan.blocked.length ? `${plan.blocked.length} row${plan.blocked.length === 1 ? "" : "s"} cannot be attested — see below`
     : unacknowledged ? `${unacknowledged} flagged emission delta${unacknowledged === 1 ? "" : "s"} still to investigate` : !reason.trim() ? "A reason is required" : undefined);
   const deltaOf = (key: string) => key === "job" ? plan.deltas!.job : plan.deltas!.rows.find((row) => row.v7RowId === key)!;
-  const percent = (relative: number | null) => relative === null ? "v7 recorded 0" : `${relative > 0 ? "+" : ""}${(relative * 100).toFixed(1)}%`;
+  const percent = (relative: number | null) => relative === null ? "originally recorded 0" : `${relative > 0 ? "+" : ""}${(relative * 100).toFixed(1)}%`;
   return <div className="nz-assurance-signoff nz-attest" aria-label="Attest re-ingested rows">
     <div className="nz-sect">Attest re-ingested rows</div>
     <p style={{ fontSize: 13, margin: "4px 0 8px" }}>
-      &ldquo;I attest that these <b>{plan.attest.length}</b> row{plan.attest.length === 1 ? "" : "s"} carry NZ Insights Pro v7&rsquo;s input exactly, verified by re-ingest D7.2, with each emission by the console&rsquo;s own calculation.&rdquo;
+      &ldquo;I attest that these <b>{plan.attest.length}</b> row{plan.attest.length === 1 ? "" : "s"} carry the previous system&rsquo;s input exactly, verified by re-ingest D7.2, with each emission by the console&rsquo;s own calculation.&rdquo;
       {" "}Each is recorded as your own approval. Nothing is edited.
     </p>
-    {flagged.length ? <fieldset className="nz-banner warn" style={{ display: "block", margin: "0 0 8px" }} aria-label="Emission deltas against v7">
-      <legend style={{ fontWeight: 600 }}>Emission deltas against v7 — investigate each before attesting</legend>
-      <p style={{ fontSize: 12, margin: "2px 0 6px" }}>The console&rsquo;s figure differs from v7&rsquo;s reported one by more than 5%. A mis-mapped factor shows here, as does v7&rsquo;s own arithmetic; the console&rsquo;s figure stands once you have confirmed which.</p>
+    {flagged.length ? <fieldset className="nz-banner warn" style={{ display: "block", margin: "0 0 8px" }} aria-label="Emission deltas against the previous system">
+      <legend style={{ fontWeight: 600 }}>Emission deltas against the previous system — investigate each before attesting</legend>
+      <p style={{ fontSize: 12, margin: "2px 0 6px" }}>The console&rsquo;s figure differs from the previous system&rsquo;s reported one by more than 5%. A mis-mapped factor shows here, as does the previous system&rsquo;s own arithmetic; the console&rsquo;s figure stands once you have confirmed which.</p>
       {flagged.map((key) => {
         const delta = deltaOf(key);
         return <label key={key} style={{ display: "flex", gap: 8, alignItems: "baseline", fontSize: 12 }}>
           <input type="checkbox" checked={acknowledged.includes(key)}
             onChange={(event) => setAcknowledged((current) => event.target.checked ? [...current, key] : current.filter((item) => item !== key))} />
-          <span><b>{key === "job" ? "The job's total" : plan.deltaLabels[key] ?? key}</b> · console {formatTonnes(delta.calcTco2e)} t · v7 {formatTonnes(delta.v7Tco2e)} t · {percent(delta.relative)}</span>
+          <span><b>{key === "job" ? "The job's total" : plan.deltaLabels[key] ?? key}</b> · console {formatTonnes(delta.calcTco2e)} t · previous system {formatTonnes(delta.v7Tco2e)} t · {percent(delta.relative)}</span>
         </label>;
       })}
     </fieldset> : null}
     <ul className="muted" style={{ fontSize: 12, margin: "0 0 8px", paddingLeft: 18 }}>
       <li><b>{plan.attest.length}</b> pending row{plan.attest.length === 1 ? "" : "s"} approved{plan.skippedApproved ? <> · {plan.skippedApproved} already approved, left as they are</> : null}</li>
-      <li><b>{plan.gaps.length}</b> record-of-account gap{plan.gaps.length === 1 ? "" : "s"} resolved{plan.gaps.length ? <> ({zeros ? `${zeros} where v7 recorded zero` : ""}{zeros && totals ? ", " : ""}{totals ? `${totals} v7 reported total` : ""})</> : null}{plan.skippedResolvedGaps ? <> · {plan.skippedResolvedGaps} already resolved, kept</> : null}</li>
+      <li><b>{plan.gaps.length}</b> record-of-account gap{plan.gaps.length === 1 ? "" : "s"} resolved{plan.gaps.length ? <> ({zeros ? `${zeros} where the previous system recorded zero` : ""}{zeros && totals ? ", " : ""}{totals ? `${totals} reported total` : ""})</> : null}{plan.skippedResolvedGaps ? <> · {plan.skippedResolvedGaps} already resolved, kept</> : null}</li>
       {plan.excludedRejected.length ? <li>{plan.excludedRejected.length} rejected row{plan.excludedRejected.length === 1 ? "" : "s"} excluded — review {plan.excludedRejected.length === 1 ? "it" : "them"} individually: {plan.excludedRejected.map((row) => row.label).join(", ")}</li> : null}
       {plan.otherOpenGaps.length ? <li>{plan.otherOpenGaps.length} other open gap{plan.otherOpenGaps.length === 1 ? "" : "s"} not touched — each needs its own Resolve</li> : null}
     </ul>
     {plan.blocked.length ? <div className="nz-banner warn" role="alert"><div><b>Cannot attest while these rows fail a check:</b>
       <ul style={{ margin: "4px 0 0", paddingLeft: 18 }}>{plan.blocked.map((row) => <li key={row.rowId}>{row.label} — {row.reasons.join("; ")}</li>)}</ul></div></div> : null}
     <textarea className="nz-notes" style={{ width: "100%" }} value={reason} onChange={(event) => setReason(event.target.value)} rows={2}
-      aria-label="Attestation reason" placeholder="Reason (required) — e.g. v7's inputs carried; flagged deltas investigated" />
+      aria-label="Attestation reason" placeholder="Reason (required) — e.g. original inputs carried; flagged deltas investigated" />
     <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginTop: 6 }}>
       <GatedButton className="nz-btn pri" blocked={busy || !!blockedReason} blockedReason={!busy ? blockedReason : undefined} reasonClassName="muted nz-gated-reason"
         aria-busy={busy || undefined} onClick={() => void attest()}>{busy ? "Attesting…" : `Attest ${plan.attest.length} row${plan.attest.length === 1 ? "" : "s"}`}</GatedButton>

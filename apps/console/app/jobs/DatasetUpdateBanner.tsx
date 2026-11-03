@@ -15,7 +15,7 @@ const REASONS: Record<string, string> = {
   UNIT_CHANGED: "its factor's unit changed in the new edition",
   SCOPE_DROPPED: "its factor no longer covers this scope",
   SOURCE_MANAGED: "it is managed by an emission-register source — move the source first",
-  REINGESTED: "it was re-ingested from v7 and keeps v7's own factor — it can't be moved or deactivated here",
+  REINGESTED: "it was re-ingested and keeps its original factor — it can't be moved or deactivated here",
 };
 const tonnes = (value: number) => `${value.toLocaleString("en-GB", { maximumFractionDigits: 3 })} tCO₂e`;
 type Resolution = { rowId: string; action: "factor" | "deactivate"; factorId?: string | null };
@@ -117,7 +117,7 @@ function UpdateDrawer({ jobId, updates, onClose }: { jobId: string; updates: Dat
         </section>;
       })}
       {preview ? <div className="nz-kv"><span className="k">Job total</span><span className="v">{tonnes(preview.totals.beforeTco2e)} → <b>{tonnes(preview.totals.afterTco2e)}</b></span></div> : null}
-      {preview && (preview.untouched.migrated || preview.untouched.clientFactor) ? <p className="sub">Left as they are: {preview.untouched.migrated} row(s) of v7 history, {preview.untouched.clientFactor} on a client factor.</p> : null}
+      {preview && (preview.untouched.migrated || preview.untouched.clientFactor) ? <p className="sub">Left as they are: {preview.untouched.migrated} row(s) of imported history, {preview.untouched.clientFactor} on a client factor.</p> : null}
       {needsReason ? <label className="nz-fl"><span>Why move now? <span className="muted">· kept in the audit trail</span></span><input className="nz-inp" value={reason} maxLength={500} onChange={(e) => setReason(e.target.value)} /></label> : null}
       {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
     </div>

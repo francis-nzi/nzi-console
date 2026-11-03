@@ -153,7 +153,7 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
         onPageSize={nav.pageSize}
         onClear={query.search || status || role || position ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No staff yet</b><span>{editing.allowed ? "Add the first member, or import v7’s roster." : "The roster arrives with the v7 staff import."}</span></>
+          ? <><b>No staff yet</b><span>{editing.allowed ? "Add the first member." : ""}</span></>
           : <><b>Nobody matches</b><span>Clear the search or the filters — deactivated people are shown under “Deactivated”.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
@@ -272,7 +272,7 @@ function StaffDrawer({ row, pickers, editing, self, activeAdmins, rates, onClose
       <div className="nz-a-hint nz-a-mono" aria-label={`What ${roleLabels[draft.role]} can do`}>{capabilitiesOf(draft.role).join(" · ")}</div>
       <FieldRow>
         <TextField label="Sign-in" value={SIGN_IN[row.signIn]} readOnly />
-        <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : "Added here"} readOnly />
+        <TextField label="Source" value={row.provenance === "v7" ? "Imported" : "Added here"} readOnly />
       </FieldRow>
       {isSelf ? <div className="nz-a-hint-strip"><span aria-hidden="true">i</span><div>This is you. Your role and your deactivation are another admin’s to change.</div></div> : null}
       {onlyAdmin && !isSelf ? <div className="nz-a-hint-strip"><span aria-hidden="true">i</span><div>The organisation’s only active admin: they cannot be deactivated or moved to another role until someone else is an admin.</div></div> : null}
@@ -301,7 +301,7 @@ function useJson<T>(url: string, refresh: number): { state: "loading" } | { stat
 
 const ACTION_LABEL: Record<string, string> = {
   "staff.added": "Added", "staff.updated": "Details changed", "staff.role.assign": "Role changed", "staff.deactivated": "Deactivated",
-  "staff.reinstated": "Reinstated", "staff.imported": "Imported from v7",
+  "staff.reinstated": "Reinstated", "staff.imported": "Imported",
 };
 
 function HistoryPanel({ userId }: { userId: string }) {

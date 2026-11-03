@@ -27,8 +27,8 @@ export function PreviewEmpty({ jobId }: { jobId: string }) {
   const back = <Link className="nz-btn" href="/report-preview">Choose another job</Link>;
 
   if (row === undefined) return shell("…", "Report preparation", "Checking this job", <p>Reading the job's report state…</p>, back);
-  if (row && row.v7Record && !row.hasSnapshot) return shell("v7", "NZ Insights Pro v7 · awaiting re-compose", `${row.jobNumber} · ${row.client}`,
-    <><p>This period's record of account is its NZ Insights Pro v7 report — there is no console snapshot to compose yet. It is slated for re-compose: once its v7 figures are re-ingested and reviewed, it can be prepared here.</p>
+  if (row && row.v7Record && !row.hasSnapshot) return shell("v7", "Earlier record · awaiting re-compose", `${row.jobNumber} · ${row.client}`,
+    <><p>This period's record of account is its earlier issued report — there is no console snapshot to compose yet. It is slated for re-compose: once its figures are re-ingested and reviewed, it can be prepared here.</p>
       <p className="nz-v7-record-line">{v7RecordLine(row.v7Report)} Its content is kept sealed as issued.</p></>,
     <><Link className="nz-btn pri" href={`/jobs/${encodeURIComponent(jobId)}`}>Open the job</Link>{back}</>);
   if (row) return shell("+", "Ready for first record", `${row.jobNumber} · ${row.client}`,

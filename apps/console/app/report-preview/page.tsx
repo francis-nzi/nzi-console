@@ -64,7 +64,7 @@ const PREPARE_CHROME = { activeId: "reports", label: "Reports", href: "/reports"
  * A2/A3: the picker is the Reports register — the same rows, filters and link logic — so a job is found by client, consultant,
  * stage, year or search instead of a flat scroll, and an imported job says it is awaiting re-compose before anyone opens it.
  */
-function PreviewJobSelection(){return <PrepareFrame crumbs={prepareReportCrumbs()}><section className="nz-preview-picker"><div className="nz-section-intro"><div><span className="nz-eyebrow">Governed report preparation</span><h1>Choose a CRP job to prepare</h1><p>A report is assembled from a job's reviewed snapshot. Jobs ready to prepare say <b>Prepare report</b>; imported v7 history is marked as awaiting re-compose.</p></div><a className="nz-btn" href="/reports">Return to publication studio</a></div><ReportRegisterView mode="picker"/></section></PrepareFrame>}
+function PreviewJobSelection(){return <PrepareFrame crumbs={prepareReportCrumbs()}><section className="nz-preview-picker"><div className="nz-section-intro"><div><span className="nz-eyebrow">Governed report preparation</span><h1>Choose a CRP job to prepare</h1><p>A report is assembled from a job's reviewed snapshot. Jobs ready to prepare say <b>Prepare report</b>; imported history is marked as awaiting re-compose.</p></div><a className="nz-btn" href="/reports">Return to publication studio</a></div><ReportRegisterView mode="picker"/></section></PrepareFrame>}
 
 function LiveSnapshotPreview({
   snapshot,

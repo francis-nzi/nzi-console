@@ -101,7 +101,7 @@ export function ServiceCatalogueBoard({ page, pickers, query, editing, pricing, 
         onPageSize={nav.pageSize}
         onClear={query.search || status || category ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No catalogue items yet</b><span>{editing.allowed ? "Add the first one, or import v7’s." : "Items arrive with the v7 catalogue import."}</span></>
+          ? <><b>No catalogue items yet</b><span>{editing.allowed ? "Add the first one." : ""}</span></>
           : <><b>No items match</b><span>Clear the search or the filters to see the whole catalogue.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
@@ -247,7 +247,7 @@ function ItemDrawer({ row, pickers, editing, pricing, onClose, onSaved }: {
       </FieldRow>}
     {!isNew && row.amounts !== null ? <p className="nz-a-hint">Changing these records <b>that</b> they changed and who changed them — never the figures.</p> : null}
 
-    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : row.provenance === "seeded" ? "Seeded" : "Added here"} readOnly /> : null}
+    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported" : row.provenance === "seeded" ? "Seeded" : "Added here"} readOnly /> : null}
     {!isNew ? <Switch label="Active" description="Inactive items leave the pickers but still resolve wherever they are named." checked={draft.active}
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}
     {deactivating ? <TextAreaField label="Reason for deactivating" hint="Required — it is recorded in the audit log." value={draft.reason} rows={2} required

@@ -68,7 +68,7 @@ describe("re-ingested rows are attest-only: every write refused but review, gap 
   const runStatus = async (runId: string) => (await db.query(`SELECT status FROM nzi_console.v7_reingest_runs WHERE run_id=$1`, [runId])).rows[0]!.status;
   const attestOnly = (error: unknown) => {
     assert.deepEqual(codes(error), [REINGESTED_ROW_ATTEST_ONLY]);
-    assert.match((error as CommandValidationError).issues[0]!.message, /re-ingested from NZ Insights Pro v7.*attest-only.*revert the re-ingest and re-run it with a corrected plan/);
+    assert.match((error as CommandValidationError).issues[0]!.message, /was re-ingested and reproduces the previous record of account.*attest-only.*revert the re-ingest and re-run it with a corrected plan/);
     return true;
   };
 

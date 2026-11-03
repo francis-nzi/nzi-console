@@ -42,7 +42,7 @@ export function planReschedule(rows: ReadonlyMap<MilestoneKind, ScheduleRow>, te
     const item = template?.items.find((candidate) => candidate.kind === kind && candidate.included);
     const to = item && anchor ? addCalendarDays(anchor.anchor, item.daysOffset) : null;
     if (row && row.completed_at) return { kind, action: "keep", from: row.due_date, to: row.due_date, because: "completed — never moved" };
-    if (row && row.due_source !== "template") return { kind, action: "keep", from: row.due_date, to: row.due_date, because: row.due_source === "manual" ? "set by hand — never moved" : "from v7 — never moved" };
+    if (row && row.due_source !== "template") return { kind, action: "keep", from: row.due_date, to: row.due_date, because: row.due_source === "manual" ? "set by hand — never moved" : "imported — never moved" };
     if (!row) return to ? { kind, action: "generate", from: null, to, because: "scheduled by the template" } : { kind, action: "unchanged", from: null, to: null, because: "not scheduled" };
     if (!to) return row.due_date === null ? { kind, action: "unchanged", from: null, to: null, because: "not scheduled" } : { kind, action: "clear", from: row.due_date, to: null, because: "the template no longer schedules it" };
     return row.due_date === to ? { kind, action: "unchanged", from: to, to, because: "already on the template's date" } : { kind, action: "move", from: row.due_date, to, because: "recomputed from the template" };

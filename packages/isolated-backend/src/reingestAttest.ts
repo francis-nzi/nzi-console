@@ -28,9 +28,9 @@ import { CommandValidationError, isV7ReingestPrincipal, runPostgresCommand, runP
 import { getAssuranceScreen } from "./readModels";
 import { normaliseV7Unit, sameV7Unit } from "./v7Reingest";
 
-export const REINGEST_ATTESTATION = "Attested: carries v7's input exactly, verified by re-ingest D7.2; emission by the console's calculation";
+export const REINGEST_ATTESTATION = "Attested: carries the previous system's input exactly, verified by re-ingest D7.2; emission by the console's calculation";
 export const UNMAPPED_REPORTED_TOTAL_REASON: string = V7_REPORTED_TOTAL_REASONS[0];
-export const ZERO_RECORD_OF_ACCOUNT_REASON = "v7 recorded zero (record of account)";
+export const ZERO_RECORD_OF_ACCOUNT_REASON = "recorded zero in the previous system (record of account)";
 
 export type AttestRow = { rowId: string; version: number; label: string; categoryCode: string | null; tco2e: number };
 export type AttestBlocked = { rowId: string; label: string; reasons: string[] };
@@ -128,12 +128,12 @@ export async function planReingestAttestation(db: Queryable, context: Pick<Comma
   /** D7.2 as refined (R2): why the row no longer carries v7's input (a reported total: v7's figure), or null. */
   const inputMiss = (row: RunRow): string | null => {
     if (isReportedTotal(row)) return row.reported !== null && tco2e(row) !== null && withinV7Tolerance(tco2e(row)!, Number(row.reported)) ? null
-      : `its reported total ${tco2e(row) ?? "none"} t is not v7's ${row.reported ?? "missing"} t (D7.2)`;
+      : `its reported total ${tco2e(row) ?? "none"} t is not the previous system's ${row.reported ?? "missing"} t (D7.2)`;
     const v7Quantity = row.v7_qty === null || row.v7_qty === "" ? null : Number(row.v7_qty), v7Unit = normaliseV7Unit(row.v7_uom);
     const v7Pct = v7ApplyPct(row.v7_apply_pct === null || row.v7_apply_pct === "" ? null : Number(row.v7_apply_pct));
-    if (row.quantity === null || v7Quantity === null || !sameV7CarriedQuantity(Number(row.quantity), v7Quantity, row.has_months)) return `its quantity ${row.quantity ?? "none"} is no longer v7's ${v7Quantity ?? "none"} (D7.2)`;
-    if (row.unit === null || v7Unit === null || !sameV7Unit(row.unit, v7Unit)) return `its unit ${row.unit ?? "none"} is no longer v7's ${v7Unit ?? "none"} (D7.2)`;
-    if (!sameV7Quantity(row.apply_pct === null ? 100 : Number(row.apply_pct), v7Pct)) return `its apportionment is no longer v7's ${v7Pct}% (D7.2)`;
+    if (row.quantity === null || v7Quantity === null || !sameV7CarriedQuantity(Number(row.quantity), v7Quantity, row.has_months)) return `its quantity ${row.quantity ?? "none"} is no longer the previous system's ${v7Quantity ?? "none"} (D7.2)`;
+    if (row.unit === null || v7Unit === null || !sameV7Unit(row.unit, v7Unit)) return `its unit ${row.unit ?? "none"} is no longer the previous system's ${v7Unit ?? "none"} (D7.2)`;
+    if (!sameV7Quantity(row.apply_pct === null ? 100 : Number(row.apply_pct), v7Pct)) return `its apportionment is no longer the previous system's ${v7Pct}% (D7.2)`;
     return null;
   };
   const inScope = new Map<string, RunRow>();
@@ -214,7 +214,7 @@ function attestReingestHandler(input: CommandInputMap["scope.review.attest_reing
     const acknowledged = [...(input.acknowledgedDeltas ?? [])].sort().join("|");
     if (flagged !== acknowledged)
       fail("acknowledgedDeltas", "DELTAS_NOT_ACKNOWLEDGED", plan.deltas?.flagged.length
-        ? `${plan.deltas.flagged.length} emission delta(s) against v7 are flagged (${plan.deltas.flagged.slice(0, 5).join(", ")}${plan.deltas.flagged.length > 5 ? "…" : ""}); investigate and acknowledge each before attesting.`
+        ? `${plan.deltas.flagged.length} emission delta(s) against the previous system are flagged (${plan.deltas.flagged.slice(0, 5).join(", ")}${plan.deltas.flagged.length > 5 ? "…" : ""}); investigate and acknowledge each before attesting.`
         : "No emission delta is flagged now — preview it again.");
     // Preview == write: the rows at the versions shown, and the gap keys shown — or something moved.
     const planned = plan.attest.map((row) => `${row.rowId}@${row.version}`).sort().join("|");
@@ -223,7 +223,7 @@ function attestReingestHandler(input: CommandInputMap["scope.review.attest_reing
       fail("rows", "CHANGED_SINCE_PREVIEW", "The rows or gaps changed since the preview — preview it again.");
     if (plan.attest.length === 0 && plan.gaps.length === 0) fail("rows", "NOTHING_TO_ATTEST", "Nothing is left to attest on this job.");
 
-    const acknowledgedNote = plan.deltas?.flagged.length ? `; ${plan.deltas.flagged.length} emission delta(s) against v7 investigated` : "";
+    const acknowledgedNote = plan.deltas?.flagged.length ? `; ${plan.deltas.flagged.length} emission delta(s) against the previous system investigated` : "";
     const note = `${REINGEST_ATTESTATION} (run ${plan.runId}${acknowledgedNote}) — ${context.reason!.trim()}`;
     for (const row of plan.attest) {
       // Each row its own approval, exactly as scope.review.approve records one: the history entry, then the review columns.

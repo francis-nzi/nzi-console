@@ -152,7 +152,7 @@ describe("scope.review.attest_reingest, against a real database", { skip: TEST_D
       const gas = await live(JOB, "v7-gas"), zero = await live(JOB, "v7-zero");
       let plan = await preview(JOB);
       assert.deepEqual(plan.blocked.map((row) => row.rowId), [gas.id]);
-      assert.match(plan.blocked[0]!.reasons.join(" "), /its quantity none is no longer v7's 1000 \(D7\.2\)/);
+      assert.match(plan.blocked[0]!.reasons.join(" "), /its quantity none is no longer the previous system's 1000 \(D7\.2\)/);
       await assert.rejects(act(JOB, plan), (error) => codes(error).includes("ATTEST_BLOCKED"));
       assert.equal(await attestedHistory(JOB), 0, "nothing written");
       await db.query(`UPDATE nzi_console.job_scope_rows SET quantity = 1000, override_tco2e = NULL, override_reason = NULL, version = version + 1 WHERE scope_row_id = $1`, [gas.id]);

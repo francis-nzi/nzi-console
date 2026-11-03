@@ -105,7 +105,7 @@ export function SuppliersBoard({ page, parts, pickers, query, editing, rating, s
         onPageSize={nav.pageSize}
         onClear={query.search || status ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No suppliers yet</b><span>{editing.allowed ? "Add the first one, or import v7’s." : "Suppliers arrive with the v7 supplier import."}</span></>
+          ? <><b>No suppliers yet</b><span>{editing.allowed ? "Add the first one." : ""}</span></>
           : <><b>No suppliers match</b><span>Clear the search or the filter to see them all.</span></>}
         onSelect={(row) => setOpen({ supplierId: row.supplierId })}
         busy={nav.pending}
@@ -187,7 +187,7 @@ function SupplierDrawer({ row, parts, pickers, editing, rating, onClose, onCreat
       readOnly={readOnly} onChange={(name) => setDraft({ ...draft, name })} />
     <TextField label="Website" value={draft.website} maxLength={SUPPLIER_WEBSITE_MAX} placeholder="Optional" error={issues.website}
       readOnly={readOnly} onChange={(website) => setDraft({ ...draft, website })} />
-    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : "Added here"} readOnly /> : null}
+    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported" : "Added here"} readOnly /> : null}
     {!isNew ? <Switch label="Active" description="An inactive supplier keeps its contacts and rate card; nothing new can be added to it." checked={draft.active}
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}
     {deactivating ? <TextAreaField label="Reason for deactivating" hint="Required — it is recorded in the audit log." value={draft.reason} rows={2} required

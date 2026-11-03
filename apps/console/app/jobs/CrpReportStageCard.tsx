@@ -23,7 +23,7 @@ export function reportStageNext(stage: ReportStage, readyForReporting: boolean):
     case "awaiting-client": return "Published — the client has not yet approved it.";
     case "changes-requested": return "Published — the client has asked for changes.";
     case "client-approved": return "Published and approved by the client.";
-    case "v7-record": return "This period's record of account is its v7 report.";
+    case "v7-record": return "This period's record of account is its earlier issued report.";
   }
 }
 
