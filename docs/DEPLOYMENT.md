@@ -22,7 +22,7 @@ FuelCap services.
 
 | Key | Value |
 |---|---|
-| `NODE_VERSION` | `20.18.0` |
+| `NODE_VERSION` | `22.23.4` |
 | `NEXT_PUBLIC_APP_ENV` | `staging` |
 | `NZI_DATA_MODE` | `isolated-api` |
 | `NZI_DATABASE_BOUNDARY` | `isolated-non-production` |
