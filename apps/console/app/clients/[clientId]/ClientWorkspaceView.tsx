@@ -3,12 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AppShell, ClientWorkspaceNav, Drawer, EvidenceDrawer, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, ClientWorkspaceNav, Drawer, EvidenceDrawer, TopBar } from "@nzi/ui";
 import { siteLifecycleStatus, type FigureEvidence } from "@nzi/contracts";
 import { clientStatusMeta } from "@nzi/mock-data";
 import type { ClientHistoryEntry, ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import type { ScreenResult } from "@nzi/contracts";
-import { NAV, USER } from "../../lib/nav";
+import { StaffRail } from "../../lib/StaffRail";
 import { useEditAccess, useHasCapability } from "../../lib/useEditAccess";
 import { clientCrumbs, clientJobsHref, crumbTrail } from "../../lib/crumbTrail";
 import { AiProfileArea } from "./AiProfileArea";
@@ -145,7 +145,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   const latestNote = evidence.state === "empty" ? "Not reported" : yoy.value !== null ? `${formatFigure(yoy)} vs prior reviewed year` : "No earlier reviewed year";
 
   return <AppShell
-    rail={<WorkspaceRail sections={NAV} activeId="clients" user={USER} />}
+    rail={<StaffRail activeId="clients" />}
     areas={<ClientWorkspaceNav groups={clientAreaGroups({
       analytics: history.length || null, reporting: workspace.reports.length || null,
       comms: workspace.messages.length || null, files: workspace.files.length || null,

@@ -5,7 +5,7 @@ import { JobClientMark } from "../JobClientMark";
 import { LogTimeButton } from "../JobTimePanel";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { AppShell, GatedButton, NziIcon, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, GatedButton, NziIcon, TopBar } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
   trainingAttendanceForBooking, trainingCertificateDecision, trainingPlaceGroups,
@@ -14,7 +14,7 @@ import {
 } from "@nzi/contracts";
 import { jobFamilyMeta, type FamilyJob } from "@nzi/mock-data";
 import type { TrainingRunRecord } from "@nzi/isolated-backend";
-import { NAV, USER } from "../../lib/nav";
+import { StaffRail } from "../../lib/StaffRail";
 import { formatDate } from "../../lib/formatDate";
 import { useEditAccess } from "../../lib/useEditAccess";
 import { crumbTrail, jobCrumbs } from "../../lib/crumbTrail";
@@ -49,7 +49,7 @@ export function TrainingWorkspace({ job, runs, today, writeEnabled, milestones }
   const review = useEditAccess("snapshot.review", writeEnabled);
   const places = useEditAccess("training.entitlement.manage", writeEnabled);
 
-  return <AppShell rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}>
+  return <AppShell rail={<StaffRail activeId="jobs" />}>
     <TopBar crumbs={crumbTrail(jobCrumbs(header, { label: "Training run" }))} />
     <div className="nz-head nz-family-head"><div className="nz-job-heading">
       <div className="nz-job-client"><JobClientMark header={header} /><div>

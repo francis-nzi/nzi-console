@@ -3,11 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AppShell, DataList, EvidenceDrawer, RiskBadge, RiskLegend, TopBar, WorkspaceRail, type DataListColumn, type DataListFilter } from "@nzi/ui";
+import { AppShell, DataList, EvidenceDrawer, RiskBadge, RiskLegend, TopBar, type DataListColumn, type DataListFilter } from "@nzi/ui";
 import { clientStatusMeta } from "@nzi/mock-data";
 import { clientListSpec, hasActiveFilters, PAGE_SIZES, type ClientListFilterKey, type ClientListQuery } from "@nzi/contracts";
 import type { ClientListPage, ClientListRow } from "@nzi/isolated-backend";
-import { NAV, USER } from "../lib/nav";
+import { StaffRail } from "../lib/StaffRail";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { useListNavigation } from "../lib/useListNavigation";
 
@@ -97,7 +97,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
   const router = useRouter();
   const nav = useListNavigation(clientListSpec, query, "/clients");
   const [selectedId, setSelectedId] = useState<string>(page.rows[0]?.id ?? "");
-  const rail = <WorkspaceRail sections={NAV} activeId="clients" user={USER} />;
+  const rail = <StaffRail activeId="clients" />;
   const topBar = <TopBar crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients"))} />;
 
   // No clients at all is a different state from none matching the filters, and keeps its own call to action.

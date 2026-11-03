@@ -30,10 +30,10 @@ import type {
 import { includedSites, monthsBetween } from "@nzi/contracts";
 import { crpScopeCategoryPath, crpScopeOptions, jobWorkflowStages } from "@nzi/contracts";
 import type { FamilyJob } from "@nzi/mock-data";
-import { AppShell, Collapsible, Drawer, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar, WorkspaceRail } from "@nzi/ui";
+import { AppShell, Collapsible, Drawer, EvidenceDrawer, GatedButton, InfoTip, Tabs, TabPanel, TopBar } from "@nzi/ui";
 import { rowSourceDetail } from "./rowSourceDetail";
 import { RowCalcBanner, RowKeyFields } from "./RowDrawerFrame";
-import { NAV, USER } from "../lib/nav";
+import { StaffRail } from "../lib/StaffRail";
 import { crumbTrail, jobCrumbs } from "../lib/crumbTrail";
 import { useEditAccess } from "../lib/useEditAccess";
 import { datasetAddOptions } from "./datasetAddOptions";
@@ -213,11 +213,9 @@ export function CrpScopeWorkspace({
 }) {
   // Phase 3a: capture offers only the sites this job reports on; the Sites drawer lists them all, with the toggle.
   const captureSites = includedSites(sites);
-  const qaNotice: { kind: "ok" | "warn"; text: string } = qa.migratedRows > 0
-    ? {
-        kind: "warn",
-        text: "Imported from NZ Insights Pro v7: this period's record of account is its v7 report, so no console snapshot is made.",
-      }
+  // An imported (v7) period shows no QA banner: its record of account is its v7 report, and the readiness counts below are not about it.
+  const qaNotice: { kind: "ok" | "warn"; text: string } | null = qa.migratedRows > 0
+    ? null
     : qa.readyForReporting
     ? {
         kind: "ok",
@@ -733,7 +731,7 @@ export function CrpScopeWorkspace({
 
   return (
     <AppShell
-      rail={<WorkspaceRail sections={NAV} activeId="jobs" user={USER} />}
+      rail={<StaffRail activeId="jobs" />}
       drawer={drawer}
     >
       <TopBar

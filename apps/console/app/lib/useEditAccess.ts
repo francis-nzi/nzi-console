@@ -15,7 +15,7 @@ export type EditAccess =
   | { state: "denied"; reason: string }
   | { state: "unavailable"; reason: string };
 
-export type StaffMe = { userId: string; organisationId: string; role: StaffRole; matrixVersion: number; capabilities: CapabilityGrant[] };
+export type StaffMe = { userId: string; displayName?: string | null; organisationId: string; role: StaffRole; matrixVersion: number; capabilities: CapabilityGrant[] };
 
 const UNCHECKED = "Your permissions could not be checked, so editing is unavailable.";
 const DENIED: Partial<Record<Capability, string>> = {
