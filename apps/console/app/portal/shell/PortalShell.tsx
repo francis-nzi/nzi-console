@@ -7,6 +7,8 @@
 import type { ReactNode } from "react";
 import { NziLogo, NziMark } from "@nzi/ui";
 import { LogoMark } from "../../lib/LogoMark";
+import { portalFeatureEnabled } from "../../lib/portalFlags";
+import { PortalBell } from "../messages/PortalBell";
 import { useOrganisationName } from "../../lib/OrganisationNameProvider";
 import { usePortalSurface } from "../portalSurface";
 import { SHELL_GROUP_LABELS, shellJobLabel, shellNav, switchJobPath, type ShellGroup, type ShellJob, type ShellView } from "./shellNav";
@@ -105,6 +107,8 @@ export function PortalShell({ client, jobs, jobId, view, person, children }: Por
       <div className="nzp-main">
         <div className="nzp-utilbar">
           <div className="nzp-crumb">{client.name}<span className="sep" aria-hidden="true">›</span>{job ? <>{job.number}<span className="sep" aria-hidden="true">›</span></> : null}<b>{VIEW_LABELS[view]}</b></div>
+          {/* M2: the bell - the Updates feed from any page, for the signed-in client only (not the staff preview), behind portal-conversations. */}
+          {person.kind === "client" && portalFeatureEnabled("portal-conversations") ? <PortalBell /> : null}
         </div>
         <div className="nzp-content" id="portal-main-content" tabIndex={-1}>{children}</div>
       </div>

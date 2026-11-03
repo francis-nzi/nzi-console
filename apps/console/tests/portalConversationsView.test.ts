@@ -81,7 +81,9 @@ describe("the Conversations lane", () => {
 
   it("is dark behind portal-conversations: off, and in the staff preview, Messages is the report thread it has been", async () => {
     const view = read("app/portal/messages/MessagesView.tsx");
-    assert.match(view, /portalFeatureEnabled\("portal-conversations"\) && !surface\.readOnly \? <PortalConversations jobId=\{jobId\} \/> : <PortalMessages jobId=\{jobId\} \/>/);
+    // M2 added the Updates lane beside Conversations; off, or in the preview, it is still the report thread.
+    assert.match(view, /if \(!\(portalFeatureEnabled\("portal-conversations"\) && !surface\.readOnly\)\) return <PortalMessages jobId=\{jobId\} \/>;\s+return <TwoLanes jobId=\{jobId\} \/>;/);
+    assert.match(view, /<PortalConversations jobId=\{jobId\} \/> : <PortalUpdatesFeed \/>/);
     assert.match(read("app/portal/jobs/[jobId]/messages/page.tsx"), /<MessagesView jobId=\{jobId\} \/>/);
     assert.match(read("app/clients/[clientId]/portal-preview/jobs/[jobId]/messages/page.tsx"), /PortalMessages/, "the staff preview is unchanged");
     const panelSlot = read("app/clients/[clientId]/PortalManagementArea.tsx");

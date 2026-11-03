@@ -179,3 +179,18 @@
 .nzp-conv-new{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
 .nzp-conv-new label{display:flex;flex-direction:column;gap:2px;font-size:12px}
 .nzp-conv-check{flex-direction:row!important;align-items:center;gap:6px!important}
+/* Updates - the notices lane and the bell (RULING-portal-messages, M2). */
+.nzp-utilbar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.nzp-bell{position:relative}
+.nzp-bell-btn{position:relative;background:transparent;border:1px solid var(--nzp-line);border-radius:999px;width:36px;height:36px;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;color:inherit}
+.nzp-bell-btn svg{width:18px;height:18px}
+.nzp-bell-count{position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;border-radius:999px;background:#FF5C48;color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center}
+.nzp-bell-panel{position:absolute;right:0;top:44px;z-index:30;width:min(420px,92vw);max-height:70vh;overflow:auto;background:var(--nzp-card);border:1px solid var(--nzp-line);border-radius:var(--nzp-r);box-shadow:0 8px 28px rgba(11,27,43,.18);padding:12px}
+.nzp-notices{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}
+.nzp-notice{display:flex;flex-direction:column;align-items:flex-start;gap:4px;padding:10px 12px;border:1px solid var(--nzp-line);border-radius:var(--nzp-r);background:var(--nzp-card)}
+.nzp-notice.new{border-color:#0B7A4B;background:#F2FBF6}.nzp-notice.warn{border-color:#FFC24B;background:#FFF8E8}
+.nzp-notice p{margin:0;font-size:13px;overflow-wrap:anywhere;white-space:pre-wrap}
+.nzp-notice-top{display:flex;align-items:center;gap:8px;width:100%}
+.nzp-notice-top .nz-hint{margin-left:auto}
+.nzp-notice-new{font-size:11px;font-weight:700;color:#fff;background:#0B7A4B;border-radius:999px;padding:0 7px}
+.nzp-lanes{display:flex;gap:6px;margin:0 0 12px}

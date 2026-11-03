@@ -84,6 +84,7 @@ export * from "./commands";
 export * from "./portalFiles";
 export * from "./portalClientAccess";
 export * from "./portalConversations";
+export * from "./portalNotices";
 export * from "./portalSpendImport";
 export * from "./contactConsent";
 export * from "./knowledge";

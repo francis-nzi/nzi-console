@@ -266,6 +266,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "portal.thread.start": client,
   "portal.message.post": client,
   "portal.thread.read": client,
+  "portal.notices.seen": client,
   "client.thread.start": client,
   "client.message.post": client,
   "client.thread.update": client,
@@ -409,7 +410,7 @@ async function authorizePortalCommand<K extends CommandKey>(db: Queryable, key: 
   const subject = subjectOf[key](input);
   if ((commandDefinitions[key] as { permission: string }).permission === "portal.plan") return authorizePortalPlanCommand(db, subject, context);
   // Portal files: the client's own, by an active user — the same session rule as the plan; the file's job grant is the handler's.
-  if (key === "portal.file.upload" || key === "portal.file.download" || key === "portal.thread.start" || key === "portal.message.post" || key === "portal.thread.read") return authorizePortalPlanCommand(db, subject, context);
+  if (key === "portal.file.upload" || key === "portal.file.download" || key === "portal.thread.start" || key === "portal.message.post" || key === "portal.thread.read" || key === "portal.notices.seen") return authorizePortalPlanCommand(db, subject, context);
   if (subject.kind !== "job") throw new AuthorizationError("tenant", TENANT_REFUSED);
   const access = await resolveAccess(db, context.organisationId, context.actorId, "job", subject.id);
   if (access.clientId !== context.portal.clientId) throw new AuthorizationError("tenant", "This job is not available to your account.");
