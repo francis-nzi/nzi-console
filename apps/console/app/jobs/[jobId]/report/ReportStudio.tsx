@@ -328,7 +328,7 @@ export function ReportStudioEmpty({ jobId }: { jobId: string }) {
     <section className="nz-empty nzs-empty" data-studio-empty={state}>
       <h1>Nothing to print yet</h1>
       {state === "checking" ? <p>Reading the job&rsquo;s report state…</p>
-        : state === "v7" ? <><p>This period&rsquo;s record of account is its NZ Insights Pro v7 report — there is no console snapshot to compose yet. It is slated for re-compose: once its v7 figures are re-ingested and reviewed, its report is drafted here.</p>
+        : state === "v7" ? <><p>This period&rsquo;s record of account is its earlier issued report — there is no console snapshot to compose yet. It is slated for re-compose: once its figures are re-ingested and reviewed, its report is drafted here.</p>
           <p className="nz-v7-record-line">{v7RecordLine(row!.v7Report)} Its content is kept sealed as issued.</p></>
         : state === "awaiting-approval" ? <p>This job&rsquo;s reviewed snapshot is awaiting approval by someone other than its preparer. Once it is approved on the job, its report is drafted here.</p>
         : state === "no-evidence" ? <p>Report Printing composes the report from the job&rsquo;s approved reviewed snapshot. This job has none yet: add and review its evidence, then take and approve a snapshot of it.</p>

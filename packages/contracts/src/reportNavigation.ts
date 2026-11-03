@@ -19,7 +19,7 @@ export type ReportLink =
   | { kind: "prepare"; label: "Prepare report"; href: string }
   | { kind: "add-evidence"; label: "Add evidence"; href: string }
   /** No link: v7's report is the record of account and its content is sealed (Q1 (b)) — the metadata is shown instead. */
-  | { kind: "v7-record"; label: "v7 record of account · awaiting re-compose"; href: null };
+  | { kind: "v7-record"; label: "Earlier record of account · awaiting re-compose"; href: null };
 
 /**
  * A1: the one report link a job has, computed from its state — so the same control does the right thing before and after a
@@ -32,7 +32,7 @@ export type ReportLink =
 export function reportLinkFor(facts: ReportNavFacts, options: { studio?: boolean } = {}): ReportLink {
   if (facts.publishedVersionId) return { kind: "published", label: "View composed report", href: `/reports/${encodeURIComponent(facts.publishedVersionId)}` };
   if (facts.hasSnapshot) return { kind: "prepare", label: "Prepare report", href: options.studio ? `/jobs/${encodeURIComponent(facts.jobId)}/report/printing` : `/report-preview?jobId=${encodeURIComponent(facts.jobId)}` };
-  if (facts.v7Record) return { kind: "v7-record", label: "v7 record of account · awaiting re-compose", href: null };
+  if (facts.v7Record) return { kind: "v7-record", label: "Earlier record of account · awaiting re-compose", href: null };
   return { kind: "add-evidence", label: "Add evidence", href: `/jobs/${encodeURIComponent(facts.jobId)}` };
 }
 
@@ -44,16 +44,16 @@ export function reportEligibilityOf(facts: ReportNavFacts): ReportEligibility {
 }
 export const reportEligibilityLabels: Record<ReportEligibility, string> = {
   "compose-eligible": "Compose-eligible",
-  "v7-awaiting": "v7 · awaiting re-compose",
+  "v7-awaiting": "Earlier record · awaiting re-compose",
   "no-evidence": "No evidence yet",
 };
 
 /** Q1 (b): the v7 record of account, from its unsealed metadata — what there honestly is, with no link to sealed content. */
 export type V7ReportMeta = { version: number; status: string; finalisedAt: string | null; dataHash: string | null };
 export function v7RecordLine(meta: V7ReportMeta | null): string {
-  if (!meta) return "Record of account: imported from NZ Insights Pro v7 (no v7 report version was issued for it).";
+  if (!meta) return "Record of account: imported (no report version was issued for it).";
   const finalised = meta.finalisedAt ? ` · finalised ${meta.finalisedAt.slice(0, 10)}` : "";
-  return `Record of account: NZ Insights Pro v7 report, version ${meta.version} · ${meta.status}${finalised}.`;
+  return `Record of account: issued report, version ${meta.version} · ${meta.status}${finalised}.`;
 }
 
 // ── A3: the filters both surfaces share ─────────────────────────────────────────────────────────────────────────────────────

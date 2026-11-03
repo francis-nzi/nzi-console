@@ -839,7 +839,7 @@ export async function refuseMigratedRow(db: Queryable, organisationId: string, j
   );
   if (found.rows[0]?.origin === "migrated")
     throw new CommandValidationError([{ field: "rowId", code: MIGRATED_ROW_IMMUTABLE,
-      message: `This row is migrated from NZ Insights Pro v7 and is kept exactly as v7 recorded it, so it cannot be ${act} here. Its figure and review status are v7's (decisions 4 and 7).` }]);
+      message: `This row was imported and is kept exactly as it was recorded, so it cannot be ${act} here. Its figure and review status are fixed.` }]);
 }
 
 /**
@@ -853,7 +853,7 @@ export const REINGESTED_ROW_ATTEST_ONLY = "REINGESTED_ROW_ATTEST_ONLY";
 export const isV7ReingestPrincipal = (context: Pick<CommandContext, "actorId" | "principal">) =>
   context.actorId === V7_REINGEST_ACTOR && context.principal === "system";
 export const reingestedRowMessage = (act: string) =>
-  `This row was re-ingested from NZ Insights Pro v7 and reproduces v7's record of account, so it can't be ${act}. In review it is attest-only: resolve its gaps, then approve or reject it. To change it, revert the re-ingest and re-run it with a corrected plan.`;
+  `This row was re-ingested and reproduces the previous record of account, so it can't be ${act}. In review it is attest-only: resolve its gaps, then approve or reject it. To change it, revert the re-ingest and re-run it with a corrected plan.`;
 export async function refuseReingestedRow(db: Queryable, context: CommandContext, jobId: string, rowId: string, act: string): Promise<void> {
   if (isV7ReingestPrincipal(context)) return;
   const found = await db.query<{ reingested_from_row_id: string | null }>(
@@ -1502,7 +1502,7 @@ export async function rollforwardScopeRows(pool:PoolLike,input:CommandInputMap["
             (SELECT f.label FROM nzi_console.emission_factors_display f WHERE f.organisation_id=r.organisation_id AND f.dataset_id=r.dataset_id AND f.factor_id=r.factor_id) AS factor_own_label
      FROM nzi_console.job_scope_rows r
      WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=ANY($3::text[]) AND enabled=true
-       -- A migrated row is v7's history: it never seeds a live row, so it is skipped (§5.1).
+       -- A migrated row is imported history: it never seeds a live row, so it is skipped (§5.1).
        AND r.origin='live'
        AND NOT EXISTS(SELECT 1 FROM nzi_console.job_scope_rows rf WHERE rf.organisation_id=$1 AND rf.job_id=$4 AND rf.rolled_forward_from_row_id=r.scope_row_id)`,
     [context.organisationId,input.priorJobId,input.rowIds,input.jobId],
@@ -1786,10 +1786,10 @@ function refuseUnlessReingest(input: CommandInputMap["scope.row.create"], contex
   if (context.actorId !== V7_REINGEST_ACTOR || context.principal !== "system")
     throw new CommandValidationError([{ field: "actorId", code: "REINGEST_ACTOR_ONLY", message: `Only ${V7_REINGEST_ACTOR} may write a re-ingested row.` }]);
   if (!allowances.reingestedFrom)
-    throw new CommandValidationError([{ field: "reingestedFrom", code: "REQUIRED", message: "A re-ingested row names the v7 row it replaces." }]);
+    throw new CommandValidationError([{ field: "reingestedFrom", code: "REQUIRED", message: "A re-ingested row names the imported row it replaces." }]);
   if (allowances.reportedTotal && !(isV7ReportedTotalReason(input.overrideReason) && input.quantity === null && !input.unit
     && !input.factorId && !input.datasetId && !input.clientFactorId && typeof input.overrideTco2e === "number"))
-    throw new CommandValidationError([{ field: "overrideReason", code: "REPORTED_TOTAL_SHAPE", message: "A reported-total row carries v7's figure as an override, with a reason from the closed set, and no quantity, unit or factor." }]);
+    throw new CommandValidationError([{ field: "overrideReason", code: "REPORTED_TOTAL_SHAPE", message: "A reported-total row carries the previous system's figure as an override, with a reason from the closed set, and no quantity, unit or factor." }]);
 }
 
 /** The scope-row create's one handler, shared by the command, the in-transaction create and the client's `portal.scope.row.create`. */
@@ -2780,7 +2780,7 @@ export async function createReviewedCrpSnapshot(
           {
             field: "jobId",
             code: MIGRATED_PERIOD,
-            message: "This job holds history imported from NZ Insights Pro v7. Its record of account is the v7 report, kept sealed as issued — a console snapshot of it would be a second, conflicting record, so none is made (decision 12); the period is awaiting re-compose.",
+            message: "This job holds imported history. Its record of account is the earlier issued report, kept sealed as issued — a console snapshot of it would be a second, conflicting record, so none is made; the period is awaiting re-compose.",
           },
         ]);
       // NZC-070 — freeze only rows inside the job's reporting boundary. A row at a site

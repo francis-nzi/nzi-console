@@ -79,7 +79,7 @@ export function OrganisationBoard({ profile, bank, defaults, clientsWithout, ros
       </div>
       <div className="nz-a-head-actions"><CapabilityChip capability="admin.settings" /></div>
     </div>
-    <AuditLine version={profile.version}>{`${profile.provenance === "v7" ? "Imported · v7 · " : ""}Last changed ${formatDateTime(profile.updatedAt)} by ${profile.updatedBy} · every change is recorded in the audit log`}</AuditLine>
+    <AuditLine version={profile.version}>{`${profile.provenance === "v7" ? "Imported · " : ""}Last changed ${formatDateTime(profile.updatedAt)} by ${profile.updatedBy} · every change is recorded in the audit log`}</AuditLine>
     {editing.allowed ? null : <div className="nz-a-hint-strip"><span aria-hidden="true">i</span><div><b>{editing.reason}</b></div></div>}
     {/* Keyed by version: after a save the form starts again from what was stored (normalised), not from what was typed. */}
     <ProfileForm key={profile.version} profile={profile} roster={roster} editing={editing} status={statuses.profile} report={report} saved={saved} />
@@ -353,7 +353,7 @@ const HISTORY_LABEL: Record<string, string> = {
   "organisation.profile.updated": "Profile changed", "organisation.logo.set": "Logo uploaded", "organisation.logo.removed": "Logo removed",
   "organisation.bank.set": "Bank details changed", "organisation.intensity_default.set": "Default metric set",
   "organisation.intensity_default.deactivated": "Default metric deactivated", "organisation.intensity_defaults.applied": "Defaults applied to clients",
-  "organisation.profile.imported": "Imported from v7",
+  "organisation.profile.imported": "Imported",
 };
 
 function HistoryCard({ refresh }: { refresh: number }) {

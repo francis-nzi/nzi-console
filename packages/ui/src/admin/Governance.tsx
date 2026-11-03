@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 
 /** Where a record came from: imported from v7, added in the console, or seeded from a reference source. */
 export type Provenance = "v7" | "added" | "seeded";
-const PROVENANCE_LABEL: Record<Provenance, string> = { v7: "Imported · v7", added: "Added here", seeded: "Seeded" };
+const PROVENANCE_LABEL: Record<Provenance, string> = { v7: "Imported", added: "Added here", seeded: "Seeded" };
 
 export function ProvenanceBadge({ provenance }: { provenance: Provenance }) {
   return <span className="nz-a-prov">{PROVENANCE_LABEL[provenance]}</span>;

@@ -56,8 +56,8 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   report_compositions: { periodBound: true, why: "a report's composition for the period" },
   report_sections: { periodBound: true, why: "a report's sections for the period" },
   report_section_versions: { periodBound: true, why: "a report's section history" },
-  legacy_report_versions: { periodBound: true, why: "v7's reports for the period" },
-  v7_reingest_runs: { periodBound: true, why: "a re-ingest reconciled to v7's figures for the period (0166)" },
+  legacy_report_versions: { periodBound: true, why: "the previous system's reports for the period" },
+  v7_reingest_runs: { periodBound: true, why: "a re-ingest reconciled to the previous system's figures for the period (0166)" },
   portal_report_approvals: { periodBound: true, why: "a client's approval of the period's report" },
   portal_report_comments: { periodBound: true, why: "a client's comments on the period's report" },
   portal_tracker_actions: { periodBound: true, why: "actions tracked against the period's report" },
@@ -204,8 +204,8 @@ export async function planJobUpdate(db: Queryable, organisationId: string, input
 
   if (!changed.startDate && !changed.period && !changed.template) issues.push({ field: "jobId", code: "NO_CHANGE", message: "Nothing to change." });
   if (CLOSED.has(job.status)) issues.push({ field: "jobId", code: "JOB_CLOSED", message: `This job is ${job.status}; reopen it before changing its schedule.` });
-  if (imported && changed.startDate) issues.push({ field: "startDate", code: "IMPORTED_FROM_V7", message: "Imported from v7: its start date stays as v7 holds it until cutover — a change here would stop the next v7 re-load." });
-  if (imported && changed.period) issues.push({ field: "reportingPeriodStart", code: "IMPORTED_FROM_V7", message: "Imported from v7: its reporting period stays as v7 holds it until cutover — a change here would stop the next v7 re-load." });
+  if (imported && changed.startDate) issues.push({ field: "startDate", code: "IMPORTED_FROM_V7", message: "This job was imported, so its start date can’t be changed here." });
+  if (imported && changed.period) issues.push({ field: "reportingPeriodStart", code: "IMPORTED_FROM_V7", message: "This job was imported, so its reporting period can’t be changed here." });
   if (!withPeriod && changed.period) issues.push({ field: "reportingPeriodStart", code: "NO_PERIOD_FOR_FAMILY", message: "Only a carbon-reporting job has a reporting period." });
   if ((changed.startDate || changed.period) && !imported) {
     for (const issue of jobDateIssues({ startDate: next.startDate ?? "", dueDate: job.due_date ?? "", reportingPeriodStart: next.reportingPeriodStart, reportingPeriodEnd: next.reportingPeriodEnd }, { family: job.job_family })) {

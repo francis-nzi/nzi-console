@@ -135,7 +135,7 @@ describe("the portal's record writes and acceptance refuse a new citation of an 
     const submitted = await submitPortalDataEntryRecord(database.pool, portal, JOB, saved.recordId, saved.version);
     const rowNow = async () => (await db.query(`SELECT version, quantity, site_id, provenance_json FROM nzi_console.job_scope_rows WHERE scope_row_id='row-reingested'`)).rows[0];
     const before = await rowNow();
-    await assert.rejects(() => accept(submitted), /re-ingested from NZ Insights Pro v7.*revert the re-ingest and re-run it with a corrected plan/);
+    await assert.rejects(() => accept(submitted), /was re-ingested and reproduces the previous record of account.*revert the re-ingest and re-run it with a corrected plan/);
     assert.deepEqual(await rowNow(), before);
   });
 });

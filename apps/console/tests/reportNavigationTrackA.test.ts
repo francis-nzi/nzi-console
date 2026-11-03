@@ -54,7 +54,7 @@ describe("Track A: report navigation", () => {
     const page = read("apps/console/app/report-preview/page.tsx");
     assert.match(page, /if \(result\.state === "empty"\) return <PreviewEmpty jobId=\{jobId\} \/>;/);
     const empty = read("apps/console/app/report-preview/PreviewEmpty.tsx");
-    assert.match(empty, /This period's record of account is its NZ Insights Pro v7 report — there is no console snapshot to compose yet\./);
+    assert.match(empty, /This period's record of account is its earlier issued report — there is no console snapshot to compose yet\./);
     assert.match(empty, /Ready for first record/);
     assert.match(empty, /Add evidence/);
     assert.match(empty, /could not be read/, "an unread state says so rather than guessing which case it is");
@@ -77,10 +77,12 @@ describe("Track A: report navigation", () => {
     assert.match(html, /<div class="nz-preview-canvas"><section class="nz-preview-empty">/);
   });
 
-  it("A5 / Q1 (b): the false 'historical report view' copy is gone; imported history is the v7 record of account, awaiting re-compose", () => {
+  it("A5 / Q1 (b): the false 'historical report view' copy is gone; imported history is the earlier record of account, awaiting re-compose", () => {
     assert.doesNotMatch(read("apps/console/app/jobs/CrpReleaseControl.tsx"), /historical report view/);
     assert.doesNotMatch(read("packages/isolated-backend/src/postgresCommands.ts"), /historical report view/);
-    assert.match(read("apps/console/app/jobs/CrpReleaseControl.tsx"), /kept sealed as issued, so no console snapshot is made — it is awaiting re-compose/);
+    // Francis confirmed the note goes: an imported period shows no release note at all (and no mention of the internal name).
+    assert.doesNotMatch(read("apps/console/app/jobs/CrpReleaseControl.tsx"), /imported from NZ Insights Pro|kept sealed as issued, so no console snapshot is made/);
+    assert.match(read("apps/console/app/jobs/CrpReleaseControl.tsx"), /\{!snapshot&&!importedPeriod&&<div className="nz-hint">/, "an imported period shows no release note");
     const view = read("apps/console/app/reports/ReportRegisterView.tsx");
     assert.match(view, /reportEligibilityLabels\[eligibility\]/, "every row is badged by eligibility");
     assert.match(view, /v7RecordLine\(job\.v7Report\)/, "the record of account from its unsealed metadata");

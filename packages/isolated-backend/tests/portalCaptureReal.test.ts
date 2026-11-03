@@ -213,6 +213,24 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
       await assert.rejects(getPortalDataView(database.pool, portalPrincipal, OTHER_JOB), AuthorizationError);
     });
 
+    it("shows the client no internal system name: stored lineage, provenance, override reason and factor label are read in plain words, and the stored text is untouched", async () => {
+      await db.query(
+        `INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,category_code,source_label,report_label,level_1,level_2,unit,enabled,version,factor_label,override_tco2e,override_reason,provenance_json,lineage_json)
+         VALUES ($1,'row-plain',$2,'1','1.natural-gas','Gas','Gas','L1','L2','kWh',true,1,'Copied from NZ Insights Pro v7',12,'v7 reported total, no activity data (record of account)',$3::jsonb,$4::jsonb)`,
+        [ORG, JOB, JSON.stringify({ capturedAs: "v7-import", note: "Carried from v7's record", sourceSystem: "nzi-pro-v7" }),
+          JSON.stringify([{ title: "Re-ingested from NZ Insights Pro v7", detail: "carries v7's 12 t (v7 row r1)" }])]);
+      const view = await getPortalDataView(database.pool, portalPrincipal, JOB);
+      const row = view.rows.find((entry) => entry.id === "row-plain")!;
+      assert.ok(row, "the row is in the client's view");
+      assert.doesNotMatch(JSON.stringify([row.lineage, row.overrideReason, row.factorLabel, row.provenance.note]), /v7/i, "no sentence the client reads names the internal system");
+      assert.deepEqual(row.lineage, [{ title: "Re-ingested from the previous system", detail: "carries the previous system\u2019s 12 t (the previous system row r1)" }]);
+      assert.equal(row.overrideReason, "the previous system reported total, no activity data (record of account)");
+      assert.equal(row.factorLabel, "Copied from the previous system");
+      assert.deepEqual([row.provenance.capturedAs, row.provenance.sourceSystem, row.provenance.note], ["v7-import", "nzi-pro-v7", "Carried from the previous system\u2019s record"], "codes are left as they are; prose is worded");
+      const stored = (await db.query(`SELECT override_reason, factor_label, lineage_json FROM nzi_console.job_scope_rows WHERE scope_row_id='row-plain'`)).rows[0];
+      assert.deepEqual([stored.override_reason, stored.factor_label, stored.lineage_json[0].title], ["v7 reported total, no activity data (record of account)", "Copied from NZ Insights Pro v7", "Re-ingested from NZ Insights Pro v7"], "history is never rewritten - only the reading is plain");
+    });
+
     it("the job header's boundary: the period and the included sites by name only — never an id, an excluded or archived site, or another client's (RULING-portal-setup-replacement)", async () => {
       const site = (id: string, name: string, client: string, archived = false) => db.query(
         `INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by,archived) VALUES ($1,$2,$3,$4,$5,$6)`, [ORG, id, client, name, STAFF, archived]);

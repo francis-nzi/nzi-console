@@ -2428,7 +2428,7 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 @media (max-width:760px){.nz-job-time-money{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
 /* Track A (RULING-reporting-trackA): the report register's filters, its stage funnel, the shared row's eligibility badge, the
-   v7 record of account (metadata only), the job's report link and the self-explaining preview states. */
+   the earlier record of account (metadata only), the job's report link and the self-explaining preview states. */
 .nz-reportreg-filters{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 12px}
 .nz-reportreg-filters label{display:grid;gap:3px;font-size:11px;color:var(--t2);min-width:0}
 .nz-reportreg-filters label input,.nz-reportreg-filters label select{font:inherit;font-size:13px;color:var(--ink);padding:6px 8px;border:1px solid var(--line);border-radius:8px;background:#fff;min-width:0;max-width:100%}

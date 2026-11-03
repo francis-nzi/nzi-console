@@ -18,6 +18,7 @@ import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssur
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
 import { listAssuredPeriodSnapshots } from "./assuredPeriodSnapshots";
+import { plainInternalNames, plainInternalNamesDeep } from "@nzi/contracts";
 import { DATASET_EDITION_SUFFIX, datasetDisplayLabel, datasetPreferenceRank, isPreferredDataset, resolveReportLabel, reportScopeLabel, type ReportScope } from "@nzi/contracts";
 import { todayInLondon } from "@nzi/contracts";
 import { spendCarryKey } from "@nzi/contracts";
@@ -650,12 +651,12 @@ export async function listScopeRows(db: Queryable, jobId: string): Promise<Scope
   }
   return rows.map((row) => ({ id: row.scope_row_id, jobId: row.job_id, scope: row.scope, sourceLabel: row.source_label,assetIdentifier:row.asset_identifier??plates.get(row.scope_row_id)??null,factorSource:row.factor_source??"dataset",clientFactorId:row.client_factor_id??null,isCustomEntry:row.is_custom_entry??false,applyPct:Number(row.apply_pct??100),dataConfidence:row.data_confidence??null,sourceQuantity:row.source_quantity==null?null:Number(row.source_quantity),sourceUnit:row.source_unit??null,columnText:row.column_text??null,reportLabel:resolveReportLabel({rowReportLabel:row.report_label,sourceLabel:row.source_label,factorSource:row.factor_source,alias:row.alias_label,identityReportLabel:row.identity_report_label,clientFactorLabel:row.client_factor_label}).label,notes:row.notes??null,categoryPath:[row.level_1,row.level_2,row.level_3,row.level_4].filter((value):value is string=>typeof value==="string"),categoryCode:row.category_code??null,monthlyActivity:row.monthly_activity_json??[],siteId:row.site_id,siteLabel:row.site_label,purchasedGoodsCategoryId:row.purchased_goods_category_id,purchasedGoodsCategoryLabel:row.purchased_goods_category_label,usageTypeId:row.usage_type_id??null,
     quantity: row.quantity === null ? null : Number(row.quantity), unit: row.unit, datasetId: row.dataset_id,
-    factorId: row.factor_id, factorVersion: row.factor_version, factorLabel: row.factor_label, qualityTier: row.quality_tier,
+    factorId: row.factor_id, factorVersion: row.factor_version, factorLabel: row.factor_label === null ? null : plainInternalNames(row.factor_label), qualityTier: row.quality_tier,
     calculatedTco2e: row.calculated_tco2e === null ? null : Number(row.calculated_tco2e), clientFactorVersionMoved: row.client_factor_version_moved === true, tdAddPrompt: row.td_add_prompt === true,
     origin: row.origin === "migrated" ? "migrated" : "live",
-    overrideTco2e: row.override_tco2e === null ? null : Number(row.override_tco2e), overrideReason: row.override_reason,
+    overrideTco2e: row.override_tco2e === null ? null : Number(row.override_tco2e), overrideReason: row.override_reason === null ? null : plainInternalNames(row.override_reason),
     reviewStatus: row.review_status,reviewedRowVersion:row.reviewed_row_version??null,reviewedBy:row.reviewed_by??null,reviewedAt:row.reviewed_at==null?null:row.reviewed_at instanceof Date?row.reviewed_at.toISOString():String(row.reviewed_at),reviewerNote:row.reviewer_note??null, version: row.version, enabled: row.enabled,
-    provenance: row.provenance_json ?? {}, lineage: row.lineage_json ?? [] }));
+    provenance: plainInternalNamesDeep(row.provenance_json ?? {}), lineage: plainInternalNamesDeep(row.lineage_json ?? []) }));
 }
 
 /** A job's in-use sites, each with whether the job reports on it (Phase 3a, 0161): the latest decision — absent, included —

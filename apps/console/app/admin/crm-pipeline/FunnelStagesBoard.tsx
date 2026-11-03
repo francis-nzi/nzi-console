@@ -84,7 +84,7 @@ export function FunnelStagesBoard({ page, query, editing }: { page: BdStagePage;
         onPageSize={nav.pageSize}
         onClear={query.search || status ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No funnel stages yet</b><span>{editing.allowed ? "Add the first one — it becomes the entry stage." : "Stages arrive with the v7 funnel import."}</span></>
+          ? <><b>No funnel stages yet</b><span>{editing.allowed ? "Add the first one — it becomes the entry stage." : ""}</span></>
           : <><b>No stages match</b><span>Clear the search or the filter to see the whole funnel.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
@@ -182,7 +182,7 @@ function StageDrawer({ row, editing, nextOrder, onClose, onSaved }: { row: BdSta
       <TextField label="Probability (%)" mono value={draft.probability} required maxLength={6} placeholder="e.g. 35" error={issues.probabilityPct}
         hint="From 0 to 100, to two places." readOnly={readOnly} onChange={(probability) => setDraft({ ...draft, probability })} />
     </FieldRow>
-    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : "Added here"} readOnly /> : null}
+    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported" : "Added here"} readOnly /> : null}
     {!isNew ? <Switch label="Active" description="An inactive stage leaves the funnel; the funnel's last active stage cannot be deactivated." checked={draft.active}
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}
     {deactivating ? <TextAreaField label="Reason for deactivating" hint="Required — it is recorded in the audit log." value={draft.reason} rows={2} required

@@ -22,11 +22,11 @@ import { formatDate } from "../lib/formatDate";
  * before anything runs. A period change asks for a reason.
  */
 type Milestone = JobMilestonesView["milestones"][number];
-const SOURCE: Record<Milestone["source"], string> = { template: "Template", manual: "Manual", import: "Imported · v7" };
+const SOURCE: Record<Milestone["source"], string> = { template: "Template", manual: "Manual", import: "Imported" };
 const ANCHOR_FROM = { start_date: "the start date", reporting_period_start: "the reporting-period start" } as const;
 
 function lineage(milestone: Milestone): string {
-  if (milestone.source === "import") return "From v7’s job plan.";
+  if (milestone.source === "import") return "From the imported job plan.";
   if (milestone.source === "manual") return milestone.dueDate ? "Set by hand — a reschedule never moves it." : "Cleared by hand.";
   if (!milestone.basis) return "Not scheduled by the job’s current template.";
   const b = milestone.basis;
@@ -222,7 +222,6 @@ function ScheduleEditor({ view, busy, onCancel, onRun }: { view: JobMilestonesVi
   const blocked = !plan || plan.issues.length > 0 || (plan.reasonRequired && !reason.trim());
 
   return <div className="nz-milestones-reschedule">
-    {s.imported ? <small className="nz-hint">Imported from v7: its start date and reporting period stay as v7 holds them until cutover. Its template may change.</small> : null}
     <label className="nz-fl">Start date<input className="nz-inp" type="date" value={startDate} disabled={s.imported} required onChange={(event) => edit(setStartDate)(event.target.value)} /></label>
     {s.hasPeriod ? <>
       <label className="nz-fl">Reporting period start<input className="nz-inp" type="date" value={periodStart} disabled={s.imported} onChange={(event) => edit(setPeriodStart)(event.target.value)} /></label>

@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
+import { internalNameHits, isInternalNameExempt } from "./internal-names.mjs";
 
 /**
  * NZC-039, enforced: user-facing copy says "emissions", never "footprint".
@@ -35,6 +36,12 @@ const ROOTS = [
   "packages/ui/src",
   "packages/mock-data/src",
 ];
+
+/**
+ * The internal-name rule also reads the backend, because its validation and refusal messages reach a screen (a command's `message`, a label in an export).
+ * The files that are operator tooling are exempt by name, each with its reason (`scripts/internal-names.mjs`).
+ */
+const INTERNAL_NAME_ROOTS = [...ROOTS, "packages/isolated-backend/src"];
 
 const EXTENSIONS = [".ts", ".tsx", ".css"];
 
@@ -106,6 +113,13 @@ const UTILISATION = /utili[sz]ation/i;
 const BUDGET = /budget/i;
 const utilisationOffences = [];
 
+/**
+ * Internal names (ruled): "v7" / "NZ Insights Pro v7" is what the platform was called before the console - a developer's word. User-facing copy never
+ * says it; code comments, migration names, commit messages and developer docs may. Stored text written under the old name is shown through
+ * `plainInternalNames` instead (`@nzi/contracts`).
+ */
+const internalNameOffences = [];
+
 for (const root of ROOTS) {
   for (const file of walk(root)) {
     scanned += 1;
@@ -117,6 +131,16 @@ for (const root of ROOTS) {
       if (isComment(line)) return;
       if (SANCTIONED.some((exception) => line.includes(exception.match))) return;
       offences.push(`${relative(process.cwd(), file)}:${index + 1}  ${line.trim().slice(0, 110)}`);
+    });
+  }
+}
+
+for (const root of INTERNAL_NAME_ROOTS) {
+  for (const file of walk(root)) {
+    const rel = relative(process.cwd(), file).replace(/\\/g, "/");
+    if (isInternalNameExempt(rel)) continue;
+    readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+      if (internalNameHits(line).length > 0) internalNameOffences.push(`${rel}:${index + 1}  ${line.trim().slice(0, 110)}`);
     });
   }
 }
@@ -141,10 +165,17 @@ if (nameOffences.length > 0) {
   process.exit(1);
 }
 
+if (internalNameOffences.length > 0) {
+  console.error(`✖ User-facing copy never says "v7" (an internal name): say what it means, or leave it out:`);
+  for (const offence of internalNameOffences) console.error(`    ${offence}`);
+  console.error(`  Code comments, migration names and developer docs may keep it. Text already stored under the old name is shown through plainInternalNames (@nzi/contracts).`);
+  process.exit(1);
+}
+
 if (utilisationOffences.length > 0) {
   console.error(`✖ TIME ⚑8: "utilisation" means capacity only — logged hours against a job's budget is "budget used":`);
   for (const offence of utilisationOffences) console.error(`    ${offence}`);
   process.exit(1);
 }
 
-console.log(`✓ terminology: ${scanned} files, no "footprint" in user-facing copy (NZC-039), the product is "NZ Insights Pro", and "utilisation" is capacity, never budget (TIME ⚑8)`);
+console.log(`✓ terminology: ${scanned} files, no "footprint" in user-facing copy (NZC-039), the product is "NZ Insights Pro", and "utilisation" is capacity, never budget (TIME ⚑8), and no internal "v7" name is user-facing`);

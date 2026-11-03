@@ -68,12 +68,12 @@ export function VatRatesBoard({ page, query, editing }: { page: VatRatePage; que
         onPageSize={nav.pageSize}
         onClear={query.search || status ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No VAT rates yet</b><span>{editing.allowed ? "Add the first one — it becomes the default." : "VAT rates arrive with the v7 jobs-configuration import."}</span></>
+          ? <><b>No VAT rates yet</b><span>{editing.allowed ? "Add the first one — it becomes the default." : ""}</span></>
           : <><b>No VAT rates match</b><span>Clear the search or the filter to see every rate.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
       />
-      <p className="nz-a-hint nz-a-caption">A rate is a percentage from 0 to 100, to two places. v7’s rates arrived with the jobs-configuration import.</p>
+      <p className="nz-a-hint nz-a-caption">A rate is a percentage from 0 to 100, to two places.</p>
     </div>
 
     {open ? <VatRateDrawer key={open.row?.vatRateId ?? "new"} row={open.row} editing={editing}
@@ -164,7 +164,7 @@ function VatRateDrawer({ row, editing, onClose, onSaved }: { row: VatRateRow | n
     <TextField label="Rate (%)" mono value={draft.ratePct} required maxLength={6} placeholder="e.g. 20" error={issues.ratePct}
       hint="A percentage from 0 to 100, to two places." readOnly={readOnly} onChange={(ratePct) => setDraft({ ...draft, ratePct })} />
     {isNew ? <p className="nz-a-hint">A new rate is the default only when it is the organisation’s first; otherwise make it the default once it is saved.</p> : null}
-    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : row.provenance === "seeded" ? "Seeded" : "Added here"} readOnly /> : null}
+    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported" : row.provenance === "seeded" ? "Seeded" : "Added here"} readOnly /> : null}
     {!isNew && !isDefault ? <Switch label="Make this the default" description="The current default stops being one. A default is always active." checked={draft.makeDefault}
       disabled={readOnly || !draft.active} onChange={(makeDefault) => setDraft({ ...draft, makeDefault, active: makeDefault ? true : draft.active, reason: "" })} /> : null}
     {!isNew && !isDefault ? <Switch label="Active" description="Inactive rates leave the pickers but stay on the job types that name them." checked={draft.active}

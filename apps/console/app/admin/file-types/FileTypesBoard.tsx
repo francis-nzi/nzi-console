@@ -65,7 +65,7 @@ export function FileTypesBoard({ page, query, editing }: { page: FileTypePage; q
 
     <div className="nz-a-hint-strip">
       <span aria-hidden="true">i</span>
-      <div>The console has <b>no job-file store yet</b>, so these types are recorded, not yet used: “In use” reads none yet. v7’s types arrived with the jobs-configuration import, the two system types matched by key.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
+      <div>The console has <b>no job-file store yet</b>, so these types are recorded, not yet used: “In use” reads none yet.{editing.allowed ? null : <> <b>{editing.reason}</b></>}</div>
     </div>
 
     {notice ? <div className="nz-a-notice" role="status">{notice}</div> : null}
@@ -92,7 +92,7 @@ export function FileTypesBoard({ page, query, editing }: { page: FileTypePage; q
         onPageSize={nav.pageSize}
         onClear={query.search || status ? () => nav.clear({}) : undefined}
         noMatches={page.unfilteredTotal === 0
-          ? <><b>No file types yet</b><span>{editing.allowed ? "Add the first one, or import v7’s." : "File types arrive with the v7 jobs-configuration import."}</span></>
+          ? <><b>No file types yet</b><span>{editing.allowed ? "Add the first one." : ""}</span></>
           : <><b>No file types match</b><span>Clear the search or the filter to see every file type.</span></>}
         onSelect={(row) => setOpen({ row })}
         busy={nav.pending}
@@ -195,7 +195,7 @@ function FileTypeDrawer({ row, editing, onClose, onSaved }: {
       <NumberField label="Sort order" hint={isNew ? "Blank: after the last type." : undefined} value={draft.sortOrder} min={0} step={10}
         error={issues.sortOrder} disabled={readOnly} onChange={(sortOrder) => setDraft({ ...draft, sortOrder })} />
     </FieldRow>
-    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported · v7" : row.provenance === "seeded" ? "Seeded" : "Added here"} readOnly /> : null}
+    {!isNew ? <TextField label="Source" value={row.provenance === "v7" ? "Imported" : row.provenance === "seeded" ? "Seeded" : "Added here"} readOnly /> : null}
     {!isNew && !system ? <Switch label="Active" description="Inactive types leave the pickers but still show on records that name them." checked={draft.active}
       disabled={readOnly} onChange={(active) => setDraft({ ...draft, active, reason: "" })} /> : null}
     {deactivating ? <TextAreaField label="Reason for deactivating" hint="Required — it is recorded in the audit log." value={draft.reason} rows={2} required
