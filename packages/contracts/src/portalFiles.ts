@@ -27,6 +27,12 @@ export type PortalFileStatus = (typeof PORTAL_FILE_STATUSES)[number];
 export const PORTAL_FILE_FLAGS = ["infected", "oversize", "type_not_allowed", "executable", "macro", "empty", "scan_inconclusive", "scan_failed"] as const;
 export type PortalFileFlag = (typeof PORTAL_FILE_FLAGS)[number];
 
+/** What the client is told when a file did not pass - in words, never the scanner's own detail. */
+export const PORTAL_FILE_FLAG_LABELS: Record<PortalFileFlag, string> = {
+  infected: "A virus was found", oversize: "Too large", type_not_allowed: "File type not accepted", executable: "Contains something executable", macro: "Contains macros",
+  empty: "Empty", scan_inconclusive: "The check has not finished", scan_failed: "The check could not be completed",
+};
+
 /** The most one upload may be. */
 export const PORTAL_FILE_MAX_BYTES = 25 * 1024 * 1024;
 /** A signed download URL lives this long, at most. Re-signed per access. */
@@ -40,14 +46,26 @@ export const PORTAL_FILE_ALLOWED_TYPES = ["application/pdf", "image/png", "image
   "application/vnd.openxmlformats-officedocument.presentationml.presentation"] as const;
 export type PortalFileType = (typeof PORTAL_FILE_ALLOWED_TYPES)[number];
 
+/** The fixed set a file is filed under, chosen on upload (RULING-portal-files-client-ui). CRM-configurable categories are a later follow-up. */
+export const PORTAL_FILE_CATEGORIES = ["data_evidence", "reports", "contracts", "other"] as const;
+export type PortalFileCategory = (typeof PORTAL_FILE_CATEGORIES)[number];
+export const PORTAL_FILE_CATEGORY_LABELS: Record<PortalFileCategory, string> = { data_evidence: "Data & evidence", reports: "Reports", contracts: "Contracts", other: "Other" };
+export const isPortalFileCategory = (value: unknown): value is PortalFileCategory => (PORTAL_FILE_CATEGORIES as readonly unknown[]).includes(value);
+
 /** A file as the Files tab and the portal list it: no storage identifiers, no bytes. */
 export type PortalFileRecord = {
   fileId: string; clientId: string; jobId: string | null; direction: PortalFileDirection; status: PortalFileStatus;
   fileName: string; contentType: string; sizeBytes: number; sha256: string;
   flag: PortalFileFlag | null; flagDetail: string | null;
+  category: PortalFileCategory;
   uploadedBy: string; uploadedByPrincipal: "staff" | "portal"; uploadedAt: string;
   releasedAt: string | null; deactivatedAt: string | null; deactivatedBy: string | null;
+  /** Why staff withdrew it. The client sees this on their own withdrawn upload (and nothing else of the withdrawal). */
+  deactivatedReason: string | null;
 };
+
+/** One line of a file's History as the client reads it: what happened and when, by you, a colleague or NZI - never a member of staff's name. */
+export type PortalFileHistoryEntry = { at: string; who: "you" | "colleague" | "nzi"; action: "uploaded" | "shared" | "scanned" | "released" | "downloaded" | "withdrawn"; detail: string | null };
 
 /** The ingest gate's own record of one arrival, handed to the recording command (the bytes stay in the adapter). */
 export type PortalFileIngest = {

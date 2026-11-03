@@ -5,7 +5,7 @@ import { commandGrantForRole, type CommandContext } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import {
   AuthorizationError, CommandValidationError, deactivateClientFile, eicarTestSignature, ingestFile, issueClientFileDownload, issuePortalFileDownload, listPortalFilesForStaff, listPortalFiles,
-  LocalStorageAdapter, recordClientFileDelivery, recordPortalFileUpload, rescanClientFile, type PortalPrincipal, type ScanVerdict, type Scanner,
+  getPortalFileHistory, LocalStorageAdapter, recordClientFileDelivery, recordPortalFileUpload, rescanClientFile, type PortalPrincipal, type ScanVerdict, type Scanner,
 } from "../src/index";
 
 /**
@@ -69,7 +69,7 @@ describe("portal files: records, audited access, and the gate's guarantee", { sk
   it("records a clean client upload: released and hashed, audited as the portal user, with no storage id or URL in the audit, and replayed idempotently", async () => {
     const file = await ingest(PDF, "evidence.pdf");
     const context = portal();
-    const outcome = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: file }, context);
+    const outcome = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: file, category: "data_evidence" }, context);
     released = outcome.data.fileId as string;
     const stored = (await db.query(`SELECT * FROM nzi_console.portal_files WHERE file_id=$1`, [released])).rows[0];
     assert.deepEqual([stored.status, stored.direction, stored.uploaded_by_principal, stored.sha256, stored.storage_provider], ["released", "client_upload", "portal", file.sha256, "local"]);
@@ -77,26 +77,26 @@ describe("portal files: records, audited access, and the gate's guarantee", { sk
     const events = await audit(released);
     assert.deepEqual(events.map((event) => [event.principal_type, event.action]), [["portal", "portal_file_uploaded"]]);
     assert.doesNotMatch(JSON.stringify(events), new RegExp(stored.external_item_id), "no storage identifier in the audit");
-    assert.equal((await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: file }, context)).replayed, true);
+    assert.equal((await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: file, category: "data_evidence" }, context)).replayed, true);
   });
 
   it("refuses a forged ingest: a released file with no bytes, a bad hash, an unknown provider or a disallowed type", async () => {
     const good = await ingest(PDF, "ok.pdf");
     for (const forged of [{ ...good, externalItemId: null }, { ...good, sha256: "nope" }, { ...good, storageProvider: "dropbox" }, { ...good, contentType: "application/x-msdownload" }, { ...good, status: "deactivated" }, { ...good, sizeBytes: -1 }]) {
-      await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: forged as never }, portal()), CommandValidationError, JSON.stringify(Object.keys(forged)));
+      await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: forged as never, category: "data_evidence" }, portal()), CommandValidationError, JSON.stringify(Object.keys(forged)));
     }
   });
 
   it("holds a portal upload to the client's own grant: no job, an ungranted or revoked job, another client's job, another client's id", async () => {
     const noJob = await ingest(PDF, "a.pdf", null);
-    await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: noJob }, portal()), (e) => codes(e).includes("REQUIRED"));
-    for (const job of [UNGRANTED_JOB, OTHER_JOB]) await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "a.pdf", job) }, portal()), CommandValidationError, job);
-    await assert.rejects(recordPortalFileUpload(database.pool, { clientId: OTHER_CLIENT, ingest: await ingest(PDF, "a.pdf", OTHER_JOB, OTHER_CLIENT) }, portal()), AuthorizationError);
+    await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: noJob, category: "data_evidence" }, portal()), (e) => codes(e).includes("REQUIRED"));
+    for (const job of [UNGRANTED_JOB, OTHER_JOB]) await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "a.pdf", job), category: "data_evidence" }, portal()), CommandValidationError, job);
+    await assert.rejects(recordPortalFileUpload(database.pool, { clientId: OTHER_CLIENT, ingest: await ingest(PDF, "a.pdf", OTHER_JOB, OTHER_CLIENT), category: "data_evidence" }, portal()), AuthorizationError);
   });
 
   it("records an infected, oversize or disallowed upload as rejected and flagged — kept, audited, and never downloadable", async () => {
-    const infected = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(new TextEncoder().encode(`%PDF-1.4 ${eicarTestSignature()}`), "bad.pdf") }, portal());
-    const exe = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(new Uint8Array([0x4d, 0x5a, 0, 0]), "setup.pdf") }, portal());
+    const infected = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(new TextEncoder().encode(`%PDF-1.4 ${eicarTestSignature()}`), "bad.pdf"), category: "data_evidence" }, portal());
+    const exe = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(new Uint8Array([0x4d, 0x5a, 0, 0]), "setup.pdf"), category: "data_evidence" }, portal());
     assert.deepEqual([infected.data.status, infected.data.flag], ["rejected", "infected"]);
     assert.deepEqual([exe.data.status, exe.data.flag], ["rejected", "executable"]);
     assert.equal((await audit(infected.data.fileId as string)).length, 1);
@@ -112,7 +112,7 @@ describe("portal files: records, audited access, and the gate's guarantee", { sk
   let held = "";
   it("holds a file the scanner cannot decide: never served to the client or to staff until a re-scan releases it", async () => {
     verdict = { state: "unknown", detail: "Waiting for the scan." };
-    const outcome = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "pending.pdf") }, portal());
+    const outcome = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "pending.pdf"), category: "data_evidence" }, portal());
     held = outcome.data.fileId as string;
     assert.deepEqual([outcome.data.status, outcome.data.flag], ["quarantined", "scan_inconclusive"]);
     await assert.rejects(issuePortalFileDownload(database.pool, { clientId: CLIENT, fileId: held }, portal(), adapterFor), (e) => codes(e).includes("FILE_NOT_AVAILABLE"));
@@ -158,7 +158,7 @@ describe("portal files: records, audited access, and the gate's guarantee", { sk
 
   it("keeps the two directions apart in who may send, and the portal and staff commands apart in who may run them", async () => {
     await assert.rejects(recordClientFileDelivery(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "x.pdf") }, portal()), AuthorizationError);
-    await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "x.pdf") }, staff()), AuthorizationError);
+    await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "x.pdf"), category: "data_evidence" }, staff()), AuthorizationError);
     await assert.rejects(deactivateClientFile(database.pool, { clientId: CLIENT, fileId: released }, { ...portal(), reason: "no" }, adapterFor), AuthorizationError);
     await assert.rejects(db.query(`UPDATE nzi_console.portal_files SET uploaded_by_principal='staff' WHERE file_id=$1`, [released]), /portal_files_direction_principal/);
   });
@@ -172,11 +172,97 @@ describe("portal files: records, audited access, and the gate's guarantee", { sk
     assert.equal(adapter.areaOf(row.external_item_id), "deactivated", "the bytes are kept, out of service");
     await assert.rejects(issuePortalFileDownload(database.pool, { clientId: CLIENT, fileId: released }, portal(), adapterFor), (e) => codes(e).includes("FILE_NOT_AVAILABLE"));
     await assert.rejects(deactivateClientFile(database.pool, { clientId: CLIENT, fileId: released }, staff("again"), adapterFor), (e) => codes(e).includes("ALREADY_DEACTIVATED"));
-    assert.ok(!(await listPortalFiles(database.pool, principal(USER, CLIENT))).some((file) => file.fileId === released));
+    // The client's OWN withdrawn upload stays in their list, with the reason - and never who withdrew it (RULING-portal-files-client-ui).
+    const shown = (await listPortalFiles(database.pool, principal(USER, CLIENT))).find((file) => file.fileId === released)!;
+    assert.deepEqual([shown.status, shown.deactivatedReason, shown.deactivatedBy, shown.uploadedBy], ["deactivated", "Uploaded to the wrong job", null, "You"]);
     const all = await listPortalFilesForStaff(database.pool, { organisationId: ORG, userId: STAFF, capabilities: commandGrantForRole("admin", ORG, STAFF).capabilities }, CLIENT);
     assert.ok(all.some((file) => file.fileId === released && file.status === "deactivated"), "staff still see it");
     assert.ok(all.every((file) => file.clientId === CLIENT));
     assert.equal((await db.query(`SELECT has_table_privilege('nzi_console_app','nzi_console.portal_files','DELETE') AS can`)).rows[0].can, false, "the application role cannot delete a file record");
   });
-});
 
+  // ── The client Files view (RULING-portal-files-client-ui) ───────────────────────────────────────────────────────────
+  describe("the client Files view: category, exact visibility, History", () => {
+    const COLLEAGUE = "portal-pf-colleague";
+    const mineOf = (userId: string) => listPortalFiles(database.pool, principal(userId, CLIENT));
+    const upload = async (userId: string, name: string, state: "clean" | "held" | "infected", category: "data_evidence" | "reports" | "contracts" | "other" = "data_evidence", jobId = JOB) => {
+      verdict = state === "held" ? { state: "unknown", detail: "Waiting." } : { state: "clean" };
+      const data = state === "infected" ? new TextEncoder().encode(`%PDF-1.4 ${eicarTestSignature()}`) : PDF;
+      try {
+        const outcome = await recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(data, name, jobId), category }, portal(userId));
+        return outcome.data.fileId as string;
+      } finally { verdict = { state: "clean" }; }
+    };
+
+    it("persists the category chosen on upload, defaults a delivery to other, and refuses a missing or unknown one (at the command and by the CHECK)", async () => {
+      const contract = await upload(USER, "contract.pdf", "clean", "contracts");
+      assert.equal((await db.query(`SELECT category FROM nzi_console.portal_files WHERE file_id=$1`, [contract])).rows[0].category, "contracts");
+      assert.equal((await mineOf(USER)).find((file) => file.fileId === contract)!.category, "contracts");
+      const plain = await recordClientFileDelivery(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "plain.pdf", null) }, staff());
+      const filed = await recordClientFileDelivery(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "filed.pdf", null), category: "reports" }, staff());
+      const categoryOf = async (id: unknown) => (await db.query(`SELECT category FROM nzi_console.portal_files WHERE file_id=$1`, [id])).rows[0].category;
+      assert.deepEqual([await categoryOf(plain.data.fileId), await categoryOf(filed.data.fileId)], ["other", "reports"]);
+      await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "n.pdf") } as never, portal()), (e) => codes(e).includes("REQUIRED"));
+      await assert.rejects(recordPortalFileUpload(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "b.pdf"), category: "invoices" as never }, portal()), (e) => codes(e).includes("INVALID"));
+      await assert.rejects(db.query(`UPDATE nzi_console.portal_files SET category='invoices' WHERE file_id=$1`, [contract]), /category/);
+    });
+
+    it("lists exactly what the user is entitled to: their own files in every state, colleagues' and NZI's only once released and for a job they hold - nothing held, refused or withdrawn of anyone else's", async () => {
+      await db.query(`INSERT INTO nzi_console.portal_users (organisation_id,portal_user_id,client_id,status) VALUES ($1,$2,$3,'active')`, [ORG, COLLEAGUE, CLIENT]);
+      await db.query(`INSERT INTO nzi_console.portal_access_grants (organisation_id,grant_id,client_id,portal_user_id,job_id,data_entry_starts_at,data_entry_expires_at,revoked_at) VALUES ($1,'g-pf-colleague',$2,$3,$4,NULL,NULL,NULL)`, [ORG, CLIENT, COLLEAGUE, JOB]);
+      await upload(USER, "mine-clean.pdf", "clean"); await upload(USER, "mine-held.pdf", "held"); await upload(USER, "mine-bad.pdf", "infected");
+      await upload(COLLEAGUE, "their-clean.pdf", "clean"); await upload(COLLEAGUE, "their-held.pdf", "held"); await upload(COLLEAGUE, "their-bad.pdf", "infected");
+      await recordClientFileDelivery(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "from-adviser.pdf", JOB) }, staff());
+      verdict = { state: "unknown", detail: "Waiting." };
+      await recordClientFileDelivery(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "adviser-held.pdf", JOB) }, staff());
+      verdict = { state: "clean" };
+      const gone = await recordClientFileDelivery(database.pool, { clientId: CLIENT, ingest: await ingest(PDF, "adviser-gone.pdf", JOB) }, staff());
+      await deactivateClientFile(database.pool, { clientId: CLIENT, fileId: gone.data.fileId as string }, staff("Superseded"), adapterFor);
+      await assert.rejects(upload(USER, "wrong-job.pdf", "clean", "other", UNGRANTED_JOB), CommandValidationError, "a job the user does not hold cannot be uploaded to");
+
+      const names = async (userId: string) => (await mineOf(userId)).map((file) => file.fileName);
+      const user = await names(USER);
+      for (const expected of ["mine-clean.pdf", "mine-held.pdf", "mine-bad.pdf", "their-clean.pdf", "from-adviser.pdf", "evidence.pdf"]) assert.ok(user.includes(expected), `USER sees ${expected}`);
+      for (const hidden of ["their-held.pdf", "their-bad.pdf", "adviser-held.pdf", "adviser-gone.pdf", "wrong-job.pdf"]) assert.ok(!user.includes(hidden), `USER does not see ${hidden}`);
+      const colleague = await names(COLLEAGUE);
+      for (const expected of ["their-clean.pdf", "their-held.pdf", "their-bad.pdf", "mine-clean.pdf", "from-adviser.pdf"]) assert.ok(colleague.includes(expected), `COLLEAGUE sees ${expected}`);
+      for (const hidden of ["mine-held.pdf", "mine-bad.pdf", "adviser-held.pdf", "adviser-gone.pdf", "evidence.pdf"]) assert.ok(!colleague.includes(hidden), `COLLEAGUE does not see ${hidden}`);
+      assert.deepEqual(await listPortalFiles(database.pool, principal(OTHER_USER, OTHER_CLIENT)), [], "another client sees none of it");
+      // Who it is "by" is never an id or a staff name; a client sees no one's storage id.
+      const listed = await mineOf(USER);
+      assert.deepEqual(new Set(listed.map((file) => file.uploadedBy)), new Set(["You", "A colleague", "NZI"]));
+      assert.ok(listed.every((file) => file.deactivatedBy === null));
+      assert.doesNotMatch(JSON.stringify(listed), new RegExp(`${COLLEAGUE}|${STAFF}|local://`));
+      assert.ok(!Object.hasOwn(listed[0]!, "externalItemId") && !Object.hasOwn(listed[0]!, "storageProvider"));
+    });
+
+    it("never serves a held, refused or withdrawn file to the client, whoever uploaded it - even to its owner", async () => {
+      const listed = await mineOf(USER);
+      const held = listed.find((file) => file.fileName === "mine-held.pdf")!;
+      const bad = listed.find((file) => file.fileName === "mine-bad.pdf")!;
+      assert.deepEqual([held.status, bad.status], ["quarantined", "rejected"]);
+      for (const file of [held, bad, listed.find((candidate) => candidate.fileId === released)!]) {
+        await assert.rejects(issuePortalFileDownload(database.pool, { clientId: CLIENT, fileId: file.fileId }, portal(), adapterFor), (e) => codes(e).includes("FILE_NOT_AVAILABLE"), file.fileName);
+      }
+    });
+
+    it("gives a file's History only to a user entitled to the file: uploaded, scanned, released, downloaded, withdrawn - you, a colleague or NZI, never a staff name", async () => {
+      const own = await getPortalFileHistory(database.pool, principal(USER, CLIENT), released);
+      assert.deepEqual(own.map((entry) => [entry.action, entry.who]), [["uploaded", "you"], ["scanned", "nzi"], ["released", "nzi"], ["downloaded", "you"], ["downloaded", "nzi"], ["withdrawn", "nzi"]]);
+      assert.equal(own.find((entry) => entry.action === "scanned")!.detail, "Clean");
+      assert.equal(own.find((entry) => entry.action === "withdrawn")!.detail, "Uploaded to the wrong job", "the withdrawal reason is shown");
+      assert.doesNotMatch(JSON.stringify(own), new RegExp(`${STAFF}|${USER}|local://|https?://`));
+      // A colleague's download of a shared file appears to the other user as a colleague's.
+      const shared = (await mineOf(USER)).find((file) => file.fileName === "their-clean.pdf")!;
+      await issuePortalFileDownload(database.pool, { clientId: CLIENT, fileId: shared.fileId }, portal(COLLEAGUE), adapterFor);
+      assert.deepEqual((await getPortalFileHistory(database.pool, principal(USER, CLIENT), shared.fileId)).filter((entry) => entry.action === "downloaded").map((entry) => entry.who), ["colleague"]);
+      // Scoped: not another user's held file, not another client's, not a withdrawn file that was never theirs, not a made-up id.
+      const held = (await mineOf(COLLEAGUE)).find((file) => file.fileName === "their-held.pdf")!;
+      for (const [user, client, fileId] of [[USER, CLIENT, held.fileId], [OTHER_USER, OTHER_CLIENT, shared.fileId], [COLLEAGUE, CLIENT, released], [USER, CLIENT, "no-such-file"]] as const) {
+        await assert.rejects(getPortalFileHistory(database.pool, principal(user, client), fileId), AuthorizationError, `${user} ${fileId}`);
+      }
+      const heldHistory = await getPortalFileHistory(database.pool, principal(COLLEAGUE, CLIENT), held.fileId);
+      assert.deepEqual(heldHistory.map((entry) => [entry.action, entry.detail]), [["uploaded", null], ["scanned", "Held while it is checked"]]);
+    });
+  });
+});

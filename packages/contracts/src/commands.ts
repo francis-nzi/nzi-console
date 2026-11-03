@@ -1,7 +1,7 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { PORTAL_ACCESS_NOTES_MAX, PORTAL_ACCESS_NOTE_MAX, PORTAL_ACCESS_PAYMENT_REF_MAX, PORTAL_PAYMENT_STATUSES, type PortalClientAccessChanges } from "./portalClientAccess";
 import type { PortalSpendImportPayload } from "./portalSpendImport";
-import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, type PortalFileIngest } from "./portalFiles";
+import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, isPortalFileCategory, type PortalFileCategory, type PortalFileIngest } from "./portalFiles";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
 import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
@@ -1189,9 +1189,9 @@ export type CommandInputMap = {
   // stored, scanned and decided them, and the command records that outcome (audited, tenant-scoped, idempotent).
   /** Portal Management → Access: the client-level switch and record. `expectedVersion` is null while the client has no record yet (the defaults). */
   "client.portal.access.set":{clientId:string;expectedVersion:number|null;changes:PortalClientAccessChanges;note?:string|null};
-  "portal.file.upload":{clientId:string;ingest:PortalFileIngest};
+  "portal.file.upload":{clientId:string;ingest:PortalFileIngest;category: PortalFileCategory};
   "portal.file.download":{clientId:string;fileId:string};
-  "client.file.deliver":{clientId:string;ingest:PortalFileIngest};
+  "client.file.deliver":{clientId:string;ingest:PortalFileIngest;category?: PortalFileCategory};
   "client.file.download":{clientId:string;fileId:string};
   "client.file.rescan":{clientId:string;fileId:string};
   "client.file.deactivate":{clientId:string;fileId:string};
@@ -1371,9 +1371,10 @@ const fileRefIssues = (input: { clientId: string; fileId: string }, context: Com
   return issues;
 };
 /** The recorded outcome of the ingest gate: its shape must be one the gate can produce, so a forged one is refused at the command too. */
-const fileIngestIssues = (input: { clientId: string; ingest: PortalFileIngest }, context: CommandContext) => {
+const fileIngestIssues = (input: { clientId: string; ingest: PortalFileIngest; category?: PortalFileCategory }, context: CommandContext, categoryRequired = false) => {
   const issues = baseIssues(context, false);
   required(issues, "clientId", input.clientId);
+  if (input.category === undefined ? categoryRequired : !isPortalFileCategory(input.category)) issues.push({ field: "category", code: input.category === undefined ? "REQUIRED" : "INVALID", message: "Choose what kind of file this is." });
   const file = input.ingest;
   if (!file || typeof file !== "object") { issues.push({ field: "ingest", code: "REQUIRED", message: "The file's record is missing." }); return issues; }
   required(issues, "ingest.fileId", file.fileId); required(issues, "ingest.fileName", file.fileName);
@@ -3342,7 +3343,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
    * the brief has it. Milestones is never `edit`: refused here and by the table (decision 3).
    */
   "client.portal.access.set": { key: "client.portal.access.set", label: "Set a client's portal access", permission: "portal.admin", reasonRequired: false, transaction: "client portal access record + one decision per changed field + (on switch-off or expiry) the client's live sessions ended + audit + outbox + idempotency", auditAction: "client_portal_access_set", validate: (input, context) => portalAccessIssues(input, context) },
-  "portal.file.upload": { key: "portal.file.upload", label: "Upload a file in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "file record (quarantined or released by the gate) + audit + outbox + idempotency", auditAction: "portal_file_uploaded", validate: (input, context) => fileIngestIssues(input, context) },
+  "portal.file.upload": { key: "portal.file.upload", label: "Upload a file in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "file record (quarantined or released by the gate) + audit + outbox + idempotency", auditAction: "portal_file_uploaded", validate: (input, context) => fileIngestIssues(input, context, true) },
   "portal.file.download": { key: "portal.file.download", label: "Download a file in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "signed URL for a released file + audit + outbox + idempotency", auditAction: "portal_file_downloaded", validate: (input, context) => fileRefIssues(input, context) },
   "client.file.deliver": { key: "client.file.deliver", label: "Share a file with the client portal", permission: "portal.admin", reasonRequired: false, transaction: "file record (quarantined or released by the gate) + audit + outbox + idempotency", auditAction: "client_file_delivered", validate: (input, context) => fileIngestIssues(input, context) },
   "client.file.download": { key: "client.file.download", label: "Download a portal file", permission: "portal.admin", reasonRequired: false, transaction: "signed URL for a released file + audit + outbox + idempotency", auditAction: "client_file_downloaded", validate: (input, context) => fileRefIssues(input, context) },

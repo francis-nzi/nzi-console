@@ -146,3 +146,19 @@
   .nzp-content{padding:16px 16px 36px}
   .nzp-utilbar{padding:10px 16px}
 }
+/* Files (RULING-portal-files-client-ui): the real view. */
+.nzp-dropzone.on{border-color:var(--nzp-green,#0BA75E);background:var(--nzp-mint,#DFF5E9)}
+.nzp-dropzone-pick{display:flex;flex-wrap:wrap;gap:12px;justify-content:center}
+.nzp-dropzone-pick label{display:flex;flex-direction:column;gap:2px;font-size:12px;text-align:left}
+.nzp-files-notice{margin:0 0 12px;padding:10px 12px;border-radius:var(--nzp-r);border:1px solid var(--nzp-line);font-size:13px}
+.nzp-files-notice.ok{background:#DFF5E9}.nzp-files-notice.warn{background:#FFF3DA}
+.nzp-files-filter{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}
+.nzp-chip{border:1px solid var(--nzp-line);background:var(--nzp-card);border-radius:999px;padding:4px 12px;font-size:12px;cursor:pointer}
+.nzp-chip.on{background:#0B7A4B;border-color:#0B7A4B;color:#fff}
+.nzp-files-job h4{margin:14px 0 6px;font-size:13px}
+.nzp-files-gone td{opacity:.6}
+.nzp-files-actions{white-space:nowrap;display:flex;gap:6px}
+.nzp-scan{font-size:12px;font-weight:600}.nzp-scan.clean{color:#0B7A4B}.nzp-scan.scanning{color:#8a6100}.nzp-scan.quarantined{color:#B3321F}
+.nzp-files-history{padding:20px;display:flex;flex-direction:column;gap:10px}
+.nzp-files-timeline{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:10px}
+.nzp-files-withdrawn{margin:0;padding:8px 10px;border-radius:var(--nzp-r);background:#FFF3DA;font-size:13px}
