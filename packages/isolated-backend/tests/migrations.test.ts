@@ -21,6 +21,8 @@ const clientGeolocation = readFileSync(resolve(here, "../migrations/0154_client_
 const timeEntries = readFileSync(resolve(here, "../migrations/0155_time_entries.sql"), "utf8");
 const matrixV9 = readFileSync(resolve(here, "../migrations/0156_permission_matrix_v9.sql"), "utf8");
 const matrixV10 = readFileSync(resolve(here, "../migrations/0157_permission_matrix_v10.sql"), "utf8");
+const staffCredentialReset = readFileSync(resolve(here, "../migrations/0203_staff_credential_reset.sql"), "utf8");
+const matrixV11 = readFileSync(resolve(here, "../migrations/0204_permission_matrix_v11.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
 const clientReportingTemplatesMigration = readFileSync(resolve(here, "../migrations/0159_client_reporting_templates.sql"), "utf8");
@@ -317,6 +319,24 @@ describe("isolated Postgres migrations", () => {
     assert.deepEqual([...v10].filter((row) => !v9.has(row)), ["finance time.view all"], "the one added grant");
     assert.deepEqual([...v9].filter((row) => !v10.has(row)), [], "nothing removed or narrowed");
     assert.doesNotMatch(matrixV10, /GRANT|ALTER TABLE|UPDATE nzi_console/, "no grants or schema change — the 0155 columns are already updatable by the app role");
+  });
+  it("versions the matrix to 11, adding staff.credential.reset for Admin and changing nothing else (0204)", () => {
+    const rows = (sql: string, version: number) => new Set([...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`));
+    const v10 = rows(matrixV10, 10), v11 = rows(matrixV11, 11);
+    assert.deepEqual([...v11].filter((row) => !v10.has(row)), ["admin staff.credential.reset all"], "the one added grant");
+    assert.deepEqual([...v10].filter((row) => !v11.has(row)), [], "nothing removed or narrowed");
+    assert.doesNotMatch(matrixV11, /GRANT|ALTER TABLE|UPDATE nzi_console/, "a matrix version changes rows, not schema or grants");
+  });
+  it("resets a staff sign-in only through a tenant-confined definer function the application role alone may run (0203)", () => {
+    for (const clause of [
+      "CREATE FUNCTION nzi_console.reset_staff_credential(p_organisation_id text, p_user_id text, p_at timestamptz)", "SECURITY DEFINER SET search_path = nzi_console, pg_temp",
+      "IS DISTINCT FROM current_setting('app.organisation_id', true) THEN RAISE EXCEPTION",
+      "REVOKE ALL ON FUNCTION nzi_console.reset_staff_credential(text, text, timestamptz) FROM PUBLIC;",
+      "GRANT EXECUTE ON FUNCTION nzi_console.reset_staff_credential(text, text, timestamptz) TO nzi_console_app;",
+    ]) assert.ok(staffCredentialReset.includes(clause), clause);
+    const code = staffCredentialReset.split("\n").filter((line) => !line.startsWith("--")).join("\n");
+    assert.doesNotMatch(code, /\b(DELETE|DROP|TRUNCATE)\b/, "deactivate, never delete");
+    assert.doesNotMatch(code, /portal_/, "the portal is not touched");
   });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });

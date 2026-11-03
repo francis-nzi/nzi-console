@@ -497,6 +497,12 @@ jobs:
       # Team & access roster says how the latest invitation's email resolved.
       - name: Staff invitations from the admin keep every enrolment property
         run: npx tsx --test packages/isolated-backend/tests/staffInvitationsReal.test.ts
+      # Matrix v11 (0203, 0204) — an Admin resets an enrolled member's sign-in: an enrolled member with no authenticator is
+      # recovered end to end (sessions and pending sign-ins ended, credential disabled not deleted, recovery codes revoked, fresh
+      # single-use invitation re-enrols them); self, non-member, never-enrolled, missing reason and the only admin are refused;
+      # a failed email undoes the whole reset; other members and the portal's recovery codes are untouched.
+      - name: An Admin resets an enrolled member's sign-in, in one transaction
+        run: npx tsx --test packages/isolated-backend/tests/staffCredentialResetReal.test.ts
       # 0180, email phase 3: saved staff-invitation wording moves {{link}} → {{inviteLink}} — subject, body and HTML, active or
       # not, version bumped, audited by the migration; other keys untouched; updated_by kept so the v7 loader still reads an
       # imported row as the import's; and the rewritten wording renders and queues under the registry's token.

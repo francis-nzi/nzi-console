@@ -66,6 +66,10 @@ export const capabilities = [
   // which a consultant holds for their own clients' portal users. It issues through the one enrolment path: the
   // holder never sees the person's password or authenticator, and cannot enrol over working sign-in.
   "staff.invite",
+  // Recovering an enrolled member who has lost their authenticator or password (v11): ends their sign-in and issues a fresh
+  // enrolment invitation. Its own capability, Admin alone — resetting someone's sign-in is the act that lets them (or
+  // whoever holds their inbox) set new factors, so it is not folded into staff.invite, which cannot reach an enrolled member.
+  "staff.credential.reset",
   "admin.lookups",
   "admin.templates",
   "admin.settings",
@@ -99,7 +103,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 10;
+export const PERMISSION_MATRIX_VERSION = 11;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
