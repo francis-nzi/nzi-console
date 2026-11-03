@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { roleCapabilityGrants } from "@nzi/contracts";
@@ -7,14 +7,15 @@ import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } 
 import type { StaffPrincipal } from "../src/auth";
 import { totpCode } from "../src/credentials";
 import { completePortalMfa, completeStaffMfa, InvalidLoginError, startPortalLogin, startStaffLogin } from "../src/login";
-import { countRecoveryCodes, RECOVERY_CODE_COUNT, RecoveryCodeError, regenerateRecoveryCodes } from "../src/mfaRecovery";
+import { countRecoveryCodes, issueRecoveryCodes, RECOVERY_CODE_COUNT, RecoveryCodeError, regenerateRecoveryCodes, useRecoveryCode } from "../src/mfaRecovery";
+import { withAuthTransaction } from "../src/postgres";
 import { completePortalInvitationSetup, createPortalInvitation, PortalInvitationError, startPortalInvitationSetup } from "../src/portalInvitations";
 import { completeStaffEnrolment, issueStaffEnrolmentInvitation, startStaffEnrolment } from "../src/staffEnrolment";
 
 /**
- * Email programme phase 4-2, against a real database: MFA recovery codes for staff and portal (issued at enrolment, shown
+ * Email programme phase 4-2, against a real database: MFA recovery codes for the portal (issued at enrolment, shown
  * once, stored hashed, accepted once each in place of the authenticator inside the sign-in's own attempt limit, regenerated
- * only with the authenticator), and the portal access invitation (emailed by default for seven days, a link to copy on
+ * only with the authenticator; staff have none — RULING-remove-staff-recovery-codes), and the portal access invitation (emailed by default for seven days, a link to copy on
  * request, and an accept step with a code limit, an audit trail, sessions ended and recovery codes issued).
  */
 
@@ -29,11 +30,10 @@ describe("MFA recovery codes and portal access invitations (phase 4-2), against 
   let database: DisposableDatabase;
   let db: pg.Client;
   let staffSecret = "";
-  let staffCodes: string[] = [];
   const q = async <T extends pg.QueryResultRow = Record<string, any>>(sql: string, params: unknown[] = []) => (await db.query<T>(sql, params)).rows;
-  const staffSignIn = async (code: string, onRecoveryCode?: (remaining: number) => void) => {
+  const staffSignIn = async (code: string) => {
     const started = await startStaffLogin(database.pool, { organisationId: ORG, email: "sam@netzero.international", password: PASSWORD });
-    return completeStaffMfa(database.pool, { organisationId: ORG, challengeToken: started.challengeToken, code }, KEY, new Date(), { onRecoveryCode });
+    return completeStaffMfa(database.pool, { organisationId: ORG, challengeToken: started.challengeToken, code }, KEY);
   };
   const tokenIn = (text: string) => /#token=([A-Za-z0-9_-]{43})/.exec(text)![1]!;
 
@@ -49,63 +49,45 @@ describe("MFA recovery codes and portal access invitations (phase 4-2), against 
   });
   after(async () => { await db?.end(); await database?.end(); });
 
-  describe("staff", () => {
-    it("enrolment issues ten recovery codes, shown once, stored only as hashes", async () => {
+  describe("staff (no recovery codes — RULING-remove-staff-recovery-codes)", () => {
+    // A code of the shape the old flow issued, stored the way it was (sha256 of the normalised code): proves a leftover row is inert.
+    const LEGACY_CODE = "ABCDE-FGHJK";
+    const hashOfLegacy = createHash("sha256").update("ABCDEFGHJK").digest("hex");
+
+    it("enrolment completes and signs in without issuing or requiring recovery codes", async () => {
       const invitation = await issueStaffEnrolmentInvitation(database.pool, { organisationId: ORG, userId: "sam", actorId: "operator:test" });
       const setup = await startStaffEnrolment(database.pool, { token: invitation.token, password: PASSWORD }, KEY);
       staffSecret = setup.totpSecret;
       const done = await completeStaffEnrolment(database.pool, { token: invitation.token, code: totpCode(staffSecret) }, KEY);
-      staffCodes = done.recoveryCodes;
-      assert.equal(staffCodes.length, RECOVERY_CODE_COUNT);
-      assert.equal(new Set(staffCodes).size, RECOVERY_CODE_COUNT);
-      for (const code of staffCodes) assert.match(code, /^[A-Z2-9]{5}-[A-Z2-9]{5}$/);
-      const stored = JSON.stringify(await q(`SELECT * FROM nzi_console.mfa_recovery_codes WHERE subject_id = 'sam'`));
-      for (const code of staffCodes) {
-        assert.ok(!stored.includes(code) && !stored.includes(code.replace("-", "")), "a code is stored in the clear");
-      }
-      assert.equal(await countRecoveryCodes(database.pool, { organisationId: ORG, principal: "staff", subjectId: "sam" }), 10);
+      assert.deepEqual(done, { enrolled: true }, "the completion carries no recovery codes");
+      assert.equal((await q(`SELECT 1 FROM nzi_console.mfa_recovery_codes WHERE principal = 'staff' AND subject_id = 'sam'`)).length, 0, "nothing was stored");
+      assert.equal((await q(`SELECT 1 FROM nzi_console.audit_events WHERE action = 'mfa.recovery.generated' AND entity_id = 'sam'`)).length, 0, "nothing was audited as generated");
+      assert.equal((await staffSignIn(totpCode(staffSecret))).userId, "sam", "the authenticator alone signs them in");
     });
 
-    it("a recovery code signs in once in place of the authenticator, typed loosely; the count goes down", async () => {
-      let remaining: number | undefined;
-      const session = await staffSignIn(` ${staffCodes[0]!.toLowerCase().replace("-", " ")} `, (left) => { remaining = left; });
-      assert.equal(session.userId, "sam");
-      assert.equal(remaining, 9);
-      await assert.rejects(() => staffSignIn(staffCodes[0]!), InvalidLoginError, "a code works once");
-      let untouched: number | undefined;
-      await staffSignIn(totpCode(staffSecret), (left) => { untouched = left; });
-      assert.equal(untouched, undefined, "an authenticator sign-in says nothing about recovery codes");
-    });
-
-    it("a wrong recovery code counts against the sign-in's own attempt limit", async () => {
+    it("the MFA step accepts the authenticator only: a recovery-shaped code is refused and counts against the attempt limit", async () => {
+      await assert.rejects(() => staffSignIn(LEGACY_CODE), InvalidLoginError);
       const started = await startStaffLogin(database.pool, { organisationId: ORG, email: "sam@netzero.international", password: PASSWORD });
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        await assert.rejects(() => completeStaffMfa(database.pool, { organisationId: ORG, challengeToken: started.challengeToken, code: "ABCDE-FGHJK" }, KEY), InvalidLoginError);
+        await assert.rejects(() => completeStaffMfa(database.pool, { organisationId: ORG, challengeToken: started.challengeToken, code: LEGACY_CODE }, KEY), InvalidLoginError);
       }
-      await assert.rejects(() => completeStaffMfa(database.pool, { organisationId: ORG, challengeToken: started.challengeToken, code: staffCodes[1]! }, KEY),
-        InvalidLoginError, "five misses end the challenge, even for a good code");
-      assert.equal(await countRecoveryCodes(database.pool, { organisationId: ORG, principal: "staff", subjectId: "sam" }), 9, "and the good code was not spent");
+      await assert.rejects(() => completeStaffMfa(database.pool, { organisationId: ORG, challengeToken: started.challengeToken, code: totpCode(staffSecret) }, KEY),
+        InvalidLoginError, "five misses end the challenge, even for a good authenticator code");
     });
 
-    it("a new set needs the authenticator, and revokes the old set's unused codes", async () => {
+    it("a staff recovery code stored before this change is inert: it never signs anyone in and is never spent", async () => {
+      await db.query(`INSERT INTO nzi_console.mfa_recovery_codes (organisation_id, code_id, principal, subject_id, batch_id, code_hash)
+        VALUES ($1, 'legacy-1', 'staff', 'sam', 'legacy', $2)`, [ORG, hashOfLegacy]);
+      await assert.rejects(() => staffSignIn(LEGACY_CODE), InvalidLoginError, "a stored staff code signed someone in");
+      assert.equal((await q(`SELECT used_at FROM nzi_console.mfa_recovery_codes WHERE code_id = 'legacy-1'`))[0]!.used_at, null, "a stored staff code was spent");
+      assert.equal(await withAuthTransaction(database.pool, "write", (tx) => useRecoveryCode(tx, { organisationId: ORG, principal: "staff", subjectId: "sam" }, LEGACY_CODE)), null);
+    });
+
+    it("nothing mints a staff code: issuing and regenerating are refused", async () => {
       const account = { organisationId: ORG, principal: "staff" as const, subjectId: "sam" };
-      await assert.rejects(() => regenerateRecoveryCodes(database.pool, account, { code: "000000" }, KEY), RecoveryCodeError);
-      await assert.rejects(() => regenerateRecoveryCodes(database.pool, account, { code: staffCodes[2]! }, KEY), RecoveryCodeError, "a recovery code cannot mint more");
-      const fresh = await regenerateRecoveryCodes(database.pool, account, { code: totpCode(staffSecret) }, KEY);
-      assert.equal(fresh.length, 10);
-      await assert.rejects(() => staffSignIn(staffCodes[2]!), InvalidLoginError, "an old unused code no longer works");
-      assert.equal((await staffSignIn(fresh[0]!)).userId, "sam");
-      const revoked = await q(`SELECT count(*)::int AS n FROM nzi_console.mfa_recovery_codes WHERE subject_id = 'sam' AND revoked_at IS NOT NULL`);
-      assert.equal(revoked[0]!.n, 9, "the first set's nine unused codes (one was spent signing in)");
-    });
-
-    it("audits generation and use by the account's id — never a code", async () => {
-      const events = await q<{ action: string; actor_id: string; after_json: unknown }>(
-        `SELECT action, actor_id, after_json FROM nzi_console.audit_events WHERE action LIKE 'mfa.recovery.%' AND entity_id = 'sam'`);
-      assert.equal(events.filter((event) => event.action === "mfa.recovery.generated").length, 2);
-      assert.ok(events.filter((event) => event.action === "mfa.recovery.used").length >= 2);
-      const all = JSON.stringify(events);
-      for (const code of staffCodes) assert.ok(!all.includes(code));
+      await assert.rejects(() => withAuthTransaction(database.pool, "write", (tx) => issueRecoveryCodes(tx, account)), RecoveryCodeError);
+      await assert.rejects(() => regenerateRecoveryCodes(database.pool, account, { code: totpCode(staffSecret) }, KEY), RecoveryCodeError);
+      assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.mfa_recovery_codes WHERE principal = 'staff' AND subject_id = 'sam'`))[0]!.n, 1, "only the legacy row exists");
     });
   });
 

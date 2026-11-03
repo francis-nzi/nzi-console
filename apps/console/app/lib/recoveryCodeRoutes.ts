@@ -1,9 +1,8 @@
 import "server-only";
 import { countRecoveryCodes, RecoveryCodeError, regenerateRecoveryCodes, type RecoveryPrincipal } from "@nzi/isolated-backend";
-import { authFailure, portalAuthFailure } from "./authResponse";
+import { portalAuthFailure } from "./authResponse";
 import { isolatedPool } from "./isolatedDatabase";
 import { currentPortalUser, requirePortalOrigin } from "./portalSession";
-import { currentStaff, requireAuthOrigin } from "./staffSession";
 
 /**
  * MFA recovery codes for the signed-in person (email programme phase 4-2, R7), on each sign-in's account page. GET: how many
@@ -13,11 +12,11 @@ import { currentStaff, requireAuthOrigin } from "./staffSession";
 
 const noStore = { "Cache-Control": "no-store" };
 const realms = {
-  staff: { who: async (request: Request) => { const staff = await currentStaff(request); return { organisationId: staff.organisationId, subjectId: staff.userId }; }, origin: requireAuthOrigin, failure: authFailure },
   portal: { who: async (request: Request) => { const user = await currentPortalUser(request); return { organisationId: user.organisationId, subjectId: user.userId }; }, origin: requirePortalOrigin, failure: portalAuthFailure },
 } as const;
 
-export function recoveryCodeRoutes(principal: RecoveryPrincipal) {
+/** Portal only: staff have no recovery codes (RULING-remove-staff-recovery-codes). */
+export function recoveryCodeRoutes(principal: Extract<RecoveryPrincipal, "portal">) {
   const realm = realms[principal];
   return {
     GET: async (request: Request) => {
