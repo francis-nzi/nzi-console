@@ -182,6 +182,32 @@ export const RETENTION_CARVEOUTS: ReadonlyArray<RetentionCarveout> = [
     auditLabel: "Financial records retained",
   },
   {
+    key: "portal-conversation-messages",
+    appliesTo: { table: "portal_messages", columns: ["body"], subjectClass: "client-staff" },
+    basis: "PENDING_NZC_139",
+    basisNote:
+      "A message is one side of a two-sided record: the adviser's replies, and what colleagues at the same client wrote, sit in the same thread, and the " +
+      "organisation advised on the strength of it. DEFAULT, NOT A DECISION: erasure retains the text and the pointer to the author, which dangles to the " +
+      "tombstone once the identity is shredded. THE CALL FOR COUNSEL: crypto-shred vs retain. The text is stored in the clear, so shredding is not " +
+      "available today; sealing a body under its author's subject key would make it erasable, but would also destroy the client's and the adviser's " +
+      "own record of what was said. Whether a conversation is a record of account (retain, as an issued report is - NZC-166) or the author's data " +
+      "(shred) is for Francis and counsel; nothing here decides it.",
+    retention: { kind: "PENDING_NZC_139" },
+    onErasure: "retain",
+    auditLabel: "What you wrote in a conversation, retained as part of the record of that conversation",
+  },
+  {
+    key: "portal-conversation-threads",
+    appliesTo: { table: "portal_threads", columns: ["title"], subjectClass: "client-staff" },
+    basis: "PENDING_NZC_139",
+    basisNote:
+      "A conversation's title heads a record that outlives any one participant. DEFAULT, NOT A DECISION: retained with the conversation, on the same " +
+      "open question as 'portal-conversation-messages' (crypto-shred vs retain), which this entry follows.",
+    retention: { kind: "PENDING_NZC_139" },
+    onErasure: "retain",
+    auditLabel: "The title of a conversation you started, retained with the conversation",
+  },
+  {
     key: "portal-login-security-audit",
     appliesTo: { table: "portal_login_events", columns: ["occurred_at", "outcome"], subjectClass: "client-staff" },
     basis: "PENDING_NZC_139",

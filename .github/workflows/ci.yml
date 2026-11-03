@@ -219,6 +219,11 @@ jobs:
       # and the staff are unaffected; re-enabling needs no re-invite; every attempt is recorded and the network data nulled after 90 days.
       - name: A switched-off or expired client cannot sign in, its sessions die, and nobody else is affected
         run: npx tsx --test packages/isolated-backend/tests/portalAccessEnforcementReal.test.ts
+      # Portal conversations (RULING-portal-messages, M1): who sees a thread (own client, client-wide or a job held), state follows who spoke last with a
+      # surfaced response target, staff assign and set state, read markers, append-only messages with no name stored, audit without the text, the report
+      # page's comments and their thread as one conversation both ways, and the configurable subject tags.
+      - name: A client's conversations are seen only by those entitled, move with who spoke last, and are one thread with the report comments
+        run: npx tsx --test packages/isolated-backend/tests/portalConversationsReal.test.ts
       # Portal spend import, Phase A (RULING-portal-import-spend): per-line pending scope rows filed where the staff allocation map routes
       # them (never the register), a hidden category held without being named, duplicates read across the register AND the job's own
       # spend rows, a carried-forward line never filled, the signed identity verified in the transaction.

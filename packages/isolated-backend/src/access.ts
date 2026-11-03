@@ -261,6 +261,15 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   // handler then holds the file's own job grant (`portalFiles.ts`), so no data-entry window applies to sharing a document.
   "client.portal.access.set": client,
   "portal.file.upload": client,
+  // Portal conversations: on a client (a portal user's three are held to their own client and an active account, like files; the thread's own
+  // job grant is the handler's). The subject-tag lookup is the organisation's.
+  "portal.thread.start": client,
+  "portal.message.post": client,
+  "portal.thread.read": client,
+  "client.thread.start": client,
+  "client.message.post": client,
+  "client.thread.update": client,
+  "thread_subject.set": organisation,
   "portal.file.download": client,
   "client.file.deliver": client,
   "client.file.download": client,
@@ -400,7 +409,7 @@ async function authorizePortalCommand<K extends CommandKey>(db: Queryable, key: 
   const subject = subjectOf[key](input);
   if ((commandDefinitions[key] as { permission: string }).permission === "portal.plan") return authorizePortalPlanCommand(db, subject, context);
   // Portal files: the client's own, by an active user — the same session rule as the plan; the file's job grant is the handler's.
-  if (key === "portal.file.upload" || key === "portal.file.download") return authorizePortalPlanCommand(db, subject, context);
+  if (key === "portal.file.upload" || key === "portal.file.download" || key === "portal.thread.start" || key === "portal.message.post" || key === "portal.thread.read") return authorizePortalPlanCommand(db, subject, context);
   if (subject.kind !== "job") throw new AuthorizationError("tenant", TENANT_REFUSED);
   const access = await resolveAccess(db, context.organisationId, context.actorId, "job", subject.id);
   if (access.clientId !== context.portal.clientId) throw new AuthorizationError("tenant", "This job is not available to your account.");

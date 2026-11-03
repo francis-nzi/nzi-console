@@ -234,6 +234,24 @@ describe("the PII inventory (NZC-125)", () => {
     assert.equal(carveoutsFor("portal_login_events", "email_hash").length, 0, "nothing is claimed over the hash");
   });
 
+  it("registers portal conversations (0201): messages and thread titles are the subject's own text, retained on a basis that names the open question", () => {
+    assert.deepEqual(PII_TABLES.portal_messages!.attribution, { kind: "pointer", via: "author_id", subjectTable: "portal_users" });
+    assert.equal(PII_TABLES.portal_messages!.appendOnly, true);
+    assert.deepEqual(PII_TABLES.portal_threads!.attribution, { kind: "pointer", via: "started_by_id", subjectTable: "portal_users" });
+    for (const [table, column, key] of [["portal_messages", "body", "portal-conversation-messages"], ["portal_threads", "title", "portal-conversation-threads"]] as const) {
+      const entry = PII_COLUMNS.find((candidate) => candidate.table === table && candidate.column === column)!;
+      assert.ok(entry, `${table}.${column} is registered`);
+      assert.equal(isAttributable(entry), true);
+      assert.equal(entry.erasure, "retain-with-basis");
+      const covering = carveoutsFor(table, column);
+      assert.deepEqual(covering.map((carveout) => carveout.key), [key]);
+      assert.equal(covering[0]!.onErasure, "retain", "the default is retention, not a decision");
+      assert.equal(covering[0]!.basis, "PENDING_NZC_139");
+      assert.match(covering[0]!.basisNote, /crypto-shred vs retain/i, "the call for counsel is flagged in the entry itself");
+    }
+    assert.ok(!PII_COLUMNS.some((column) => column.table === "portal_messages" && /name/i.test(column.column)), "no name is stored with a message to register");
+  });
+
   it("reports what it can and cannot reach, so the split is visible rather than inferred", () => {
     // Not an assertion about a number — a statement of the shape, which the next change to the
     // inventory will move. It fails if attribution stops being answered at all.

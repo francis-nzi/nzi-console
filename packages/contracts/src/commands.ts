@@ -1,6 +1,7 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { PORTAL_ACCESS_NOTES_MAX, PORTAL_ACCESS_NOTE_MAX, PORTAL_ACCESS_PAYMENT_REF_MAX, PORTAL_PAYMENT_STATUSES, type PortalClientAccessChanges } from "./portalClientAccess";
 import type { PortalSpendImportPayload } from "./portalSpendImport";
+import { PORTAL_MESSAGE_MAX, PORTAL_SUBJECT_CODE_PATTERN, PORTAL_THREAD_STATES, PORTAL_THREAD_TITLE_MAX, type PortalThreadState } from "./portalConversations";
 import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, isPortalFileCategory, type PortalFileCategory, type PortalFileIngest } from "./portalFiles";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
 import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, type FileTypeEditableFields } from "./adminFileTypes";
@@ -267,6 +268,13 @@ export type CommandKey =
   | "client.portal.profile.set"
   | "client.portal.access.set"
   | "portal.file.upload"
+  | "portal.thread.start"
+  | "portal.message.post"
+  | "portal.thread.read"
+  | "client.thread.start"
+  | "client.message.post"
+  | "client.thread.update"
+  | "thread_subject.set"
   | "portal.file.download"
   | "client.file.deliver"
   | "client.file.download"
@@ -1190,6 +1198,16 @@ export type CommandInputMap = {
   /** Portal Management → Access: the client-level switch and record. `expectedVersion` is null while the client has no record yet (the defaults). */
   "client.portal.access.set":{clientId:string;expectedVersion:number|null;changes:PortalClientAccessChanges;note?:string|null};
   "portal.file.upload":{clientId:string;ingest:PortalFileIngest;category: PortalFileCategory};
+  // Portal conversations (RULING-portal-messages, M1). A message is append-only; a thread is a subject, a scope, an owner and a state.
+  "portal.thread.start":{clientId:string;jobId:string|null;subjectCode:string;title:string;body:string};
+  "portal.message.post":{clientId:string;threadId:string;body:string};
+  "portal.thread.read":{clientId:string;threadId:string};
+  "client.thread.start":{clientId:string;jobId:string|null;subjectCode:string;title:string;body:string};
+  "client.message.post":{clientId:string;threadId:string;body:string};
+  /** Staff set the owner and/or the state. `ownerId: null` unassigns. `expectedVersion` is the thread version the staff member saw. */
+  "client.thread.update":{clientId:string;threadId:string;expectedVersion:number;ownerId?:string|null;state?:PortalThreadState};
+  /** The CRM-configurable subject tags: add one, rename it, reorder it, or turn it off (never deleted - a thread keeps its tag). */
+  "thread_subject.set":{code:string;label:string;sortOrder?:number;active?:boolean};
   "portal.file.download":{clientId:string;fileId:string};
   "client.file.deliver":{clientId:string;ingest:PortalFileIngest;category?: PortalFileCategory};
   "client.file.download":{clientId:string;fileId:string};
@@ -1364,6 +1382,46 @@ const portalSpendImportIssues = (input: { rows?: unknown[]; spend?: PortalSpendI
   if (!Array.isArray(spend.lines) || spend.lines.length === 0) issues.push({ field: "spend.lines", code: "REQUIRED", message: "The import has no lines." });
   else if (spend.lines.length > PORTAL_IMPORT_MAX_ROWS) issues.push({ field: "spend.lines", code: "TOO_MANY", message: `An import files at most ${PORTAL_IMPORT_MAX_ROWS} lines at a time.` });
   if (Array.isArray(input.rows) && input.rows.length > 0) issues.push({ field: "rows", code: "NOT_ALLOWED", message: "A spend import files its own rows." });
+};
+const bodyIssues = (issues: CommandIssue[], field: string, value: unknown) => {
+  if (typeof value !== "string" || !value.trim()) issues.push({ field, code: "REQUIRED", message: "Write a message." });
+  else if (value.trim().length > PORTAL_MESSAGE_MAX) issues.push({ field, code: "TOO_LONG", message: `A message is at most ${PORTAL_MESSAGE_MAX} characters.` });
+};
+const threadStartIssues = (input: { clientId: string; jobId: string | null; subjectCode: string; title: string; body: string }, context: CommandContext) => {
+  const issues = baseIssues(context, false);
+  required(issues, "clientId", input.clientId);
+  if (input.jobId !== null && !text(input.jobId)) issues.push({ field: "jobId", code: "INVALID", message: "Choose a job, or none for the whole organisation." });
+  if (!PORTAL_SUBJECT_CODE_PATTERN.test(String(input.subjectCode ?? ""))) issues.push({ field: "subjectCode", code: "REQUIRED", message: "Choose what this is about." });
+  if (typeof input.title !== "string" || !input.title.trim()) issues.push({ field: "title", code: "REQUIRED", message: "Give the conversation a title." });
+  else if (input.title.trim().length > PORTAL_THREAD_TITLE_MAX) issues.push({ field: "title", code: "TOO_LONG", message: `A title is at most ${PORTAL_THREAD_TITLE_MAX} characters.` });
+  bodyIssues(issues, "body", input.body);
+  return issues;
+};
+const threadPostIssues = (input: { clientId: string; threadId: string; body: string }, context: CommandContext) => {
+  const issues = baseIssues(context, false);
+  required(issues, "clientId", input.clientId); required(issues, "threadId", input.threadId);
+  bodyIssues(issues, "body", input.body);
+  return issues;
+};
+const threadRefIssues = (input: { clientId: string; threadId: string }, context: CommandContext) => {
+  const issues = baseIssues(context, false);
+  required(issues, "clientId", input.clientId); required(issues, "threadId", input.threadId);
+  return issues;
+};
+const threadUpdateIssues = (input: { clientId: string; threadId: string; expectedVersion: number; ownerId?: string | null; state?: PortalThreadState }, context: CommandContext) => {
+  const issues = threadRefIssues(input, context);
+  if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "The thread version is a whole number." });
+  if (input.ownerId === undefined && input.state === undefined) issues.push({ field: "changes", code: "REQUIRED", message: "Nothing to change." });
+  if (input.ownerId !== undefined && input.ownerId !== null && !text(input.ownerId)) issues.push({ field: "ownerId", code: "INVALID", message: "Choose an owner, or none." });
+  if (input.state !== undefined && !(PORTAL_THREAD_STATES as readonly string[]).includes(input.state)) issues.push({ field: "state", code: "INVALID", message: "That is not a conversation state." });
+  return issues;
+};
+const threadSubjectIssues = (input: { code: string; label: string; sortOrder?: number }, context: CommandContext) => {
+  const issues = baseIssues(context, false);
+  if (!PORTAL_SUBJECT_CODE_PATTERN.test(String(input.code ?? ""))) issues.push({ field: "code", code: "INVALID", message: "A tag code is lower-case letters, digits and underscores, starting with a letter." });
+  if (typeof input.label !== "string" || !input.label.trim() || input.label.trim().length > 40) issues.push({ field: "label", code: "INVALID", message: "A tag label is 1 to 40 characters." });
+  if (input.sortOrder !== undefined && !Number.isInteger(input.sortOrder)) issues.push({ field: "sortOrder", code: "INVALID", message: "The order is a whole number." });
+  return issues;
 };
 const fileRefIssues = (input: { clientId: string; fileId: string }, context: CommandContext, reasonRequired = false) => {
   const issues = baseIssues(context, reasonRequired);
@@ -3348,6 +3406,13 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "client.file.deliver": { key: "client.file.deliver", label: "Share a file with the client portal", permission: "portal.admin", reasonRequired: false, transaction: "file record (quarantined or released by the gate) + audit + outbox + idempotency", auditAction: "client_file_delivered", validate: (input, context) => fileIngestIssues(input, context) },
   "client.file.download": { key: "client.file.download", label: "Download a portal file", permission: "portal.admin", reasonRequired: false, transaction: "signed URL for a released file + audit + outbox + idempotency", auditAction: "client_file_downloaded", validate: (input, context) => fileRefIssues(input, context) },
   "client.file.rescan": { key: "client.file.rescan", label: "Scan a held portal file again", permission: "portal.admin", reasonRequired: false, transaction: "file record (released, rejected or still held) + audit + outbox + idempotency", auditAction: "client_file_rescanned", validate: (input, context) => fileRefIssues(input, context) },
+  "portal.thread.start": { key: "portal.thread.start", label: "Start a conversation in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "thread + first message + audit + outbox + idempotency", auditAction: "portal_thread_started", validate: (input, context) => threadStartIssues(input, context) },
+  "portal.message.post": { key: "portal.message.post", label: "Write in a conversation in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "message + thread state + audit + outbox + idempotency", auditAction: "portal_message_posted", validate: (input, context) => threadPostIssues(input, context) },
+  "portal.thread.read": { key: "portal.thread.read", label: "Mark a conversation read in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "read marker + audit + outbox + idempotency", auditAction: "portal_thread_read", validate: (input, context) => threadRefIssues(input, context) },
+  "client.thread.start": { key: "client.thread.start", label: "Start a conversation with a client", permission: "portal.admin", reasonRequired: false, transaction: "thread + first message + audit + outbox + idempotency", auditAction: "client_thread_started", validate: (input, context) => threadStartIssues(input, context) },
+  "client.message.post": { key: "client.message.post", label: "Reply to a client in a conversation", permission: "portal.admin", reasonRequired: false, transaction: "message + thread state + audit + outbox + idempotency", auditAction: "client_message_posted", validate: (input, context) => threadPostIssues(input, context) },
+  "client.thread.update": { key: "client.thread.update", label: "Assign or set the state of a client conversation", permission: "portal.admin", reasonRequired: false, transaction: "thread owner/state + audit + outbox + idempotency", auditAction: "client_thread_updated", validate: (input, context) => threadUpdateIssues(input, context) },
+  "thread_subject.set": { key: "thread_subject.set", label: "Configure the conversation subject tags", permission: "admin.lookups", reasonRequired: false, transaction: "subject tag + audit + outbox + idempotency", auditAction: "thread_subject_set", validate: (input, context) => threadSubjectIssues(input, context) },
   "client.file.deactivate": { key: "client.file.deactivate", label: "Withdraw a portal file", permission: "portal.admin", reasonRequired: true, transaction: "deactivation (never deletion; the record and bytes are kept) + audit + outbox + idempotency", auditAction: "client_file_deactivated", validate: (input, context) => fileRefIssues(input, context, true) },
   "client.portal.profile.set":{key:"client.portal.profile.set",label:"Decide what a client's portal offers",permission:"portal.admin",reasonRequired:false,transaction:"client portal profile decision + audit + outbox + idempotency",auditAction:"client_portal_profile_set",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientId",input.clientId);required(issues,"profileKey",input.profileKey);if(input.profileKey&&!isPortalProfileKey(input.profileKey))issues.push({field:"profileKey",code:"UNKNOWN",message:"That is not a portal setting."});else if(input.profileKey&&input.value!==null&&!isPortalProfileValue(input.profileKey as PortalProfileKey,input.value))issues.push({field:"value",code:input.profileKey==="milestones"&&input.value==="edit"?"MILESTONES_VIEW_ONLY":"INVALID",message:input.profileKey==="milestones"&&input.value==="edit"?"Milestones are view-only for a client: they can be shown or hidden, never edited.":"That value is not one this setting takes."});if(typeof input.note==="string"&&input.note.length>500)issues.push({field:"note",code:"TOO_LONG",message:"A note is at most 500 characters."});return issues;}},
   /**

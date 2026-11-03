@@ -11,6 +11,7 @@ import { PortalAccessAdmin } from "../../platform/PortalAccessAdmin";
 import { PortalInviteAdmin } from "../../platform/PortalInviteAdmin";
 import { PortalAccessTab } from "./PortalAccessTab";
 import { PmSwitch } from "./PmSwitch";
+import { PortalConversationsPanel } from "./PortalConversationsPanel";
 import { PortalFilesPanel } from "./PortalFilesPanel";
 
 /**
@@ -32,7 +33,7 @@ import { PortalFilesPanel } from "./PortalFilesPanel";
  */
 
 export type PortalManagementLoad = { state: "loading" } | { state: "denied" } | { state: "failed" } | { state: "ready"; view: PortalProfileStaffView };
-export type PortalManagementTab = "access" | "users" | "visibility" | "scopes" | "jobs" | "files" | "history";
+export type PortalManagementTab = "access" | "users" | "visibility" | "scopes" | "jobs" | "files" | "messages" | "history";
 
 /** Not offered in the UI (see above). The keys and their stored decisions remain in the contract; nothing here writes them. */
 export const HIDDEN_PROFILE_KEYS = ["setup", "datasets"] as const;
@@ -96,31 +97,34 @@ export function PortalManagementArea({ clientId, clientOwnerUserId, writeEnabled
 
   return <PortalManagementBody load={load} note={note} onNote={setNote} pending={pending} message={message} profileAccess={profileAccess} visibilityAccess={visibilityAccess}
     tab={tab} onTab={setTab} access={<PortalAccessTab clientId={clientId} access={profileAccess} />} files={portalFeatureEnabled("portal-files") ? <PortalFilesPanel clientId={clientId} access={profileAccess} /> : null}
+    messages={portalFeatureEnabled("portal-conversations") ? <PortalConversationsPanel clientId={clientId} access={profileAccess} /> : null}
     users={<><PortalInviteAdmin clientId={clientId} /><PortalAccessAdmin clientId={clientId} /></>}
     onRetry={() => void refresh()} onSend={(key, path, input, done) => void send(key, path, input, done)} onResetAll={(group) => void resetAll(group)} />;
 }
 
 const TABS: ReadonlyArray<{ id: PortalManagementTab; label: string }> = [
   { id: "access", label: "Access" }, { id: "users", label: "Users" }, { id: "visibility", label: "Visibility" }, { id: "scopes", label: "Scopes & categories" },
-  { id: "jobs", label: "Jobs" }, { id: "files", label: "Files" }, { id: "history", label: "History" },
+  { id: "jobs", label: "Jobs" }, { id: "files", label: "Files" }, { id: "messages", label: "Messages" }, { id: "history", label: "History" },
 ];
 /** Tabs that are live in this step. The rest are named so the shape is visible, and are not selectable until they ship. */
 const LIVE: ReadonlySet<PortalManagementTab> = new Set(["access", "visibility", "scopes"]);
 
 /** The area, from props — everything it shows and every command it sends, with no fetching of its own (so it is testable). */
-export function PortalManagementBody({ load, note, onNote, pending, message, profileAccess, visibilityAccess, tab, onTab, access, files, users, onRetry, onSend, onResetAll }: {
+export function PortalManagementBody({ load, note, onNote, pending, message, profileAccess, visibilityAccess, tab, onTab, access, files, messages, users, onRetry, onSend, onResetAll }: {
   load: PortalManagementLoad; note: string; onNote: (value: string) => void; pending: string | null; message: { tone: "ok" | "warn"; text: string } | null;
   profileAccess: EditAccess; visibilityAccess: EditAccess; tab: PortalManagementTab; onTab: (tab: PortalManagementTab) => void;
   /** The Access tab's content: the client-level switch and record (it loads and saves for itself). */
   access?: ReactNode;
   /** The Files tab's content, when it is on. */
   files?: ReactNode;
+  /** The Messages tab's content (the conversations from the adviser's side); not selectable until it is given (behind `portal-conversations`). */
+  messages?: ReactNode;
   /** The Users tab's content: this client's invitations and its users' job access and data-entry windows. */
   users?: ReactNode; onRetry: () => void;
   /** `path` is relative to the client's API base: /portal-profile, /portal-profile/scopes, /category-visibility. */
   onSend: Send; onResetAll: (group: ResetGroup) => void;
 }) {
-  const live = new Set<PortalManagementTab>([...LIVE, ...(files ? (["files"] as const) : []), ...(users ? (["users"] as const) : [])]);
+  const live = new Set<PortalManagementTab>([...LIVE, ...(files ? (["files"] as const) : []), ...(messages ? (["messages"] as const) : []), ...(users ? (["users"] as const) : [])]);
   const items = TABS.map((entry) => ({ id: entry.id, label: entry.label, disabled: !live.has(entry.id) }));
   return <section className="nz-panel nz-pm" aria-labelledby="area-portal">
     <div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="area-portal">Portal Management</h2></div>
@@ -136,6 +140,7 @@ export function PortalManagementBody({ load, note, onNote, pending, message, pro
         <LoadGate load={load} onRetry={onRetry}>{(view) => <ScopesTab view={view} note={note} onNote={onNote} pending={pending} access={visibilityAccess} onSend={onSend} onResetAll={onResetAll} />}</LoadGate>
       </TabPanel>
       <TabPanel id="files" idBase="pm" active={tab === "files"} ariaLabel="Files">{files}</TabPanel>
+      <TabPanel id="messages" idBase="pm" active={tab === "messages"} ariaLabel="Messages">{messages}</TabPanel>
       <TabPanel id="users" idBase="pm" active={tab === "users"} ariaLabel="Users">{users}</TabPanel>
       {(["jobs", "history"] as const).map((id) => <TabPanel key={id} id={id} idBase="pm" active={tab === id}><p className="sub" role="status">This tab is not available yet.</p></TabPanel>)}
     </div>
