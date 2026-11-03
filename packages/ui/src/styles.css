@@ -2548,3 +2548,9 @@ details.nz-job-report-link{white-space:normal}
 .nz-ef-vehicle-unit{display:flex;flex-direction:column;gap:6px;margin:10px 0 4px}
 .nz-vehicle-regs-confirm{display:flex;flex-direction:column;gap:8px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--paper)}
 @media(max-width:640px){.nz-ef-vehicle-pick{grid-template-columns:1fr}}
+/* Portal Management -> Messages (RULING-portal-messages, M1): the adviser's side of the conversations. */
+.nz-pm-conv{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:980px){.nz-pm-conv{grid-template-columns:1fr}}
+.nz-conv-messages{list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.nz-conv-messages p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.nz-pm-conv tr.on{background:var(--nz-mint,#DFF5E9)}

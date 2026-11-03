@@ -33,6 +33,7 @@ export * from "./portalProfile";
 export * from "./portalCapture";
 export * from "./portalFiles";
 export * from "./portalClientAccess";
+export * from "./portalConversations";
 export * from "./portalLoginEvents";
 export * from "./portalSpendImport";
 export * from "./portalReset";

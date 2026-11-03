@@ -517,6 +517,25 @@ describe("the subject access response (NZC-134)", { skip: DATABASE_URL ? false :
     }
   });
 
+  it("includes the person's own conversation messages and thread titles, and no one else's", async () => {
+    await db.query(`INSERT INTO nzi_console.portal_users (organisation_id,portal_user_id,client_id,email_normalized,display_name,status) VALUES ($1,'portal-8','client-1','colleague@example.test','Colleague','active')`, [ORG]);
+    await db.query(`INSERT INTO nzi_console.portal_threads (organisation_id,thread_id,client_id,scope,subject_code,title,state,started_by_principal,started_by_id) VALUES ($1,'th-mine','client-1','client','general','My billing question','awaiting_nzi','portal','portal-1'),($1,'th-theirs','client-1','client','general','Their private matter','awaiting_nzi','portal','portal-8')`, [ORG]);
+    await db.query(`INSERT INTO nzi_console.portal_messages (organisation_id,message_id,thread_id,seq,author_principal,author_id,body) VALUES ($1,'m1','th-mine',1,'portal','portal-1','What is the invoice reference?'),($1,'m2','th-mine',2,'staff','user-1','It is on page two.'),($1,'m3','th-theirs',1,'portal','portal-8','Colleague note')`, [ORG]);
+    try {
+      const { exportId } = await produce();
+      const { document } = await fetch(exportId);
+      const text = JSON.stringify(document);
+      const messages = document.records.filter((record) => record.source === "portal_messages");
+      assert.equal(messages.length, 1, "exactly the message this person wrote (the adviser's reply and a colleague's are not theirs)");
+      assert.equal(messages[0]!.data.find((datum) => datum.provenance.column === "body")!.value, "What is the invoice reference?");
+      assert.equal(document.records.filter((record) => record.source === "portal_threads").length, 1);
+      assert.match(text, /My billing question/);
+      for (const absent of ["It is on page two.", "Their private matter", "Colleague note"]) assert.ok(!text.includes(absent), `${absent} is not in this person's export`);
+    } finally {
+      await db.query(`DELETE FROM nzi_console.portal_messages WHERE organisation_id=$1 AND message_id IN ('m1','m2','m3')`, [ORG]).catch(() => undefined);
+    }
+  });
+
   it("has a window that is short and stated in one place", () => {
     // Not an arbitrary assertion: the TTL is the retention position, so a change to it should be a
     // deliberate edit here as well as there.

@@ -33,6 +33,10 @@ export type PortalFeature =
   // here only, not in render.yaml; Francis adds the token in the dashboard (and the storage configuration) when the store is ready. Off, every
   // file route is 404.
   | "portal-files"
+  // Portal conversations (RULING-portal-messages): the Messages page as two-way, tagged, owned threads - and the staff Conversations area. Dark by
+  // absence: declared here only; Francis adds the token in the dashboard. Off, Messages is the report-comments thread it has been and every
+  // conversation route is 404. (The report page and its Messages tab are unaffected either way: a report comment is mirrored into its thread.)
+  | "portal-conversations"
   | "portal-shell";
 
 const enabled = (): Set<string> =>

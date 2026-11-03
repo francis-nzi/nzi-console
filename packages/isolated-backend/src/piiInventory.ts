@@ -257,6 +257,16 @@ export const PII_TABLES: Readonly<Record<string, PiiTable>> = {
     appendOnly: true,
   },
 
+  // Portal conversations (0201, RULING-portal-messages). A message names its author by id only, so the person-linked datum is the text itself;
+  // a thread's title is free text too. Messages are append-only; a thread is updated (state, owner), so erasure never writes to either.
+  portal_threads: {
+    keyColumns: ["thread_id"], attribution: { kind: "pointer", via: "started_by_id", subjectTable: "portal_users" },
+  },
+  portal_messages: {
+    keyColumns: ["message_id"], attribution: { kind: "pointer", via: "author_id", subjectTable: "portal_users" },
+    appendOnly: true,
+  },
+
   // Reachable once a named change lands.
   training_bookings: {
     keyColumns: ["booking_id"],
@@ -385,6 +395,13 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
   { table: "portal_report_comments", column: "author_display_name", label: "A comment you wrote", stage: "deferred", erasure: "association-to-tombstone",
     storage: sealed("author_display_name_sealed"),
     because: "author_id names the author; a staff author's display name is their role rather than their name. The comment *body* may itself contain personal data, which is a content-sealing question and not this one" },
+
+  // ── Portal conversations (0201) - see the carve-outs 'portal-conversation-messages' and 'portal-conversation-threads' ──
+  { table: "portal_messages", column: "body", label: "A message you wrote in a conversation", stage: "deferred", erasure: "retain-with-basis",
+    storage: { kind: "plaintext" },
+    because: "free text the person wrote to their adviser; kept in the clear (not sealed under their key), so a crypto-shred is not available today. A conversation is a two-sided record - the adviser's replies and colleagues' messages sit in the same thread - so it is retained on a basis the carve-out states (pending)" },
+  { table: "portal_threads", column: "title", label: "The title of a conversation you started", stage: "deferred", erasure: "retain-with-basis",
+    storage: { kind: "plaintext" }, because: "free text the person chose to head a conversation; retained with the conversation (carve-out 'portal-conversation-threads')" },
 
   // ── Portal sign-in record (0199) — see the carve-outs 'portal-login-security-audit' and 'portal-login-network-data' ──
   { table: "portal_login_events", column: "occurred_at", label: "When a sign-in was attempted", stage: "deferred", erasure: "retain-with-basis",

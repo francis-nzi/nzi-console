@@ -162,3 +162,20 @@
 .nzp-files-history{padding:20px;display:flex;flex-direction:column;gap:10px}
 .nzp-files-timeline{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:10px}
 .nzp-files-withdrawn{margin:0;padding:8px 10px;border-radius:var(--nzp-r);background:#FFF3DA;font-size:13px}
+/* Messages - the Conversations lane (RULING-portal-messages, M1). */
+.nzp-conv-grid{display:grid;grid-template-columns:minmax(240px,320px) 1fr;gap:16px;align-items:start}
+@media (max-width:820px){.nzp-conv-grid{grid-template-columns:1fr}}
+.nzp-conv-items{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.nzp-conv-item{width:100%;text-align:left;display:flex;flex-direction:column;gap:2px;border:1px solid var(--nzp-line);background:var(--nzp-card);border-radius:var(--nzp-r);padding:8px 10px;cursor:pointer}
+.nzp-conv-item.on{border-color:#0B7A4B;background:#DFF5E9}
+.nzp-conv-top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.nzp-conv-tag{font-size:11px;font-weight:600;color:#0B7A4B;background:#DFF5E9;border-radius:999px;padding:1px 8px}
+.nzp-conv-unread{font-size:11px;font-weight:700;color:#fff;background:#0B7A4B;border-radius:999px;min-width:18px;text-align:center;padding:0 5px}
+.nzp-conv-messages{list-style:none;margin:12px 0;padding:0;display:flex;flex-direction:column;gap:10px}
+.nzp-conv-msg{max-width:85%;padding:8px 12px;border-radius:var(--nzp-r);background:#F1F5F3}
+.nzp-conv-msg p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
+.nzp-conv-msg.you{align-self:flex-end;background:#DFF5E9}
+.nzp-conv-composer{display:flex;flex-direction:column;gap:8px}
+.nzp-conv-new{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.nzp-conv-new label{display:flex;flex-direction:column;gap:2px;font-size:12px}
+.nzp-conv-check{flex-direction:row!important;align-items:center;gap:6px!important}
