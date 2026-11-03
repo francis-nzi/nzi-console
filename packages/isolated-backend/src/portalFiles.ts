@@ -1,6 +1,6 @@
-import { PORTAL_FILE_URL_TTL_MAX_SECONDS, PORTAL_FILE_URL_TTL_SECONDS, type CommandContext, type CommandInputMap, type PortalFileDirection, type PortalFileFlag, type PortalFileIngest, type PortalFileRecord, type PortalFileStatus } from "@nzi/contracts";
+import { PORTAL_FILE_FLAG_LABELS, PORTAL_FILE_URL_TTL_MAX_SECONDS, PORTAL_FILE_URL_TTL_SECONDS, type CommandContext, type CommandInputMap, type PortalFileCategory, type PortalFileDirection, type PortalFileFlag, type PortalFileHistoryEntry, type PortalFileIngest, type PortalFileRecord, type PortalFileStatus } from "@nzi/contracts";
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
-import type { PortalPrincipal } from "./auth";
+import { AuthorizationError, type PortalPrincipal } from "./auth";
 import { rescanFile, type Scanner, type StorageAdapter } from "./fileStorage";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
@@ -22,13 +22,15 @@ type FileRow = {
   file_id: string; client_id: string; job_id: string | null; direction: PortalFileDirection; status: PortalFileStatus; file_name: string; content_type: string;
   size_bytes: string; sha256: string; storage_provider: string; external_item_id: string | null; flag: PortalFileFlag | null; flag_detail: string | null;
   uploaded_by: string; uploaded_by_principal: "staff" | "portal"; uploaded_at: Date; released_at: Date | null; deactivated_at: Date | null; deactivated_by: string | null;
+  category: PortalFileCategory; deactivated_reason: string | null;
 };
-const COLUMNS = `file_id,client_id,job_id,direction,status,file_name,content_type,size_bytes::text AS size_bytes,sha256,storage_provider,external_item_id,flag,flag_detail,uploaded_by,uploaded_by_principal,uploaded_at,released_at,deactivated_at,deactivated_by`;
+const COLUMNS = `file_id,client_id,job_id,direction,status,file_name,content_type,size_bytes::text AS size_bytes,sha256,storage_provider,external_item_id,flag,flag_detail,uploaded_by,uploaded_by_principal,uploaded_at,released_at,deactivated_at,deactivated_by,category,deactivated_reason`;
 const iso = (value: Date | string | null) => (value ? new Date(value).toISOString() : null);
 const toRecord = (row: FileRow): PortalFileRecord => ({
   fileId: row.file_id, clientId: row.client_id, jobId: row.job_id, direction: row.direction, status: row.status, fileName: row.file_name, contentType: row.content_type,
   sizeBytes: Number(row.size_bytes), sha256: row.sha256, flag: row.flag, flagDetail: row.flag_detail, uploadedBy: row.uploaded_by, uploadedByPrincipal: row.uploaded_by_principal,
   uploadedAt: iso(row.uploaded_at)!, releasedAt: iso(row.released_at), deactivatedAt: iso(row.deactivated_at), deactivatedBy: row.deactivated_by,
+  category: row.category, deactivatedReason: row.deactivated_reason,
 });
 const refuse = (field: string, code: string, message: string) => new CommandValidationError([{ field, code, message }]);
 const NOT_FOUND = () => refuse("fileId", "NOT_FOUND", "That file was not found.");
@@ -49,12 +51,12 @@ async function portalHoldsJob(db: Queryable, context: CommandContext, jobId: str
   return !!held.rows[0];
 }
 
-async function insertFile(db: Queryable, context: CommandContext, clientId: string, direction: PortalFileDirection, ingest: PortalFileIngest): Promise<void> {
+async function insertFile(db: Queryable, context: CommandContext, clientId: string, direction: PortalFileDirection, ingest: PortalFileIngest, category: PortalFileCategory): Promise<void> {
   await db.query(
-    `INSERT INTO nzi_console.portal_files (organisation_id,file_id,client_id,job_id,direction,status,file_name,content_type,size_bytes,sha256,storage_provider,external_item_id,flag,flag_detail,uploaded_by,uploaded_by_principal,released_at)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,CASE WHEN $6 = 'released' THEN now() END)`,
+    `INSERT INTO nzi_console.portal_files (organisation_id,file_id,client_id,job_id,direction,status,file_name,content_type,size_bytes,sha256,storage_provider,external_item_id,flag,flag_detail,uploaded_by,uploaded_by_principal,released_at,category)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,CASE WHEN $6 = 'released' THEN now() END,$17)`,
     [context.organisationId, ingest.fileId, clientId, ingest.jobId, direction, ingest.status, ingest.fileName, ingest.contentType, ingest.sizeBytes, ingest.sha256, ingest.storageProvider,
-      ingest.externalItemId, ingest.flag, ingest.flagDetail?.slice(0, 500) ?? null, context.actorId, context.principal === "portal" ? "portal" : "staff"]);
+      ingest.externalItemId, ingest.flag, ingest.flagDetail?.slice(0, 500) ?? null, context.actorId, context.principal === "portal" ? "portal" : "staff", category]);
 }
 const recorded = (clientId: string, ingest: PortalFileIngest, topic: string) => ({
   // What is audited: the outcome and the evidence of the file (its hash), never the bytes and never a storage identifier.
@@ -68,7 +70,7 @@ export function recordPortalFileUpload(pool: PoolLike, input: CommandInputMap["p
     if (!input.ingest.jobId) throw refuse("ingest.jobId", "REQUIRED", "Choose the job this file is for.");
     await requireClientJob(db, context, input.clientId, input.ingest.jobId);
     if (!(await portalHoldsJob(db, context, input.ingest.jobId))) throw refuse("ingest.jobId", "NOT_FOUND", "That job was not found.");
-    await insertFile(db, context, input.clientId, "client_upload", input.ingest);
+    await insertFile(db, context, input.clientId, "client_upload", input.ingest, input.category);
     return recorded(input.clientId, input.ingest, "portal.file.uploaded");
   });
 }
@@ -79,7 +81,7 @@ export function recordClientFileDelivery(pool: PoolLike, input: CommandInputMap[
     const client = await db.query(`SELECT 1 FROM nzi_console.clients WHERE organisation_id = $1 AND client_id = $2`, [context.organisationId, input.clientId]);
     if (!client.rows[0]) throw refuse("clientId", "NOT_FOUND", "Client was not found.");
     await requireClientJob(db, context, input.clientId, input.ingest.jobId);
-    await insertFile(db, context, input.clientId, "deliverable", input.ingest);
+    await insertFile(db, context, input.clientId, "deliverable", input.ingest, input.category ?? "other");
     return recorded(input.clientId, input.ingest, "client.file.delivered");
   });
 }
@@ -165,20 +167,67 @@ export function listPortalFilesForStaff(pool: PoolLike, holder: CapabilityHolder
 }
 
 /**
- * What a portal user sees: released deliverables for their client (client-wide, or for a job they hold) and released client files of jobs
- * they hold, plus their own uploads in any state so a refusal is explained. A withdrawn file is not shown. Never another client's.
+ * What a portal user sees (RULING-portal-files-client-ui): released deliverables for their client (client-wide, or for a job they hold), the
+ * released client files of jobs they hold, and their OWN uploads in every state - held and refused so a refusal is explained, withdrawn so the
+ * reason is. Another user's held, refused or withdrawn file is never listed, and nor is another client's. $1 organisation, $2 client, $3 user.
  */
+const PORTAL_VISIBLE = `f.organisation_id = $1 AND f.client_id = $2
+  AND ((f.status = 'released' AND ((f.job_id IS NULL AND f.direction = 'deliverable')
+         OR f.job_id IN (SELECT g.job_id FROM nzi_console.portal_access_grants g WHERE g.organisation_id = $1 AND g.portal_user_id = $3 AND g.client_id = $2 AND g.revoked_at IS NULL)))
+       OR (f.direction = 'client_upload' AND f.uploaded_by = $3))`;
+/** The client never sees a storage identifier, a user id or a staff name: toRecord carries none, and who uploaded is "You", "A colleague" or "NZI" - who withdrew is never shown. */
+const forClient = (row: FileRow, viewerId: string): PortalFileRecord => {
+  const record = toRecord(row);
+  // Never a user id or a staff name: "You", "A colleague" or "NZI".
+  return { ...record, uploadedBy: record.uploadedByPrincipal === "staff" ? "NZI" : record.uploadedBy === viewerId ? "You" : "A colleague", deactivatedBy: null };
+};
+
 export function listPortalFiles(pool: PoolLike, principal: PortalPrincipal): Promise<PortalFileRecord[]> {
+  return withTenantRead(pool, principal.organisationId, async (db) =>
+    (await db.query<FileRow>(`SELECT ${COLUMNS} FROM nzi_console.portal_files f WHERE ${PORTAL_VISIBLE} ORDER BY f.uploaded_at DESC`,
+      [principal.organisationId, principal.clientId, principal.userId])).rows.map((row) => forClient(row, principal.userId)));
+}
+
+type AuditRow = { actor_id: string; principal_type: "staff" | "portal" | "system"; action: string; reason: string | null; after_json: { status?: string; flag?: PortalFileFlag | null } | null; occurred_at: Date | string };
+const scanDetail = (status: string | undefined, flag: PortalFileFlag | null | undefined) =>
+  status === "released" ? "Clean" : status === "rejected" ? `Quarantined: ${flag ? PORTAL_FILE_FLAG_LABELS[flag] : "it did not pass the checks"}` : "Held while it is checked";
+
+/** A file's audit rows as the client reads them. Pure, so what it shows - and does not - is testable without a database. */
+export function portalFileHistory(rows: readonly AuditRow[], viewerId: string): PortalFileHistoryEntry[] {
+  const entries: PortalFileHistoryEntry[] = [];
+  for (const row of rows) {
+    const at = new Date(row.occurred_at).toISOString();
+    const who: PortalFileHistoryEntry["who"] = row.principal_type === "portal" ? (row.actor_id === viewerId ? "you" : "colleague") : "nzi";
+    const status = row.after_json?.status, flag = row.after_json?.flag;
+    switch (row.action) {
+      case "portal_file_uploaded": case "client_file_delivered":
+        entries.push({ at, who, action: row.action === "client_file_delivered" ? "shared" : "uploaded", detail: null });
+        entries.push({ at, who: "nzi", action: "scanned", detail: scanDetail(status, flag) });
+        if (status === "released") entries.push({ at, who: "nzi", action: "released", detail: null });
+        break;
+      case "client_file_rescanned":
+        entries.push({ at, who: "nzi", action: "scanned", detail: scanDetail(status, flag) });
+        if (status === "released") entries.push({ at, who: "nzi", action: "released", detail: null });
+        break;
+      case "portal_file_downloaded": case "client_file_downloaded": entries.push({ at, who, action: "downloaded", detail: null }); break;
+      case "client_file_deactivated": entries.push({ at, who: "nzi", action: "withdrawn", detail: row.reason }); break;
+      default: break; // anything else about the file is staff's business, not the client's
+    }
+  }
+  return entries;
+}
+
+/**
+ * One file's History for the portal user entitled to the file (the same rule as the list, so a file they cannot see has no history for them
+ * either): uploaded, scanned, released, downloaded, withdrawn - who and when, "you", "a colleague" or "NZI", never a staff name.
+ */
+export function getPortalFileHistory(pool: PoolLike, principal: PortalPrincipal, fileId: string): Promise<PortalFileHistoryEntry[]> {
   return withTenantRead(pool, principal.organisationId, async (db) => {
-    const rows = (await db.query<FileRow>(
-      `SELECT ${COLUMNS} FROM nzi_console.portal_files f
-        WHERE f.organisation_id = $1 AND f.client_id = $2 AND f.status <> 'deactivated'
-          AND ((f.status = 'released' AND ((f.job_id IS NULL AND f.direction = 'deliverable')
-                 OR f.job_id IN (SELECT g.job_id FROM nzi_console.portal_access_grants g WHERE g.organisation_id = $1 AND g.portal_user_id = $3 AND g.client_id = $2 AND g.revoked_at IS NULL)))
-               OR (f.direction = 'client_upload' AND f.uploaded_by = $3))
-        ORDER BY f.uploaded_at DESC`,
-      [principal.organisationId, principal.clientId, principal.userId])).rows;
-    // The client never sees a storage identifier or a staff name: toRecord carries neither, and a staff uploader is shown as NZI.
-    return rows.map(toRecord).map((record) => (record.uploadedByPrincipal === "staff" ? { ...record, uploadedBy: "NZI", deactivatedBy: null } : record));
+    const visible = await db.query(`SELECT 1 FROM nzi_console.portal_files f WHERE ${PORTAL_VISIBLE} AND f.file_id = $4`, [principal.organisationId, principal.clientId, principal.userId, fileId]);
+    if (!visible.rows[0]) throw new AuthorizationError("tenant", "That file is not available to your account.");
+    const { rows } = await db.query<AuditRow>(
+      `SELECT actor_id, principal_type, action, reason, after_json, occurred_at FROM nzi_console.audit_events
+        WHERE organisation_id = $1 AND entity_type = 'portal_file' AND entity_id = $2 ORDER BY occurred_at, audit_event_id`, [principal.organisationId, fileId]);
+    return portalFileHistory(rows, principal.userId);
   });
 }

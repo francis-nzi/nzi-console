@@ -16,8 +16,8 @@ const routes = (dir: string): string[] => readdirSync(dir).flatMap((name) => {
 const fileRoutes = [...routes(resolve(root, "app/api/portal/files")), ...routes(resolve(root, "app/api/isolated/clients/[clientId]/files"))];
 
 describe("portal files routes", () => {
-  it("are six, each behind the flag (404 while it is off) before anything else is read", () => {
-    assert.equal(fileRoutes.length, 6);
+  it("are seven, each behind the flag (404 while it is off) before anything else is read", () => {
+    assert.equal(fileRoutes.length, 7);
     for (const path of fileRoutes) {
       const text = readFileSync(path, "utf8");
       for (const verb of text.matchAll(/export async function (GET|POST)[\s\S]*?\n}\n/g)) {
