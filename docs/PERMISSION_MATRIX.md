@@ -66,6 +66,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `dataset.manage` / `factor.manage` (calc-feeding config) | ✓ | — | — | — | — |
 | `admin.users` / `admin.lookups` / `admin.templates` / `admin.settings` | ✓ | — | — | — | — |
 | `staff.invite` (issue a staff member's single-use enrolment link — access to the organisation's data) ⚑ | ✓ | — | — | — | — |
+| `staff.credential.reset` (reset an enrolled member's sign-in: ends their sessions, retires password + authenticator, issues a fresh enrolment link) ⚑ | ✓ | — | — | — | — |
 | `audit.view` | ✓ | ⚑ own | R | ⚑ own | — |
 | `support.portal_impersonate` (enter a client's portal context) ⚑ | ✓ | ✓ | — | — | — |
 | `knowledge.capture` (offer a question + answer to the library as a draft) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -121,6 +122,11 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   it a reader sees only their own. **Rates and the job fee are money** — `finance.view` to read,
   never in a time payload (NZC-120). Marking time billed (the bill command, and unbilling) is
   `finance.manage`; a billed entry is locked until finance unbills it.
+- **Staff sign-in reset (matrix v11, 0204).** `staff.credential.reset`, Admin alone. An enrolled member who has lost their
+  authenticator or password is recovered by an Admin from Team & access → Reset sign-in: never yourself, a reason
+  required, in one transaction their sessions and pending sign-ins end, their credential is disabled (kept, not deleted), their
+  unused recovery codes are revoked, and a fresh single-use enrolment invitation is issued (emailed by default, or a link to
+  copy), so they set a new password and authenticator on /enrol. `staff.invite` is unchanged and still cannot reach an enrolled member.
 - **Time reads (matrix v10, 0157; Time PR B).** Finance gains `time.view` (all), so payroll and job cost
   read the whole team's hours. **Oversight** (jobs over budget hours, jobs over cost vs fee) is
   `time.view` — a Consultant sees their own clients' jobs. **Payroll** and **Utilisation** span the whole

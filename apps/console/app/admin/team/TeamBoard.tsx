@@ -17,6 +17,9 @@ import { useListNavigation } from "../../lib/useListNavigation";
  * Invitations (email programme phase 3, staff.invite): each active member's row offers Invite, or Reinvite once they have had
  * one, until they enrol. The invitation is emailed; the admin never holds the link unless they ask for one to copy — offered
  * whenever the email could not reach them (stubbed on the isolated boundary, or failed).
+ *
+ * Reset sign-in (matrix v11, staff.credential.reset): an enrolled member who lost their authenticator or password is recovered
+ * from their row, with a reason. Their sessions end and a fresh single-use enrolment link replaces their sign-in.
  */
 type Editing = { allowed: true } | { allowed: false; reason: string };
 const count = new Intl.NumberFormat("en-GB");
@@ -28,16 +31,21 @@ const INVITE_EMAIL: Record<StaffInviteEmail, string> = {
 };
 
 type Invited =
-  | { delivery: "email"; name: string; userId: string; sentTo: string; expiresAt: string; reinvite: boolean }
-  | { delivery: "link"; name: string; userId: string; link: string; expiresAt: string };
+  | { delivery: "email"; name: string; userId: string; sentTo: string; expiresAt: string; reinvite: boolean; reset?: boolean }
+  | { delivery: "link"; name: string; userId: string; link: string; expiresAt: string; reset?: boolean };
+
+/** Who may have their sign-in reset: active, with a work address, already enrolled, and never yourself. */
+const resettable = (row: StaffRow, self: string) => row.status === "active" && !!row.email && row.signIn === "enrolled" && row.userId !== self;
 
 /** Who may be invited from their row: active, with a work address, not yet enrolled, and never yourself. */
 const invitable = (row: StaffRow, self: string) => row.status === "active" && !!row.email && row.signIn !== "enrolled" && row.userId !== self;
 
-export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, rates, invite }: {
+export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, rates, invite, reset }: {
   page: StaffPage; pickers: StaffPickers; query: StaffListQuery; editing: Editing; self: string; activeAdmins: number; rates: boolean;
   /** Holds staff.invite (Admin): sees Invite / Reinvite. */
   invite: boolean;
+  /** Holds staff.credential.reset (Admin): sees Reset sign-in on an enrolled member. */
+  reset: boolean;
 }) {
   const router = useRouter();
   const nav = useListNavigation(staffListSpec, query, "/admin/team");
@@ -48,6 +56,27 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const canInvite = invite && editing.allowed;
+  const canReset = reset && editing.allowed;
+  const [resetting, setResetting] = useState<StaffRow | null>(null);
+  const [resetReason, setResetReason] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+
+  async function sendReset(delivery: "email" | "link", row: StaffRow, reason: string) {
+    if (resetBusy) return;
+    setResetBusy(true); setInviteError(null); setInvited(null); setCopied(false); setNotice(null);
+    try {
+      const response = await fetch("/api/isolated/staff-credential-reset", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: row.userId, reason, delivery }) });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(body.message ?? "Their sign-in could not be reset.");
+      const done = body.reset;
+      if (done?.delivery === "email" && typeof done.sentTo === "string") setInvited({ delivery: "email", name: row.displayName, userId: row.userId, sentTo: done.sentTo, expiresAt: done.expiresAt, reinvite: false, reset: true });
+      else if (done?.delivery === "link" && typeof done.link === "string") setInvited({ delivery: "link", name: row.displayName, userId: row.userId, link: done.link, expiresAt: done.expiresAt, reset: true });
+      else throw new Error("The reset service returned an answer it could not read.");
+      setResetting(null); setResetReason("");
+      router.refresh();
+    } catch (cause) { setInviteError(cause instanceof Error ? cause.message : "Their sign-in could not be reset."); }
+    finally { setResetBusy(false); }
+  }
 
   async function sendInvite(row: StaffRow, delivery: "email" | "link") {
     if (inviting) return;
@@ -83,6 +112,9 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
     { key: "signIn", header: "Sign-in", cell: (row) => <div className="nz-a-signin">
       <span className={row.signIn === "enrolled" ? undefined : "nz-a-muted"}>{SIGN_IN[row.signIn]}</span>
       {row.signIn !== "enrolled" && row.inviteEmail ? <div className={`nz-a-sub${row.inviteEmail === "stubbed" || row.inviteEmail === "failed" ? " nz-a-warn" : ""}`}>{INVITE_EMAIL[row.inviteEmail]}</div> : null}
+      {canReset && resettable(row, self) ? <div className="nz-a-row-actions">
+        <button type="button" className="nz-a-btn sm" disabled={resetBusy} onClick={(event) => { event.stopPropagation(); setResetting(row); setResetReason(""); setInviteError(null); }}>Reset sign-in</button>
+      </div> : null}
       {canInvite && invitable(row, self) ? <div className="nz-a-row-actions">
         <button type="button" className="nz-a-btn sm" disabled={inviting !== null} onClick={(event) => { event.stopPropagation(); void sendInvite(row, "email"); }}>
           {inviting === row.userId ? "Sending…" : row.signIn === "none" ? "Invite" : "Reinvite"}
@@ -116,8 +148,17 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
 
     {notice ? <div className="nz-a-notice" role="status">{notice}</div> : null}
     {inviteError ? <div className="nz-a-error" role="alert">{inviteError}</div> : null}
+    {resetting ? <form className="nz-a-notice" onSubmit={(event) => { event.preventDefault(); void sendReset("email", resetting, resetReason); }}>
+      <div><b>Reset {resetting.displayName}&rsquo;s sign-in?</b> Their sessions end now and their current password and authenticator stop working. They are emailed a new single-use link to set both again; you never hold either.</div>
+      <label>Why? (recorded)
+        <input type="text" value={resetReason} maxLength={500} onChange={(event) => setResetReason(event.target.value)} autoFocus required />
+      </label>
+      <button type="submit" className="nz-a-btn pri" disabled={resetBusy || resetReason.trim().length < 8}>{resetBusy ? "Resetting…" : "Reset sign-in"}</button>
+      <button type="button" className="nz-a-btn" disabled={resetBusy} onClick={() => setResetting(null)}>Cancel</button>
+      <button type="button" className="nz-a-linkish" disabled={resetBusy || resetReason.trim().length < 8} onClick={() => void sendReset("link", resetting, resetReason)}>Reset and issue a link to copy instead</button>
+    </form> : null}
     {invited?.delivery === "email" ? <div className="nz-a-notice" role="status">
-      {invited.reinvite ? "Reinvited" : "Invited"} {invited.name}: the invitation is emailed to <b>{invited.sentTo}</b>, and works once, until {formatDateTime(invited.expiresAt)}{invited.reinvite ? "; any earlier link no longer works" : ""}. You do not hold the link.
+      {invited.reset ? "Sign-in reset for" : invited.reinvite ? "Reinvited" : "Invited"} {invited.name}: the invitation is emailed to <b>{invited.sentTo}</b>, and works once, until {formatDateTime(invited.expiresAt)}{invited.reinvite ? "; any earlier link no longer works" : ""}. You do not hold the link.
       {" "}If it does not reach them, <button type="button" className="nz-a-linkish" disabled={inviting !== null} onClick={() => { const row = page.rows.find((entry) => entry.userId === invited.userId); if (row) void sendInvite(row, "link"); }}>issue a link to copy instead</button> — that withdraws the emailed one.
     </div> : null}
     {invited?.delivery === "link" ? <div className="nz-a-invite-link" role="status">

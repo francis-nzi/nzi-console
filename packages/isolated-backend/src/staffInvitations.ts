@@ -41,7 +41,7 @@ export type StaffInviteResult =
 export const enrolmentLink = (origin: string, token: string) => `${origin.replace(/\/$/, "")}/enrol#token=${token}`;
 
 /** When the link expires, as the person reads it: London time, spelled out. */
-const expiryForPeople = (iso: string) => new Intl.DateTimeFormat("en-GB", {
+export const expiryForPeople =(iso: string) => new Intl.DateTimeFormat("en-GB", {
   weekday: "long", day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London",
 }).format(new Date(iso)) + " (UK time)";
 

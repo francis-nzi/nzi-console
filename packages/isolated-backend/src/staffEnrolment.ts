@@ -52,6 +52,12 @@ export type IssueInvitationInput = {
   principalType?: "staff" | "system";
   /** How the link reaches the person — recorded on the issue event. */
   delivery?: "operator-link" | "admin-link" | "email";
+  /**
+   * Set only by the admin's sign-in reset (`resetStaffSignIn`, matrix v11), whose credential has just been disabled in the same
+   * transaction: the invitation is then the member's way back in, so the "already enrolled" refusal below does not apply. It is
+   * still held to the hourly limit, and `/enrol` still refuses anyone whose credential is enabled.
+   */
+  recovery?: boolean;
 };
 
 /**
@@ -96,7 +102,7 @@ export async function issueStaffEnrolmentInvitationIn(
     [userId, now.toISOString(), REINVITE_WINDOW_MINUTES]);
   const { consumed, recent, any } = history.rows[0]!;
   if (principalType === "staff") {
-    if (consumed === true) throw new StaffEnrolmentError("They have already enrolled, so there is nothing to invite them to. A lost password or authenticator is recovered by a reset, not a new invitation.");
+    if (consumed === true && !input.recovery) throw new StaffEnrolmentError("They have already enrolled, so there is nothing to invite them to. A lost password or authenticator is recovered by a reset, not a new invitation.");
     if (recent >= MAX_ADMIN_INVITES_PER_WINDOW) throw new StaffEnrolmentError(`They have been sent ${recent} invitations in the last hour, the most allowed. Try again later, or check the address on their record.`);
   }
   const reinvite = any > 0;
