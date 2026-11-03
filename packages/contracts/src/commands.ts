@@ -271,6 +271,7 @@ export type CommandKey =
   | "portal.thread.start"
   | "portal.message.post"
   | "portal.thread.read"
+  | "portal.notices.seen"
   | "client.thread.start"
   | "client.message.post"
   | "client.thread.update"
@@ -1202,6 +1203,8 @@ export type CommandInputMap = {
   "portal.thread.start":{clientId:string;jobId:string|null;subjectCode:string;title:string;body:string};
   "portal.message.post":{clientId:string;threadId:string;body:string};
   "portal.thread.read":{clientId:string;threadId:string};
+  /** The Updates feed has been seen through this moment (the newest notice the user was shown). Only moves a watermark forward. */
+  "portal.notices.seen":{clientId:string;seenThrough:string};
   "client.thread.start":{clientId:string;jobId:string|null;subjectCode:string;title:string;body:string};
   "client.message.post":{clientId:string;threadId:string;body:string};
   /** Staff set the owner and/or the state. `ownerId: null` unassigns. `expectedVersion` is the thread version the staff member saw. */
@@ -1401,6 +1404,12 @@ const threadPostIssues = (input: { clientId: string; threadId: string; body: str
   const issues = baseIssues(context, false);
   required(issues, "clientId", input.clientId); required(issues, "threadId", input.threadId);
   bodyIssues(issues, "body", input.body);
+  return issues;
+};
+const noticesSeenIssues = (input: { clientId: string; seenThrough: string }, context: CommandContext) => {
+  const issues = baseIssues(context, false);
+  required(issues, "clientId", input.clientId);
+  if (typeof input.seenThrough !== "string" || Number.isNaN(Date.parse(input.seenThrough))) issues.push({ field: "seenThrough", code: "INVALID", message: "Say how far the updates have been seen." });
   return issues;
 };
 const threadRefIssues = (input: { clientId: string; threadId: string }, context: CommandContext) => {
@@ -3409,6 +3418,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "portal.thread.start": { key: "portal.thread.start", label: "Start a conversation in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "thread + first message + audit + outbox + idempotency", auditAction: "portal_thread_started", validate: (input, context) => threadStartIssues(input, context) },
   "portal.message.post": { key: "portal.message.post", label: "Write in a conversation in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "message + thread state + audit + outbox + idempotency", auditAction: "portal_message_posted", validate: (input, context) => threadPostIssues(input, context) },
   "portal.thread.read": { key: "portal.thread.read", label: "Mark a conversation read in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "read marker + audit + outbox + idempotency", auditAction: "portal_thread_read", validate: (input, context) => threadRefIssues(input, context) },
+  "portal.notices.seen": { key: "portal.notices.seen", label: "Mark the portal updates seen", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "seen watermark + audit + outbox + idempotency", auditAction: "portal_notices_seen", validate: (input, context) => noticesSeenIssues(input, context) },
   "client.thread.start": { key: "client.thread.start", label: "Start a conversation with a client", permission: "portal.admin", reasonRequired: false, transaction: "thread + first message + audit + outbox + idempotency", auditAction: "client_thread_started", validate: (input, context) => threadStartIssues(input, context) },
   "client.message.post": { key: "client.message.post", label: "Reply to a client in a conversation", permission: "portal.admin", reasonRequired: false, transaction: "message + thread state + audit + outbox + idempotency", auditAction: "client_message_posted", validate: (input, context) => threadPostIssues(input, context) },
   "client.thread.update": { key: "client.thread.update", label: "Assign or set the state of a client conversation", permission: "portal.admin", reasonRequired: false, transaction: "thread owner/state + audit + outbox + idempotency", auditAction: "client_thread_updated", validate: (input, context) => threadUpdateIssues(input, context) },

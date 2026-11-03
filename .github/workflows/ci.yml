@@ -224,6 +224,11 @@ jobs:
       # page's comments and their thread as one conversation both ways, and the configurable subject tags.
       - name: A client's conversations are seen only by those entitled, move with who spoke last, and are one thread with the report comments
         run: npx tsx --test packages/isolated-backend/tests/portalConversationsReal.test.ts
+      # Portal updates (RULING-portal-messages, M2): notices derived at read time from events that already exist (a published report, a reviewer's
+      # decision on the client's own entries, a closing data-entry window, a live broadcast), the exact scope, no reviewer note, nothing stored
+      # or emitted for a notice, and a per-user seen watermark that only moves forward.
+      - name: A client's updates are derived from real events, scoped to their client and held jobs, and seen per user
+        run: npx tsx --test packages/isolated-backend/tests/portalNoticesReal.test.ts
       # Portal spend import, Phase A (RULING-portal-import-spend): per-line pending scope rows filed where the staff allocation map routes
       # them (never the register), a hidden category held without being named, duplicates read across the register AND the job's own
       # spend rows, a carried-forward line never filled, the signed identity verified in the transaction.
