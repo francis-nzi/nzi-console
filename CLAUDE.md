@@ -38,7 +38,7 @@ packages/charts/     @nzi/charts — SVG-first chart engine (EmissionsScopeDonut
 docs/                the four design docs above + DEPLOYMENT, FIRST_GATE
 ```
 
-npm workspaces + Turborepo. Node 20.18.0.
+npm workspaces + Turborepo. Node 22.23.4.
 
 ## Conventions (locked — see DECISIONS.md)
 

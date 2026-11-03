@@ -5,7 +5,7 @@ everything runs on `@nzi/mock-data`, no backend, no database, no production anyt
 
 ## 1. Prerequisites
 
-- Node 20.18.0 (see `.node-version`). npm ships with Node — no extra tooling needed.
+- Node 22.23.4 (see `.node-version`). npm ships with Node — no extra tooling needed.
 
 ## 2. Install & run (npm workspaces)
 

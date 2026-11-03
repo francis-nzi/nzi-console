@@ -12,7 +12,7 @@ services:
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 22.23.4
       - key: NEXT_PUBLIC_APP_ENV
         value: staging
       # Data-entry redesign flags (NZC-035/036/041/043/046).
@@ -148,7 +148,7 @@ services:
     autoDeploy: true
     envVars:
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 22.23.4
       - key: NEXT_PUBLIC_APP_ENV
         value: staging
       - key: NZI_DATABASE_BOUNDARY
