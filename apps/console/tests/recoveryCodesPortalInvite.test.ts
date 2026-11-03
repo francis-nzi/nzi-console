@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
@@ -13,29 +13,33 @@ const here = dirname(fileURLToPath(import.meta.url));
 const read = (path: string) => readFileSync(join(here, "..", path), "utf8");
 
 describe("MFA recovery codes and the portal invitation (phase 4-2)", () => {
-  it("both enrolments show the recovery codes once, and hold the way on until the person says they kept them", () => {
-    assert.match(read("app/enrol/StaffEnrolment.tsx"), /<RecoveryCodesPanel codes=\{codes\} continueHref="\/login" \/>/);
+  it("the portal enrolment shows the recovery codes once and holds the way on until kept; staff enrolment shows none (RULING-remove-staff-recovery-codes)", () => {
+    const staffEnrolment = read("app/enrol/StaffEnrolment.tsx");
+    assert.doesNotMatch(staffEnrolment, /RecoveryCodes|recoveryCodes|saved these codes/i);
+    assert.match(staffEnrolment, /<a className="nz-btn pri nz-auth-submit" href="\/login">Sign in<\/a>/, "completion enables Sign in directly");
+    assert.match(staffEnrolment, /This link no longer works/, "the single-use confirmation stays");
     assert.match(read("app/portal/invite/PortalInviteSetup.tsx"), /<RecoveryCodesPanel codes=\{codes\} continueHref="\/portal\/login" continueLabel="Sign in securely" \/>/);
     const panel = read("app/login/RecoveryCodes.tsx");
     assert.match(panel, /I have saved these codes somewhere safe/);
     assert.match(panel, /href=\{kept \? continueHref : undefined\}/);
   });
 
-  it("both sign-ins accept a recovery code at the MFA step, and say how many are left after one is used", () => {
-    for (const [form, account] of [["app/login/LoginForm.tsx", "/account"], ["app/portal/login/PortalLoginForm.tsx", "/portal/account"]] as const) {
-      const source = read(form);
-      assert.match(source, /<MfaCodeField pending=\{pending\} recovery=\{recovery\}/, form);
-      assert.match(source, /if\(typeof body\.recoveryCodesRemaining==="number"\)\{setRecovered\(body\.recoveryCodesRemaining\);return\}/, form);
-      assert.ok(source.includes(`accountHref="${account}"`), form);
-    }
-    for (const route of ["app/api/auth/mfa/route.ts", "app/api/portal/auth/mfa/route.ts"]) assert.match(read(route), /onRecoveryCode/, route);
+  it("the portal sign-in accepts a recovery code at the MFA step and says how many are left; the staff sign-in offers none", () => {
+    const portal = read("app/portal/login/PortalLoginForm.tsx");
+    assert.match(portal, /<MfaCodeField pending=\{pending\} recovery=\{recovery\}/);
+    assert.match(portal, /if\(typeof body\.recoveryCodesRemaining==="number"\)\{setRecovered\(body\.recoveryCodesRemaining\);return\}/);
+    assert.ok(portal.includes('accountHref="/portal/account"'));
+    assert.match(read("app/api/portal/auth/mfa/route.ts"), /onRecoveryCode/);
+    assert.doesNotMatch(read("app/login/LoginForm.tsx"), /recovery|RecoveredNotice|MfaCodeField/i, "the staff MFA step has no recovery-code option");
+    assert.doesNotMatch(read("app/api/auth/mfa/route.ts"), /recovery/i);
   });
 
-  it("both account pages make a new set, and the routes behind them sit on the signed-in session", () => {
-    assert.match(read("app/account/StaffAccount.tsx"), /<AccountRecoveryCodes endpoint="\/api\/auth\/recovery-codes"\/>/);
+  it("the portal account page makes a new set, and the route behind it sits on the signed-in session; the staff account page and route are gone", () => {
+    assert.doesNotMatch(read("app/account/StaffAccount.tsx"), /AccountRecoveryCodes|recovery-codes/);
+    assert.ok(!existsSync(join(here, "..", "app/api/auth/recovery-codes/route.ts")), "the staff recovery-codes route still exists");
     assert.match(read("app/portal/account/PortalAccount.tsx"), /<AccountRecoveryCodes endpoint="\/api\/portal\/auth\/recovery-codes" \/>/);
     const routes = read("app/lib/recoveryCodeRoutes.ts");
-    assert.match(routes, /const staff = await currentStaff\(request\)/);
+    assert.doesNotMatch(routes, /currentStaff/, "no staff realm");
     assert.match(routes, /const user = await currentPortalUser\(request\)/);
   });
 

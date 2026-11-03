@@ -6,7 +6,8 @@ import { PERMISSION_MATRIX_VERSION, roleCapabilityGrants, staffRoles, type Staff
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { AuthorizationError, completeStaffMfa, resolveStaffPrincipal, startStaffLogin, totpCode, type StaffPrincipal } from "../src/index";
 import { withAuthTransaction } from "../src/postgres";
-import { issueRecoveryCodes, useRecoveryCode } from "../src/mfaRecovery";
+import { issueRecoveryCodes } from "../src/mfaRecovery";
+import { createHash } from "node:crypto";
 import { completeStaffEnrolment, issueStaffEnrolmentInvitation, StaffEnrolmentError, startStaffEnrolment } from "../src/staffEnrolment";
 import { assignStaffRole } from "../src/staffAdmin";
 import { inviteStaffMember } from "../src/staffInvitations";
@@ -39,7 +40,8 @@ describe("an Admin resets an enrolled member's sign-in (matrix v11)", { skip: TE
   const enrol = async (token: string, password: string) => {
     const setup = await startStaffEnrolment(database.pool, { token, password }, KEY);
     const done = await completeStaffEnrolment(database.pool, { token, code: totpCode(setup.totpSecret) }, KEY);
-    return { secret: setup.totpSecret, codes: done.recoveryCodes };
+    assert.deepEqual(done, { enrolled: true }, "enrolment issues no recovery codes");
+    return { secret: setup.totpSecret };
   };
   const enrolByOperator = async (userId: string, password = OLD_PASSWORD) =>
     enrol((await issueStaffEnrolmentInvitation(database.pool, { organisationId: ORG, userId, actorId: "operator:francis" })).token, password);
@@ -57,8 +59,8 @@ describe("an Admin resets an enrolled member's sign-in (matrix v11)", { skip: TE
     `SELECT count(*)::int AS n FROM nzi_console.mfa_recovery_codes WHERE principal=$1 AND subject_id=$2 AND used_at IS NULL AND revoked_at IS NULL`, [principal, subject])).rows[0]!.n;
   const reason = "Lost phone, confirmed by video call";
 
-  let rae: { secret: string; codes: string[] };
-  let uma: { secret: string; codes: string[] };
+  let rae: { secret: string };
+  let uma: { secret: string };
   let raeSession: Awaited<ReturnType<typeof signIn>>;
   let umaSession: Awaited<ReturnType<typeof signIn>>;
 
@@ -74,6 +76,11 @@ describe("an Admin resets an enrolled member's sign-in (matrix v11)", { skip: TE
     boss = await resolveStaffPrincipal(database.pool, await signIn("boss@example.org", OLD_PASSWORD, bossSecret));
     await member("rae"); await member("uma");
     rae = await enrolByOperator("rae"); uma = await enrolByOperator("uma");
+    // Staff recovery codes are no longer issued; a set stored before that change is seeded directly, so the reset is shown to revoke it.
+    for (const user of ["rae", "uma"]) for (let n = 0; n < 10; n += 1) {
+      await db.query(`INSERT INTO nzi_console.mfa_recovery_codes (organisation_id, code_id, principal, subject_id, batch_id, code_hash) VALUES ($1,$2,'staff',$3,'legacy',$4)`,
+        [ORG, `legacy-${user}-${n}`, user, createHash("sha256").update(`${user}${n}`).digest("hex")]);
+    }
     raeSession = await signIn("rae@example.org", OLD_PASSWORD, rae.secret);
     umaSession = await signIn("uma@example.org", OLD_PASSWORD, uma.secret);
     // A portal account's recovery codes, to prove the portal flow is not touched.
@@ -144,7 +151,6 @@ describe("an Admin resets an enrolled member's sign-in (matrix v11)", { skip: TE
     assert.equal((await completeStaffMfa(database.pool, { organisationId: ORG, challengeToken: pending.challengeToken, code: totpCode(rae.secret) }, KEY).catch(() => "refused")), "refused", "a pending sign-in survived the reset");
     await assert.rejects(() => startStaffLogin(database.pool, { organisationId: ORG, email: "rae@example.org", password: OLD_PASSWORD }), "the old password still signs in");
     assert.equal(await liveCodes("staff", "rae"), 0);
-    assert.equal(await withAuthTransaction(database.pool, "write", (tx) => useRecoveryCode(tx, { organisationId: ORG, principal: "staff", subjectId: "rae" }, rae.codes[0]!)), null, "a recovery code still worked");
 
     // The audit: ids, counts and the reason — no secret, no address.
     const [event, ...more] = await events("staff.credential.reset");

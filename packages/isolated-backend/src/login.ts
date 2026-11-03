@@ -63,7 +63,7 @@ export async function startStaffLogin(pool: PoolLike, input: { organisationId: s
   return result;
 }
 
-export async function completeStaffMfa(pool: PoolLike, input: { organisationId: string; challengeToken: string; code: string }, encryptionKey: string, now = new Date(), completion: MfaCompletion = {}): Promise<StaffSession> {
+export async function completeStaffMfa(pool: PoolLike, input: { organisationId: string; challengeToken: string; code: string }, encryptionKey: string, now = new Date()): Promise<StaffSession> {
   const result = await withAuthTransaction(pool, "write", async (db) => {
     const found = await db.query<CredentialRow & { challenge_id: string; attempts: number; expires_at: Date | string; consumed_at: Date | string | null }>(`SELECT c.*, ch.challenge_id, ch.attempts, ch.expires_at, ch.consumed_at
       FROM nzi_console.staff_login_challenges ch JOIN nzi_console.staff_credentials c
@@ -72,14 +72,10 @@ export async function completeStaffMfa(pool: PoolLike, input: { organisationId: 
     const row = found.rows[0];
     if (!row || row.consumed_at || new Date(row.expires_at) <= now || row.attempts >= 5 || !row.enabled) return { state: "invalid" as const };
     const secret = decryptTotpSecret({ ciphertext: row.totp_ciphertext, iv: row.totp_iv, tag: row.totp_tag }, encryptionKey);
-    // A recovery code stands in for the authenticator, inside this challenge's own attempt limit.
-    let recovered: { remaining: number } | null = null;
+    // The authenticator is the only second factor for staff; a lost one is an Admin's reset (staff.credential.reset).
     if (!verifyTotp(input.code, secret, now.getTime())) {
-      recovered = await useRecoveryCode(db, { organisationId: row.organisation_id, principal: "staff", subjectId: row.user_id }, input.code, now);
-      if (!recovered) {
-        await db.query(`UPDATE nzi_console.staff_login_challenges SET attempts=attempts+1 WHERE organisation_id=$1 AND challenge_id=$2`, [row.organisation_id, row.challenge_id]);
-        return { state: "invalid" as const };
-      }
+      await db.query(`UPDATE nzi_console.staff_login_challenges SET attempts=attempts+1 WHERE organisation_id=$1 AND challenge_id=$2`, [row.organisation_id, row.challenge_id]);
+      return { state: "invalid" as const };
     }
     const sessionId = randomUUID();
     const issuedAt = Math.floor(now.getTime() / 1000);
@@ -88,10 +84,9 @@ export async function completeStaffMfa(pool: PoolLike, input: { organisationId: 
     await db.query(`UPDATE nzi_console.staff_credentials SET last_login_at=$3 WHERE organisation_id=$1 AND user_id=$2`, [row.organisation_id, row.user_id, now.toISOString()]);
     await db.query(`INSERT INTO nzi_console.staff_sessions (organisation_id,session_id,user_id,expires_at,last_seen_at)
       VALUES ($1,$2,$3,to_timestamp($4),$5)`, [row.organisation_id, sessionId, row.user_id, expiresAt, now.toISOString()]);
-    return { state: "success" as const, recovered, session: { sessionId, userId: row.user_id, organisationId: row.organisation_id, issuedAt, expiresAt } };
+    return { state: "success" as const, session: { sessionId, userId: row.user_id, organisationId: row.organisation_id, issuedAt, expiresAt } };
   });
   if (result.state === "invalid") throw new InvalidLoginError();
-  if (result.recovered) completion.onRecoveryCode?.(result.recovered.remaining);
   return result.session;
 }
 

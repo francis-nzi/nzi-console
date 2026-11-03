@@ -4,7 +4,9 @@ import { withAuthTransaction } from "./postgres";
 import { decryptTotpSecret, verifyTotp } from "./credentials";
 
 /**
- * MFA recovery codes for staff and portal sign-in (email programme phase 4-2, R7; 0182).
+ * MFA recovery codes for portal sign-in (email programme phase 4-2, R7; 0182). **Staff no longer have them**
+ * (RULING-remove-staff-recovery-codes): nothing issues a staff code and a stored one is never accepted; a lost authenticator is
+ * an Admin's "Reset sign-in" (`staff.credential.reset`). The text below still describes the portal flow, which is unchanged.
  *
  * - **Issued at enrolment** — staff `/enrol` and the portal accept page — as a set of {@link RECOVERY_CODE_COUNT}, shown once
  *   and stored only as their sha256. Issuing again revokes the unused rest of the earlier set.
@@ -43,6 +45,7 @@ const audit = (db: Queryable, account: Account, action: "mfa.recovery.generated"
 
 /** A fresh set for the account, in the caller's authentication transaction; the earlier set's unused codes are revoked. */
 export async function issueRecoveryCodes(db: Queryable, account: Account, now = new Date()): Promise<string[]> {
+  refuseStaff(account);
   const at = now.toISOString();
   const revoked = await db.query(
     `UPDATE nzi_console.mfa_recovery_codes SET revoked_at = $4
@@ -66,7 +69,8 @@ export async function issueRecoveryCodes(db: Queryable, account: Account, now = 
  * when the code is not a live one for this account.
  */
 export async function useRecoveryCode(db: Queryable, account: Account, code: string, now = new Date()): Promise<{ remaining: number } | null> {
-  if (!looksLikeRecoveryCode(code)) return null;
+  // Staff have no recovery codes (RULING-remove-staff-recovery-codes): any still stored are inert — never accepted.
+  if (account.principal === "staff" || !looksLikeRecoveryCode(code)) return null;
   const used = await db.query(
     `UPDATE nzi_console.mfa_recovery_codes SET used_at = $5
       WHERE organisation_id = $1 AND principal = $2 AND subject_id = $3 AND code_hash = $4 AND used_at IS NULL AND revoked_at IS NULL
@@ -88,6 +92,14 @@ export function countRecoveryCodes(pool: PoolLike, account: Account): Promise<nu
   return withAuthTransaction(pool, "read", (db) => liveCount(db, account));
 }
 
+/**
+ * Recovery codes are for the portal only. A staff member who loses their authenticator is recovered by an Admin ("Reset sign-in",
+ * `staff.credential.reset`); nothing mints a staff code, and any stored before this change is never accepted.
+ */
+function refuseStaff(account: Account): void {
+  if (account.principal === "staff") throw new RecoveryCodeError("Staff sign-in has no recovery codes. A lost authenticator is reset by an administrator.");
+}
+
 export class RecoveryCodeError extends Error {
   constructor(message = "That authenticator code is not correct.") { super(message); this.name = "RecoveryCodeError"; }
 }
@@ -99,6 +111,7 @@ export class RecoveryCodeError extends Error {
 export async function regenerateRecoveryCodes(
   pool: PoolLike, account: Account, input: { code: string }, encryptionKey: string, now = new Date(),
 ): Promise<string[]> {
+  refuseStaff(account);
   return withAuthTransaction(pool, "write", async (db) => {
     const found = account.principal === "staff"
       ? await db.query<{ totp_ciphertext: string; totp_iv: string; totp_tag: string; enabled: boolean }>(
