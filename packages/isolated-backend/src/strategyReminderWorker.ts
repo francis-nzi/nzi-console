@@ -5,6 +5,7 @@ import {
 } from "@nzi/contracts";
 import { listClientStrategies } from "./reductionStrategies";
 import { readReminderSettings, scanDueReminders, type DueReminderScan } from "./dueReminders";
+import { scanMessageNotifications, type MessageNotifyScan } from "./portalMessageNotifications";
 import { deliverEmail, EMAIL_SEND_TOPIC, type EmailDispatch } from "./email";
 import { mailDelivery, type MailDelivery, type Mailer } from "./mailer";
 import { readActiveMessageTemplate } from "./messageTemplates";
@@ -377,6 +378,11 @@ export type WorkerTickSummary = {
    * the email part delivered (or stubbed) this tick, enqueued by an earlier one. `sent` is null when the email part failed.
    */
   dueReminders: TickPart<DueReminderScan & { sent: ReminderRunSummary["dueReminderEmails"] | null }>;
+  /**
+   * Messages M4: the notify-only emails for conversation messages, queued by the message commands and closed here after their window. `off`: the
+   * deployment has not turned it on (`NZI_PORTAL_MESSAGE_EMAIL`), so nothing was scanned and pending rows simply wait.
+   */
+  messageNotifications: TickPart<MessageNotifyScan | { off: true }>;
   /** The overdue reminder to consenting contacts (3b). `off`: the Admin master switch is off, so nothing was scanned or sent. */
   reminders: TickPart<Omit<ReminderRunSummary, "emails" | "dueReminderEmails"> & { off?: true }>;
 };
@@ -440,6 +446,8 @@ export async function runWorkerTick(pool: PoolLike, input: {
   email: EmailDispatch;
   /** The console's own address, for the portal link in a due-date reminder (`NZI_ISOLATED_API_URL`). */
   consoleOrigin?: string;
+  /** Messages M4: scan and send the conversation-message notifications. Off by default - dark until the deployment sets `NZI_PORTAL_MESSAGE_EMAIL=on`. */
+  messageNotifications?: boolean;
   env?: Parameters<typeof mailDelivery>[0];
   windowDays?: number;
   limit?: number;
@@ -457,6 +465,10 @@ export async function runWorkerTick(pool: PoolLike, input: {
   })));
   const dueReminders: WorkerTickSummary["dueReminders"] = scanned.ok
     ? { ok: true, summary: { ...scanned.summary, sent: drained.ok ? drained.summary.dueReminderEmails : null } } : scanned;
+  // The conversation-message notifications (M4): enqueue only, in a transaction of their own, delivered by the next tick's email drain - as A3's are.
+  const messageNotifications: WorkerTickSummary["messageNotifications"] = input.messageNotifications
+    ? await partOf(() => withTenantWorker(pool, input.organisationId, (db) => scanMessageNotifications(db, { organisationId: input.organisationId, consoleOrigin: input.consoleOrigin })))
+    : { ok: true, summary: { off: true } };
   // No email dispatch here: email.send rows are the first part's, and this drain leaves them be.
   const reminders = await partOf(async () => withTenantWorker(pool, input.organisationId, async (db) => {
     if (!(await readReminderSettings(db, input.organisationId)).enabled) {
@@ -467,7 +479,7 @@ export async function runWorkerTick(pool: PoolLike, input: {
     });
     return rest;
   }));
-  return { emails, dueReminders, reminders };
+  return { emails, dueReminders, messageNotifications, reminders };
 }
 
 export async function runReminderTick(db: Queryable, input: {

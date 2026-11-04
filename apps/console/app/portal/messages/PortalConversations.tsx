@@ -20,7 +20,8 @@ type Notice = { tone: "ok" | "warn"; text: string };
 export function PortalConversations({ jobId }: { jobId: string }) {
   const org = useOrganisationName();
   const [list, setList] = useState<Load<{ threads: PortalThreadSummary[]; subjects: PortalThreadSubject[] }>>({ state: "loading" });
-  const [current, setCurrent] = useState<string | null>(null);
+  // A notification email deep-links here with ?thread=<id>: open that conversation first (it only takes effect if the user may see it - the list decides).
+  const [current, setCurrent] = useState<string | null>(() => (typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("thread")));
   const [detail, setDetail] = useState<Load<PortalThreadDetail>>({ state: "loading" });
   const [filter, setFilter] = useState<string>("all");
   const [draft, setDraft] = useState("");

@@ -22,6 +22,7 @@ const timeEntries = readFileSync(resolve(here, "../migrations/0155_time_entries.
 const matrixV9 = readFileSync(resolve(here, "../migrations/0156_permission_matrix_v9.sql"), "utf8");
 const matrixV10 = readFileSync(resolve(here, "../migrations/0157_permission_matrix_v10.sql"), "utf8");
 const staffCredentialReset = readFileSync(resolve(here, "../migrations/0203_staff_credential_reset.sql"), "utf8");
+const messageNotifications = readFileSync(resolve(here, "../migrations/0206_portal_message_notifications.sql"), "utf8");
 const matrixV11 = readFileSync(resolve(here, "../migrations/0204_permission_matrix_v11.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
@@ -337,6 +338,22 @@ describe("isolated Postgres migrations", () => {
     const code = staffCredentialReset.split("\n").filter((line) => !line.startsWith("--")).join("\n");
     assert.doesNotMatch(code, /\b(DELETE|DROP|TRUNCATE)\b/, "deactivate, never delete");
     assert.doesNotMatch(code, /portal_/, "the portal is not touched");
+  });
+  it("keeps the message-notification ledger to ids and counts, one pending row per thread and audience, never deleted (0206)", () => {
+    for (const clause of [
+      "CREATE UNIQUE INDEX portal_message_notifications_one_pending ON nzi_console.portal_message_notifications (organisation_id, thread_id, audience) WHERE state = 'pending'",
+      "ALTER TABLE nzi_console.portal_message_notifications FORCE ROW LEVEL SECURITY",
+      "GRANT SELECT, INSERT, UPDATE ON nzi_console.portal_message_notifications TO nzi_console_app",
+      "GRANT SELECT, UPDATE ON nzi_console.portal_message_notifications TO nzi_console_worker",
+      "REVOKE DELETE ON nzi_console.portal_message_notifications FROM PUBLIC, nzi_console_app, nzi_console_worker",
+    ]) assert.ok(messageNotifications.includes(clause), clause);
+    const body = messageNotifications.slice(messageNotifications.indexOf("CREATE TABLE"), messageNotifications.indexOf("CREATE UNIQUE INDEX"));
+    const names = body.split("\n").map((line) => /^  ([a-z_]+) (text|integer|boolean|timestamptz)\b/.exec(line)?.[1]).filter(Boolean);
+    assert.deepEqual(names, ["organisation_id", "notification_id", "thread_id", "client_id", "audience", "state", "message_count", "created_at", "due_at", "processed_at", "emailed", "blocked_no_consent", "no_recipient"], "ids, a state, a window and counts - no person, address or text");
+    // The worker reads only the columns it needs, nothing it could change.
+    assert.ok(messageNotifications.includes("GRANT SELECT (organisation_id, portal_user_id, client_id, email_normalized, display_name, status) ON nzi_console.portal_users TO nzi_console_worker"));
+    const grants = messageNotifications.split("\n").filter((line) => !line.startsWith("--") && line.startsWith("GRANT"));
+    for (const line of grants.filter((entry) => /portal_threads|portal_users|portal_access_grants|nzi_console\.clients/.test(entry))) assert.ok(line.startsWith("GRANT SELECT ("), `a column-level read only: ${line}`);
   });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });

@@ -308,6 +308,40 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
     htmlPart: true,
   },
   {
+    // Messages M4: the internal side of "you have a new message" - to the thread's owner (else the client's adviser). Not consent-gated: it is staff mail.
+    key: "portal.message.staff-notification",
+    label: "New client message — notification to the adviser",
+    purpose: "To the owner of a conversation (else the client's adviser) when the client has written in it. Internal; the message itself is never in the email — it is read in the console, behind sign-in.",
+    channel: "email",
+    sendSite: "Portal messages: the worker's message-notification scan (portalMessageNotifications.ts), through sendTemplatedEmail (Messages M4)",
+    // Deliberately no token for the message, its author or its subject (design R10): the content stays in the console.
+    tokens: [
+      { name: "firstName", description: "The adviser's first name — or \"there\" when their record has no name", sample: "Sam" },
+      { name: "clientName", description: "The client the conversation is with", sample: "Example Manufacturing Ltd" },
+      { name: "threadLink", description: "A link to the client's Portal Management in the console, where the conversation is (sign-in still required)", sample: "https://console.example.test/clients/client-1?area=portal", required: true, kind: "url" },
+    ],
+    builtIn: {
+      subject: "New message from {{clientName}} in the client portal",
+      body: [
+        "Hello {{firstName}},",
+        "",
+        "{{clientName}} has written to you in the client portal.",
+        "",
+        "Read and reply under Portal Management → Messages:",
+        "{{threadLink}}",
+        "",
+        "The message itself is not in this email — it stays in the console, behind your sign-in.",
+      ].join("\n"),
+      html: [
+        "<p>Hello {{firstName}},</p>",
+        "<p><b>{{clientName}}</b> has written to you in the client portal.</p>",
+        `<a class="cta" href="{{threadLink}}">Open Messages</a>`,
+        `<p style="${SMALL}">The message itself is not in this email — it stays in the console, behind your sign-in.</p>`,
+      ].join("\n"),
+    },
+    htmlPart: true,
+  },
+  {
     // Data entry D3 (R6): reopen after submit is a request to the CRM, never a self-serve recall.
     key: "portal.data.reopen-request",
     label: "Client portal — a client asks to reopen a reviewed entry",

@@ -62,6 +62,18 @@ describe("the attachments flag", () => {
   });
 });
 
+describe("message notifications: the portal side of the deep link", () => {
+  it("a notification email opens the conversation it names: the lane reads ?thread= and lets the list decide whether the user may see it", () => {
+    const lane = read("app/portal/messages/PortalConversations.tsx");
+    assert.ok(lane.includes('new URLSearchParams(window.location.search).get("thread")'));
+    assert.ok(lane.includes("pickThread(body.threads as PortalThreadSummary[], keep ?? previous)"), "an unknown or unseen id falls back to the user's own list");
+  });
+  it("the worker part is switched on only by the deployment", () => {
+    const script = read("../../packages/isolated-backend/scripts/reminder-worker.ts");
+    assert.match(script, /messageNotifications: process.env.NZI_PORTAL_MESSAGE_EMAIL === "on"/);
+  });
+});
+
 describe("the message routes", () => {
   const routes = [
     "app/api/portal/threads/route.ts", "app/api/portal/threads/[threadId]/route.ts",

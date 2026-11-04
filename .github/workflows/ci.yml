@@ -229,6 +229,12 @@ jobs:
       # never held or infected; each file keeps its own audit trail; a forged ingest, another job's file, too many files or a repeat is refused whole.
       - name: A message's attachments go through the files gate and are served only once released, only to the thread's readers
         run: npx tsx --test packages/isolated-backend/tests/portalMessageAttachmentsReal.test.ts
+      # Message notifications (RULING-portal-messages, M4; 0206): a message queues - never sends - one pending row per thread and audience; the worker's scan,
+      # after the window, sends ONE notify-only email per recipient per burst through sendTemplatedEmail and the existing outbox, with a deep link and no
+      # content. Client emails are consent-gated (NZC-076) and read fresh at send time; staff mail is internal; an unrenderable row stays pending; the
+      # worker part is off unless the deployment turns it on; the ledger and the audit hold ids and counts only.
+      - name: A conversation message sends one notify-only email per burst, to a consenting client or the adviser
+        run: npx tsx --test packages/isolated-backend/tests/portalMessageNotificationsReal.test.ts
       # Portal updates (RULING-portal-messages, M2): notices derived at read time from events that already exist (a published report, a reviewer's
       # decision on the client's own entries, a closing data-entry window, a live broadcast), the exact scope, no reviewer note, nothing stored
       # or emitted for a notice, and a per-user seen watermark that only moves forward.
