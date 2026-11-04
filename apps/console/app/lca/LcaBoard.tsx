@@ -13,7 +13,10 @@ const unavailable = "This workflow is not connected in the isolated staging envi
 
 export function LcaBoard({ assessments }: { assessments: LcaAssessment[] }) {
   const [assessmentId, setAssessmentId] = useState(assessments[0]?.id ?? "");
-  const [selectedLineId, setSelectedLineId] = useState(assessments[0]?.lines[0]?.id ?? "");
+  const [selectedLineId, setSelectedLineIdRaw] = useState(assessments[0]?.lines[0]?.id ?? "");
+  const [panelOpen, setPanelOpen] = useState(true);
+  // A selected row opens its panel; the panel's close (x, Escape) closes it until a row is chosen again.
+  const setSelectedLineId = (id: string) => { setSelectedLineIdRaw(id); setPanelOpen(true); };
   const [view, setView] = useState<View>("inventory");
   const [filter, setFilter] = useState<Filter>("all");
   if(assessments.length===0)return <AppShell rail={<StaffRail activeId="lca" />}><TopBar crumbs={crumbTrail(workspaceCrumbs("LCA / PCF / CBAM", "/lca"))}/><div className="nz-head"><div className="nz-eyebrow">Product assurance</div><h1>Life-cycle assessments</h1><div className="sub">Product emissions, boundaries, inventory evidence and scenarios</div></div><div className="nz-body nz-lca-empty"><section><i>0</i><div><h2>No assessments available</h2><p>Create an LCA or PCF job before importing a bill of materials or modelling product impacts.</p><a className="nz-btn pri" href="/jobs">Open jobs</a></div></section></div></AppShell>;
@@ -28,7 +31,7 @@ export function LcaBoard({ assessments }: { assessments: LcaAssessment[] }) {
   const lines = filter === "all" ? assessment.lines : assessment.lines.filter((line) => line.mappingState === filter);
   const chooseAssessment = (id: string) => { const next = assessments.find((item) => item.id === id); if(!next)return; setAssessmentId(id); setSelectedLineId(next.lines[0]?.id??""); };
 
-  return <AppShell rail={<StaffRail activeId="lca" />} drawer={selectedLine?<EvidenceDrawer kicker={`${assessment.kind.toUpperCase()} evidence`} title={selectedLine.component} subtitle={`${selectedLine.module} · ${selectedLine.mappingState}`} actions={<><button className="nz-btn" disabled title={unavailable}>View source</button><button className="nz-btn pri" disabled title={unavailable}>Review mapping</button></>}><LineEvidence line={selectedLine} /></EvidenceDrawer>:undefined}>
+  return <AppShell rail={<StaffRail activeId="lca" />} drawer={selectedLine&&panelOpen?<EvidenceDrawer onClose={() => setPanelOpen(false)} kicker={`${assessment.kind.toUpperCase()} evidence`} title={selectedLine.component} subtitle={`${selectedLine.module} · ${selectedLine.mappingState}`} actions={<><button className="nz-btn" disabled title={unavailable}>View source</button><button className="nz-btn pri" disabled title={unavailable}>Review mapping</button></>}><LineEvidence line={selectedLine} /></EvidenceDrawer>:undefined}>
     <TopBar crumbs={crumbTrail(workspaceCrumbs("LCA / PCF / CBAM", "/lca"))} />
     <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">{assessment.kind.toUpperCase()} · {assessment.jobNumber}</div><h1>{assessment.product}</h1><div className="sub">{assessment.client} · {assessment.boundary} · {assessment.standard}</div></div><div className="nz-head-actions"><label className="nz-sr-only" htmlFor="assessment-select">Assessment</label><select id="assessment-select" className="nz-btn" value={assessmentId} onChange={(event) => chooseAssessment(event.target.value)}>{assessments.map((item) => <option key={item.id} value={item.id}>{item.jobNumber} · {item.product}</option>)}</select><button className="nz-btn pri" disabled title={unavailable}>Import BOM</button></div></div></div>
     <div className="nz-body" style={{ paddingTop: 18 }}>

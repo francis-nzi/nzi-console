@@ -2557,3 +2557,14 @@ details.nz-job-report-link{white-space:normal}
 .nz-conv-messages{list-style:none;margin:10px 0;padding:0;display:flex;flex-direction:column;gap:8px}
 .nz-conv-messages p{margin:2px 0 0;white-space:pre-wrap;overflow-wrap:anywhere}
 .nz-pm-conv tr.on{background:var(--nz-mint,#DFF5E9)}
+
+/* Every dismissible drawer closes three ways, from the shared Drawer: Escape, the scrim, and this × (top-right of the panel).
+   A drawer whose own header already carries one (.nz-dh .x, .close, the admin icon button) keeps it and gets no second. */
+.nz-drawer-close{position:absolute;top:10px;right:12px;z-index:3;width:34px;height:34px;display:inline-grid;place-items:center;border:0;border-radius:8px;background:none;color:var(--t2);cursor:pointer;padding:0}
+.nz-drawer-close:hover{background:var(--paper);color:var(--t1)}
+.nz-drawer-close:focus-visible{outline:2px solid var(--emerald);outline-offset:1px}
+.nz-drawer-close svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
+/* For a panel whose class draws no scrim of its own: the Drawer adds one behind it (closing on click). */
+.nz-drawer-scrim{position:fixed;inset:0;z-index:39;background:rgba(11,27,43,.28)}
+/* The docked evidence panel's own ×, with room so the title does not run under it. */
+.nz-dh.has-close{padding-right:48px}

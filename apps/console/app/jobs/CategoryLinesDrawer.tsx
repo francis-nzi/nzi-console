@@ -26,7 +26,7 @@ export function CategoryLinesDrawer({ jobId, category, onClose }: { jobId: strin
   const cell = (value: CategoryLineYearValue | null) => value === null ? <span className="muted">—</span>
     : <><b>{tonnes(value.tco2e)}</b>{value.quantity !== null ? <div className="nz-hint">{formatQuantity(value.quantity)} {value.unit ?? ""}</div> : value.unit === null ? <div className="nz-hint">mixed units</div> : null}</>;
 
-  return <Drawer open={category !== null} onClose={onClose} ariaLabel={category ? `${category.label} — lines across the years` : "Lines across the years"} className="nz-assurance-drawer nz-lines-drawer">
+  return <Drawer open={category !== null} onClose={onClose} ariaLabel={category ? `${category.label} — lines across the years` : "Lines across the years"} className="nz-assurance-drawer nz-lines-drawer" addScrim>
     <div className="nz-assurance-drawer-h">
       <div className="top"><span className="ctx">Review &amp; QA · line by line</span><button type="button" className="close" onClick={onClose} aria-label="Close lines across the years">✕</button></div>
       <div className="ttl"><h3>{category?.label ?? "Lines"}</h3></div>

@@ -372,7 +372,7 @@ function AssuranceDrawer({ open, jobId, gaps, auditRows, selectedRowId, onSelect
   const [gapFilter, setGapFilter] = useState<GapFilter>("open");
   const shownGaps = filterGaps(gaps, gapFilter);
 
-  return <Drawer open={open} onClose={onClose} ariaLabel="Data assurance detail" className="nz-assurance-drawer">
+  return <Drawer open={open} onClose={onClose} ariaLabel="Data assurance detail" className="nz-assurance-drawer" addScrim>
     <div className="nz-assurance-drawer-h">
       <div className="top"><span className="ctx">Detail · this stage</span><button type="button" className="close" onClick={onClose} aria-label="Close data assurance detail">✕</button></div>
       <div className="ttl"><h3>{segment === "row" ? "Row detail" : "Data assurance"}</h3>{segment === "gaps" && <span className="count">{openCount} open</span>}</div>

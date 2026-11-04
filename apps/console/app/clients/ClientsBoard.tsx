@@ -96,7 +96,10 @@ const statusLabel = (value: string) => clientStatusMeta[value as keyof typeof cl
 export function ClientsBoard({ page, query }: { page: ClientListPage; query: ClientListQuery }) {
   const router = useRouter();
   const nav = useListNavigation(clientListSpec, query, "/clients");
-  const [selectedId, setSelectedId] = useState<string>(page.rows[0]?.id ?? "");
+  const [selectedId, setSelectedIdRaw] = useState<string>(page.rows[0]?.id ?? "");
+  const [panelOpen, setPanelOpen] = useState(true);
+  // A selected row opens its panel; the panel's close (x, Escape) closes it until a row is chosen again.
+  const setSelectedId = (id: string) => { setSelectedIdRaw(id); setPanelOpen(true); };
   const rail = <StaffRail activeId="clients" />;
   const topBar = <TopBar crumbs={crumbTrail(workspaceCrumbs("Clients", "/clients"))} />;
 
@@ -110,8 +113,9 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
   const deliveryLinked = summary.deliveryClients > 0 && summary.deliveryWithoutJobs === 0;
   const footprintsRecorded = summary.activeWithoutEmissions === 0;
 
-  const drawer = selected ? (
+  const drawer = selected && panelOpen ? (
     <EvidenceDrawer
+      onClose={() => setPanelOpen(false)}
       kicker={`Client · ${clientStatusMeta[selected.status].label.toLowerCase()}`}
       title={selected.name}
       subtitle={[selected.sector, selected.location].filter(Boolean).join(" · ")}

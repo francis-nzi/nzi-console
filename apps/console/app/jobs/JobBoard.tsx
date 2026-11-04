@@ -102,7 +102,10 @@ function DrawerBody({ row }: { row: ScopeRow }) {
 }
 
 export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJob }) {
-  const [selectedId, setSelectedId] = useState<string>("fgas");
+  const [selectedId, setSelectedIdRaw] = useState<string>("fgas");
+  const [panelOpen, setPanelOpen] = useState(true);
+  // A selected row opens its panel; the panel's close (x, Escape) closes it until a row is chosen again.
+  const setSelectedId = (id: string) => { setSelectedIdRaw(id); setPanelOpen(true); };
   const [filter, setFilter] = useState<Filter>("all");
   const [stage, setStage] = useState<CrpStage>("data");
 
@@ -116,6 +119,7 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
 
   const drawer = (
     <EvidenceDrawer
+      onClose={() => setPanelOpen(false)}
       kicker={`Scope row · ${statusLabel[selected.status].toLowerCase()}`}
       title={selected.source}
       subtitle={`Scope ${selected.scope}`}
@@ -154,7 +158,7 @@ export function JobBoard({ job, workflowJob }: { job: Job; workflowJob: FamilyJo
   ];
 
   return (
-    <AppShell rail={rail} drawer={showEvidence ? drawer : undefined}>
+    <AppShell rail={rail} drawer={showEvidence && panelOpen ? drawer : undefined}>
       <TopBar
        
         crumbs={
