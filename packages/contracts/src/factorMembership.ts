@@ -5,7 +5,7 @@ import type { CategoryVariant } from "./factorVariants";
 /**
  * Which factors belong to which category (NZC-171, ruled): derived from the DESNZ `source_levels` each factor already stores, through
  * a reviewable map of (level 1, level 2, level 3) -> category, never from a code list. This file is the rule; the map is data
- * (`factor_category_membership`, migration 0209) and a person with `factor.manage` edits it.
+ * (`factor_category_membership`, migration 0210) and a person with `factor.manage` edits it.
  *
  * - A rule names a level 1 and, optionally, a level 2 and a level 3. An absent level is "any". Levels compare case-insensitively with
  *   runs of whitespace collapsed (the source data carries double spaces and newlines).

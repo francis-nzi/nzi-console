@@ -1,4 +1,4 @@
--- 0209 Which factors belong to which category: a reviewable map from the DESNZ source levels each factor already stores
+-- 0210 Which factors belong to which category: a reviewable map from the DESNZ source levels each factor already stores
 -- (NZC-171; ruled by Cowork, RULING-factor-category-membership.md).
 --
 -- ## Why
@@ -90,7 +90,7 @@ REVOKE DELETE ON nzi_console.factor_category_membership FROM PUBLIC, nzi_console
 -- ── The ruled map ───────────────────────────────────────────────────────────────────────────────────────────────────
 
 INSERT INTO nzi_console.factor_category_membership (source_l1, source_l2, source_l3, category_code, note, created_by, updated_by)
-SELECT v.l1, v.l2, v.l3, v.category, v.note, 'migration:0209', 'migration:0209'
+SELECT v.l1, v.l2, v.l3, v.category, v.note, 'migration:0210', 'migration:0210'
   FROM (VALUES
     -- Scope 1. Natural gas is every natural-gas level 3; the other gases are Other Stationary Fuels (ruling 1).
     ('Fuels', 'Gaseous fuels', 'Natural gas', '1.natural-gas', 'Natural gas'),
@@ -161,7 +161,7 @@ SELECT v.l1, v.l2, v.l3, v.category, v.note, 'migration:0209', 'migration:0209'
 
 -- ICE embodied carbon: one level 1 per material, each bought (3.1) or capitalised (3.2).
 INSERT INTO nzi_console.factor_category_membership (source_l1, source_l2, source_l3, category_code, note, created_by, updated_by)
-SELECT m.material, NULL, NULL, c.category, 'ICE embodied carbon: ' || m.material, 'migration:0209', 'migration:0209'
+SELECT m.material, NULL, NULL, c.category, 'ICE embodied carbon: ' || m.material, 'migration:0210', 'migration:0210'
   FROM unnest(ARRAY['Aggregates and Sand', 'Aluminium', 'Asphalt', 'Bitumen', 'Brass', 'Bricks', 'Bronze', 'Carpet', 'Cement and Mortar', 'Ceramics',
     'Clay', 'Concrete', 'Copper', 'Glass', 'Insulation', 'Iron', 'Lead', 'Lime', 'Linoleum', 'Miscellaneous', 'Paint', 'Paper', 'Plaster', 'Plastics',
     'Rubber', 'Sealants and Adhesives', 'Soil', 'Steel', 'Stone', 'Timber', 'Tin', 'Titanium', 'Vinyl', 'Zinc']) AS m(material)
@@ -170,7 +170,7 @@ SELECT m.material, NULL, NULL, c.category, 'ICE embodied carbon: ' || m.material
 -- The seed is audited once per organisation, as a set: the table is global, so the event says what was filed and by which migration.
 INSERT INTO nzi_console.audit_events
   (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, reason, after_json)
-SELECT o.organisation_id, gen_random_uuid()::text, 'migration:0209', 'system', 'factor.membership.seeded', 'factor_category_membership', '0209', 'migration:0209',
+SELECT o.organisation_id, gen_random_uuid()::text, 'migration:0210', 'system', 'factor.membership.seeded', 'factor_category_membership', '0210', 'migration:0210',
        'NZC-171: the ruled DESNZ family -> category map (RULING-factor-category-membership.md), seeded.',
        jsonb_build_object('rules', (SELECT count(*) FROM nzi_console.factor_category_membership),
                           'heldBack', (SELECT count(*) FROM nzi_console.factor_category_membership WHERE category_code IS NULL),
@@ -180,9 +180,9 @@ SELECT o.organisation_id, gen_random_uuid()::text, 'migration:0209', 'system', '
 DO $$
 BEGIN
   IF (SELECT count(*) FROM nzi_console.factor_category_membership) <> 56 + 68 THEN
-    RAISE EXCEPTION '0209: expected 124 membership rules, found %', (SELECT count(*) FROM nzi_console.factor_category_membership);
+    RAISE EXCEPTION '0210: expected 124 membership rules, found %', (SELECT count(*) FROM nzi_console.factor_category_membership);
   END IF;
   IF (SELECT count(*) FROM nzi_console.factor_category_membership WHERE category_code IS NULL) <> 1 THEN
-    RAISE EXCEPTION '0209: exactly one family (Heat and steam) is held back';
+    RAISE EXCEPTION '0210: exactly one family (Heat and steam) is held back';
   END IF;
 END $$;

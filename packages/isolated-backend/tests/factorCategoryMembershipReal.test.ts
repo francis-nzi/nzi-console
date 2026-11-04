@@ -88,7 +88,7 @@ describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ?
 
   before(async () => {
     database = (await createDisposableDatabase("nzc171member", {
-      // The organisation exists when 0209 runs, as every real one does, so the seed's audit event is written for it.
+      // The organisation exists when 0210 runs, as every real one does, so the seed's audit event is written for it.
       onMigration: async (filename, owner) => {
         if (!filename.startsWith("0208_")) return;
         await owner.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [ORG]);
@@ -123,7 +123,7 @@ describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ?
     assert.equal(rules.length, 124);
     assert.deepEqual(rules.filter((rule) => rule.categoryCode === null).map((rule) => rule.sourceL1), ["Heat and steam"]);
     assert.deepEqual(familylessCategories(rules), ["3.10", "3.11", "3.14", "3.15"]);
-    const audited = await q<{ n: string }>(`SELECT count(*)::text n FROM nzi_console.audit_events WHERE organisation_id=$1 AND action='factor.membership.seeded' AND actor_id='migration:0209'`, [ORG]);
+    const audited = await q<{ n: string }>(`SELECT count(*)::text n FROM nzi_console.audit_events WHERE organisation_id=$1 AND action='factor.membership.seeded' AND actor_id='migration:0210'`, [ORG]);
     assert.equal(audited[0]!.n, "1", "the seed is audited, once per organisation");
   });
 

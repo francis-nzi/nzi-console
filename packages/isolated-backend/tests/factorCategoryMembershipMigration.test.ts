@@ -4,11 +4,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 
-/** The shape of migration 0209 (NZC-171), pinned without a database: the guards that make the membership map reviewable and permanent. */
+/** The shape of migration 0210 (NZC-171), pinned without a database: the guards that make the membership map reviewable and permanent. */
 const here = dirname(fileURLToPath(import.meta.url));
-const sql = readFileSync(resolve(here, "../migrations/0209_factor_category_membership.sql"), "utf8").replace(/\r\n/g, "\n");
+const sql = readFileSync(resolve(here, "../migrations/0210_factor_category_membership.sql"), "utf8").replace(/\r\n/g, "\n");
 
-describe("0209 factor_category_membership", () => {
+describe("0210 factor_category_membership", () => {
   it("is a global table the app reads and Admin edits through commands, never deleted or re-pointed, one rule per family and category", () => {
     for (const clause of [
       "CREATE TABLE nzi_console.factor_category_membership", "factor_category_membership_l3_needs_l2", "factor_category_membership_retired_shape",
@@ -20,7 +20,7 @@ describe("0209 factor_category_membership", () => {
   });
 
   it("seeds the ruled map, audited per organisation, and holds Heat and steam back rather than filing it under purchased electricity", () => {
-    assert.ok(sql.includes("'migration:0209'") && sql.includes("'factor.membership.seeded'"));
+    assert.ok(sql.includes("'migration:0210'") && sql.includes("'factor.membership.seeded'"));
     assert.match(sql, /\('Heat and steam', NULL, NULL, NULL,/);
     assert.ok(!/\('Heat and steam'[^\n]*'2\.purchased-electricity'/.test(sql), "ruling 7: not mis-filed under purchased electricity");
     assert.ok(!/\('UK electricity for EVs'[^\n]*'1\.company-vehicles'/.test(sql), "ruling 5's fallback: EV charging is not filed under company vehicles");

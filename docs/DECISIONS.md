@@ -5761,7 +5761,7 @@ assured, and the word should not sit beside it as though it were.
 
 ### NZC-171 — A category offers the factors its DESNZ family is filed under: membership is a reviewable map, not code [Confirmed 4 Nov 2026 — Cowork; accounting-policy calls Francis]
 
-**Decision.** Which factors a data-entry category offers is decided by `factor_category_membership` (migration 0209): a rule is
+**Decision.** Which factors a data-entry category offers is decided by `factor_category_membership` (migration 0210): a rule is
 (DESNZ level 1, optional level 2, optional level 3) -> category, read from the `source_levels` every factor already stores. An absent
 level is "any"; a family may belong to several categories and a category may draw from several families. Levels compare
 case-insensitively with whitespace collapsed. The map is global reference data, edited by Admin (`factor.manage`) through

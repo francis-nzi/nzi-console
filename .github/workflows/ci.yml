@@ -1015,7 +1015,7 @@ jobs:
       # the base's; a retire keeps the record and an add reinstates it.
       - name: Applicability is curated through registered, audited commands
         run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityCommandsReal.test.ts
-      # NZC-171 (migration 0209): a category offers the factors whose DESNZ family the membership map files under it. Every category's set
+      # NZC-171 (migration 0210): a category offers the factors whose DESNZ family the membership map files under it. Every category's set
       # asserted exactly (no leak either way), the live library's level paths each resolve (nothing orphaned into invisibility), the pairs
       # reconcile, a category with no family offers the scope with a notice, and the map is edited by Admin alone, audited, never deleted.
       - name: A category offers the factors whose DESNZ family is filed under it
