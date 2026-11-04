@@ -48,10 +48,26 @@ describe("the verification-wording guard", () => {
     assert.equal(isAssuranceSanctioned("apps/console/app/reports/[versionId]/ReportComposedView.tsx", "<b>Assured</b>"), true);
     assert.equal(isAssuranceSanctioned("packages/contracts/src/reportComposition.ts", "FY${y} assured emissions: ${t}"), true);
     assert.equal(isAssuranceSanctioned("packages/contracts/src/reportComposition.ts", '<b>Assured</b> elsewhere in the file'), false, "the exemption is by line, not the whole file");
-    for (const path of ["apps/console/app/platform/PlatformBoard.tsx", "apps/console/app/portal/portalTermsContent.ts", "apps/console/app/admin/suppliers/SuppliersBoard.tsx",
+    // The platform's own security/audit assurance is another domain from the emissions service: "Tenant assurance" is allowed - on that page, on those lines.
+    const platform = "apps/console/app/platform/PlatformBoard.tsx";
+    for (const line of ['<h2>{x?"Tenant assurance is awaiting audit evidence.":y}</h2>', '<Badge label="Tenant assurance" />', "<button>Run assurance checks</button>"]) {
+      assert.ok(hits(line) > 0, "the rule still sees it: " + line);
+      assert.equal(isAssuranceSanctioned(platform, line), true, line);
+      assert.equal(isAssuranceSanctioned("apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx", line), false, "allowed on the platform page only");
+    }
+    assert.equal(isAssuranceSanctioned(platform, "<b>Assured</b> emissions"), false, "an emissions 'Assured' on the platform page would still be refused");
+    for (const path of ["apps/console/app/portal/portalTermsContent.ts", "apps/console/app/admin/suppliers/SuppliersBoard.tsx",
       "apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx", "apps/console/app/reports/[versionId]/ReportComposedV5.tsx", "packages/charts/src/SrsLadder.tsx"]) {
       assert.equal(isAssuranceSanctioned(path, "<b>Assured</b> Limited assurance"), false, path);
     }
+  });
+
+  it("'validated' / 'validation' is valid copy (the right word for a forward plan or projection) and is never flagged", () => {
+    for (const line of [
+      "<p>The projected line is built from the reductions entered against each strategy and is not validated.</p>",
+      "<span className=\"nz-eyebrow\">Validated reporting input</span>", 'placeholder="e.g. Verification & validation"', "Verification & validation opinion",
+      "The target has been validated against the reduction pathway.", "Input validation failed",
+    ]) assert.equal(hits(line), 0, line);
   });
 
   it("is run by check:terminology over the console, the packages that draw copy and the backend's messages - and the repository passes it", () => {

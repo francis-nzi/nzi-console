@@ -897,7 +897,7 @@ function GapFillForm({ jobId, assessmentId, lineItem, onDone, notice }: {
 
   return (
     <div className="nz-lca-legs">
-      <div className="sub">Gap-fill <b>{lineItem.lineLabel}</b> with a documented proxy value — the LCA analogue of the Data Verification gate. It's recorded as a proxy and folded into the total on the next recalculation.</div>
+      <div className="sub">Gap-fill <b>{lineItem.lineLabel}</b> with a documented proxy value — the LCA analogue of the Data checks gate. It's recorded as a proxy and folded into the total on the next recalculation.</div>
       <div className="nz-config-grid lca" style={{ marginTop: 10 }}>
         <label className="nz-fl">Proxy factor value<input className="nz-inp" type="number" min="0" step="any" value={value.factorValue} onChange={(e) => setValue({ ...value, factorValue: Number(e.target.value) })} /></label>
         <label className="nz-fl">Factor unit<input className="nz-inp" value={value.factorUnit} onChange={(e) => setValue({ ...value, factorUnit: e.target.value })} /></label>

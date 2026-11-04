@@ -5740,6 +5740,12 @@ messages the app raises. `check:terminology` refuses the old words in copy (`scr
 - **Internal names keep theirs:** `assured_period_snapshots`, the `assurance.gap.resolve` command, component and CSS names,
   identifiers and stored enum values (`"assured"`, `footprint.assurance`). Only what a person reads changes.
 - **The email/MFA "verify / verification" is untouched** — a different word's business.
+- **Not emissions verification, so not swept:** the Platform governance page's own "tenant assurance" (security and audit assurance) keeps its
+  wording, sanctioned line by line in the guard.
+- **The internal data-QA stage is "Data checks"** (Review & QA), not "Data verification": that name now belongs to the external service.
+- **No "limited" review.** The supplier-service example reads "Verification & validation"; the opinion wording is a separate piece.
+- **"validated / validation" is valid copy** and is never flagged. Where the subject is a forward plan or projection (the strategy projection, the
+  projected pathway, the pathway target input) it reads "validated", not "verified"; history and measurements stay "verified".
 - **Stored wording is rewritten by a migration** (0208, audited per row, exact string): the seeded UK SRS framework (maturity
   level 4's label and definition; requirement S2 M13's title and help text), the `provision_organisation` seeding function, and any
   saved message wording. A published framework version is otherwise never edited; the migration lifts the two row triggers only

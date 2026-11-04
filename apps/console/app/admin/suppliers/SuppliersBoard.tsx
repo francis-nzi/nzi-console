@@ -349,7 +349,7 @@ function LineFields({ draft, issues, pickers, held, rate, onChange }: {
   return <>
     <FieldRow>
       <TextField label="Cost type" value={draft.costType} maxLength={SUPPLIER_COST_TYPE_MAX} placeholder="e.g. Verification" error={issues.costType} onChange={(costType) => onChange({ ...draft, costType })} />
-      <TextField label="Service" value={draft.name} required maxLength={SUPPLIER_ITEM_NAME_MAX} placeholder="e.g. Limited verification" error={issues.name} onChange={(name) => onChange({ ...draft, name })} />
+      <TextField label="Service" value={draft.name} required maxLength={SUPPLIER_ITEM_NAME_MAX} placeholder="e.g. Verification & validation" error={issues.name} onChange={(name) => onChange({ ...draft, name })} />
     </FieldRow>
     <TextAreaField label="Description" value={draft.description} rows={2} error={issues.description} hint={`Optional — up to ${SUPPLIER_ITEM_DESCRIPTION_MAX} characters.`}
       onChange={(description) => onChange({ ...draft, description })} />

@@ -65,11 +65,11 @@ export function CrpAssuranceStage({ jobId, onGoToRow }: { jobId: string; onGoToR
     try {
       const response = await fetch(`/api/isolated/jobs/${jobId}/assurance`, { cache: "no-store" });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.message ?? "The verification surface is unavailable.");
+      if (!response.ok) throw new Error(body.message ?? "The data checks are unavailable.");
       setData(body as AssuranceScreen);
       setState("ready");
     } catch (error) {
-      setDegraded(error instanceof Error ? error.message : "The verification surface is unavailable.");
+      setDegraded(error instanceof Error ? error.message : "The data checks are unavailable.");
       setState("failed");
     }
   }, [jobId]);
@@ -84,20 +84,20 @@ export function CrpAssuranceStage({ jobId, onGoToRow }: { jobId: string; onGoToR
     try {
       const response = await fetch(`/api/isolated/jobs/${jobId}/assurance`, { cache: "no-store" });
       const body = await response.json();
-      if (!response.ok) throw new Error(body.message ?? "The verification surface could not be refreshed.");
+      if (!response.ok) throw new Error(body.message ?? "The data checks could not be refreshed.");
       setData(body as AssuranceScreen);
       setDegraded(null);
     } catch (error) {
-      setDegraded(error instanceof Error ? error.message : "The verification surface could not be refreshed.");
+      setDegraded(error instanceof Error ? error.message : "The data checks could not be refreshed.");
     }
   }, [jobId, router]);
 
   if (state === "loading") {
-    return <section className="nz-panel nz-config-panel" aria-busy><div className="nz-register-loading" role="status"><i /><span><b>Loading data verification</b><small>Five-year trend and the integrity gap engine…</small></span></div></section>;
+    return <section className="nz-panel nz-config-panel" aria-busy><div className="nz-register-loading" role="status"><i /><span><b>Loading data checks</b><small>Five-year trend and the integrity gap engine…</small></span></div></section>;
   }
   // Failed read is never painted as a zeroed report (five explicit states).
   if (state === "failed" || !data) {
-    return <section className="nz-panel nz-config-panel"><div className="nz-banner warn" role="alert"><div><b>Data verification is unavailable</b><div>{degraded}</div></div></div><button className="nz-btn" onClick={() => void load()}>Retry</button></section>;
+    return <section className="nz-panel nz-config-panel"><div className="nz-banner warn" role="alert"><div><b>Data checks are unavailable</b><div>{degraded}</div></div></div><button className="nz-btn" onClick={() => void load()}>Retry</button></section>;
   }
 
   return <>
@@ -156,7 +156,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
   return <section className="nz-panel nz-assurance">
     <header className="nz-assurance-head">
       <div>
-        <span className="nz-eyebrow">Review &amp; QA · Data verification</span>
+        <span className="nz-eyebrow">Review &amp; QA · Data checks</span>
         <div className="nz-assurance-meta">
           {trend.baselineYear != null
             ? <>Baseline year {trend.baselineYear} <span className="nz-bl-pill">BL</span></>
@@ -184,7 +184,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
       </span>}
     </div>
 
-    <Tabs items={TAB_ITEMS} value={tab} onChange={(id) => onTab(id as Tab)} ariaLabel="Data verification views" idBase="assurance" className="nz-assurance-tabs" />
+    <Tabs items={TAB_ITEMS} value={tab} onChange={(id) => onTab(id as Tab)} ariaLabel="Data checks views" idBase="assurance" className="nz-assurance-tabs" />
 
     <TabPanel id="trend" idBase="assurance" active={tab === "trend"} className="nz-assurance-scroll">
       <table className="nz-tbl nz-assurance-trend">
@@ -327,7 +327,7 @@ function AssuranceSurface({ jobId, data, tab, onTab, onReload, onGoToRow }: { jo
 
     <div className="nz-assurance-actions">
       <button className="nz-btn" onClick={() => exportTrendCsv(trend)}>⭳ Export trend CSV</button>
-      {!drawerOpen && <button ref={reopenRef} type="button" className="nz-assurance-reopen" onClick={() => setDrawerOpen(true)}>🛡 Data verification {gaps.openCount > 0 && <span className="n">{gaps.openCount}</span>}</button>}
+      {!drawerOpen && <button ref={reopenRef} type="button" className="nz-assurance-reopen" onClick={() => setDrawerOpen(true)}>🛡 Data checks {gaps.openCount > 0 && <span className="n">{gaps.openCount}</span>}</button>}
     </div>
 
     <ReingestAttestPanel jobId={jobId} readKey={data} onAttested={onReload} />
@@ -372,10 +372,10 @@ function AssuranceDrawer({ open, jobId, gaps, auditRows, selectedRowId, onSelect
   const [gapFilter, setGapFilter] = useState<GapFilter>("open");
   const shownGaps = filterGaps(gaps, gapFilter);
 
-  return <Drawer open={open} onClose={onClose} ariaLabel="Data verification detail" className="nz-assurance-drawer" addScrim>
+  return <Drawer open={open} onClose={onClose} ariaLabel="Data checks detail" className="nz-assurance-drawer" addScrim>
     <div className="nz-assurance-drawer-h">
-      <div className="top"><span className="ctx">Detail · this stage</span><button type="button" className="close" onClick={onClose} aria-label="Close data verification detail">✕</button></div>
-      <div className="ttl"><h3>{segment === "row" ? "Row detail" : "Data verification"}</h3>{segment === "gaps" && <span className="count">{openCount} open</span>}</div>
+      <div className="top"><span className="ctx">Detail · this stage</span><button type="button" className="close" onClick={onClose} aria-label="Close data checks detail">✕</button></div>
+      <div className="ttl"><h3>{segment === "row" ? "Row detail" : "Data checks"}</h3>{segment === "gaps" && <span className="count">{openCount} open</span>}</div>
     </div>
     <Tabs
       items={[{ id: "gaps", label: `Gaps (${gaps.length})` }, { id: "row", label: "Row detail", disabled: !selectedRow }]}
@@ -403,7 +403,7 @@ function AssuranceDrawer({ open, jobId, gaps, auditRows, selectedRowId, onSelect
         {gaps.length === 0 && <li className="nz-assurance-gap-empty">No integrity gaps — the dataset is complete, consistent and fully costed.</li>}
         {gaps.length > 0 && shownGaps.length === 0 && <li className="nz-assurance-gap-empty">{gapFilter === "open" ? "No open gaps — every gap is resolved with a reason." : "No resolved gaps yet."}</li>}
       </ol>
-      <p className="nz-assurance-drawer-note">This is the workspace&rsquo;s shared detail drawer — selecting any row shows its evidence here. By default it lists the verification gaps. Each is <b>fixed</b> (edit the row) or <b>resolved with a reason</b>, recorded on the row&rsquo;s provenance so sign-off is defensible.</p>
+      <p className="nz-assurance-drawer-note">This is the workspace&rsquo;s shared detail drawer — selecting any row shows its evidence here. By default it lists the data-check gaps. Each is <b>fixed</b> (edit the row) or <b>resolved with a reason</b>, recorded on the row&rsquo;s provenance so sign-off is defensible.</p>
     </TabPanel>
   </Drawer>;
 }

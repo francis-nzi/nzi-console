@@ -12,7 +12,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ job
     const { jobId } = await params;
     const { pool, organisationId } = requireIsolatedApiContext();
     const screen = await withTenantRead(pool, organisationId, (db) => getAssuranceScreen(db, jobId));
-    if (!screen) return Response.json({ code: "NOT_FOUND", message: "Data verification is available only for CRP jobs." }, { status: 404 });
+    if (!screen) return Response.json({ code: "NOT_FOUND", message: "Data checks are available only for CRP jobs." }, { status: 404 });
     return Response.json(screen, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiFailure(error);

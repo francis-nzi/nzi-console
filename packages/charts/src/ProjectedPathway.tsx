@@ -122,7 +122,7 @@ export function ProjectedPathway({ data, width, showChrome = true }: Props) {
       {svg}
       <p style={noteStyle}>
         Projected is an estimate built from this client&rsquo;s reduction plan. It is not a measurement and
-        is not verified.
+        is not validated.
       </p>
     </figure>
   );
