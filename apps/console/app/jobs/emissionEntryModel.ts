@@ -310,7 +310,7 @@ export function entryFactorRefsFor(sources: readonly EntryFactorSource[]): Entry
  * Dedup slice 5 Step D: how the category's list reads by applicability — a base filed under the category's pair, labelled by the pair;
  * a still-materialised variant whose pick files as that base, hidden.
  */
-type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }> };
+type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }>; memberFactorIds?: string[] };
 
 /** What the declared-factor preview returns — the shape of the backend's `DeclaredFactorPreview`. */
 export type DeclaredFactorPreviewResult = PickListFiling & (
@@ -330,8 +330,11 @@ export function optionsForCategory(options: readonly EntryFactorRef[], preview: 
   const excluded = new Set(preview?.excludedFactorIds ?? []);
   const folded = new Set((preview?.foldedOptions ?? []).map((option) => `${option.datasetId}|${option.factorId}`));
   const labels = preview?.optionLabels ?? {};
+  // A category that files under a pair says which factors belong to it; a dataset factor outside that list is another category's.
+  const members = preview?.memberFactorIds ? new Set(preview.memberFactorIds) : null;
   return options
-    .filter((option) => option.factorSource === "client" || (!excluded.has(option.factorId ?? "") && !folded.has(`${option.datasetId}|${option.factorId}`)))
+    .filter((option) => option.factorSource === "client"
+      || (!excluded.has(option.factorId ?? "") && !folded.has(`${option.datasetId}|${option.factorId}`) && (!members || members.has(option.factorId ?? ""))))
     .map((option) => {
       const pairLabel = option.factorSource !== "client" && option.factorId ? labels[option.factorId] : undefined;
       if (!pairLabel) return option;
@@ -437,10 +440,6 @@ export function entryHasFactor(fields: Pick<ScopeRowWriteFields, "factorSource" 
 }
 
 /**
- * The activity search's results (JW-9): the category's options whose label contains what was typed, case-insensitive.
- * A suggestion list, never an acceptance — only a pick sets the activity and its factor.
- */
-/**
  * A factor option as a select shows it: its label, then its unit — unless the label already ends with that unit, as the
  * CRM's options do (`entryFactorRefsFor` writes "Natural gas · kWh"), which read "kWh · kWh" before.
  */
@@ -448,9 +447,28 @@ export function factorOptionText(option: { label: string; unit?: string }): stri
   return option.unit && !option.label.endsWith(` · ${option.unit}`) ? `${option.label} · ${option.unit}` : option.label;
 }
 
-export function searchActivityOptions<T extends { label: string }>(options: readonly T[], text: string, limit = 8): T[] {
-  const needle = text.trim().toLowerCase();
-  return (needle ? options.filter((option) => option.label.toLowerCase().includes(needle)) : [...options]).slice(0, limit);
+/**
+ * Token, any-order matching: the query is split on whitespace and an option matches when every token appears, in any order,
+ * in its label and unit (`factorOptionText`), case-insensitive — "medium car petrol km" and "petrol km car medium" find the same
+ * factor. Matches are ranked before the limit: every token beginning a word first, then "Preferred" factors, then shorter labels.
+ * An empty query keeps the list's own order.
+ */
+export function searchActivityOptions<T extends { label: string; unit?: string | null; preferred?: boolean }>(options: readonly T[], text: string, limit = 8): T[] {
+  const tokens = text.toLowerCase().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) return options.slice(0, limit);
+  const startsWord = tokens.map((token) => new RegExp(`(^|[^\\p{L}\\p{N}])${token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "u"));
+  const matches: Array<{ option: T; index: number; wordStart: boolean }> = [];
+  options.forEach((option, index) => {
+    const haystack = factorOptionText({ label: option.label, unit: option.unit ?? undefined }).toLowerCase();
+    if (tokens.every((token) => haystack.includes(token))) matches.push({ option, index, wordStart: startsWord.every((pattern) => pattern.test(haystack)) });
+  });
+  return matches
+    .sort((a, b) => Number(b.wordStart) - Number(a.wordStart)
+      || Number(b.option.preferred === true) - Number(a.option.preferred === true)
+      || a.option.label.length - b.option.label.length
+      || a.index - b.index)
+    .slice(0, limit)
+    .map((match) => match.option);
 }
 
 /**

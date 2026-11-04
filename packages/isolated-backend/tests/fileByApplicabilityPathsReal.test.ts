@@ -328,13 +328,20 @@ describe("dedup slice 5 Step A: every write path files by applicability (uncondi
       }, "each commuting base under its pair's own label — never the business-travel wording");
       assert.deepEqual([...commuting.foldedOptions!].sort((a, b) => a.factorId.localeCompare(b.factorId)),
         [{ datasetId: DS, factorId: "uk-ghg-25_301_3070_9_1-c" }, { datasetId: DS, factorId: "uk-ghg-25_315_3147_11_1-c" }]);
+      // A category made wholly of pairs says what belongs to it: the filed bases and the `-c` variants - not the business-travel or freight factors.
+      const members = new Set(commuting.memberFactorIds);
+      assert.ok(members.has("uk-ghg-25_301_3070_9_1") && members.has("uk-ghg-25_315_3147_11_1"), "the filed commuting bases are members");
+      assert.ok(members.has("uk-ghg-25_301_3070_9_1-c"), "and so is a -c variant");
+      assert.ok(!members.has("uk-ghg-27_320_3235_14_1") && !members.has("uk-ghg-4_301_3070_4_1-bcp"), "freight and a business-travel copy are not");
       const travel = await preview("3.6", "3.6");
+      assert.equal(travel.memberFactorIds, undefined, "a category with native factors is not scoped by pairs - applicability cannot tell native from foreign");
       assert.equal(travel.optionLabels!["uk-ghg-SPEND-SIC-49.3-5"], "Land transport services");
       assert.ok(travel.foldedOptions!.some((option) => option.factorId === "uk-ghg-SPEND-SIC-49.3-5-b"));
       assert.ok(!travel.foldedOptions!.some((option) => option.factorId === "uk-ghg-4_301_3070_4_1-bcp"), "a scope-shifted copy is never folded");
       const upstream = await preview("3.4", "3.4");
       assert.ok(!("uk-ghg-27_320_3235_14_1" in upstream.optionLabels!), "the container ship upstream is used natively: no pair, no relabel");
       assert.ok(!upstream.foldedOptions!.some((option) => option.factorId === "uk-ghg-SPEND-SIC-49.3-5-d"), "a -d copy is not 3.4's pair");
+      assert.equal(upstream.memberFactorIds, undefined, "3.4 uses factors natively (the container ship), so it carries no membership list");
     });
   });
 });
