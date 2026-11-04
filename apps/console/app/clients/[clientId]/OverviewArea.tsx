@@ -98,8 +98,9 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
     </Collapsible>
 
     {/* Phase 1c — what the client reports, year to year, held on the Client rather than rebuilt on every job. */}
-    <ReportingTemplateCard template={workspace.reportingTemplate ?? { current: null, latestVersion: 0, categories: [] }} access={access.client}
-      onEdit={() => onDrawer({ kind: "reporting-template" })} onInitialise={() => onDrawer({ kind: "reporting-template-initialise" })} />
+    <ReportingTemplateCard template={workspace.reportingTemplate ?? { current: null, latestVersion: 0, categories: [], masters: [] }} access={access.client}
+      onEdit={() => onDrawer({ kind: "reporting-template" })} onInitialise={() => onDrawer({ kind: "reporting-template-initialise" })}
+      onInitialiseFromMaster={() => onDrawer({ kind: "reporting-template-from-master" })} />
 
     {/* F-1b (R-D1) — the order this client's reports start in, and a line for the cover. */}
     <ReportProfileCard profile={workspace.reportProfile ?? { current: null, latestVersion: 0 }} access={access.client}

@@ -56,6 +56,23 @@ export async function listMasterTemplateFactorOptions(db: Queryable): Promise<Ma
     .sort((a, b) => a.label.toLowerCase().localeCompare(b.label.toLowerCase()) || a.factorId.localeCompare(b.factorId));
 }
 
+/**
+ * Where a factor identity lands in an organisation's datasets: the **newest active edition** that carries it — an active
+ * factor in an active dataset, latest `valid_from` first (the order `listMasterTemplateFactorOptions` and the master
+ * authoring checks already read editions in). An identity no active edition carries is absent from the map: the caller
+ * keeps the line and flags it, never drops it. Datasets are the organisation's; a client has no dataset selection of its own.
+ */
+export async function resolveFactorIdentities(db: Queryable, organisationId: string, factorIds: string[]): Promise<Map<string, { datasetId: string }>> {
+  if (factorIds.length === 0) return new Map();
+  const { rows } = await db.query<{ factor_id: string; dataset_id: string }>(
+    `SELECT DISTINCT ON (f.factor_id) f.factor_id, f.dataset_id
+       FROM nzi_console.emission_factors f
+       JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (f.organisation_id, f.dataset_id)
+      WHERE f.organisation_id = $1 AND f.factor_id = ANY($2::text[]) AND f.active AND d.status = 'active'
+      ORDER BY f.factor_id, d.valid_from DESC, d.valid_to DESC, d.dataset_id`, [organisationId, factorIds]);
+  return new Map(rows.map((row) => [row.factor_id, { datasetId: row.dataset_id }]));
+}
+
 /** Every master, active first then by name, each with its lines in force. */
 export async function listMasterTemplates(db: Queryable): Promise<MasterTemplate[]> {
   const { rows } = await db.query<HeaderRow>(

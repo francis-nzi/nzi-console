@@ -26,25 +26,28 @@ const noop = () => undefined;
 describe("the client's data entry template: what the screen says", () => {
   it("the empty card is headed Data entry template and describes data entry, not reporting", async () => {
     const { ReportingTemplateCard } = await import("../app/clients/[clientId]/ClientReportingTemplate");
-    const html = renderToStaticMarkup(createElement(ReportingTemplateCard, { template: empty, access: allowed, onEdit: noop, onInitialise: noop }));
+    const html = renderToStaticMarkup(createElement(ReportingTemplateCard, { template: empty, access: allowed, onEdit: noop, onInitialise: noop, onInitialiseFromMaster: noop }));
     assert.match(html, /<span class="eyebrow">Data entry<\/span><h2>Data entry template<\/h2>/);
     assert.match(html, /None set/);
     assert.doesNotMatch(html, /[Rr]eporting template|>Reporting</);
     // The card's body is collapsed in static markup, so its copy is read from the source.
     const source = readFileSync(resolve(root, "apps/console/app/clients/[clientId]/ClientReportingTemplate.tsx"), "utf8");
-    assert.ok(source.includes("No data entry template yet. It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page."));
-    assert.ok(source.includes("Initialise from a job…") && source.includes("Set it up by hand"), "the two ways in");
+    assert.ok(source.includes("No data entry template yet. It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page. Start it from a master template, from a job, or by hand."));
+    assert.ok(source.includes("Initialise from a master template…") && source.includes("Initialise from a job…") && source.includes("Set it up by hand"), "the three ways in");
   });
 
   it("a card with a template in force offers Edit lines (the template is edited in place), under the same heading", async () => {
     const { ReportingTemplateCard } = await import("../app/clients/[clientId]/ClientReportingTemplate");
-    const html = renderToStaticMarkup(createElement(ReportingTemplateCard, { template: filled, access: allowed, onEdit: noop, onInitialise: noop }));
+    const html = renderToStaticMarkup(createElement(ReportingTemplateCard, { template: filled, access: allowed, onEdit: noop, onInitialise: noop, onInitialiseFromMaster: noop }));
     assert.match(html, /<h2>Data entry template<\/h2>/);
     assert.match(html, /1 line/);
     assert.doesNotMatch(html, /[Rr]eporting template/);
     const source = readFileSync(resolve(root, "apps/console/app/clients/[clientId]/ClientReportingTemplate.tsx"), "utf8");
     assert.ok(source.includes('{current ? "Edit lines" : "Set it up by hand"}'), "an existing template is reopened with Edit lines");
     assert.ok(source.includes("onClick={onInitialise}>Initialise from a job…"), "and can be re-initialised from a job");
+    assert.ok(source.includes("onClick={onInitialiseFromMaster}>Initialise from a master template…"), "or from a master template, with a warning that the lines are replaced");
+    assert.ok(source.includes("Its lines will be replaced by the master"));
+    assert.equal(drawerLabel({ kind: "reporting-template-from-master" } as never), "Initialise the data entry template from a master template");
   });
 
   it("both drawers carry the new title and kicker, and their saved messages say it too", async () => {

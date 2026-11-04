@@ -3,7 +3,7 @@
 // quantity; a line with no category is "to file" (imported from v7's history, which carries none) and is never guessed.
 
 export type ReportingTemplateScope = "1" | "2" | "3";
-export type ReportingTemplateOrigin = "manual" | "job" | "v7-import";
+export type ReportingTemplateOrigin = "manual" | "job" | "v7-import" | "master";
 
 /** One line as the command takes it: the whole template is sent, so each line is sent whole. */
 export type ReportingTemplateLineInput = {
@@ -32,6 +32,8 @@ export type ClientReportingTemplate = {
   origin: ReportingTemplateOrigin;
   /** The job a derived version was built from, by number, for the card's "Initialised from J000612". */
   originJobNumber: string | null;
+  /** For a version built from a master template, its name, for "Initialised from Master · Default". */
+  originMasterName: string | null;
   setBy: string;
   setAt: string;
   lines: ReportingTemplateLine[];

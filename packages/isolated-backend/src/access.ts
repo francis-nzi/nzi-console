@@ -103,6 +103,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "client.intensityTarget.deactivate": client,
   "client.reportingTemplate.set": client,
   "client.reportingTemplate.initialiseFromJob": client,
+  "client.reportingTemplate.initialiseFromMaster": client,
   "client.reportingTemplate.deactivate": client,
   "job.intensityValue.set": job,
   "training.booking.create": trainingRun,

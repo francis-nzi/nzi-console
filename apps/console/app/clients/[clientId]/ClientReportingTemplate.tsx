@@ -16,11 +16,13 @@ const SCOPES: ReportingTemplateScope[] = ["1", "2", "3"];
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
 const originText = (template: NonNullable<Template["current"]>) =>
-  template.origin === "manual" ? "set by hand" : `${template.origin === "v7-import" ? "imported from history on" : "initialised from"} ${template.originJobNumber ?? "a job"}`;
+  template.origin === "manual" ? "set by hand"
+    : template.origin === "master" ? `initialised from ${template.originMasterName ? `Master · ${template.originMasterName}` : "a master template"}`
+    : `${template.origin === "v7-import" ? "imported from history on" : "initialised from"} ${template.originJobNumber ?? "a job"}`;
 
 /** The card on the Overview: the template in force, grouped scope → category → line, or how to start one. */
-export function ReportingTemplateCard({ template, access, onEdit, onInitialise }: {
-  template: Template; access: EditAccess; onEdit: () => void; onInitialise: () => void;
+export function ReportingTemplateCard({ template, access, onEdit, onInitialise, onInitialiseFromMaster }: {
+  template: Template; access: EditAccess; onEdit: () => void; onInitialise: () => void; onInitialiseFromMaster: () => void;
 }) {
   const current = template.current;
   const toFile = current?.lines.filter((line) => line.categoryCode === null).length ?? 0;
@@ -31,8 +33,9 @@ export function ReportingTemplateCard({ template, access, onEdit, onInitialise }
     <div className="nz-card-b">
       {current
         ? <p className="sub">Version {current.version} · {originText(current)} · {current.setBy}, {formatDate(current.setAt)}. Each year&rsquo;s job captures these lines; quantities stay on the job.</p>
-        : <p className="sub">No data entry template yet. It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page.</p>}
+        : <p className="sub">No data entry template yet. It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page. Start it from a master template, from a job, or by hand.</p>}
       {canEdit ? <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
+        <button type="button" className="nz-editlink" onClick={onInitialiseFromMaster}>Initialise from a master template…</button>
         <button type="button" className="nz-editlink" onClick={onInitialise}>Initialise from a job…</button>
         <button type="button" className="nz-editlink" onClick={onEdit}>{current ? "Edit lines" : "Set it up by hand"}</button>
       </div> : null}
@@ -43,7 +46,7 @@ export function ReportingTemplateCard({ template, access, onEdit, onInitialise }
         <div className="k" style={{ fontWeight: 600 }}>{category.categoryCode === null ? <span className="nz-st est">To categorise</span> : category.categoryName ?? category.categoryCode}</div>
         {category.lines.map((line) => <div key={line.lineId} className="nz-kv">
           <span className="k">{line.sourceLabel}{line.reportLabel && line.reportLabel !== line.sourceLabel ? <span className="muted"> · reports as {line.reportLabel}</span> : null}</span>
-          <span className="v muted">{[line.siteName, line.factorLabel, line.unit].filter(Boolean).join(" · ") || "—"}</span>
+          <span className="v muted">{current.origin === "master" && !line.factorId ? <span className="nz-st est">Needs a factor</span> : null}{current.origin === "master" && !line.factorId ? " " : ""}{[line.siteName, line.factorLabel, line.unit].filter(Boolean).join(" · ") || "—"}</span>
         </div>)}
       </div>)}
     </div>) : null}
@@ -132,6 +135,46 @@ export function ReportingTemplateForm({ clientId, template, access, onClose, onS
         : null}
       <span className="sp" />
       {withdrawing ? null : <GatedButton className="nz-btn pri" blocked={pending || blockedReason !== null} blockedReason={pending ? "Saving…" : blockedReason ?? undefined} reasonClassName="hint nz-gated-reason" onClick={() => void save()}>{pending ? "Saving…" : "Save template"}</GatedButton>}
+    </div>
+  </>;
+}
+
+/** Initialise from a master template: its lines become the next version, factors resolved from the datasets; any that cannot be are kept, "needs a factor". */
+export function ReportingTemplateFromMasterForm({ clientId, template, access, onClose, onSaved }: {
+  clientId: string; template: Template; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
+}) {
+  const masters = template.masters;
+  const [masterId, setMasterId] = useState(masters[0]?.masterId ?? "");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function initialise() {
+    setPending(true); setError(null);
+    const result = await postBrowserCommand<{ version: number; lineCount: number; masterName: string; needsFactor: number }>(
+      `/api/isolated/clients/${encodeURIComponent(clientId)}/reporting-template/initialise-from-master`, { expectedVersion: template.latestVersion, masterId }, crypto.randomUUID());
+    setPending(false);
+    if (result.state === "success") onSaved(`Data entry template initialised from Master · ${result.data.masterName}: ${result.data.lineCount} line${result.data.lineCount === 1 ? "" : "s"}${result.data.needsFactor ? ` — ${result.data.needsFactor} need${result.data.needsFactor === 1 ? "s" : ""} a factor` : ""}.`);
+    else setError(errorText(result));
+  }
+
+  const blockedReason = access.state !== "allowed" ? access.reason : !masterId ? "Choose a master template." : null;
+  return <>
+    <div className="nz-dh"><div className="k">Data entry</div><h3>Initialise from a master template</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
+    <div className="nz-db">
+      <p className="sub">The master&rsquo;s lines become the template&rsquo;s lines, with no site (Unallocated). Each line&rsquo;s factor is the newest active edition in your datasets; one your datasets do not carry is kept and marked &ldquo;needs a factor&rdquo;. After this you can edit the lines by hand.</p>
+      {template.current ? <div className="nz-banner warn" role="status">This client already has a template (version {template.current.version}, {template.current.lines.length} line{template.current.lines.length === 1 ? "" : "s"}). Its lines will be replaced by the master&rsquo;s; the current version stays in the record.</div> : null}
+      {masters.length === 0
+        ? <p className="sub">There are no active master templates with lines to start from.</p>
+        : <label className="nz-fl"><span>Master template</span>
+          <select className="nz-inp" value={masterId} onChange={(e) => setMasterId(e.target.value)}>
+            {masters.map((master) => <option key={master.masterId} value={master.masterId}>{master.name} · {master.lineCount} line{master.lineCount === 1 ? "" : "s"}</option>)}
+          </select></label>}
+      {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
+    </div>
+    <div className="nz-df">
+      <button type="button" className="nz-btn" onClick={onClose}>Cancel</button>
+      <span className="sp" />
+      <GatedButton className="nz-btn pri" blocked={pending || blockedReason !== null} blockedReason={pending ? "Initialising…" : blockedReason ?? undefined} reasonClassName="hint nz-gated-reason" onClick={() => void initialise()}>{pending ? "Initialising…" : template.current ? "Replace with master" : "Initialise template"}</GatedButton>
     </div>
   </>;
 }
