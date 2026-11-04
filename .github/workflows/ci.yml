@@ -240,6 +240,10 @@ jobs:
       # name is untouched in version history and audit.
       - name: A first name is captured, defaulted, editable, sealed, and never blank
         run: npx tsx --test packages/isolated-backend/tests/firstNameReal.test.ts
+      # The client's data entry template, maintained year on year: initialise from a job -> reopen -> edit, remove, add rows -> the next version (the one before kept)
+      # -> a new CRP job seeds from the amended set -> amend again -> the next job seeds from that. No master-template import on the path.
+      - name: A client's data entry template is amended in place, and each new job seeds from the newest version
+        run: npx tsx --test packages/isolated-backend/tests/dataEntryTemplateYearOnYearReal.test.ts
       # Portal updates (RULING-portal-messages, M2): notices derived at read time from events that already exist (a published report, a reviewer's
       # decision on the client's own entries, a closing data-entry window, a live broadcast), the exact scope, no reviewer note, nothing stored
       # or emitted for a notice, and a per-user seen watermark that only moves forward.

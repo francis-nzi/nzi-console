@@ -52,13 +52,13 @@ function seedHandler(input: CommandInputMap["job.seedFromTemplate"], context: Co
     const { rows: [job] } = await db.query<{ client_id: string; job_family: string }>(
       `SELECT client_id, job_family FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2 FOR UPDATE`, [context.organisationId, input.jobId]);
     if (!job) throw refuse("jobId", "NOT_FOUND", "Job was not found.");
-    if (job.job_family !== "crp") throw refuse("jobId", "NOT_CRP", "Only a carbon reporting job is seeded from a reporting template.");
+    if (job.job_family !== "crp") throw refuse("jobId", "NOT_CRP", "Only a carbon reporting job is seeded from a data entry template.");
     const { rows: [config] } = await db.query<{ seeded_template_version: number | null }>(
       `SELECT seeded_template_version FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`, [context.organisationId, input.jobId]);
     if (!config) throw refuse("jobId", "CONFIG_MISSING", "Set the job's reporting period first — a job is seeded once it has one.");
 
     const header = (await db.query<ReportingTemplateHeaderRow>(SELECT_LATEST_TEMPLATE, [context.organisationId, job.client_id])).rows[0];
-    if (!header || !header.active) throw refuse("expectedTemplateVersion", "NO_TEMPLATE", "This client has no reporting template in force to seed from.");
+    if (!header || !header.active) throw refuse("expectedTemplateVersion", "NO_TEMPLATE", "This client has no data entry template in force to seed from.");
     // Ruled #7: nobody seeds a template version they have not seen.
     if (header.version !== input.expectedTemplateVersion) throw new VersionConflictError(input.expectedTemplateVersion, header.version);
 

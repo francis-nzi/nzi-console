@@ -29,8 +29,8 @@ export const drawerLabel = (request: DrawerRequest): string => {
     case "factors": return "Client factors";
     case "intensity-metrics": return "Intensity metrics";
     case "intensity-target": return "Intensity target";
-    case "reporting-template": return "Reporting template";
-    case "reporting-template-initialise": return "Initialise the reporting template from a job";
+    case "reporting-template": return "Data entry template";
+    case "reporting-template-initialise": return "Initialise the data entry template from a job";
     case "report-profile": return "Report profile";
     case "contact": return request.contact ? `Edit contact ${request.contact.fullName}` : "Add a contact";
     case "site": return request.site ? `Edit site ${request.site.name}` : "Add a site";

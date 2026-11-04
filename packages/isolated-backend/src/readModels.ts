@@ -313,7 +313,7 @@ const degradedReasons: Record<ClientWorkspacePart, string> = {
   srs: "The readiness assessment could not be read.",
   intensity: "Intensity measures could not be read.",
   strategies: "The reduction plan could not be read.",
-  reportingTemplate: "The reporting template could not be read, so none is shown here.",
+  reportingTemplate: "The data entry template could not be read, so none is shown here.",
   reportProfile: "The report profile could not be read, so none is shown here.",
 };
 

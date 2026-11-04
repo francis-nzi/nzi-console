@@ -677,7 +677,7 @@ export function CrpScopeWorkspace({
       {/* E: adding a source is a structure action, so it lives with the job's setup rather than surfacing mid-page. */}
       <section className="nz-panel nz-config-panel nz-add-source" aria-label="Add emissions source">
         <div className="nz-config-head"><div><span className="nz-eyebrow">Data structure</span><b>Add emissions source</b>
-          <div className="sub">A row of its own, beside the client&rsquo;s reporting template. Entries within a category are added from that category on the page.</div></div>
+          <div className="sub">A row of its own, beside the client&rsquo;s data entry template. Entries within a category are added from that category on the page.</div></div>
           <button type="button" className="nz-btn pri" aria-expanded={creating} aria-controls="scope-row-editor" onClick={() => setCreating(!creating)}>{creating ? "Close" : "+ Add emissions source"}</button></div>
         {createForm}
       </section>

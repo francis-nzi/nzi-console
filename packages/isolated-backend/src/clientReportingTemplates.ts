@@ -169,8 +169,8 @@ export function deactivateClientReportingTemplate(pool: PoolLike, input: Command
   return runPostgresCommand(pool, "client.reportingTemplate.deactivate", input, context, async (db) => {
     await requireClient(db, context.organisationId, input.clientId);
     const { latest, lines: previous } = await latestChecked(db, context, input.clientId, input.expectedVersion);
-    if (!latest) throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "This client has no reporting template to withdraw." }]);
-    if (!latest.active) throw new CommandValidationError([{ field: "clientId", code: "ALREADY_INACTIVE", message: "The reporting template is already withdrawn." }]);
+    if (!latest) throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "This client has no data entry template to withdraw." }]);
+    if (!latest.active) throw new CommandValidationError([{ field: "clientId", code: "ALREADY_INACTIVE", message: "The data entry template is already withdrawn." }]);
     const version = latest.version + 1;
     await insertHeader(db, [context.organisationId, input.clientId, version, false, "manual", null, context.reason!.trim(), context.actorId, context.correlationId], input.expectedVersion);
     return {
