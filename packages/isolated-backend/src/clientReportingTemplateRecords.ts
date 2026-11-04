@@ -39,12 +39,25 @@ export async function getClientReportingTemplate(db: Queryable, clientId: string
       WHERE t.client_id = $1 ORDER BY t.version DESC LIMIT 1`, [clientId])).rows[0];
   if (!header) return { current: null, latestVersion: 0 };
   if (!header.active) return { current: null, latestVersion: header.version };
+  // A master's origin_ref is `<master_id>@<rows_version>`; the card names the master, as it is called now.
+  const masterId = header.origin === "master" && header.origin_ref ? header.origin_ref.slice(0, header.origin_ref.lastIndexOf("@")) : null;
+  const originMasterName = masterId
+    ? (await db.query<{ name: string }>(`SELECT name FROM nzi_console.master_templates WHERE organisation_id = $1 AND master_id = $2`, [header.organisation_id, masterId])).rows[0]?.name ?? null
+    : null;
   const current: ClientReportingTemplate = {
-    version: header.version, origin: header.origin, originJobNumber: header.origin_job_number, setBy: header.set_by,
+    version: header.version, origin: header.origin, originJobNumber: header.origin_job_number, originMasterName, setBy: header.set_by,
     setAt: header.set_at instanceof Date ? header.set_at.toISOString() : String(header.set_at),
     lines: await readTemplateLines(db, header.organisation_id, clientId, header.version),
   };
   return { current, latestVersion: header.version };
+}
+
+/** The active master templates a client's template may begin from: name and how many lines each would bring. Archived and empty ones are not offered. */
+export async function listActiveMasterTemplateChoices(db: Queryable): Promise<Array<{ masterId: string; name: string; lineCount: number }>> {
+  const { rows } = await db.query<{ master_id: string; name: string; line_count: string }>(
+    `SELECT m.master_id, m.name, (SELECT count(*) FROM nzi_console.master_template_rows r WHERE r.master_id = m.master_id AND r.rows_version = m.rows_version) AS line_count
+       FROM nzi_console.master_templates m WHERE m.active AND m.rows_version > 0 ORDER BY lower(m.name), m.master_id`);
+  return rows.map((row) => ({ masterId: row.master_id, name: row.name, lineCount: Number(row.line_count) }));
 }
 
 /** The categories a line may be filed under: the active input-spec categories, by scope and name. */

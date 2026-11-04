@@ -1,4 +1,4 @@
-import { deactivateClientReportingTemplate, initialiseClientReportingTemplateFromJob } from "@nzi/isolated-backend";
+import { deactivateClientReportingTemplate, initialiseClientReportingTemplateFromJob, initialiseClientReportingTemplateFromMaster } from "@nzi/isolated-backend";
 import type { CommandInputMap } from "@nzi/contracts";
 import { requireCommandPrincipal } from "../../../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../../../lib/commandResponse";
@@ -15,6 +15,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ cli
       const principal = await requireCommandPrincipal(request, "client.reportingTemplate.initialiseFromJob");
       const body = await request.json() as Omit<CommandInputMap["client.reportingTemplate.initialiseFromJob"], "clientId">;
       return commandSuccess(await initialiseClientReportingTemplateFromJob(isolatedPool(), { ...body, clientId }, commandContext(request, principal)));
+    }
+    if (action === "initialise-from-master") {
+      const principal = await requireCommandPrincipal(request, "client.reportingTemplate.initialiseFromMaster");
+      const body = await request.json() as Omit<CommandInputMap["client.reportingTemplate.initialiseFromMaster"], "clientId">;
+      return commandSuccess(await initialiseClientReportingTemplateFromMaster(isolatedPool(), { ...body, clientId }, commandContext(request, principal)));
     }
     if (action === "deactivate") {
       const principal = await requireCommandPrincipal(request, "client.reportingTemplate.deactivate");

@@ -9,7 +9,7 @@ import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues }
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import { listClientIntensityTargets } from "./clientIntensityTargetRecords";
-import { getClientReportingTemplate, listReportingTemplateCategories } from "./clientReportingTemplateRecords";
+import { getClientReportingTemplate, listActiveMasterTemplateChoices, listReportingTemplateCategories } from "./clientReportingTemplateRecords";
 import { readClientReportProfile } from "./reportSectionPlanRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp, ClientReportProfile } from "@nzi/contracts";
 import { clientReferences, type ClientReferences } from "./clientReference";
@@ -374,7 +374,9 @@ export type ClientWorkspaceReadModel = {
   /** Phase 1b (0158) — the client's intensity targets in force, one per metric, shown beside net zero. */
   intensityTargets: ClientIntensityTarget[];
   /** Phase 1c (0159) — the client's reporting template in force (or none), and the categories a line may be filed under. */
-  reportingTemplate: ClientReportingTemplateReadModel & { categories: Array<{ code: string; scope: ReportingTemplateScope; name: string }> };
+  reportingTemplate: ClientReportingTemplateReadModel & { categories: Array<{ code: string; scope: ReportingTemplateScope; name: string }>;
+    /** The active master templates a template may begin from. */
+    masters: Array<{ masterId: string; name: string; lineCount: number }> };
   /**
    * F-1 (0164, R-D1) — the client's report profile in force (or none), and the latest version, withdrawn or not, which the
    * next save expects.
@@ -439,8 +441,8 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     `SELECT site_id, name, version FROM nzi_console.client_sites WHERE client_id = $1 AND archived = true ORDER BY lower(name), site_id`, [clientId])
     .then((result) => result.rows.map((row) => ({ id: row.site_id, name: row.name, version: row.version })), () => [] as Array<{ id: string; name: string; version: number }>);
   const intensityTargets = await adjunct("intensity", [] as ClientIntensityTarget[], listClientIntensityTargets(db, clientId));
-  const reportingTemplate = await adjunct("reportingTemplate", { current: null, latestVersion: 0, categories: [] } as ClientWorkspaceReadModel["reportingTemplate"],
-    (async () => { const template = await getClientReportingTemplate(db, clientId); return { ...template, categories: await listReportingTemplateCategories(db) }; })());
+  const reportingTemplate = await adjunct("reportingTemplate", { current: null, latestVersion: 0, categories: [], masters: [] } as ClientWorkspaceReadModel["reportingTemplate"],
+    (async () => { const template = await getClientReportingTemplate(db, clientId); return { ...template, categories: await listReportingTemplateCategories(db), masters: await listActiveMasterTemplateChoices(db) }; })());
   // F-1 (R-D1): the report profile — the latest version, shown when active; a withdrawn one is history, and the next save expects it.
   const reportProfile = await adjunct("reportProfile", { current: null, latestVersion: 0 } as ClientWorkspaceReadModel["reportProfile"],
     readClientReportProfile(db, clientId).then((latest) => ({ current: latest?.active ? latest : null, latestVersion: latest?.version ?? 0 })));

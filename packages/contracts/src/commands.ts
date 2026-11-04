@@ -116,6 +116,7 @@ export type CommandKey =
   | "client.intensityTarget.deactivate"
   | "client.reportingTemplate.set"
   | "client.reportingTemplate.initialiseFromJob"
+  | "client.reportingTemplate.initialiseFromMaster"
   | "client.reportingTemplate.deactivate"
   | "job.intensityValue.set"
   | "strategy.library.upsert"
@@ -913,6 +914,8 @@ export type CommandInputMap = {
   "client.reportingTemplate.set": { clientId: string; expectedVersion: number; lines: ReportingTemplateLineInput[] };
   /** Build the next version from one of the client's CRP jobs: its enabled console rows, and its v7 history "to file". */
   "client.reportingTemplate.initialiseFromJob": { clientId: string; expectedVersion: number; jobId: string };
+  /** Build the next version from one of the organisation's active master templates, at its rows version in force. */
+  "client.reportingTemplate.initialiseFromMaster": { clientId: string; expectedVersion: number; masterId: string };
   "client.reportingTemplate.deactivate": { clientId: string; expectedVersion: number };
   /** Record one metric's annual value on a job, for one reporting year. */
   "job.intensityValue.set": {
@@ -2330,6 +2333,13 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const issues = baseIssues(context, false);
     required(issues, "clientId", input.clientId);
     required(issues, "jobId", input.jobId);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  "client.reportingTemplate.initialiseFromMaster": { key: "client.reportingTemplate.initialiseFromMaster", label: "Initialise the data entry template from a master template", permission: "client.edit", reasonRequired: false, transaction: "versioned template (header + lines from the master's rows, factors resolved) + audit + outbox + idempotency", auditAction: "client_reporting_template_initialised_from_master", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    required(issues, "masterId", input.masterId);
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
     return issues;
   } },

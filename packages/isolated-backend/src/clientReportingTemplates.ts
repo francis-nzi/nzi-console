@@ -5,8 +5,9 @@
 // row lock (no UPDATE privilege, so no FOR UPDATE): two writers of the same next version meet at the primary key, and the
 // loser is told the record moved.
 //
-// Three ways in: `set` (the whole template, from the card's editor), `initialiseFromJob` (the job's enabled rows, as
-// `scope.row.rollforward` copies them — its v7 history comes in "to file"), and `deactivate`. Payloads carry counts, never
+// Four ways in: `set` (the whole template, from the card's editor), `initialiseFromJob` (the job's enabled rows, as
+// `scope.row.rollforward` copies them — its v7 history comes in "to file"), `initialiseFromMaster` (a master template's
+// lines, factors resolved from the datasets), and `deactivate`. Payloads carry counts, never
 // labels, quantities, money or a person (NZC-120).
 import { randomUUID } from "node:crypto";
 import { REPORTING_TEMPLATE_MAX_LINES, type CommandContext, type CommandInputMap, type ReportingTemplateLineInput, type ReportingTemplateOrigin } from "@nzi/contracts";
@@ -15,6 +16,7 @@ import type { PoolLike, Queryable } from "./postgres";
 import { SELECT_LATEST_TEMPLATE, readTemplateLines, type ReportingTemplateHeaderRow } from "./clientReportingTemplateRecords";
 export * from "./clientReportingTemplateRecords";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
+import { readMasterTemplateRows, resolveFactorIdentities } from "./masterTemplates";
 
 /** The command's data — also the audit event's after_json, so it carries the template's shape in counts, never a label. */
 export type ReportingTemplateResult = { clientId: string; version: number; active: boolean; origin: ReportingTemplateOrigin; lineCount: number; byScope: Record<"1" | "2" | "3", number>; toFile: number };
@@ -160,6 +162,43 @@ export function initialiseClientReportingTemplateFromJob(pool: PoolLike, input: 
       data: { clientId: input.clientId, ...summary(version, true, origin, lines), jobId: input.jobId, jobNumber: job.job_number, archivedSitesDropped },
       ...(latest ? { before: summary(latest.version, latest.active, latest.origin, previous) } : {}),
       entityType: "client_reporting_template", entityId: input.clientId, topic: "client.reporting_template.initialised",
+    };
+  });
+}
+
+/**
+ * Initialise the next version from one of the organisation's active master templates, at the rows version in force. Each
+ * master row is one line: scope, category, labels and unit copied; no site (Unallocated — a master holds none); the
+ * factor identity resolved to the newest active edition the organisation's datasets carry (`resolveFactorIdentities`).
+ * A line whose identity no active edition carries — or a master row that names none — is **kept with no factor**, to be
+ * given one on the card, and counted as `needsFactor`: flagged, never dropped. Like the job path, over an existing
+ * template it writes the next version and leaves the last in the record. origin_ref is `<master_id>@<rows_version>`.
+ */
+export function initialiseClientReportingTemplateFromMaster(pool: PoolLike, input: CommandInputMap["client.reportingTemplate.initialiseFromMaster"], context: CommandContext): Promise<StoredOutcome<ReportingTemplateResult & { masterId: string; masterName: string; rowsVersion: number; needsFactor: number }>> {
+  return runPostgresCommand(pool, "client.reportingTemplate.initialiseFromMaster", input, context, async (db) => {
+    await requireClient(db, context.organisationId, input.clientId);
+    const master = (await db.query<{ name: string; active: boolean; rows_version: number }>(
+      `SELECT name, active, rows_version FROM nzi_console.master_templates WHERE organisation_id = $1 AND master_id = $2`, [context.organisationId, input.masterId])).rows[0];
+    if (!master) throw new CommandValidationError([{ field: "masterId", code: "NOT_FOUND", message: "That master template is not here." }]);
+    if (!master.active) throw new CommandValidationError([{ field: "masterId", code: "ARCHIVED", message: `Master · ${master.name} is archived — reinstate it to start from it.` }]);
+    const { latest, lines: previous } = await latestChecked(db, context, input.clientId, input.expectedVersion);
+    const rows = await readMasterTemplateRows(db, input.masterId, master.rows_version);
+    if (rows.length === 0) throw new CommandValidationError([{ field: "masterId", code: "NOTHING_TO_COPY", message: `Master · ${master.name} has no lines to build a template from.` }]);
+    if (rows.length > REPORTING_TEMPLATE_MAX_LINES) throw new CommandValidationError([{ field: "masterId", code: "TOO_MANY", message: `Master · ${master.name} would make ${rows.length} lines; a template holds at most ${REPORTING_TEMPLATE_MAX_LINES}.` }]);
+    const resolved = await resolveFactorIdentities(db, context.organisationId, [...new Set(rows.flatMap((row) => row.factorId ? [row.factorId] : []))]);
+    const lines: ReportingTemplateLineInput[] = rows.map((row) => {
+      const pick = row.factorId ? resolved.get(row.factorId) : undefined;
+      return { scope: row.scope, categoryCode: row.categoryCode, sourceLabel: row.sourceLabel, reportLabel: row.reportLabel, siteId: null,
+        datasetId: pick?.datasetId ?? null, factorId: pick ? row.factorId : null, unit: row.unit };
+    });
+    const needsFactor = lines.filter((line) => line.factorId === null).length;
+    const version = input.expectedVersion + 1;
+    await insertHeader(db, [context.organisationId, input.clientId, version, true, "master", `${input.masterId}@${master.rows_version}`, context.reason?.trim() || null, context.actorId, context.correlationId], input.expectedVersion);
+    await insertLines(db, context.organisationId, input.clientId, version, lines);
+    return {
+      data: { clientId: input.clientId, ...summary(version, true, "master", lines), masterId: input.masterId, masterName: master.name, rowsVersion: master.rows_version, needsFactor },
+      ...(latest ? { before: summary(latest.version, latest.active, latest.origin, previous) } : {}),
+      entityType: "client_reporting_template", entityId: input.clientId, topic: "client.reporting_template.initialised_from_master",
     };
   });
 }
