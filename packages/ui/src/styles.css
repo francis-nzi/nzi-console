@@ -7,10 +7,13 @@
      carry Scope 1 identity and must never be restyled to suit validation states. Both
      start at the same coral, so decoupling them is not a visual change. */
   --danger:#FF5C48;--danger-bg:#FFF7F6;
+  /* The app's body size. Nothing set a base before, so any text without its own font-size fell back to the browser's 16px:
+     the Client and Job modules' empty states, tile sub-lines and card copy all rendered above every styled element. */
+  --fs-body:14px;
 }
 *{box-sizing:border-box}
 .nz-sr-only{position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip:rect(0,0,0,0)!important;white-space:nowrap!important;border:0!important}
-html,body{margin:0;background:var(--paper);color:var(--t1);
+html,body{margin:0;background:var(--paper);color:var(--t1);font-size:var(--fs-body);
   font-family:var(--font-inter,Inter),system-ui,-apple-system,Segoe UI,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:inherit}
 .num{font-variant-numeric:tabular-nums}
