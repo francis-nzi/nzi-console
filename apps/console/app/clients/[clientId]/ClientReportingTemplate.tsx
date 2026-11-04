@@ -26,12 +26,12 @@ export function ReportingTemplateCard({ template, access, onEdit, onInitialise }
   const toFile = current?.lines.filter((line) => line.categoryCode === null).length ?? 0;
   const canEdit = access.state === "allowed";
   return <Collapsible className="nz-panel nz-collapsible-card nz-reporting-template" headingClassName="nz-card-h"
-    title={<><span className="eyebrow">Reporting</span><h2>Reporting template</h2></>}
+    title={<><span className="eyebrow">Data entry</span><h2>Data entry template</h2></>}
     count={current ? `${current.lines.length} line${current.lines.length === 1 ? "" : "s"}${toFile ? ` · ${toFile} to categorise` : ""}` : "None set"}>
     <div className="nz-card-b">
       {current
         ? <p className="sub">Version {current.version} · {originText(current)} · {current.setBy}, {formatDate(current.setAt)}. Each year&rsquo;s job captures these lines; quantities stay on the job.</p>
-        : <p className="sub">No reporting template yet. It holds what this client reports each year — scopes, categories and the lines under them — so a new job starts from it rather than from a blank page.</p>}
+        : <p className="sub">No data entry template yet. It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page.</p>}
       {canEdit ? <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
         <button type="button" className="nz-editlink" onClick={onInitialise}>Initialise from a job…</button>
         <button type="button" className="nz-editlink" onClick={onEdit}>{current ? "Edit lines" : "Set it up by hand"}</button>
@@ -77,20 +77,20 @@ export function ReportingTemplateForm({ clientId, template, access, onClose, onS
     const body = { expectedVersion: template.latestVersion, lines: lines.map(({ key: _key, siteName: _site, factorLabel: _factor, ...line }) => ({ ...line, sourceLabel: line.sourceLabel.trim(), reportLabel: line.reportLabel?.trim() || null })) };
     const result = await putBrowserCommand<{ version: number }>(path, body, idempotency.current);
     setPending(false);
-    if (result.state === "success") onSaved("Reporting template saved.");
+    if (result.state === "success") onSaved("Data entry template saved.");
     else { setError(errorText(result)); idempotency.current = null; }
   }
   async function withdraw() {
     setPending(true); setError(null);
     const result = await postBrowserCommandWithReason<{ version: number }>(`${path}/deactivate`, { expectedVersion: template.latestVersion }, crypto.randomUUID(), reason.trim());
     setPending(false);
-    if (result.state === "success") onSaved("Reporting template withdrawn — kept in the record.");
+    if (result.state === "success") onSaved("Data entry template withdrawn — kept in the record.");
     else setError(errorText(result));
   }
 
   const blockedReason = access.state !== "allowed" ? access.reason : problem;
   return <>
-    <div className="nz-dh"><div className="k">Reporting</div><h3>Reporting template</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
+    <div className="nz-dh"><div className="k">Data entry</div><h3>Data entry template</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
     <div className="nz-db">
       <p className="sub">Saving writes the next version; the one before stays in the record. A line &ldquo;to categorise&rdquo; has no category yet — choose one when you know it.</p>
       {lines.map((line, index) => {
@@ -150,13 +150,13 @@ export function ReportingTemplateInitialiseForm({ clientId, template, jobs, acce
     const result = await postBrowserCommand<{ version: number; lineCount: number; jobNumber: string; archivedSitesDropped: number }>(
       `/api/isolated/clients/${encodeURIComponent(clientId)}/reporting-template/initialise`, { expectedVersion: template.latestVersion, jobId }, crypto.randomUUID());
     setPending(false);
-    if (result.state === "success") onSaved(`Reporting template initialised from ${result.data.jobNumber}: ${result.data.lineCount} line${result.data.lineCount === 1 ? "" : "s"}${result.data.archivedSitesDropped ? ` — archived sites were left off ${result.data.archivedSitesDropped} of them` : ""}.`);
+    if (result.state === "success") onSaved(`Data entry template initialised from ${result.data.jobNumber}: ${result.data.lineCount} line${result.data.lineCount === 1 ? "" : "s"}${result.data.archivedSitesDropped ? ` — archived sites were left off ${result.data.archivedSitesDropped} of them` : ""}.`);
     else setError(errorText(result));
   }
 
   const blockedReason = access.state !== "allowed" ? access.reason : !jobId ? "Choose a job." : null;
   return <>
-    <div className="nz-dh"><div className="k">Reporting</div><h3>Initialise from a job</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
+    <div className="nz-dh"><div className="k">Data entry</div><h3>Initialise from a job</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
     <div className="nz-db">
       <p className="sub">The job&rsquo;s enabled entries become the template&rsquo;s lines — one per distinct activity, with its category, labels, site and factor. Imported entries have no category, so they come in &ldquo;to categorise&rdquo;. {template.current ? "This writes a new version; the current one stays in the record." : ""}</p>
       {crp.length === 0

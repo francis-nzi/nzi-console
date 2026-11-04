@@ -32,7 +32,7 @@ export function MasterTemplatesBoard({ screen, editing }: { screen: MasterTempla
       <div>
         <div className="nz-a-eyebrow">Carbon data</div>
         <h1>Master templates</h1>
-        <p>The starting point for a client&rsquo;s first job: the scopes, categories and activities a kind of organisation usually reports. A consultant seeds a job from one, trims it to the client and saves it as the client&rsquo;s own reporting template. A template is a shell — it never holds a quantity.</p>
+        <p>The starting point for a client&rsquo;s first job: the scopes, categories and activities a kind of organisation usually reports. A consultant seeds a job from one, trims it to the client and saves it as the client&rsquo;s own data entry template. A template is a shell — it never holds a quantity.</p>
       </div>
       <div className="nz-a-head-actions">
         <CapabilityChip capability="admin.lookups" />

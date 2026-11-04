@@ -33,7 +33,7 @@ export function JobTemplateSeeding({ jobId, notice }: { jobId: string; notice: N
 
   // A failed read says so; it never pretends there is no template.
   if (state.kind === "loading") return null;
-  if (state.kind === "failed") return <div className="nz-seed-template" role="status"><p className="sub">The reporting template could not be read. <button type="button" className="nz-btn sm" onClick={() => void load()}>Retry</button></p></div>;
+  if (state.kind === "failed") return <div className="nz-seed-template" role="status"><p className="sub">The data entry template could not be read. <button type="button" className="nz-btn sm" onClick={() => void load()}>Retry</button></p></div>;
   const seeding = state.seeding;
   if (!seeding || seeding.templateVersion === null) return null;
 
@@ -55,9 +55,9 @@ export function JobTemplateSeeding({ jobId, notice }: { jobId: string; notice: N
 
   const current = seeding.seededTemplateVersion === seeding.templateVersion;
   return (
-    <div className="nz-seed-template" aria-label="Reporting template">
+    <div className="nz-seed-template" aria-label="Data entry template">
       <div>
-        <b>Reporting template v{seeding.templateVersion}</b> · {seeding.lineCount} line{seeding.lineCount === 1 ? "" : "s"}
+        <b>Data entry template v{seeding.templateVersion}</b> · {seeding.lineCount} line{seeding.lineCount === 1 ? "" : "s"}
         <p className="sub">
           {!seeding.configured ? "Set the job's reporting period first — the template is seeded once the job has one."
             : seeding.seededTemplateVersion === null ? "Not yet seeded: the template's lines become this job's entries, ready for their figures."

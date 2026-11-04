@@ -34,6 +34,6 @@ describe("template seeding on the capture surface (Phase 3b)", () => {
   it("seeds the version it was shown, and never reads a failed status as 'no template'", () => {
     const control = readFileSync(join(APP, "jobs/JobTemplateSeeding.tsx"), "utf8");
     assert.match(control, /postBrowserCommand<TemplateSeedResult>\(path, \{ expectedTemplateVersion: version \}/);
-    assert.match(control, /The reporting template could not be read\./);
+    assert.match(control, /The data entry template could not be read\./);
   });
 });
