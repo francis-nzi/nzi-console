@@ -1078,6 +1078,10 @@ jobs:
       # a category required and the activity its own; archived with a reason, never deleted; admin.lookups; no quantity held.
       - name: Master templates are seeded, versioned, archived not deleted, and hold no quantity
         run: npx tsx --test packages/isolated-backend/tests/masterTemplatesReal.test.ts
+      # A client's data entry template started from a master: lines copied with no site, factor identities resolved to the
+      # newest active edition in an active dataset, unresolved ones kept and flagged; next version, master origin, old kept.
+      - name: A client's data entry template starts from a master template, unresolved factors kept and flagged
+        run: npx tsx --test packages/isolated-backend/tests/clientTemplateFromMasterReal.test.ts
       # JW-10: the CRM category view shows Scopes 1–3 for every CRP job (empty included); v7 rows read back as imported.
       - name: Every CRP job shows Scopes 1–3, and v7's rows read back as imported
         run: npx tsx --test packages/isolated-backend/tests/jw10ScopeSectionsReal.test.ts
