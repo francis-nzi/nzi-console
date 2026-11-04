@@ -20,7 +20,7 @@ export default function PortalIntensityPage() {
         <div>
           <span className="nz-eyebrow">Your carbon programme</span>
           <h1>Emissions intensity</h1>
-          <p>How your assured emissions compare against the measures that matter to your business.</p>
+          <p>How your verified emissions compare against the measures that matter to your business.</p>
         </div>
         <Link className="nz-btn" href="/portal">Back to your jobs</Link>
       </div>

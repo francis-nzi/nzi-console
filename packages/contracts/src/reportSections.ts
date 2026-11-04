@@ -84,7 +84,7 @@ export const crpReportSectionCatalogue: readonly ReportSectionTemplate[] = [
     ordinal: 30,
     defaultBodyHtml:
       "<p><span data-token=\"client\"></span> reports its greenhouse gas emissions for the <span data-token=\"reportingYear\"></span> reporting year under the operational control approach<span data-token=\"siteClause\"></span>.</p>" +
-      "<p>Boundary and methodology decisions are recorded in the standards and methodology section and in the assurance record.</p>",
+      "<p>Boundary and methodology decisions are recorded in the standards and methodology section and in the verification record.</p>",
     aiBodyHtml:
       "<p>This report covers <span data-token=\"client\"></span>'s greenhouse gas emissions for the <span data-token=\"reportingYear\"></span> reporting year, consolidated under the operational control approach<span data-token=\"siteClause\"></span>.</p>" +
       "<p>The standards and methodology section sets out the boundary and the methods applied.</p>",

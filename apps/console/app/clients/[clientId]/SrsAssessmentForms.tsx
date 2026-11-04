@@ -49,7 +49,7 @@ export function SrsStartForm({ clientId, framework, access, onClose, onSaved }: 
       <p className="nz-hint">It is opened today and saved as you go. It is <b>dated as assessed when every requirement has been addressed</b> and you complete it — until then it reads as in progress.</p>
       <label className="nz-check"><input type="checkbox" checked={prefill} onChange={(event) => setPrefill(event.target.checked)} />
         Answer what this client&apos;s record already answers</label>
-      <span className="nz-hint">{fromNzi} requirements read the assured emissions, their targets and their intensity metrics. Each is marked as resolved from NZI data, carries the record it came from as evidence, and can be overridden.</span>
+      <span className="nz-hint">{fromNzi} requirements read the verified emissions, their targets and their intensity metrics. Each is marked as resolved from NZI data, carries the record it came from as evidence, and can be overridden.</span>
       <label className="nz-fl" style={{ marginTop: 10 }}><span>Notes</span>
         <input className="nz-inp" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Context for this assessment — optional" />
       </label>
@@ -127,8 +127,8 @@ export function SrsItemForm({ framework, assessment, requirement, item, access, 
       <p className="nz-hint" style={{ marginTop: 0 }}>{requirement.helpText}</p>
       {requirement.source === "nzi-data" ? <div className="nz-banner ok" role="status" style={{ marginBottom: 10 }}>
         <div><b>This one reads the client&apos;s own record.</b><div style={{ marginTop: 4 }}>{item?.source === "auto"
-          ? "Answered from the assured emissions, targets or intensity already held for this client. Override it if the disclosure needs something different."
-          : "It can be answered from the assured emissions, targets or intensity already held for this client."}</div></div>
+          ? "Answered from the verified emissions, targets or intensity already held for this client. Override it if the disclosure needs something different."
+          : "It can be answered from the verified emissions, targets or intensity already held for this client."}</div></div>
       </div> : null}
 
       <div className="nz-sect">Maturity</div>
@@ -153,7 +153,7 @@ export function SrsItemForm({ framework, assessment, requirement, item, access, 
       {evidenceKind !== "" ? <>
         <label className="nz-fl"><span>Reference</span><input className="nz-inp" value={evidenceRef} onChange={(event) => setEvidenceRef(event.target.value)} placeholder="e.g. Board minutes, 12/03/2026" /></label>
         <label className="nz-fl"><span>Note</span><input className="nz-inp" value={evidenceNote} onChange={(event) => setEvidenceNote(event.target.value)} placeholder="What the evidence shows" /></label>
-      </> : <span className="nz-hint">Readiness that cannot be evidenced is shown as unevidenced rather than counted as assured.</span>}
+      </> : <span className="nz-hint">Readiness that cannot be evidenced is shown as unevidenced rather than counted as verified.</span>}
 
       <div className="nz-sect">Owner and date</div>
       <div className="nz-two">

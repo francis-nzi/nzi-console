@@ -117,7 +117,7 @@ test.describe("Portal analytics — A1 dashboard", () => {
 
     const dash = await (await page.request.get(`/api/portal/jobs/${job!.id}/dashboard`)).json() as { published?: boolean };
     if (dash.published !== true) {
-      await expect(page.getByText("Your first assured report will appear here")).toBeVisible();
+      await expect(page.getByText("Your first verified report will appear here")).toBeVisible();
       return;
     }
 

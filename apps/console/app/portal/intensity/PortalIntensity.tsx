@@ -81,7 +81,7 @@ export function PortalIntensity() {
       if (await redirectIfPortalSessionEnded(response)) return;
       if (!response.ok) { setState({ kind: "failed", message: "Your intensity figures could not be loaded." }); return; }
       const body: unknown = await response.json();
-      if (!isPortalIntensity(body)) { setState({ kind: "failed", message: "The assured figures could not be verified." }); return; }
+      if (!isPortalIntensity(body)) { setState({ kind: "failed", message: "The verified figures could not be confirmed." }); return; }
       setState({ kind: "ready", model: body });
     } catch (cause) {
       setState({ kind: "failed", message: cause instanceof Error ? cause.message : "Your intensity figures could not be loaded." });
@@ -93,13 +93,13 @@ export function PortalIntensity() {
   if (state.kind === "loading") {
     return <div className="nz-portal-state loading" role="status"><i>↻</i><div>
       <b>Loading your intensity figures</b>
-      <span>Reading your assured reporting years and the measures set up for your business…</span>
+      <span>Reading your verified reporting years and the measures set up for your business…</span>
     </div></div>;
   }
   if (state.kind === "failed") {
     return <div className="nz-portal-state failed" role="alert"><i>!</i><div>
       <b>Your intensity figures are temporarily unavailable</b>
-      <span>{state.message} Nothing has been estimated or filled in — no figure is shown until it can be read from your assured report.</span>
+      <span>{state.message} Nothing has been estimated or filled in — no figure is shown until it can be read from your verified report.</span>
       <button className="nz-btn" onClick={() => void load()}>Try again</button>
     </div></div>;
   }
@@ -117,9 +117,9 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
 
   if (years.length === 0) {
     return <div className="nz-portal-state" role="status"><i>✓</i><div>
-      <b>Your first assured year will appear here</b>
+      <b>Your first verified year will appear here</b>
       <span>
-        Intensity is measured against your assured emissions, so it appears once {org.your("team")} publishes a
+        Intensity is measured against your verified emissions, so it appears once {org.your("team")} publishes a
         verified report for your business. Nothing is shown from work in progress.
       </span>
     </div></div>;
@@ -131,7 +131,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
       <span>
         Intensity compares your emissions against a measure of your activity — people, turnover, floor area,
         or anything else that matters to you. {org.Your("consultant")} sets these up with you; once they are in
-        place, your figures appear here for every assured year.
+        place, your figures appear here for every verified year.
       </span>
     </div></div>;
   }
@@ -140,11 +140,11 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
 
   return <>
     <p className="nz-pi-lead">
-      <span className="nz-pi-assured">✓ Assured figures</span>
+      <span className="nz-pi-assured">✓ Verified figures</span>
       Every number below comes from your published, verified emissions — {fy(latest.year)}
       {model.reportingYear !== null && model.publishedAt !== null
-        ? <> and the assured years before it, published {formatDate(model.publishedAt)}.</>
-        : <> and the assured years before it.</>}
+        ? <> and the verified years before it, published {formatDate(model.publishedAt)}.</>
+        : <> and the verified years before it.</>}
       {" "}Intensity shows whether your emissions are falling against how much business you are doing.
     </p>
 
@@ -163,7 +163,7 @@ function PortalIntensityView({ model }: { model: PortalIntensityReadModel }) {
       </div>
       {chosen ? <MetricChart definition={chosen} currency={currency} points={seriesFor(years, chosen, currency)} /> : null}
       <p className="nz-pi-foot">
-        Intensity = your assured emissions divided by the measure shown. Measures and their icons are set with
+        Intensity = your verified emissions divided by the measure shown. Measures and their icons are set with
         {org.your("consultant")}; the values are recorded each reporting year. <b>Lower is better.</b>
       </p>
     </section>
@@ -196,7 +196,7 @@ function MetricTile({ definition, currency, points }: { definition: IntensityMet
     {current === null
       ? <>
         <div className="nz-pi-na">Unavailable</div>
-        <p className="nz-pi-note">{reason ?? `No value has been recorded for ${definition.label.toLowerCase()} in any assured year yet.`}</p>
+        <p className="nz-pi-note">{reason ?? `No value has been recorded for ${definition.label.toLowerCase()} in any verified year yet.`}</p>
       </>
       : <>
         <div className="nz-pi-big">
@@ -319,7 +319,7 @@ function MetricChart({ definition, currency, points }: { definition: IntensityMe
       </svg>
     </div>
     <p className="nz-pi-chart-note">
-      Measured in {unit}. Each point is that year&apos;s assured emissions divided by your recorded{" "}
+      Measured in {unit}. Each point is that year&apos;s verified emissions divided by your recorded{" "}
       {definition.label.toLowerCase()} figure. A year with no recorded value is left out rather than joined up.
     </p>
     {years}

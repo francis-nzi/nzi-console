@@ -93,7 +93,7 @@ function ReportVersion({version}:{version:CrpReportVersionReadModel}){
       <ManifestChartSet manifest={crpProfessionalManifest} charts={charts} reviewedSnapshotId={snapshot.id} printSafe={r1} context={{excludedSections:version.excludedSections??[],reportingYears:Math.max(1,snapshot.annualComparison?.length??1),purchasedGoods:snapshotHasPurchasedGoods(snapshot.measurements)}}/>
       <section className="report-evidence">
         <div>
-          <span className="nz-eyebrow">Assurance record</span>
+          <span className="nz-eyebrow">Verification record</span>
           <h2>Evidence and version record</h2>
           <p>This rendered record is bound to the exact reviewed evidence used at creation.</p>
         </div>

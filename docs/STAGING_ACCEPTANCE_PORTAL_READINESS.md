@@ -147,7 +147,7 @@ this surface is the most likely place in the portal for that to happen.
 | 22 | Renders in the **portal theme** | ☐ | |
 | 23 | Dates dd/mm/yyyy throughout | ☐ | |
 | 24 | Reads coherently **beside the plan** — "where I stand + what I'm doing" | ☐ | |
-| 25 | Language is client-appropriate: a gap reads as a gap, not as a failure, and "reviewed, not assured" is not overstated anywhere | ☐ | |
+| 25 | Language is client-appropriate: a gap reads as a gap, not as a failure, and "reviewed, not verified" is not overstated anywhere | ☐ | |
 
 ---
 

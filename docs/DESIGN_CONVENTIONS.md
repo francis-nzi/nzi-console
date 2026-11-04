@@ -190,9 +190,9 @@ matches that anatomy.
 - An **issued report is version-pinned and immutable** (frozen evidence). New issues use the
   client target model (net zero carries its residual, not zero); already-issued reports are
   never rewritten.
-- Every data section carries provenance; the Methodology page states the assurance basis
-  honestly — "reviewed snapshot (internal review); not third-party assured." Never imply
-  third-party assurance.
+- Every data section carries provenance; the Methodology page states the verification basis
+  honestly — "reviewed snapshot (internal review); not third-party verified." Never imply
+  third-party verification.
 
 ## 12. Hot read models: essential vs adjunct (locked)
 

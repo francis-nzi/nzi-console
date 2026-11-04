@@ -53,12 +53,12 @@ export const UK_SRS_REPORT_TEMPLATE: ReadinessReportTemplate = {
     { kind: "radar", heading: "The readiness web", intro: "The same four positions as one shape, with the expectation drawn beside them." },
     { kind: "heatmap", heading: "Every requirement", intro: "Each requirement's step, grouped by pillar. A notch marks one below what is expected." },
     { kind: "trend", heading: "Readiness over time", intro: "Completed assessments only." },
-    { kind: "metrics", heading: "Metrics & targets from your assured record", intro: "Requirements answered from your own reviewed data rather than re-keyed." },
+    { kind: "metrics", heading: "Metrics & targets from your verified record", intro: "Requirements answered from your own reviewed data rather than re-keyed." },
     { kind: "roadmap", heading: "The path to ready", intro: "The furthest short first, with the actions on your plan that advance each one." },
     { kind: "benchmark", heading: "Sector comparison" },
     { kind: "method", heading: "How this report was made" },
   ],
-  disclaimer: "This report describes how ready your own reporting is. It is not a statement that anything has been filed, assured or certified.",
+  disclaimer: "This report describes how ready your own reporting is. It is not a statement that anything has been filed, verified or certified.",
 };
 
 /** Every template, by key. A new report is a new entry — and must pass `readinessReportTemplateIssues`. */

@@ -3191,7 +3191,7 @@ export async function resolveAssuranceGap(
       [context.organisationId, input.jobId],
     );
     if (!job.rows[0]) throw new CommandValidationError([{ field: "jobId", code: "NOT_FOUND", message: "Job was not found." }]);
-    if (job.rows[0].job_family !== "crp") throw new CommandValidationError([{ field: "jobId", code: "WRONG_FAMILY", message: "Data assurance is available only for CRP jobs." }]);
+    if (job.rows[0].job_family !== "crp") throw new CommandValidationError([{ field: "jobId", code: "WRONG_FAMILY", message: "Data verification is available only for CRP jobs." }]);
 
     const reason = input.reason.trim();
     const scopeRowId = input.scopeRowId?.trim() || null;

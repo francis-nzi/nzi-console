@@ -51,7 +51,7 @@ describe("snapshot approval access on the job", () => {
   });
 });
 
-describe("the job's Data assurance carries the Approve reviewed snapshot control", () => {
+describe("the job's Data verification carries the Approve reviewed snapshot control", () => {
   const stage = readFileSync(new URL("../app/jobs/CrpAssuranceStage.tsx", import.meta.url), "utf8");
   it("renders it after sign-off, drives report.snapshot.approve, and gates it on the shared rule", () => {
     assert.match(stage, /<SignOffPanel[^\n]*\/>\s*<SnapshotApprovalPanel jobId=\{jobId\} readKey=\{data\} onApproved=\{onReload\} \/>/);

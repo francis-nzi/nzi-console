@@ -148,7 +148,7 @@ function LcaReport({ report }: { report: LcaReportReadModel }) {
 
       <section className="report-evidence">
         <div>
-          <span className="nz-eyebrow">Assurance record</span>
+          <span className="nz-eyebrow">Verification record</span>
           <h2>Evidence and version record</h2>
           <p>This rendered {noun.toLowerCase()} report is bound to the exact frozen result snapshot signed off at review. The factor citation above is what was used at sign-off, not the current mapping.</p>
         </div>

@@ -138,7 +138,7 @@ describe("the client portal Dashboard view (BUILD-client-portal-dashboard)", () 
       for (const expected of [
         "Carbon account", "<h1 class=\"nz-pd-client\">EFF Group</h1>", "Reporting year 2026 · Reviewed snapshot · as at",
         "Current emissions (2026)", "13,157", "1.2% vs 2025", "Vs baseline", "Against your 2022 baseline", "Intensity", "126.6", "Net zero target", "2050", "24 years to go",
-        "Reviewed snapshot</b> · evidence state <b>Assured", "J000663 · CEDA 2025 v1.0 · DEFRA 2024 v1.2", "Publication gate passed",
+        "Reviewed snapshot</b> · evidence state <b>Verified", "J000663 · CEDA 2025 v1.0 · DEFRA 2024 v1.2", "Publication gate passed",
         "What NZI needs from you", "Submit business travel data", "Due 2026-11-12 · FY2026", "Approve the J000663 report",
         "Carbon emissions", "Emissions performance", "View chart evidence",
         "Latest from NZI", "SECR guidance update — FY2026", "Every figure as a table", "Emissions by site",

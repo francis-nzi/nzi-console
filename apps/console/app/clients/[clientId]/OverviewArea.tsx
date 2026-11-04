@@ -71,9 +71,9 @@ export function OverviewArea({ workspace, jobs, today, access, onEvidence, onDra
       </div></div>
     </Collapsible>
 
-    <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<><span className="eyebrow">Assurance</span><h2>Emissions history</h2></>} count={history.length ? `${history.length} assured year${history.length === 1 ? "" : "s"}` : "None yet"}>
+    <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<><span className="eyebrow">Verification</span><h2>Emissions history</h2></>} count={history.length ? `${history.length} verified year${history.length === 1 ? "" : "s"}` : "None yet"}>
       {history.length === 0
-        ? <Empty text="No reviewed snapshot has been issued for this client, so there is no assured history yet." />
+        ? <Empty text="No reviewed snapshot has been issued for this client, so there is no verified history yet." />
         : <table className="nz-tbl"><thead><tr><th>Year</th><th>Job</th><th className="num">Total</th><th>Scope split</th><th>Issued</th></tr></thead><tbody>
           {history.map((year) => <tr key={year.snapshotId}>
             <td><b>{fyLabel(year.year)}</b></td>
@@ -169,7 +169,7 @@ function SetupProgress({ workspace, jobs }: { workspace: ClientWorkspaceReadMode
     { label: "Baseline", done: Boolean(targets.benchmarkInForce) },
     { label: "Targets", done: Boolean(targets.model) },
     { label: "Job", done: jobs.length > 0 },
-    { label: "Assured year", done: history.length > 0 },
+    { label: "Verified year", done: history.length > 0 },
   ];
   const done = steps.filter((step) => step.done).length;
   return <section className="nz-panel nz-setup">

@@ -1,6 +1,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { internalNameHits, isInternalNameExempt } from "./internal-names.mjs";
+import { assuranceHits, isAssuranceSanctioned } from "./assurance-wording.mjs";
 
 /**
  * NZC-039, enforced: user-facing copy says "emissions", never "footprint".
@@ -120,6 +121,12 @@ const utilisationOffences = [];
  */
 const internalNameOffences = [];
 
+/**
+ * Verification (ruled): NZI offers emissions verification, not assurance. User-facing copy says "verification" / "verified" / "verify"; internal names keep
+ * "assurance" (`scripts/assurance-wording.mjs` holds the rule and every exception with its reason).
+ */
+const assuranceOffences = [];
+
 for (const root of ROOTS) {
   for (const file of walk(root)) {
     scanned += 1;
@@ -138,6 +145,9 @@ for (const root of ROOTS) {
 for (const root of INTERNAL_NAME_ROOTS) {
   for (const file of walk(root)) {
     const rel = relative(process.cwd(), file).replace(/\\/g, "/");
+    readFileSync(file, "utf8").split("\n").forEach((line, index) => {
+      if (assuranceHits(line).length > 0 && !isAssuranceSanctioned(rel, line)) assuranceOffences.push(`${rel}:${index + 1}  ${line.trim().slice(0, 110)}`);
+    });
     if (isInternalNameExempt(rel)) continue;
     readFileSync(file, "utf8").split("\n").forEach((line, index) => {
       if (internalNameHits(line).length > 0) internalNameOffences.push(`${rel}:${index + 1}  ${line.trim().slice(0, 110)}`);
@@ -172,10 +182,17 @@ if (internalNameOffences.length > 0) {
   process.exit(1);
 }
 
+if (assuranceOffences.length > 0) {
+  console.error(`✖ NZI offers emissions verification, not assurance: user-facing copy says "verification" / "verified" / "verify" — never "assurance", "assured" or "assure":`);
+  for (const offence of assuranceOffences) console.error(`    ${offence}`);
+  console.error(`  Internal names (tables, command keys, CSS, identifiers) keep theirs. A genuine exception goes in ASSURANCE_SANCTIONED (scripts/assurance-wording.mjs) with the reason.`);
+  process.exit(1);
+}
+
 if (utilisationOffences.length > 0) {
   console.error(`✖ TIME ⚑8: "utilisation" means capacity only — logged hours against a job's budget is "budget used":`);
   for (const offence of utilisationOffences) console.error(`    ${offence}`);
   process.exit(1);
 }
 
-console.log(`✓ terminology: ${scanned} files, no "footprint" in user-facing copy (NZC-039), the product is "NZ Insights Pro", and "utilisation" is capacity, never budget (TIME ⚑8), and no internal "v7" name is user-facing`);
+console.log(`✓ terminology: ${scanned} files, no "footprint" in user-facing copy (NZC-039), the product is "NZ Insights Pro", and "utilisation" is capacity, never budget (TIME ⚑8), no internal "v7" name is user-facing, and carbon copy says "verification", never "assurance"`);

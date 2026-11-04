@@ -53,7 +53,7 @@ export type ReportAssuranceBasis = {
   reviewedAt: string;
 };
 
-export const REPORT_ASSURANCE_STATEMENT = "Reviewed snapshot (internal review); not third-party assured";
+export const REPORT_ASSURANCE_STATEMENT = "Reviewed snapshot (internal review); not third-party verified";
 
 export function reportAssurance(input: { reviewedBy: string; reviewedAt: string }): ReportAssuranceBasis {
   return { kind: "internal-review", statement: REPORT_ASSURANCE_STATEMENT, reviewedBy: input.reviewedBy, reviewedAt: input.reviewedAt };
@@ -114,9 +114,21 @@ export const reportSectionMetaV4: Record<ReportCompositionSectionKey, { eyebrow:
   "appendix-sites": { eyebrow: "Appendix 2", title: "Emissions by Site & Scope" },
 };
 
+/**
+ * The headings `composed@5` and `composed@6` print: composed@4's, with the Methodology page's eyebrow saying "Verification" (NZI offers emissions
+ * verification, not assurance). A separate table rather than an edit of V4's, because composed@4 is a pinned layout: a report issued under it reads as
+ * it was issued.
+ */
+export const reportSectionMetaV5: Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> = {
+  ...reportSectionMetaV4,
+  methodology: { eyebrow: "Verification", title: "Standards, Methodology & Sign-off" },
+};
+
 /** A section's heading as the composition's own renderer prints it — so the studio's rail and the document agree. */
-export const reportSectionMetaFor = (composition: { renderer?: string }): Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> =>
-  drawsMockupSectionSet(composition) ? reportSectionMetaV4 : reportCompositionSectionMeta;
+export const reportSectionMetaFor = (composition: { renderer?: string }): Record<ReportCompositionSectionKey, { eyebrow: string; title: string }> => {
+  if (!drawsMockupSectionSet(composition)) return reportCompositionSectionMeta;
+  return reportRendererOf(composition) === "composed@4" ? reportSectionMetaV4 : reportSectionMetaV5;
+};
 
 /** `composed@4` and its successors `composed@5` and `composed@6` draw the mockup's section set and read their plans complete. */
 export const drawsMockupSectionSet = (composition: { renderer?: string }): boolean => {

@@ -5729,3 +5729,26 @@ reviewed, frozen and published like any other.
 
 **What this does not decide.** Which jobs are re-ingested (each is its own dry run and Francis's sign-off); the residual rows
 for Francis; composing from v7 totals for renewed totals-only jobs (ruling 7).
+
+### NZC-170 — NZI offers emissions verification, not assurance: user-facing copy says "verification" / "verified" [Decided 4 Nov 2026 — Francis]
+
+**Decision.** In the carbon context, every sentence a client or a member of staff reads says **verification** / **verified** /
+**verify**, never "assurance" / "assured" / "assure": the Data Verification stage and drawer, "evidence state Verified", the
+report's Verification section and basis ("Reviewed snapshot (internal review); not third-party verified"), the portal's
+verified figures, and the messages the app raises. `check:terminology` refuses the old words in copy (`scripts/assurance-wording.mjs`).
+
+- **Internal names keep theirs:** `assured_period_snapshots`, the `assurance.gap.resolve` command, component and CSS names,
+  identifiers and stored enum values (`"assured"`). Only what a person reads changes.
+- **The email/MFA "verify / verification" is untouched** — a different word's business.
+- **Pinned layouts do not move.** A report issued under `composed@1`–`@4` reads as it was issued (F-0: an issued report is
+  immutable), so their wording is frozen and sanctioned in the guard with the reason; `composed@5`/`@6` draw "Verification"
+  (their goldens re-pinned, the diff being only these words). Text already stored in an issued composition is never rewritten.
+- **Not carbon verification, left as is:** the platform's own "tenant assurance" (security and audit assurance).
+- **Held for a ruling, not changed here:** the portal's legal terms of access ("assured, published report versions"); the SRS
+  maturity ladder's top level "Assured" and the requirement "GHG inventory independently assured", which are versioned
+  framework content in the database (migrations 0070/0080/0082); the supplier-service placeholder "Limited assurance" (the
+  ISO 14064-3 term of art).
+
+**Why.** NZI sells emissions verification. "Assurance" claims a regime (assurance engagement, assurer, standard, scope) that the
+platform does not record and the company does not offer; the report's own basis statement already says it is not third-party
+assured, and the word should not sit beside it as though it were.

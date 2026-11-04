@@ -152,7 +152,7 @@ test("a missing value is unavailable, never zero", () => {
   assert.equal(resolveIntensity({ definition: metric(), emissionsTco2e: 1706, value: 0, currency: "GBP" }).state, "unavailable");
   const noTotal = resolveIntensity({ definition: metric(), emissionsTco2e: null, value: 240, currency: "GBP" });
   assert.equal(noTotal.state, "unavailable");
-  if (noTotal.state === "unavailable") assert.match(noTotal.reason, /No assured total/);
+  if (noTotal.state === "unavailable") assert.match(noTotal.reason, /No verified total/);
 });
 
 test("a site-derived metric explains itself differently from a typed one", () => {

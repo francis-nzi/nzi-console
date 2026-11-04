@@ -19,7 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
     );
     if (!isPortalAssuredDashboard(dashboard)) {
       return Response.json(
-        { code: "INVALID_ANALYTICS_EVIDENCE", message: "The assured analytics evidence could not be verified." },
+        { code: "INVALID_ANALYTICS_EVIDENCE", message: "The verified analytics evidence could not be confirmed." },
         { status: 502, headers: { "Cache-Control": "private, no-store" } },
       );
     }

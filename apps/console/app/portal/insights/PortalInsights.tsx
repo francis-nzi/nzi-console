@@ -35,21 +35,21 @@ export function PortalInsights({ jobId }: { jobId: string }) {
         <div>
           <span className="nz-eyebrow">Support</span>
           <h1 className="nz-pd-client">Insights &amp; Help</h1>
-          <p className="nz-pd-meta">What your assured figures say, and where to get help</p>
+          <p className="nz-pd-meta">What your verified figures say, and where to get help</p>
         </div>
       </header>
 
       <section className="nzp-metric-card" aria-labelledby="insights-title">
         <div className="nzp-metric-h"><h3 id="insights-title">Insights</h3></div>
-        {state.kind === "loading" ? <p className="nzp-metric-note" role="status">Reading your assured report…</p>
+        {state.kind === "loading" ? <p className="nzp-metric-note" role="status">Reading your verified report…</p>
           : state.kind === "failed" ? <p className="nzp-metric-note" role="alert">Your insights could not be loaded just now. Nothing has been assumed. <button className="nz-btn sm" onClick={() => void load()}>Try again</button></p>
-          : state.kind === "empty" ? <p className="nzp-metric-note">Insights appear once your first assured report for this job is published.</p>
+          : state.kind === "empty" ? <p className="nzp-metric-note">Insights appear once your first verified report for this job is published.</p>
           : state.insights.length === 0 ? <p className="nzp-metric-note">Nothing stands out in this report yet.</p>
           : <>
               <ul className="nzp-insights">
                 {state.insights.map((insight) => <li key={insight.id}><span className="ic" aria-hidden="true">💡</span><div><b>{insight.title}</b><p>{insight.detail}</p></div></li>)}
               </ul>
-              <p className="nzp-metric-note">From your assured, published report for reporting year {state.year} — the same figures as your dashboard.</p>
+              <p className="nzp-metric-note">From your verified, published report for reporting year {state.year} — the same figures as your dashboard.</p>
             </>}
       </section>
 

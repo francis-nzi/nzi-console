@@ -229,7 +229,7 @@ function AskShell({ context }: { context: HelpPageContext }) {
     </div> : null}
 
     <label className="nz-fl"><span>Your question</span>
-      <textarea className="nz-notes" rows={2} value={question} placeholder={`e.g. What does "reviewed, not assured" mean?`}
+      <textarea className="nz-notes" rows={2} value={question} placeholder={`e.g. What does "reviewed, not verified" mean?`}
         onChange={(event) => setQuestion(event.target.value)} />
     </label>
     <GatedButton className="nz-btn pri" blocked={question.trim() === "" || pending}

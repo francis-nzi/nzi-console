@@ -79,7 +79,7 @@ test.describe("DA3a — Data Assurance read surface", () => {
 
     await drawer.locator(".nz-assurance-drawer-h .close").click();
     await expect(drawer).toHaveCount(0);
-    const reopen = surface.getByRole("button", { name: /Data assurance/ });
+    const reopen = surface.getByRole("button", { name: /Data verification/ });
     await expect(reopen).toBeVisible();
     const widthAfterClose = await trend.evaluate((el) => el.getBoundingClientRect().width);
     expect(widthAfterClose).toBe(widthBefore);
