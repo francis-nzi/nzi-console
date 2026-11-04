@@ -464,6 +464,7 @@ export function CrpScopeWorkspace({
       subtitle={`Scope ${addingCategory.scope} · ${siteLabel}`}
       onClose={() => { setAddingCategory(null); setQuickAddError(""); }}
     >
+      {categoryPreview?.scopeWideNotice?<p className="nz-hint" role="note" data-testid="scope-wide-notice">{categoryPreview.scopeWideNotice}</p>:null}
       <EmissionEntryForm
         key={addingCategory.code}
         spec={specs[addingCategory.code] ?? null}

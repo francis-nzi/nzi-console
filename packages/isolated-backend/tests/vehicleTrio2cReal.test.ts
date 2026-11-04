@@ -90,6 +90,12 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
     await db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes)
        VALUES ($1,'synthetic-gb-2026','uk-ghg-5_303_3095_9_1','Van Class III · Diesel — test factor','miles',0.4,ARRAY['1'])`, [ORG]);
+    // NZC-171: a category offers the factors whose DESNZ family is filed under it, and the synthetic seed carries no source levels - so it is given the
+    // families it stands for: the van is a delivery vehicle, the Scope 1 fuels are liquid fuels, the Scope 3 travel factors are business-travel land.
+    await db.query(
+      `UPDATE nzi_console.emission_factors SET source_levels = CASE WHEN factor_id = 'uk-ghg-5_303_3095_9_1' THEN ARRAY['Delivery vehicles','Vans']
+         WHEN scopes @> ARRAY['1'] THEN ARRAY['Fuels','Liquid fuels'] ELSE ARRAY['Business travel- land','Cars (by size)'] END
+        WHERE organisation_id = $1 AND source_levels IS NULL`, [ORG]);
   });
 
   after(async () => { await db?.end(); await database?.end(); });
@@ -125,7 +131,9 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
     const ids = (await options("3", "3.6")).map((option) => option.factorId);
     assert.ok(!ids.includes("uk-ghg-1_101_1011_8_1"), "business travel offers the Scope 1 base of its own variant");
     assert.ok(ids.includes("uk-ghg-1_101_1011_8_1-b"), "business travel lost its own variant");
-    assert.ok(ids.includes("uk-ghg-13_402_4000_5_1") || ids.length > 1, "the list was emptied rather than filtered");
+    // NZC-171: the seed's Scope 3 factors now carry their real families (T&D is 3.3, freight 3.4), so business travel holds its own variant and
+    // the travel factors - and none of theirs.
+    assert.ok(!ids.includes("uk-ghg-13_402_4000_5_1") && !ids.includes("freight-demo"), "business travel offers T&D or freight");
   });
 
   it("refuses that base at the write, naming the category it is not applicable under — in business travel and in commuting", async () => {
@@ -153,8 +161,8 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
     // each category's pair (since dedup slice 5 Step E, applicability — not a variant row — is what a sub-flow files by).
     // Restored afterwards, so nothing here outlives the test.
     await db.query(
-      `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes) VALUES
-        ($1,'synthetic-gb-2026','van-km-test','Van, diesel, per km — test','km',0.25,ARRAY['1','3'])`, [ORG]);
+      `INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES
+        ($1,'synthetic-gb-2026','van-km-test','Van, diesel, per km — test','km',0.25,ARRAY['1','3'],ARRAY['Delivery vehicles','Vans'])`, [ORG]);
     const admin = { userId: "admin-1", organisationId: ORG, role: "admin", capabilities: [{ capability: "factor.manage", scope: "all" }] } as unknown as StaffPrincipal;
     const attributes = { source: "stub", fuel: "diesel", vehicleClass: "van", category: "van|class-iii|diesel", fallbackCategory: "van|average|diesel" };
     const RULE = `category_code = '1.company-vehicles' AND rule_key = 'dvla-van-class-iii-diesel'`;

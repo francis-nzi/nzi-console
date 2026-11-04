@@ -38,6 +38,20 @@ VALUES
   ('demo-nzi-console','synthetic-us-2026','electricity-us-demo','US electricity — demonstration factor','kWh',0.400000,ARRAY['2'])
 ON CONFLICT (organisation_id,dataset_id,factor_id) DO UPDATE SET label=EXCLUDED.label,activity_unit=EXCLUDED.activity_unit,kgco2e_per_unit=EXCLUDED.kgco2e_per_unit,scopes=EXCLUDED.scopes;
 
+-- NZC-171: a category offers the factors whose DESNZ family the membership map files under it, read from `source_levels`. A fixture factor with
+-- none belongs to no category and is offered nowhere, so each demonstration factor carries the family it stands for - the real DESNZ (or IEA)
+-- level path, so it files exactly where the real factor does. (The variants take their category from their suffix, not from levels.)
+UPDATE emission_factors f SET source_levels = v.levels
+  FROM (VALUES
+    ('uk-ghg-1_101_1011_8_1', ARRAY['Fuels','Liquid fuels','Diesel (average biofuel blend)']),
+    ('gas-demo', ARRAY['Fuels','Gaseous fuels','Natural gas']),
+    ('uk-ghg-7_400_4000_5_1', ARRAY['UK electricity','Electricity generated']),
+    ('freight-demo', ARRAY['Freighting goods','Cargo ship']),
+    ('uk-ghg-13_402_4000_5_1', ARRAY['Transmission and distribution','T&D- UK electricity']),
+    ('electricity-us-demo', ARRAY['Electricity Generation'])
+  ) AS v(factor_id, levels)
+ WHERE f.organisation_id='demo-nzi-console' AND f.dataset_id IN ('synthetic-gb-2026','synthetic-us-2026') AND f.factor_id=v.factor_id;
+
 INSERT INTO job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
 SELECT c.organisation_id,c.job_id,d.dataset_id,'automatic','Matched reporting period and geography.','system'
 FROM job_emissions_config c JOIN emission_factor_datasets d ON d.organisation_id=c.organisation_id

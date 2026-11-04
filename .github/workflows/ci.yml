@@ -1015,6 +1015,11 @@ jobs:
       # the base's; a retire keeps the record and an add reinstates it.
       - name: Applicability is curated through registered, audited commands
         run: npx tsx --test packages/isolated-backend/tests/factorApplicabilityCommandsReal.test.ts
+      # NZC-171 (migration 0210): a category offers the factors whose DESNZ family the membership map files under it. Every category's set
+      # asserted exactly (no leak either way), the live library's level paths each resolve (nothing orphaned into invisibility), the pairs
+      # reconcile, a category with no family offers the scope with a notice, and the map is edited by Admin alone, audited, never deleted.
+      - name: A category offers the factors whose DESNZ family is filed under it
+        run: npx tsx --test packages/isolated-backend/tests/factorCategoryMembershipReal.test.ts
       # BUILD-dataset-factor-dedup slice 5 Steps C and E (migrations 0174, 0175): live rows on a covered variant id re-filed onto the base
       # under the pair (0174), then every covered variant nothing cites retired, never deleted, and the inert scope-mismatched pair retired
       # (0175) — the report frozen before and the one frozen after both are identical. Kept: the scope-shifted -bcp (cited or not), and any

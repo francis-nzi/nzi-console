@@ -155,6 +155,8 @@ export * from "./emissionsAggregation";
 export * from "./factorCategoryVariants";
 export * from "./factorApplicability";
 export * from "./factorApplicabilityCommands";
+export * from "./factorMembership";
+export * from "./factorMembershipRead";
 export {
   assignClientStrategy, deactivateLibraryStrategy, listLevers, listLibraryStrategies, listClientStrategies,
   removeClientStrategy, setClientStrategyEstimate, updateClientStrategy, upsertLibraryStrategy, upsertLever, deactivateLever,

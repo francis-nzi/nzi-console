@@ -1,8 +1,9 @@
 import {
-  categoryGhgOf, filedSuffixFor, parseFactorId, resolveFactorForEntry, variantFactorId,
+  categoryGhgOf, filedSuffixFor, membersOfCategory, parseFactorId, resolveFactorForEntry, SCOPE_WIDE_NOTICE, variantFactorId,
   type AssertedVehicleAttributes, type FactorRule, type MappingOutcome, type ScopeRowWriteFields,
 } from "@nzi/contracts";
 import { loadApplicability } from "./factorApplicability";
+import { listMembershipRules, pairedCategoriesLookup } from "./factorMembershipRead";
 import type { Queryable } from "./postgres";
 import { listCategoryVariants } from "./factorCategoryVariants";
 import { companionRulesFor, factorRulesFor, listFactorRules } from "./inputSpecFactorRules";
@@ -128,11 +129,13 @@ export type DeclaredFactorPreview = PickListFiling & (
  * - `foldedOptions`: a still-materialised variant whose pick would file as its base (Step A's rule: the category's own pair, the base
  *   offered in the same dataset at the same value, unit and scopes) — hidden, since its base, now labelled by the pair, is the same
  *   choice. Transitional: Step E retires these rows out of every list.
- * - `memberFactorIds`: for a category that files under a pair, the factors that belong to it — the bases it files under the pair and
- *   every offered variant carrying the pair's suffix. A dataset factor outside this list is another category's (freight, a
- *   business-travel copy, embodied carbon) and is not offered. Absent for a category with no pair: it has no membership to enforce.
+ * - `memberFactorIds` (NZC-171): the factors that belong to the category — those whose DESNZ family the membership map files under it,
+ *   the bases a pair files under it, the variants carrying its suffix, and (for the spend categories) the spend factors. A dataset
+ *   factor outside the list is another category's (freight, a business-travel copy, embodied carbon) and is not offered.
+ * - `scopeWideNotice`: instead of the list, for a category no rule names (3.10, 3.11, 3.14, 3.15): it has no family of its own, so it is
+ *   offered the whole scope, and the form says so.
  */
-export type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }>; memberFactorIds?: string[] };
+export type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }>; memberFactorIds?: string[]; scopeWideNotice?: string };
 
 /**
  * The factors a variant category refuses (Stop 2c, the D1 guard).
@@ -261,12 +264,6 @@ export async function fileByApplicability<F extends { datasetId?: string | null;
 }
 
 /**
- * Categories whose every factor is a pair: DESNZ publishes no commuting factor of its own, so what commuting offers is exactly what NZI
- * has marked applicable under it (or a `-c` variant). Their pick list can be scoped to `memberFactorIds`.
- */
-const PAIR_ONLY_CATEGORIES: ReadonlySet<string> = new Set(["3.7"]);
-
-/**
  * Dedup slice 5 Step D: the category's pick list by applicability (`PickListFiling`), over the job's offered factors at once — the same
  * rule `fileByApplicability` applies to one factor at the write, batched, so a list of thousands costs four queries, not thousands.
  */
@@ -274,8 +271,8 @@ async function pickListFiling(db: Queryable, organisationId: string, jobId: stri
   if (!categoryCode) return {};
   const registry = await listCategoryVariants(db);
   const applicability = await loadApplicability(db, organisationId);
-  const offered = (await db.query<{ dataset_id: string; factor_id: string; kgco2e_per_unit: string; activity_unit: string; scopes: string[] }>(
-    `SELECT f.dataset_id, f.factor_id, f.kgco2e_per_unit::text, f.activity_unit, f.scopes
+  const offered = (await db.query<{ dataset_id: string; factor_id: string; kgco2e_per_unit: string; activity_unit: string; scopes: string[]; source_levels: string[] | null }>(
+    `SELECT f.dataset_id, f.factor_id, f.kgco2e_per_unit::text, f.activity_unit, f.scopes, f.source_levels
        FROM nzi_console.job_dataset_selections s
        JOIN nzi_console.emission_factors f ON (f.organisation_id, f.dataset_id) = (s.organisation_id, s.dataset_id)
       WHERE s.organisation_id = $1 AND s.job_id = $2 AND f.active`, [organisationId, jobId])).rows;
@@ -287,7 +284,14 @@ async function pickListFiling(db: Queryable, organisationId: string, jobId: stri
     const suffixCode = filedSuffixFor({ factorId: row.factor_id, categoryCode, applicability, registry });
     if (suffixCode) filedBases.set(row.factor_id, suffixCode);
   }
-  if (filedBases.size === 0 && !PAIR_ONLY_CATEGORIES.has(categoryCode)) return {};
+  // NZC-171: which of these factors belong to the category - the DESNZ family map, the pairs, the spend rule. Null: no family of its own.
+  const members = membersOfCategory({
+    categoryCode, rules: await listMembershipRules(db),
+    factors: offered.map((row) => ({ factorId: row.factor_id, activityUnit: row.activity_unit, sourceLevels: row.source_levels ?? [] })),
+    parse: (factorId) => parseFactorId(factorId, registry), pairedCategories: await pairedCategoriesLookup(db, organisationId, registry),
+  });
+  const membership: PickListFiling = members ? { memberFactorIds: members } : { scopeWideNotice: SCOPE_WIDE_NOTICE };
+  if (filedBases.size === 0) return membership;
   const optionLabels: Record<string, string> = {};
   for (const pair of (await db.query<{ factor_id: string; suffix_code: string; label: string }>(
     `SELECT factor_id, suffix_code, label FROM nzi_console.factor_identity_categories
@@ -303,15 +307,7 @@ async function pickListFiling(db: Queryable, organisationId: string, jobId: stri
     const covered = base && base.kgco2e_per_unit === row.kgco2e_per_unit && base.activity_unit === row.activity_unit && sameScopes(base.scopes, row.scopes);
     return covered ? [{ datasetId: row.dataset_id, factorId: row.factor_id }] : [];
   });
-  // Only a category made wholly of pairs can say what belongs to it. Elsewhere a factor with no pair is "used natively" (3.4's container
-  // ship, 3.6's flights) and applicability cannot tell that from another category's factor - so those lists stay as scoped by Scope.
-  if (!PAIR_ONLY_CATEGORIES.has(categoryCode)) return { optionLabels, foldedOptions };
-  const pairSuffixes = new Set(registry.filter((variant) => variant.status === "active" && variant.ghgCategory === categoryGhgOf(categoryCode)).map((variant) => variant.suffixCode));
-  const memberFactorIds = [...new Set([...filedBases.keys(), ...offered.filter((row) => {
-    const variant = parseFactorId(row.factor_id, registry).variant;
-    return variant !== null && variant !== undefined && pairSuffixes.has(variant.suffixCode);
-  }).map((row) => row.factor_id)])];
-  return { optionLabels, foldedOptions, memberFactorIds };
+  return { optionLabels, foldedOptions, ...membership };
 }
 
 /**

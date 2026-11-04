@@ -310,7 +310,7 @@ export function entryFactorRefsFor(sources: readonly EntryFactorSource[]): Entry
  * Dedup slice 5 Step D: how the category's list reads by applicability — a base filed under the category's pair, labelled by the pair;
  * a still-materialised variant whose pick files as that base, hidden.
  */
-type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }>; memberFactorIds?: string[] };
+type PickListFiling = { optionLabels?: Record<string, string>; foldedOptions?: Array<{ datasetId: string; factorId: string }>; memberFactorIds?: string[]; scopeWideNotice?: string };
 
 /** What the declared-factor preview returns — the shape of the backend's `DeclaredFactorPreview`. */
 export type DeclaredFactorPreviewResult = PickListFiling & (

@@ -131,11 +131,15 @@ describe("electricity resolves its primary declaratively, and nothing else has c
   it("previews the grid factor and its unit for the form, and says a category that is off is off", async () => {
     const preview = await withTenantRead(pool, ORG, (read) => previewDeclaredFactor(read, ORG, JOB,
       { scope: "2", unit: null, supplySource: "grid" }, "2.purchased-electricity"));
-    assert.deepEqual(preview, { enabled: true, reason: null, excludedFactorIds: [],
+    // NZC-171: every preview also carries its category's membership; what this test pins is the declaration.
+    const { memberFactorIds, scopeWideNotice, ...declaration } = preview;
+    assert.ok(Array.isArray(memberFactorIds) && scopeWideNotice === undefined, "purchased electricity has a family of its own");
+    assert.deepEqual(declaration, { enabled: true, reason: null, excludedFactorIds: [],
       declared: { datasetId: "synthetic-gb-2026", factorId: "uk-ghg-7_400_4000_5_1", label: "UK electricity — demonstration factor", unit: "kWh", version: "2026 demo v1" } });
     const off = await withTenantRead(pool, ORG, (read) => previewDeclaredFactor(read, ORG, JOB,
       { scope: "1", unit: "kWh", supplySource: null }, "1.natural-gas"));
-    assert.deepEqual(off, { enabled: false, excludedFactorIds: [] });
+    assert.deepEqual({ enabled: off.enabled, excludedFactorIds: off.excludedFactorIds }, { enabled: false, excludedFactorIds: [] });
+    assert.ok(Array.isArray(off.memberFactorIds), "natural gas carries its membership too");
   });
 
   it("leaves a category that is still off exactly as it was", async () => {

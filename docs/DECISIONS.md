@@ -5757,3 +5757,29 @@ messages the app raises. `check:terminology` refuses the old words in copy (`scr
 **Why.** NZI sells emissions verification. "Assurance" claims a regime (assurance engagement, assurer, standard, scope) that the
 platform does not record and the company does not offer; the report's own basis statement already says it is not third-party
 assured, and the word should not sit beside it as though it were.
+
+
+### NZC-171 — A category offers the factors its DESNZ family is filed under: membership is a reviewable map, not code [Confirmed 4 Nov 2026 — Cowork; accounting-policy calls Francis]
+
+**Decision.** Which factors a data-entry category offers is decided by `factor_category_membership` (migration 0210): a rule is
+(DESNZ level 1, optional level 2, optional level 3) -> category, read from the `source_levels` every factor already stores. An absent
+level is "any"; a family may belong to several categories and a category may draw from several families. Levels compare
+case-insensitively with whitespace collapsed. The map is global reference data, edited by Admin (`factor.manage`) through
+`factor.membership.add` / `.retire`; a rule is never deleted or re-pointed - it is retired and a new one added (audited).
+
+- **Spend factors** (priced in a currency) are not in the DESNZ taxonomy: they belong to the spend categories (3.1, 3.2, 3.15) and to
+  the category an applicability pair names. **A variant id** (`<base>-c`) belongs to the category its suffix names and to no other - it
+  does not inherit its base's families, which would put a commuting copy under business travel.
+- **A category no rule names** (3.10, 3.11, 3.14, 3.15) has no family of its own: it is offered the whole scope, with a notice, never an
+  empty list. **A family with no category yet** (Heat and steam, Scope 2) is held back (a rule with no category): known, listed, and
+  offered in no list until `2.purchased-heat-steam` exists. **Unfiled** (a physical factor no rule claims) is offered in no list, shown on
+  the Datasets screen, and expected to be empty; a test enumerating the live library's level paths fails if it is not.
+- **Natural gas** is every natural-gas level 3 (including the mineral blend); other gases are Other Stationary Fuels. WTT of transport
+  mirrors its transport category. Homeworking is 3.7. Renewable electricity is its own category (2.renewable-electricity) only.
+- **EV charging** (DESNZ "UK electricity for EVs") is filed under 2.purchased-electricity only. The ruling allowed company vehicles too
+  on condition that the row be reported as Scope 2 wherever it was entered; the row model keys scope off the category, and a Scope 2 row
+  carries its own method and supply fields, so the dual membership is not shipped. Re-ruling is open.
+
+**Why.** A factor carried only its scope, so every Scope 3 category was offered every Scope 3 factor: freight and embodied carbon were
+reachable from Employee Commuting before a character was typed. The category was already in the data; a hand-kept code map would
+have been a second source of truth for a ruling that must be reviewable.
