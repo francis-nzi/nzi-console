@@ -130,7 +130,7 @@ describe("team-member email signatures (phase 5-2), against a real database", { 
   it("a system email carries the organisation's chrome only — no personal lines", async () => {
     const queued = await withTenantWrite(database.pool, ORG, (db) => sendTemplatedEmail(db, ORG, {
       templateCode: "password.reset.staff", to: "jen@netzero.international", consoleOrigin: ORIGIN,
-      vars: { displayName: "Jennie Davide", resetLink: `${ORIGIN}/reset#token=abc`, expiresAt: "17:00" },
+      vars: { firstName: "Jennie", displayName: "Jennie Davide", resetLink: `${ORIGIN}/reset#token=abc`, expiresAt: "17:00" },
     }));
     const { html_body: html, text_body: text } = await stored(queued.emailMessageId);
     assert.doesNotMatch(html, /Best wishes|Kind regards|Head of Client|Mobile UK|mailto:/);
@@ -142,7 +142,7 @@ describe("team-member email signatures (phase 5-2), against a real database", { 
     await q(`UPDATE nzi_console.memberships SET status = 'deactivated', deactivated_at = now(), deactivated_by = 'ada' WHERE user_id = 'sam'`);
     const queued = await withTenantWrite(database.pool, ORG, (db) => sendTemplatedEmail(db, ORG, {
       templateCode: "message.notification", to: "x@netzero.international", consoleOrigin: ORIGIN, attributedTo: "sam",
-      vars: { displayName: "Client", clientName: "Example Ltd", threadLink: `${ORIGIN}/portal/messages` },
+      vars: { firstName: "Client", displayName: "Client", clientName: "Example Ltd", threadLink: `${ORIGIN}/portal/messages` },
     }));
     assert.doesNotMatch((await stored(queued.emailMessageId)).html_body, /Kind regards|Sam Adviser/);
     await q(`UPDATE nzi_console.memberships SET status = 'active', deactivated_at = NULL, deactivated_by = NULL WHERE user_id = 'sam'`);

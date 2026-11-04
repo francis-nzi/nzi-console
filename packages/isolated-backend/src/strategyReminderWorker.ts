@@ -143,14 +143,15 @@ export async function scanClientReminders(db: Queryable, input: {
 }
 
 async function listReminderContacts(db: Queryable, clientId: string): Promise<ClientContactLike[]> {
-  const result = await db.query<{ email: string | null; full_name: string; status: string; email_consent: string }>(
-    `SELECT email, full_name, status, email_consent
+  const result = await db.query<{ email: string | null; full_name: string; first_name: string | null; status: string; email_consent: string }>(
+    `SELECT email, full_name, first_name, status, email_consent
      FROM nzi_console.client_contacts WHERE client_id = $1`,
     [clientId],
   );
   return result.rows.map((row) => ({
     email: row.email,
     fullName: row.full_name,
+    firstName: row.first_name,
     status: row.status === "active" ? "active" : "inactive",
     emailConsent: row.email_consent === "granted" ? "granted" : row.email_consent === "declined" ? "declined" : "unknown",
   }));

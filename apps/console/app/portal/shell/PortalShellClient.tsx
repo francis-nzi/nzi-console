@@ -3,6 +3,7 @@
 // `/api/portal/auth/me`), then the view framed in the shell. A view that needs a job and is given none (the landing) opens on
 // the default job. A failed read is said as failed, never as a client with no jobs.
 import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { callName } from "@nzi/contracts";
 import { isPortalIdentity, isPortalJobList, type PortalIdentity, type PortalJob } from "../portalPortfolioValidation";
 import { redirectIfPortalSessionEnded } from "../portalSessionClient";
 import { PortalShell } from "./PortalShell";
@@ -47,7 +48,7 @@ export function PortalShellClient({ view, jobId, children }: { view: ShellView; 
     <PortalShell
       client={{ name: user.clientName?.trim() || "Your organisation", logoSrc: user.clientLogoAssetId ? `/api/portal/logo?v=${encodeURIComponent(user.clientLogoAssetId)}` : null }}
       jobs={jobs} jobId={current} view={view}
-      person={{ kind: "client", name: user.displayName, detail: user.email, onSignOut: () => void signOut(), signingOut }}>
+      person={{ kind: "client", name: callName({ firstName: user.firstName, fullName: user.displayName }) ?? user.displayName, detail: user.email, onSignOut: () => void signOut(), signingOut }}>
       {current || view !== "dashboard" ? (typeof children === "function" ? children(current) : children) : <div className="nz-portal-state empty"><i>✓</i><div><b>No reporting jobs yet</b><span>Your adviser will grant access when a reporting job is ready.</span></div></div>}
     </PortalShell>
   );

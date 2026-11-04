@@ -48,8 +48,8 @@ describe("resolving everything that belongs to one person (NZC-128)", { skip: DA
 
     // One person, reachable three ways: their contact record, its history, and a report they signed.
     await db.query(
-      `INSERT INTO nzi_console.client_contacts (organisation_id,contact_id,client_id,full_name,job_title,email,phone,created_by,updated_by)
-       VALUES ($1,'contact-1','client-1','Ada Lovelace','Director','ada@example.test','07700 900123','seed','seed')`, [ORG]);
+      `INSERT INTO nzi_console.client_contacts (organisation_id,contact_id,client_id,full_name,first_name,job_title,email,phone,created_by,updated_by)
+       VALUES ($1,'contact-1','client-1','Ada Lovelace','Ada','Director','ada@example.test','07700 900123','seed','seed')`, [ORG]);
     await db.query(
       `INSERT INTO nzi_console.client_contact_versions (organisation_id,contact_id,version,snapshot_json,changed_by,correlation_id)
        VALUES ($1,'contact-1',1,$2::jsonb,'seed','corr-1')`,
@@ -106,7 +106,7 @@ describe("resolving everything that belongs to one person (NZC-128)", { skip: DA
       subject: { sourceTable: "client_contacts", sourceId: "contact-1" },
       table: "client_contacts",
       keyColumns: { organisation_id: ORG, contact_id: "contact-1" },
-      sealed: { full_name_sealed: "Ada Lovelace", job_title_sealed: "Director", phone_sealed: "07700 900123" },
+      sealed: { full_name_sealed: "Ada Lovelace", first_name_sealed: "Ada", job_title_sealed: "Director", phone_sealed: "07700 900123" },
       operational: [{ column: "client_contacts.email", sealedColumn: "email_sealed", indexColumn: "email_bidx", field: "email", value: "ada@example.test" }],
     }, keys, "seed");
   });

@@ -3,6 +3,7 @@ import type { Capability, CapabilityGrant, CapabilityScope, CommandGrant, Comman
 import { grantFor, isCapability, isStaffRole, staffCapabilityOf } from "@nzi/contracts";
 import type { PoolLike, Queryable } from "./postgres";
 import { withAuthTransaction, withTenantRead } from "./postgres";
+import { staffFirstName } from "./addressName";
 
 export type { StaffRole };
 export type StaffSession = { sessionId: string; userId: string; organisationId: string; issuedAt: number; expiresAt: number };
@@ -126,4 +127,9 @@ export async function staffDisplayName(pool: PoolLike, principal: Pick<StaffPrin
   const row = (await withTenantRead(pool, principal.organisationId, (db) =>
     db.query<{ display_name: string | null }>(`SELECT display_name FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2`, [principal.organisationId, principal.userId]))).rows[0];
   return row?.display_name?.trim() || null;
+}
+
+/** The signed-in member of staff's first name, for the same chrome (greeting, chip): the one they are addressed by (0207). Null when no name is recorded. */
+export async function staffChromeFirstName(pool: PoolLike, principal: Pick<StaffPrincipal, "organisationId" | "userId">): Promise<string | null> {
+  return withTenantRead(pool, principal.organisationId, (db) => staffFirstName(db, principal.organisationId, principal.userId));
 }

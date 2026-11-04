@@ -116,7 +116,10 @@ describe("Team & access, against a real database", { skip: TEST_DATABASE_URL ? f
       assert.deepEqual([row.display_name, row.position_value_id, row.version], ["Victoria Viewer", "pos-lead", v + 1]);
       assert.notDeepEqual(row.display_name_sealed, sealedBefore, "resealed");
       const audit = await auditOf(done.auditEventId);
-      assert.deepEqual(audit.after_json.changed, ["displayName", "positionValueId"]);
+      // The first name was the default ("Vic"), so it follows the rename (0207) - and the audit says so by field name, never the value.
+      assert.equal(row.first_name, "Victoria");
+      assert.ok(row.first_name_sealed, "and is sealed with it");
+      assert.deepEqual(audit.after_json.changed, ["displayName", "firstName", "positionValueId"]);
       assert.deepEqual(plaintextIn([audit.before_json, audit.after_json], ["victoria", "vic viewer"]), [], "no name in the audit");
       await assert.rejects(updateStaff(database.pool, { userId: "vic", expectedVersion: v + 1, displayName: "Victoria Viewer", positionValueId: "pos-lead" }, context()), issue("userId", "NO_CHANGE"));
       await assert.rejects(updateStaff(database.pool, { userId: "vic", expectedVersion: v, displayName: "Other" }, context()), /version|changed/i);

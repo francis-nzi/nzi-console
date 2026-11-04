@@ -105,12 +105,12 @@ export type DueReminderScan = {
 type CandidateRow = {
   client_strategy_id: string; client_id: string; status: StrategyStatus; active: boolean; target_date: Date | string;
   reminder_lead_days: number | null; title: string; client_name: string; adviser_user_id: string | null;
-  contact_id: string | null; full_name: string | null; email: string | null; contact_status: string | null; email_consent: string | null;
+  contact_id: string | null; full_name: string | null; first_name: string | null; email: string | null; contact_status: string | null; email_consent: string | null;
 };
 
-const ownerOf = (row: Pick<CandidateRow, "contact_id" | "full_name" | "email" | "contact_status" | "email_consent">): ReminderOwner =>
+const ownerOf = (row: Pick<CandidateRow, "contact_id" | "full_name" | "first_name" | "email" | "contact_status" | "email_consent">): ReminderOwner =>
   row.contact_id === null ? null
-    : { contactId: row.contact_id, fullName: row.full_name ?? "", email: row.email, status: row.contact_status ?? "inactive", emailConsent: row.email_consent ?? "unknown" };
+    : { contactId: row.contact_id, fullName: row.full_name ?? "", firstName: row.first_name, email: row.email, status: row.contact_status ?? "inactive", emailConsent: row.email_consent ?? "unknown" };
 
 /**
  * One scan: every live, dated action not yet reminded for its date, checked against its window and its owner; each one
@@ -132,7 +132,7 @@ export async function scanDueReminders(db: Queryable, input: { organisationId: s
   const { rows } = await db.query<CandidateRow>(
     `SELECT a.client_strategy_id, a.client_id, a.status, a.active, a.target_date, a.reminder_lead_days,
             coalesce(l.title, a.bespoke_title, '') AS title, c.name AS client_name, c.owner_user_id AS adviser_user_id,
-            oc.contact_id, oc.full_name, oc.email, oc.status AS contact_status, oc.email_consent
+            oc.contact_id, oc.full_name, oc.first_name, oc.email, oc.status AS contact_status, oc.email_consent
        FROM nzi_console.client_strategies a
        JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (a.organisation_id, a.client_id)
        LEFT JOIN nzi_console.reduction_strategies l ON (l.organisation_id, l.strategy_id) = (a.organisation_id, a.strategy_id)

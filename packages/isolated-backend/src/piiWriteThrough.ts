@@ -69,10 +69,11 @@ export function sealTraineeEmailChangeRow(
 /** A client's named contact. */
 export function sealClientContactRow(
   seal: Seal,
-  row: { contactId: string; email?: string | null; fullName?: string | null; jobTitle?: string | null; phone?: string | null },
+  row: { contactId: string; email?: string | null; fullName?: string | null; firstName?: string | null; jobTitle?: string | null; phone?: string | null },
 ) {
   const sealed: Record<string, string | null | undefined> = {};
   if (row.fullName !== undefined) sealed.full_name_sealed = row.fullName;
+  if (row.firstName !== undefined) sealed.first_name_sealed = row.firstName;
   if (row.jobTitle !== undefined) sealed.job_title_sealed = row.jobTitle;
   if (row.phone !== undefined) sealed.phone_sealed = row.phone;
   return sealRowPii(seal.db, {
@@ -129,10 +130,11 @@ export function sealPortalUserRow(
 /** A staff member's place in an organisation — the subject a staff person is, by ruling. */
 export function sealMembershipRow(
   seal: Seal,
-  row: { userId: string; email?: string | null; displayName?: string | null; signatureTitle?: string | null; signatureEmail?: string | null; signatureMobile?: string | null },
+  row: { userId: string; email?: string | null; displayName?: string | null; firstName?: string | null; signatureTitle?: string | null; signatureEmail?: string | null; signatureMobile?: string | null },
 ) {
   const sealed: Record<string, string | null | undefined> = {};
   if (row.displayName !== undefined) sealed.display_name_sealed = row.displayName;
+  if (row.firstName !== undefined) sealed.first_name_sealed = row.firstName;
   // The email signature's personal lines (0185).
   if (row.signatureTitle !== undefined) sealed.signature_title_sealed = row.signatureTitle;
   if (row.signatureEmail !== undefined) sealed.signature_email_sealed = row.signatureEmail;

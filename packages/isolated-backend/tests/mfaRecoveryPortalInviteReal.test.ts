@@ -102,7 +102,7 @@ describe("MFA recovery codes and portal access invitations (phase 4-2), against 
         `SELECT template_code, to_email, subject, text_body, html_body FROM nzi_console.email_messages WHERE correlation_id = $1`, [invited.invitationId]);
       assert.deepEqual([email!.template_code, email!.to_email], ["portal.access.invite", "grace@netzero.international"]);
       assert.equal(email!.subject, "Your NZ Insights Pro client portal access for Client R Ltd");
-      assert.match(email!.text_body, /^Hello Grace Example,\n\nAda Admin at Net Zero International has given you access to Client R Ltd's client portal/);
+      assert.match(email!.text_body, /^Hello Grace,\n\nAda Admin at Net Zero International has given you access to Client R Ltd's client portal/);
       assert.match(email!.text_body, new RegExp(`${ORIGIN.replace(/\./g, "\\.")}/portal/invite#token=[A-Za-z0-9_-]{43}`));
       const [created] = await q(`SELECT after_json FROM nzi_console.audit_events WHERE action = 'portal.invitation.create' AND entity_id = $1`, [invited.portalUserId]);
       assert.equal(created!.after_json.delivery, "email");

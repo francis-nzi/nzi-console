@@ -21,7 +21,7 @@ const KEYED = {
   NZI_DATABASE_BOUNDARY: "isolated-non-production", NEXT_PUBLIC_APP_ENV: "staging",
   RESEND_API_KEY: "re_test_0123456789abcdef", EMAIL_FROM: "Net Zero International <no-reply@netzero.international>",
 };
-const RESET = { displayName: "Grace Example", resetLink: "https://console.example.test/portal/reset#token=fresh-token", expiresAt: "Friday 30 October 2026, 17:00" };
+const RESET = { firstName: "Grace", displayName: "Grace Example", resetLink: "https://console.example.test/portal/reset#token=fresh-token", expiresAt: "Friday 30 October 2026, 17:00" };
 
 function resend(): typeof fetch & { calls: Array<Record<string, unknown>> } {
   const calls: Array<Record<string, unknown>> = [];
@@ -107,7 +107,7 @@ describe("templated email (phase 2), against a real database", { skip: TEST_DATA
   describe("sendTemplatedEmail", () => {
     it("renders the built-in, multipart, with the house signature, and queues it through sendEmail with template_code set", async () => {
       const queued = await send({ templateCode: "portal.access.invite", to: "grace@netzero.international", vars: {
-        displayName: "Grace", clientName: "Example Manufacturing Ltd", senderName: "Sam Adviser", inviteLink: "https://console.example.test/portal/accept#token=t1", expiresAt: "Friday",
+        firstName: "Grace", displayName: "Grace", clientName: "Example Manufacturing Ltd", senderName: "Sam Adviser", inviteLink: "https://console.example.test/portal/accept#token=t1", expiresAt: "Friday",
       } });
       assert.equal(queued.enqueued, true);
       const row = await message(queued.emailMessageId);
@@ -128,7 +128,7 @@ describe("templated email (phase 2), against a real database", { skip: TEST_DATA
         templateKey: "password.reset.staff", subject: "Your reset, {{displayName}}", body: "Reset: {{resetLink}} (until {{expiresAt}})",
         html: "<p>Our own words: <a href=\"{{resetLink}}\">reset</a></p>",
       }, context());
-      const vars = { displayName: "Sam", resetLink: "https://console.example.test/reset#token=t2", expiresAt: "noon" };
+      const vars = { firstName: "Sam", displayName: "Sam", resetLink: "https://console.example.test/reset#token=t2", expiresAt: "noon" };
       const first = await message((await send({ templateCode: "password.reset.staff", to: "sam@netzero.international", vars })).emailMessageId);
       assert.equal(first.subject, "Your reset, Sam");
       assert.match(first.html_body, /Our own words/);
@@ -161,9 +161,9 @@ describe("templated email (phase 2), against a real database", { skip: TEST_DATA
 
     it("keeps phase 1's queue rules: one per idempotency key, and the isolation gate still stubs a non-NZI recipient", async () => {
       const once = await send({ templateCode: "message.notification", to: "client@example.com", idempotencyKey: "notify:thread-1:7",
-        vars: { displayName: "Client", clientName: "Example Ltd", threadLink: "https://console.example.test/portal/messages" } });
+        vars: { firstName: "Client", displayName: "Client", clientName: "Example Ltd", threadLink: "https://console.example.test/portal/messages" } });
       const again = await send({ templateCode: "message.notification", to: "client@example.com", idempotencyKey: "notify:thread-1:7",
-        vars: { displayName: "Client", clientName: "Example Ltd", threadLink: "https://console.example.test/portal/messages" } });
+        vars: { firstName: "Client", displayName: "Client", clientName: "Example Ltd", threadLink: "https://console.example.test/portal/messages" } });
       assert.deepEqual(again, { emailMessageId: once.emailMessageId, enqueued: false });
 
       const fetchImpl = resend();

@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { GatedButton } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { clientContactRoleLabels, clientContactRoles, contactConsentBasisLabels, contactConsentView, staffRecordableBases, type ClientContactReadModel, type ClientContactRole, type ContactConsentDecision, type ContactConsentEvent, type StaffRecordableBasis } from "@nzi/contracts";
+import { clientContactRoleLabels, clientContactRoles, firstWordOf, contactConsentBasisLabels, contactConsentView, staffRecordableBases, type ClientContactReadModel, type ClientContactRole, type ContactConsentDecision, type ContactConsentEvent, type StaffRecordableBasis } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
 
@@ -103,6 +103,11 @@ export function ContactForm({ clientId, contact, latestConsent, access, onClose,
   access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const [fullName, setFullName] = useState(contact?.fullName ?? "");
+  // How they are addressed (0207): pre-filled from the full name and following it until somebody edits it — a first name that
+  // already differs from the default (an edit made earlier) is left alone.
+  const [firstName, setFirstName] = useState(contact?.firstName ?? firstWordOf(contact?.fullName) ?? "");
+  const [firstNameEdited, setFirstNameEdited] = useState(contact ? (contact.firstName ?? "") !== (firstWordOf(contact.fullName) ?? "") : false);
+  const changeFullName = (value: string) => { setFullName(value); if (!firstNameEdited) setFirstName(firstWordOf(value) ?? ""); };
   const [jobTitle, setJobTitle] = useState(contact?.jobTitle ?? "");
   const [email, setEmail] = useState(contact?.email ?? "");
   const [phone, setPhone] = useState(contact?.phone ?? "");
@@ -132,7 +137,7 @@ export function ContactForm({ clientId, contact, latestConsent, access, onClose,
     key.current = null;
     onSaved(done);
   }
-  const fields = { fullName: fullName.trim(), jobTitle: jobTitle.trim() || null, email: email.trim() || null, phone: phone.trim() || null, isPrimary, roles };
+  const fields = { fullName: fullName.trim(), firstName: firstName.trim() || null, jobTitle: jobTitle.trim() || null, email: email.trim() || null, phone: phone.trim() || null, isPrimary, roles };
   const save = () => contact
     ? run(`/api/isolated/contacts/${encodeURIComponent(contact.id)}`, { ...fields, expectedVersion: contact.version }, "patch", `${fields.fullName} saved.`)
     : run(`/api/isolated/clients/${encodeURIComponent(clientId)}/contacts`, fields, "post", `${fields.fullName} added.`);
@@ -143,9 +148,10 @@ export function ContactForm({ clientId, contact, latestConsent, access, onClose,
     <div className="nz-dh"><div className="k">Relationship</div><h3>{contact ? contact.fullName : "New contact"}</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
     <div className="nz-db">
       <div className="nz-two">
-        <label className="nz-fl"><span>Full name<span className="nz-req">*</span></span><input className="nz-inp" value={fullName} onChange={(event) => setFullName(event.target.value)} autoComplete="off" /></label>
-        <label className="nz-fl"><span>Job title</span><input className="nz-inp" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} autoComplete="off" /></label>
+        <label className="nz-fl"><span>Full name<span className="nz-req">*</span></span><input className="nz-inp" value={fullName} onChange={(event) => changeFullName(event.target.value)} autoComplete="off" /></label>
+        <label className="nz-fl"><span>First name</span><input className="nz-inp" value={firstName} maxLength={120} onChange={(event) => { setFirstName(event.target.value); setFirstNameEdited(true); }} autoComplete="off" /><small className="nz-hint">How we address them in greetings and emails. Filled in from the full name; change it if they go by another name.</small></label>
       </div>
+      <label className="nz-fl"><span>Job title</span><input className="nz-inp" value={jobTitle} onChange={(event) => setJobTitle(event.target.value)} autoComplete="off" /></label>
       <label className="nz-fl"><span>Email</span><input className="nz-inp" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="off" /></label>
       <label className="nz-fl"><span>Phone</span><input className="nz-inp" type="tel" value={phone} placeholder="Optional" onChange={(event) => setPhone(event.target.value)} autoComplete="off" /></label>
       <div className="nz-fl"><span>Roles <span className="nz-hint" style={{ display: "inline", fontWeight: 500 }}>— what this contact is used for downstream</span></span>

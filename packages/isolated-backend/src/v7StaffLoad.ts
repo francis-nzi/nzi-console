@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { firstWordOf } from "@nzi/contracts";
 import { sealMembershipRow } from "./piiWriteThrough";
 import type { SealingKeys } from "./piiSealing";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
@@ -166,11 +167,11 @@ export async function loadV7Staff(
           const userId = randomUUID();
           const status = person.active ? "active" as const : "deactivated" as const;
           await db.query(
-            `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, email, position_value_id, source_system, legacy_values,
+            `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, first_name, email, position_value_id, source_system, legacy_values,
                deactivated_at, deactivated_by, updated_at, updated_by)
-             VALUES ($1, $2, 'viewer', $3, $4, $5, $6, $7, $8::jsonb, CASE WHEN $3 = 'deactivated' THEN now() END, CASE WHEN $3 = 'deactivated' THEN $9 END, now(), $9)`,
-            [organisationId, userId, status, person.name, person.email, position.id, SOURCE_SYSTEM, JSON.stringify(person.legacyValues), runId]);
-          await sealMembershipRow({ db, organisationId, actorId: IMPORT_ACTOR, keys: options.keys }, { userId, displayName: person.name, email: person.email });
+             VALUES ($1, $2, 'viewer', $3, $4, $10, $5, $6, $7, $8::jsonb, CASE WHEN $3 = 'deactivated' THEN now() END, CASE WHEN $3 = 'deactivated' THEN $9 END, now(), $9)`,
+            [organisationId, userId, status, person.name, person.email, position.id, SOURCE_SYSTEM, JSON.stringify(person.legacyValues), runId, firstWordOf(person.name)]);
+          await sealMembershipRow({ db, organisationId, actorId: IMPORT_ACTOR, keys: options.keys }, { userId, displayName: person.name, firstName: firstWordOf(person.name), email: person.email });
           await auditMember(db, organisationId, runId, userId, null, { version: 1, positionValueId: position.id, status, changed: ["created"] });
           entry.created = { userId, status };
           if (position.id) outcome.positions.filled += 1;

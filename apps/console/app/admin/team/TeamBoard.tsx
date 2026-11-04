@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
-import { PAGE_SIZES, ROLE_CAPABILITY_MATRIX, roleLabels, staffListSpec, staffRoles, todayInLondon, type StaffListQuery, type StaffRole } from "@nzi/contracts";
+import { firstWordOf, PAGE_SIZES, ROLE_CAPABILITY_MATRIX, roleLabels, staffListSpec, staffRoles, todayInLondon, type StaffListQuery, type StaffRole } from "@nzi/contracts";
 import type { StaffHistoryEntry, StaffInviteEmail, StaffPage, StaffPickers, StaffRates, StaffRow, StaffSignIn } from "@nzi/isolated-backend";
 import { AuditLine, CapabilityChip, DataList, DrawerEditor, FieldRow, NumberField, SelectField, TextAreaField, TextField, type DataListColumn } from "@nzi/ui";
 import { formatDate, formatDateTime } from "../../lib/formatDate";
@@ -208,7 +208,7 @@ export function TeamBoard({ page, pickers, query, editing, self, activeAdmins, r
   </>;
 }
 
-type Draft = { displayName: string; email: string; positionValueId: string; role: StaffRole; active: boolean; reason: string };
+type Draft = { displayName: string; firstName: string; firstNameEdited: boolean; email: string; positionValueId: string; role: StaffRole; active: boolean; reason: string };
 
 function StaffDrawer({ row, pickers, editing, self, activeAdmins, rates, onClose, onSaved }: {
   row: StaffRow | null; pickers: StaffPickers; editing: Editing; self: string; activeAdmins: number; rates: boolean; onClose: () => void; onSaved: (message: string) => void;
@@ -216,6 +216,9 @@ function StaffDrawer({ row, pickers, editing, self, activeAdmins, rates, onClose
   const isNew = row === null;
   const [draft, setDraft] = useState<Draft>({
     displayName: row?.named ? row.displayName : "", email: row?.email ?? "", positionValueId: row?.positionValueId ?? "",
+    // How they are addressed (0207): pre-filled from the name and following it until edited; one already different from the default stays.
+    firstName: row?.named ? row.firstName ?? firstWordOf(row.displayName) ?? "" : "",
+    firstNameEdited: row?.named ? (row.firstName ?? "") !== (firstWordOf(row.displayName) ?? "") : false,
     role: row?.role ?? "viewer", active: row ? row.status !== "deactivated" : true, reason: "",
   });
   const [issues, setIssues] = useState<Record<string, string>>({});
@@ -232,11 +235,11 @@ function StaffDrawer({ row, pickers, editing, self, activeAdmins, rates, onClose
   const roleChanged = row !== null && draft.role !== row.role;
   const deactivating = row !== null && row.status !== "deactivated" && !draft.active;
   const reinstating = row?.status === "deactivated" && draft.active;
-  const fieldsChanged = row !== null && (draft.displayName.trim() !== (row.named ? row.displayName : "") || (draft.positionValueId || null) !== row.positionValueId);
+  const fieldsChanged = row !== null && (draft.displayName.trim() !== (row.named ? row.displayName : "") || draft.firstName.trim() !== (row.named ? row.firstName ?? "" : "") || (draft.positionValueId || null) !== row.positionValueId);
   const needsReason = roleChanged || deactivating || reinstating;
 
   const fail = (result: Exclude<BrowserCommandResult<unknown>, { state: "success" }>) => {
-    const own = ["displayName", "email", "positionValueId", "role", "reason"];
+    const own = ["displayName", "firstName", "email", "positionValueId", "role", "reason"];
     if (result.state === "validation_failed") {
       setIssues(Object.fromEntries(result.issues.map((issue) => [issue.field, issue.message])));
       setProblem(result.issues.find((issue) => !own.includes(issue.field))?.message ?? null);
@@ -254,7 +257,7 @@ function StaffDrawer({ row, pickers, editing, self, activeAdmins, rates, onClose
     setSaving(true);
     try {
       if (isNew) {
-        const result = await postBrowserCommand("/api/isolated/staff", { displayName: draft.displayName, email: draft.email, positionValueId: draft.positionValueId || null }, key("add"));
+        const result = await postBrowserCommand("/api/isolated/staff", { displayName: draft.displayName, firstName: draft.firstName.trim() || null, email: draft.email, positionValueId: draft.positionValueId || null }, key("add"));
         if (result.state !== "success") return fail(result);
         return onSaved(`Added ${draft.displayName.trim()} as a Viewer. Grant a role, then invite them from their row.`);
       }
@@ -262,7 +265,7 @@ function StaffDrawer({ row, pickers, editing, self, activeAdmins, rates, onClose
       let version = row.version;
       const done: string[] = [];
       if (fieldsChanged) {
-        const result = await patchBrowserCommand<{ version: number }>(path, { displayName: draft.displayName, positionValueId: draft.positionValueId || null, expectedVersion: version }, key("update"));
+        const result = await patchBrowserCommand<{ version: number }>(path, { displayName: draft.displayName, firstName: draft.firstName.trim() || null, positionValueId: draft.positionValueId || null, expectedVersion: version }, key("update"));
         if (result.state !== "success") return fail(result);
         version = result.data.version; done.push("details saved");
       }
@@ -299,7 +302,11 @@ function StaffDrawer({ row, pickers, editing, self, activeAdmins, rates, onClose
       <button type="button" className="nz-a-btn pri" onClick={save} disabled={saving}>{saving ? "Saving…" : deactivating ? "Deactivate" : "Save"}</button>
     </>}>
     {problem ? <div className="nz-a-error" role="alert">{problem}</div> : null}
-    <TextField label="Name" value={draft.displayName} required maxLength={120} error={issues.displayName} readOnly={readOnly} onChange={(displayName) => setDraft({ ...draft, displayName })} />
+    <TextField label="Name" value={draft.displayName} required maxLength={120} error={issues.displayName} readOnly={readOnly}
+      onChange={(displayName) => setDraft({ ...draft, displayName, firstName: draft.firstNameEdited ? draft.firstName : firstWordOf(displayName) ?? "" })} />
+    <TextField label="First name" value={draft.firstName} maxLength={120} error={issues.firstName} readOnly={readOnly}
+      hint="How we address them in greetings and emails. Filled in from the name; change it if they go by another name."
+      onChange={(firstName) => setDraft({ ...draft, firstName, firstNameEdited: true })} />
     <TextField label="Work email" value={draft.email} required={isNew} maxLength={254} error={issues.email} readOnly={readOnly || !isNew}
       hint={isNew ? "Fixed once added: it is the address sign-in and invitations go to." : "Read-only here — the sign-in address is changed with sign-in, not on the roster."}
       onChange={(email) => setDraft({ ...draft, email })} />
@@ -350,7 +357,7 @@ function HistoryPanel({ userId }: { userId: string }) {
   const describe = (entry: StaffHistoryEntry) => {
     const before = entry.before as { role?: StaffRole } | null, after = entry.after as { role?: StaffRole; changed?: string[] } | null;
     if (entry.action === "staff.role.assign" && before?.role && after?.role) return `${roleLabels[before.role]} → ${roleLabels[after.role]}`;
-    if (entry.action === "staff.updated" && after?.changed) return after.changed.map((field) => field === "displayName" ? "name" : field === "positionValueId" ? "position" : field).join(", ");
+    if (entry.action === "staff.updated" && after?.changed) return after.changed.map((field) => field === "displayName" ? "name" : field === "firstName" ? "first name" : field === "positionValueId" ? "position" : field).join(", ");
     return null;
   };
   return <div className="nz-a-section">

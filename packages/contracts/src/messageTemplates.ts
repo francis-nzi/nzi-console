@@ -178,7 +178,8 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
     channel: "email",
     sendSite: "Portal access invitations: portalAccess.ts, through sendTemplatedEmail (phase 4)",
     tokens: [
-      { name: "displayName", description: "The invitee's name, as the portal user record holds it", sample: "Grace Example" },
+      { name: "firstName", description: "The invitee's first name — or \"there\" when they have no name", sample: "Grace" },
+      { name: "displayName", description: "The invitee's full name, as the portal user record holds it (the greeting uses firstName)", sample: "Grace Example" },
       { name: "clientName", description: "The client organisation the access is for", sample: "Example Manufacturing Ltd" },
       { name: "senderName", description: "The NZI adviser who granted the access", sample: "Sam Adviser" },
       { name: "inviteLink", description: "The single-use link to set a password and connect an authenticator", sample: "https://console.example.test/portal/accept#token=sample-token", required: true, kind: "url" },
@@ -187,7 +188,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
     builtIn: {
       subject: "Your NZ Insights Pro client portal access for {{clientName}}",
       body: [
-        "Hello {{displayName}},",
+        "Hello {{firstName}},",
         "",
         "{{senderName}} at Net Zero International has given you access to {{clientName}}'s client portal in NZ Insights Pro.",
         "",
@@ -198,7 +199,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
         "If you were not expecting this, ignore it — nothing happens unless the link is used.",
       ].join("\n"),
       html: [
-        "<p>Hello {{displayName}},</p>",
+        "<p>Hello {{firstName}},</p>",
         "<p>{{senderName}} at Net Zero International has given you access to <b>{{clientName}}</b>'s client portal in NZ Insights Pro.</p>",
         `<a class="cta" href="{{inviteLink}}">Set up your portal access</a>`,
         `<p style="${SMALL}">Or copy this link into your browser: {{inviteLink}}</p>`,
@@ -215,14 +216,15 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
     channel: "email",
     sendSite: "Staff password reset: the staff sign-in's Forgot password, through sendTemplatedEmail (phase 4)",
     tokens: [
-      { name: "displayName", description: "The member of staff's name", sample: "Sam Adviser" },
+      { name: "firstName", description: "The member of staff's first name — or \"there\" when they have no name", sample: "Sam" },
+      { name: "displayName", description: "The member of staff's full name (the greeting uses firstName)", sample: "Sam Adviser" },
       { name: "resetLink", description: "The single-use link to choose a new password", sample: "https://console.example.test/reset#token=sample-token", required: true, kind: "url" },
       { name: "expiresAt", description: "When the link expires", sample: "Friday 30 October 2026, 17:00" },
     ],
     builtIn: {
       subject: "Reset your NZ Insights Pro password",
       body: [
-        "Hello {{displayName}},",
+        "Hello {{firstName}},",
         "",
         "Someone asked to reset the password for your NZ Insights Pro staff account. If it was you, choose a new password here:",
         "{{resetLink}}",
@@ -231,7 +233,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
         "If you did not ask for this, ignore this email: your password stays as it is.",
       ].join("\n"),
       html: [
-        "<p>Hello {{displayName}},</p>",
+        "<p>Hello {{firstName}},</p>",
         "<p>Someone asked to reset the password for your NZ Insights Pro staff account. If it was you, choose a new password:</p>",
         `<a class="cta" href="{{resetLink}}">Choose a new password</a>`,
         `<p style="${SMALL}">Or copy this link into your browser: {{resetLink}}</p>`,
@@ -248,14 +250,15 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
     channel: "email",
     sendSite: "Portal password reset: the client portal sign-in's Forgot password, through sendTemplatedEmail (phase 4)",
     tokens: [
-      { name: "displayName", description: "The portal user's name", sample: "Grace Example" },
+      { name: "firstName", description: "The portal user's first name — or \"there\" when they have no name", sample: "Grace" },
+      { name: "displayName", description: "The portal user's full name (the greeting uses firstName)", sample: "Grace Example" },
       { name: "resetLink", description: "The single-use link to choose a new password", sample: "https://console.example.test/portal/reset#token=sample-token", required: true, kind: "url" },
       { name: "expiresAt", description: "When the link expires", sample: "Friday 30 October 2026, 17:00" },
     ],
     builtIn: {
       subject: "Reset your NZ Insights Pro client portal password",
       body: [
-        "Hello {{displayName}},",
+        "Hello {{firstName}},",
         "",
         "Someone asked to reset the password for your NZ Insights Pro client portal account. If it was you, choose a new password here:",
         "{{resetLink}}",
@@ -264,7 +267,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
         "If you did not ask for this, ignore this email: your password stays as it is. If it keeps happening, tell your adviser at NZI.",
       ].join("\n"),
       html: [
-        "<p>Hello {{displayName}},</p>",
+        "<p>Hello {{firstName}},</p>",
         "<p>Someone asked to reset the password for your NZ Insights Pro client portal account. If it was you, choose a new password:</p>",
         `<a class="cta" href="{{resetLink}}">Choose a new password</a>`,
         `<p style="${SMALL}">Or copy this link into your browser: {{resetLink}}</p>`,
@@ -282,14 +285,15 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
     sendSite: "Portal messages: a new message on the portal thread, through sendTemplatedEmail (phase 4)",
     // Deliberately no token for the message, its author or its subject (design R10): the content stays in the portal.
     tokens: [
-      { name: "displayName", description: "The portal user's name", sample: "Grace Example" },
+      { name: "firstName", description: "The portal user's first name — or \"there\" when they have no name", sample: "Grace" },
+      { name: "displayName", description: "The portal user's full name (the greeting uses firstName)", sample: "Grace Example" },
       { name: "clientName", description: "The client organisation the thread belongs to", sample: "Example Manufacturing Ltd" },
       { name: "threadLink", description: "A link to the thread in the portal (sign-in still required)", sample: "https://console.example.test/portal/messages", required: true, kind: "url" },
     ],
     builtIn: {
       subject: "New message in your {{clientName}} client portal",
       body: [
-        "Hello {{displayName}},",
+        "Hello {{firstName}},",
         "",
         "There is a new message for {{clientName}} in your NZ Insights Pro client portal.",
         "",
@@ -299,7 +303,7 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
         "For your security the message itself is not in this email — it stays in the portal, behind your sign-in.",
       ].join("\n"),
       html: [
-        "<p>Hello {{displayName}},</p>",
+        "<p>Hello {{firstName}},</p>",
         "<p>There is a new message for <b>{{clientName}}</b> in your NZ Insights Pro client portal.</p>",
         `<a class="cta" href="{{threadLink}}">Read it in the portal</a>`,
         `<p style="${SMALL}">For your security the message itself is not in this email — it stays in the portal, behind your sign-in.</p>`,
