@@ -131,7 +131,9 @@ describe("the vehicle trio at 2c, through the capture path (Stop 2c)", { skip: D
     const ids = (await options("3", "3.6")).map((option) => option.factorId);
     assert.ok(!ids.includes("uk-ghg-1_101_1011_8_1"), "business travel offers the Scope 1 base of its own variant");
     assert.ok(ids.includes("uk-ghg-1_101_1011_8_1-b"), "business travel lost its own variant");
-    assert.ok(ids.includes("uk-ghg-13_402_4000_5_1") || ids.length > 1, "the list was emptied rather than filtered");
+    // NZC-171: the seed's Scope 3 factors now carry their real families (T&D is 3.3, freight 3.4), so business travel holds its own variant and
+    // the travel factors - and none of theirs.
+    assert.ok(!ids.includes("uk-ghg-13_402_4000_5_1") && !ids.includes("freight-demo"), "business travel offers T&D or freight");
   });
 
   it("refuses that base at the write, naming the category it is not applicable under — in business travel and in commuting", async () => {
