@@ -334,14 +334,16 @@ describe("dedup slice 5 Step A: every write path files by applicability (uncondi
       assert.ok(members.has("uk-ghg-25_301_3070_9_1-c"), "and so is a -c variant");
       assert.ok(!members.has("uk-ghg-27_320_3235_14_1") && !members.has("uk-ghg-4_301_3070_4_1-bcp"), "freight and a business-travel copy are not");
       const travel = await preview("3.6", "3.6");
-      assert.equal(travel.memberFactorIds, undefined, "a category with native factors is not scoped by pairs - applicability cannot tell native from foreign");
+      // NZC-171: every category carries its membership. A category's variants are its own and nobody else's.
+      assert.ok(travel.memberFactorIds!.includes("uk-ghg-SPEND-SIC-49.3-5-b"), "business travel's -b variant is a member");
+      assert.ok(!travel.memberFactorIds!.includes("uk-ghg-25_301_3070_9_1-c"), "a commuting copy is not business travel's");
       assert.equal(travel.optionLabels!["uk-ghg-SPEND-SIC-49.3-5"], "Land transport services");
       assert.ok(travel.foldedOptions!.some((option) => option.factorId === "uk-ghg-SPEND-SIC-49.3-5-b"));
       assert.ok(!travel.foldedOptions!.some((option) => option.factorId === "uk-ghg-4_301_3070_4_1-bcp"), "a scope-shifted copy is never folded");
       const upstream = await preview("3.4", "3.4");
       assert.ok(!("uk-ghg-27_320_3235_14_1" in upstream.optionLabels!), "the container ship upstream is used natively: no pair, no relabel");
       assert.ok(!upstream.foldedOptions!.some((option) => option.factorId === "uk-ghg-SPEND-SIC-49.3-5-d"), "a -d copy is not 3.4's pair");
-      assert.equal(upstream.memberFactorIds, undefined, "3.4 uses factors natively (the container ship), so it carries no membership list");
+      assert.ok(upstream.memberFactorIds!.includes("uk-ghg-SPEND-SIC-49.3-5-u") && !upstream.memberFactorIds!.includes("uk-ghg-SPEND-SIC-49.3-5-d"), "3.4 holds its -u variant and not the downstream -d copy");
     });
   });
 });

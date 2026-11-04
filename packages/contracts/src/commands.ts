@@ -289,6 +289,8 @@ export type CommandKey =
   | "client.factor.alias.set"
   | "factor.applicability.add"
   | "factor.applicability.retire"
+  | "factor.membership.add"
+  | "factor.membership.retire"
   | "client.factor.create"
   | "client.factor.update"
   | "client.factor.archive"
@@ -1237,6 +1239,13 @@ export type CommandInputMap = {
   "factor.applicability.add":{factorId:string;suffixCode:string;reportLabel?:string|null;label?:string|null};
   /** Withhold a category from a base factor's new use, keeping the record. The reason is required, in the command's reason. */
   "factor.applicability.retire":{factorId:string;suffixCode:string};
+  /**
+   * NZC-171: file a DESNZ family under a category - the map that decides which factors a category offers. A level absent is "any".
+   * `categoryCode` null holds the family back (no category exists for it yet). Idempotent; reinstates a retired rule.
+   */
+  "factor.membership.add":{sourceL1:string;sourceL2?:string|null;sourceL3?:string|null;categoryCode?:string|null;note?:string|null};
+  /** Withhold a rule from the map, keeping the record (never deleted). The reason is required, in the command's reason. */
+  "factor.membership.retire":{sourceL1:string;sourceL2?:string|null;sourceL3?:string|null;categoryCode?:string|null};
   "client.factor.create":{jobId:string;scope:string;reportLabel:string;description:string;unit:string;kgco2ePerUnit:number;geography:string;vintageYear:number;source:string;reusable:boolean;evidenceFileName:string|null;evidenceStorageProvider:"local"|"sharepoint"|null;evidenceUrl:string|null;evidenceExternalItemId:string|null;evidenceHash:string|null};
   "client.factor.update":{clientFactorId:string;expectedVersion:number;reportLabel:string;description:string;unit:string;kgco2ePerUnit:number;geography:string;vintageYear:number;source:string;evidenceFileName:string|null;evidenceStorageProvider:"local"|"sharepoint"|null;evidenceUrl:string|null;evidenceExternalItemId:string|null;evidenceHash:string|null};
   "client.factor.archive":{clientFactorId:string;archived:boolean};
@@ -1491,6 +1500,17 @@ const applicabilityKeyIssues = (issues: CommandIssue[], input: { factorId: strin
   required(issues, "factorId", input.factorId);
   required(issues, "suffixCode", input.suffixCode);
   if (text(input.suffixCode) && !/^-[a-z]+$/.test(input.suffixCode.trim())) issues.push({ field: "suffixCode", code: "INVALID", message: "A category suffix is a hyphen and lower-case letters, such as -c." });
+};
+/** NZC-171 - a membership rule names a level 1, optionally narrowed by level 2 and 3, and (when it files) a category in the taxonomy. */
+const membershipRuleIssues = (issues: CommandIssue[], input: { sourceL1: string; sourceL2?: string | null; sourceL3?: string | null; categoryCode?: string | null; note?: string | null }) => {
+  required(issues, "sourceL1", input.sourceL1);
+  for (const field of ["sourceL2", "sourceL3"] as const) {
+    const value = input[field];
+    if (value !== undefined && value !== null && !text(value)) issues.push({ field, code: "INVALID", message: `Give ${field} some text, or leave it out for "any".` });
+  }
+  if (input.sourceL2 == null && input.sourceL3 != null) issues.push({ field: "sourceL3", code: "INVALID", message: "A level 3 needs a level 2." });
+  if (input.categoryCode != null && !emissionCategoryTaxonomy.some((category) => category.code === input.categoryCode)) issues.push({ field: "categoryCode", code: "INVALID", message: "That is not one of the data-entry categories." });
+  if (input.note != null && (typeof input.note !== "string" || input.note.trim().length > 300)) issues.push({ field: "note", code: "TOO_LONG", message: "A note is at most 300 characters." });
 };
 /** JW-14 — a row-state command names the row and the version it acts on. */
 const scopeRowStateIssues = (input: { jobId: string; rowId: string; expectedVersion: number }, context: CommandContext, reasonRequired: boolean) => {
@@ -3487,6 +3507,8 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
    */
   "factor.applicability.add":{key:"factor.applicability.add",label:"Mark a factor applicable under a category",permission:"factor.manage",reasonRequired:false,transaction:"factor applicability (added or reinstated) + audit + outbox + idempotency",auditAction:"factor.applicability.added",validate:(input,context)=>{const issues=baseIssues(context,false);applicabilityKeyIssues(issues,input);for(const [field,value] of [["reportLabel",input.reportLabel],["label",input.label]] as const){if(value===undefined||value===null)continue;if(typeof value!=="string"||value.trim()==="")issues.push({field,code:"REQUIRED",message:"Give the label some text, or leave it out."});else if(value.trim().length>300)issues.push({field,code:"TOO_LONG",message:"A label is at most 300 characters."});}return issues;}},
   "factor.applicability.retire":{key:"factor.applicability.retire",label:"Retire a factor's category",permission:"factor.manage",reasonRequired:true,transaction:"factor applicability retired (never deleted) + audit + outbox + idempotency",auditAction:"factor.applicability.retired",validate:(input,context)=>{const issues=baseIssues(context,true);applicabilityKeyIssues(issues,input);return issues;}},
+  "factor.membership.add":{key:"factor.membership.add",label:"File a factor family under a category",permission:"factor.manage",reasonRequired:false,transaction:"factor category membership (added or reinstated) + audit + outbox + idempotency",auditAction:"factor.membership.added",validate:(input,context)=>{const issues=baseIssues(context,false);membershipRuleIssues(issues,input);return issues;}},
+  "factor.membership.retire":{key:"factor.membership.retire",label:"Retire a factor family's category",permission:"factor.manage",reasonRequired:true,transaction:"factor category membership retired (never deleted) + audit + outbox + idempotency",auditAction:"factor.membership.retired",validate:(input,context)=>{const issues=baseIssues(context,true);membershipRuleIssues(issues,input);return issues;}},
   "client.factor.create":{key:"client.factor.create",label:"Create client factor",permission:"clientfactor.manage",reasonRequired:false,transaction:"client factor + audit + outbox + idempotency",auditAction:"client_factor_created",validate:(input,context)=>{const issues=baseIssues(context,false);for(const [field,value] of [["jobId",input.jobId],["scope",input.scope],["reportLabel",input.reportLabel],["unit",input.unit],["geography",input.geography],["source",input.source]] as const)required(issues,field,value);if(!crpScopeOptions.some(option=>option.value===input.scope))issues.push({field:"scope",code:"INVALID",message:"Select a controlled CRP scope category."});if(typeof input.kgco2ePerUnit!=="number"||!Number.isFinite(input.kgco2ePerUnit)||input.kgco2ePerUnit<0)issues.push({field:"kgco2ePerUnit",code:"INVALID",message:"Factor value must be zero or greater."});if(!Number.isInteger(input.vintageYear)||input.vintageYear<1990||input.vintageYear>2100)issues.push({field:"vintageYear",code:"INVALID",message:"Factor vintage year is invalid."});if(input.evidenceFileName&&(!input.evidenceHash||!input.evidenceStorageProvider))issues.push({field:"evidenceHash",code:"REQUIRED",message:"Evidence files require a storage provider and integrity hash."});return issues;}},
   "client.factor.update":{key:"client.factor.update",label:"Update client factor",permission:"clientfactor.manage",reasonRequired:false,transaction:"versioned client factor + audit + outbox + idempotency",auditAction:"client_factor_updated",validate:(input,context)=>{const issues=baseIssues(context,false);for(const [field,value] of [["clientFactorId",input.clientFactorId],["reportLabel",input.reportLabel],["unit",input.unit],["geography",input.geography],["source",input.source]] as const)required(issues,field,value);if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});if(typeof input.kgco2ePerUnit!=="number"||!Number.isFinite(input.kgco2ePerUnit)||input.kgco2ePerUnit<0)issues.push({field:"kgco2ePerUnit",code:"INVALID",message:"Factor value must be zero or greater."});if(!Number.isInteger(input.vintageYear)||input.vintageYear<1990||input.vintageYear>2100)issues.push({field:"vintageYear",code:"INVALID",message:"Factor vintage year is invalid."});if(input.evidenceFileName&&(!input.evidenceHash||!input.evidenceStorageProvider))issues.push({field:"evidenceHash",code:"REQUIRED",message:"Evidence files require a storage provider and integrity hash."});return issues;}},
   "client.factor.archive":{key:"client.factor.archive",label:"Archive client factor",permission:"clientfactor.manage",reasonRequired:false,transaction:"client factor archived flag + reference guard + audit + outbox",auditAction:"client_factor_archived",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"clientFactorId",input.clientFactorId);if(typeof input.archived!=="boolean")issues.push({field:"archived",code:"INVALID",message:"Archived flag must be true or false."});return issues;}},

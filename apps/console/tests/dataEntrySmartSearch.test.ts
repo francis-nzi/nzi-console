@@ -100,3 +100,25 @@ describe("searchActivityOptions: every word, any order, over the label and its u
     assert.deepEqual(searchActivityOptions(list, ".*"), []);
   });
 });
+
+describe("category membership reaches the form (NZC-171)", () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const read = (path: string) => readFileSync(resolve(here, path), "utf8");
+
+  it("a category with no family of its own shows the scope-wide notice in the quick-add drawer", () => {
+    assert.match(read("../app/jobs/CrpScopeWorkspace.tsx"), /categoryPreview\?\.scopeWideNotice\?<p className="nz-hint" role="note" data-testid="scope-wide-notice">/);
+    assert.match(read("../app/jobs/emissionEntryModel.ts"), /scopeWideNotice\?: string/);
+  });
+
+  it("the Datasets screen shows the unfiled group and the map, and a failed read is said to have failed", () => {
+    const panel = read("../app/datasets/MembershipPanel.tsx");
+    for (const text of ['data-testid="unfiled-group"', "Unfiled: none.", "could not be read", 'state: "failed"', "Held back until their category exists"]) assert.ok(panel.includes(text), text);
+    assert.match(read("../app/datasets/DatasetBoard.tsx"), /<MembershipPanel \/>/);
+    assert.match(read("../app/api/isolated/factor-membership/route.ts"), /export async function GET/);
+  });
+
+  it("the membership commands are routed under factor.manage", () => {
+    assert.match(read("../app/api/isolated/factor-membership/route.ts"), /requireCommandPrincipal\(request, "factor\.membership\.add"\)/);
+    assert.match(read("../app/api/isolated/factor-membership/retire/route.ts"), /requireCommandPrincipal\(request, "factor\.membership\.retire"\)/);
+  });
+});
