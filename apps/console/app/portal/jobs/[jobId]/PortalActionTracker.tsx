@@ -56,7 +56,7 @@ export function PortalActionTrackerPanel({ jobId }: { jobId: string }) {
   return <section className="nz-action-tracker" aria-labelledby="action-tracker-title">
     <header>
       <div><span className="nz-eyebrow">Client-managed engagement plan</span><h2 id="action-tracker-title">Spheres of influence</h2><p>Track delivery of qualitative actions across the 24 recognised levers. Progress percentages describe completion of your actions only; they are not emissions reductions.</p></div>
-      <span className="nz-engagement-badge">Engagement data · not assured emissions</span>
+      <span className="nz-engagement-badge">Engagement data · not verified emissions</span>
     </header>
 
     {surface.readOnly ? <p className="nz-action-empty" role="note">Read-only preview: the client adds and updates their actions here.</p> : <div className="nz-action-add">

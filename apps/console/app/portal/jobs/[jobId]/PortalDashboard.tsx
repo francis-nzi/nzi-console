@@ -96,7 +96,7 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
       if (await surface.sessionEnded(dashRes) || await surface.sessionEnded(reportRes)) return;
       if (!dashRes.ok) { setState({ kind: "failed", message: "Your emissions dashboard could not be loaded." }); return; }
       const dashboard: unknown = await dashRes.json();
-      if (!isPortalAssuredDashboard(dashboard)) { setState({ kind: "failed", message: "The assured figures could not be verified." }); return; }
+      if (!isPortalAssuredDashboard(dashboard)) { setState({ kind: "failed", message: "The verified figures could not be confirmed." }); return; }
       if (!dashboard.published) { setState({ kind: "empty" }); return; }
 
       // Charts from the same published snapshot — identical to the report/PDF.
@@ -132,14 +132,14 @@ export function PortalDashboard({ jobId }: { jobId: string }) {
 
   useEffect(() => { void load(); }, [load]);
 
-  if (state.kind === "loading") return <div className="nz-portal-state loading" role="status"><i>↻</i><div><b>Loading your emissions dashboard</b><span>Reading your latest assured report…</span></div></div>;
+  if (state.kind === "loading") return <div className="nz-portal-state loading" role="status"><i>↻</i><div><b>Loading your emissions dashboard</b><span>Reading your latest verified report…</span></div></div>;
   if (state.kind === "failed") return <div className="nz-portal-state failed" role="alert"><i>!</i><div><b>Your emissions dashboard is temporarily unavailable</b><span>{state.message} No figures have been inferred.</span><button className="nz-btn" onClick={() => void load()}>Try again</button></div></div>;
   if (state.kind === "empty") return (
     <div className="nz-portal-state empty">
       <i>✓</i>
       <div>
-        <b>Your first assured report will appear here</b>
-        <span>Once {org.your("team")} publishes a verified report for this job, your emissions totals, scope split and trend will show on this page — always from the assured figures, never a work-in-progress draft.</span>
+        <b>Your first verified report will appear here</b>
+        <span>Once {org.your("team")} publishes a verified report for this job, your emissions totals, scope split and trend will show on this page — always from the verified figures, never a work-in-progress draft.</span>
       </div>
     </div>
   );
@@ -230,7 +230,7 @@ export function PortalDashboardView({ jobId, state, surroundings, org }: { jobId
 
       {/* 3 · The evidence line: which snapshot, with what data, and that the publication gate passed. Read-only. */}
       <div className="nz-pd-assure" role="note">
-        <span className="al"><b>Reviewed snapshot</b> · evidence state <b>Assured</b></span>
+        <span className="al"><b>Reviewed snapshot</b> · evidence state <b>Verified</b></span>
         <span className="src">{identity ? `${identity.jobNumber}${identity.sources ? ` · ${identity.sources}` : ""} · as at ${asAt}` : `Report version ${dashboard.reportVersionId} · as at ${asAt}`} · evidence {dashboard.dataHash.slice(0, 15)}…</span>
         <span className="tags"><span className="nz-pd-pill">Portal</span><span className="nz-pd-pill passed"><i aria-hidden="true">✓</i> Publication gate passed</span></span>
       </div>
@@ -279,7 +279,7 @@ export function PortalDashboardView({ jobId, state, surroundings, org }: { jobId
       {/* Text/table equivalents — every figure reachable without the charts. */}
       <details className="nz-pd-figures">
         <summary>Every figure as a table</summary>
-        <section className="nz-portal-dash-tables" aria-label="Assured figures">
+        <section className="nz-portal-dash-tables" aria-label="Verified figures">
           <div>
             <h3>Emissions by scope</h3>
             <table className="nz-tbl">

@@ -234,7 +234,7 @@ function ReviewRow({ entry, capabilities, onDone }: {
     {rejecting ? <div className="nz-know-reject">
       <label className="nz-fl"><span>Why is it being rejected?</span>
         <input className="nz-inp" value={reason} onChange={(event) => setReason(event.target.value)}
-          placeholder="e.g. already answered by the entry on assurance wording" /></label>
+          placeholder="e.g. already answered by the entry on verification wording" /></label>
       <div className="nz-know-actions">
         <button type="button" className="nz-btn sm" onClick={() => setRejecting(false)}>Cancel</button>
         <GatedButton className="nz-btn sm danger" blocked={pending !== null || reason.trim() === ""}

@@ -103,7 +103,7 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
     </div>
     <p className="sub" style={{marginTop:0}}>
       Assessed with {org.your("consultant")} on {formatDate(model.assessedOn)} against {model.frameworkLabel} version {model.frameworkVersion}.
-      This is how ready your own reporting is — not a statement that anything has been filed or assured.
+      This is how ready your own reporting is — not a statement that anything has been filed or verified.
     </p>
     <SrsScaleKey ladder={dashboard.ladder}/>
   </div></section>
@@ -189,7 +189,7 @@ function QuestionDrawer({requirement,ideas,canPropose,onClose}:{requirement:SrsD
         <div><dt>Step reached</dt><dd>{requirement.maturity===null?"Not answered in this assessment"
           :<><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}</>}</dd></div>
         <div><dt>Expected</dt><dd>Step {requirement.target}</dd></div>
-        {requirement.source==="auto"?<div><dt>Answered from</dt><dd>Your own assured record</dd></div>:null}
+        {requirement.source==="auto"?<div><dt>Answered from</dt><dd>Your own verified record</dd></div>:null}
       </dl>
     </div>
     <div className="nz-pdv-sec"><h3>Evidence</h3>

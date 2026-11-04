@@ -31,7 +31,7 @@ describe("D — Report & publish is the report's state and Open in Report Studio
     for (const stage of [...REPORT_STAGES, "v7-record" as const]) assert.ok(reportStageNext(stage, false).length > 10, stage);
     assert.match(reportStageNext("in-preparation", true), /freeze the reviewed snapshot in Review & QA/);
     assert.match(reportStageNext("in-preparation", false), /Finish calculation and independent review/);
-    assert.match(reportStageNext("awaiting-review", false), /approve it in Review & QA, under Data assurance/);
+    assert.match(reportStageNext("awaiting-review", false), /approve it in Review & QA, under Data verification/);
     assert.match(reportStageNext("ready-to-validate", false), /validate it in the Report Studio/);
     assert.match(reportStageNext("ready-to-publish", false), /Publish it to the client portal from the Report Studio/);
   });

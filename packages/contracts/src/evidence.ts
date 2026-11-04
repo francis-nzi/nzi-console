@@ -169,7 +169,7 @@ const sum = (rows: ReadonlyArray<{ tco2e: number }>): number => rows.reduce((tot
 export function resolveClientEmissionsEvidence(input: { current: Snapshot | null; prior: Snapshot | null }): ClientEmissionsEvidence {
   const { current, prior } = input;
   if (!current) {
-    const note = "No reviewed snapshot has been issued for this client, so there is no assured figure to show.";
+    const note = "No reviewed snapshot has been issued for this client, so there is no verified figure to show.";
     return {
       state: "empty",
       latest: unavailable(TCO2E, note),
@@ -183,7 +183,7 @@ export function resolveClientEmissionsEvidence(input: { current: Snapshot | null
   const provenanceNote = provenance === null
     ? "Provenance unavailable: this snapshot was issued before factor-set versions were stamped. Re-issue it to stamp them."
     : provenance.source === "migrated_unverified"
-      ? "Provenance migrated, not verified: this stamp was reconstructed after issue, so it is context rather than assurance. The issued report is unaffected."
+      ? "Provenance migrated, not verified: this stamp was reconstructed after issue, so it is context rather than verification. The issued report is unaffected."
       : null;
   const source: FigureSource = { jobId: current.jobId, jobNumber: current.jobNumber, snapshotId: current.id, snapshotVersion: current.version, reportingYear: current.reportingYear };
   const rows = current.measurements;
@@ -224,7 +224,7 @@ export function resolveClientEmissionsEvidence(input: { current: Snapshot | null
       const denominatorDetail = basis?.kind === "site-floor-area"
         ? `${denominator.toLocaleString("en-GB")} m² — the sum of ${basis.sites.length} in-boundary site${basis.sites.length === 1 ? "" : "s"}' floor area (${basis.sites.map((site) => site.name).join(", ")})`
         : `${denominator.toLocaleString("en-GB")} ${target.denominatorUnit} — the reporting-year ${target.metric} recorded on ${current.jobNumber}`;
-      intensity = resolved(total / denominator, unit, overall, [...baseLineage, { title: "Numerator", detail: `${tonnes(total)} assured total` }, { title: "Denominator", detail: denominatorDetail }]);
+      intensity = resolved(total / denominator, unit, overall, [...baseLineage, { title: "Numerator", detail: `${tonnes(total)} verified total` }, { title: "Denominator", detail: denominatorDetail }]);
     }
   }
 

@@ -10,7 +10,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ clie
   return portalPreviewGet(request, async (principal) => {
     const { clientId, jobId } = await params;
     const dashboard = await getPortalAssuredDashboardForStaff(isolatedPool(), principal, clientId, jobId);
-    if (!isPortalAssuredDashboard(dashboard)) return previewJson({ code: "INVALID_ANALYTICS_EVIDENCE", message: "The assured analytics evidence could not be verified." }, 502);
+    if (!isPortalAssuredDashboard(dashboard)) return previewJson({ code: "INVALID_ANALYTICS_EVIDENCE", message: "The verified analytics evidence could not be confirmed." }, 502);
     return previewJson(dashboard);
   });
 }

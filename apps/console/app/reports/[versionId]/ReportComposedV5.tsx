@@ -211,7 +211,7 @@ function Background({ composition, number, editor }: { composition: ReportCompos
     <div className="r5-kicker">{number} · Background</div><h2 className="r5-h2">Background &amp; Organisation</h2>
     <NarrativeSection composition={composition} sectionKey="background" editor={editor}>
       <p>{composition.client} reports its greenhouse gas emissions for the <Tok>{reportingYearLabel(composition)}</Tok> reporting year under the operational control approach{sites > 0 ? <>, across <Tok>{sites} site{sites === 1 ? "" : "s"}</Tok> in its reporting boundary</> : null}.</p>
-      <p>Boundary and methodology decisions are recorded in the standards and methodology section and in the assurance record.</p>
+      <p>Boundary and methodology decisions are recorded in the standards and methodology section and in the verification record.</p>
     </NarrativeSection>
     <div className="r5-kv">
       <div className="r5-kvbox">
@@ -780,17 +780,17 @@ function MethodologySection({ composition, number }: { composition: ReportCompos
   const asAt = composition.chartBasis?.generatedAt;
   const factors = composition.sources?.sets.map((set) => set.label).join(" · ");
   return <>
-    <div className="r5-kicker">{number} · Assurance</div><h2 className="r5-h2">Standards, Methodology &amp; Sign-off</h2>
+    <div className="r5-kicker">{number} · Verification</div><h2 className="r5-h2">Standards, Methodology &amp; Sign-off</h2>
     <div className="r5-kvbox">
       <div className="r5-kr"><span>Framework</span><b>GHG Protocol Corporate Standard</b></div>
       <div className="r5-kr"><span>Emission factors</span><b>{factors || NOT_RECORDED}</b></div>
       <div className="r5-kr"><span>Reporting boundary</span><b>Operational control · in-service sites for {reportingYearLabel(composition)}</b></div>
       <div className="r5-kr"><span>Data quality</span><b>{qualitySummary(composition) ?? NOT_RECORDED}</b></div>
-      <div className="r5-kr"><span>Assurance basis</span><b>{composition.assurance.statement}</b></div>
+      <div className="r5-kr"><span>Verification basis</span><b>{composition.assurance.statement}</b></div>
       <div className="r5-kr"><span>As-at date</span><b>{asAt ? dd(asAt) : period ? dd(period.to) : NOT_RECORDED}</b></div>
     </div>
     <div className="r5-verify"><h4>Basis of preparation</h4>
-      <p>This greenhouse gas emissions report has been prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard. Every figure is derived from {composition.client}&apos;s reviewed measurement snapshot and carries its factor set, version, data hash and as-at date. The platform records who reviewed the measurement; this report is <b>not third-party assured</b>.</p>
+      <p>This greenhouse gas emissions report has been prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard. Every figure is derived from {composition.client}&apos;s reviewed measurement snapshot and carries its factor set, version, data hash and as-at date. The platform records who reviewed the measurement; this report is <b>not third-party verified</b>.</p>
       {omitted.length ? <p>Omitted from this report at the issuer&rsquo;s choice: {omitted.join(", ")}.</p> : null}
     </div>
     <h3 className="r5-h3">Data quality</h3>

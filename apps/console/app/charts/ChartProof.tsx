@@ -9,7 +9,7 @@ export function ChartProof({ target, label }: { target: RenderTarget; label: str
   return (
     <>
       <div className="nz-chart-register-head">
-        <div><span className="nz-eyebrow">Render assurance</span><b>{label}</b><span>Manifest v{validation.manifestVersion} · reviewed snapshot {validation.reviewedSnapshotId}</span></div>
+        <div><span className="nz-eyebrow">Render verification</span><b>{label}</b><span>Manifest v{validation.manifestVersion} · reviewed snapshot {validation.reviewedSnapshotId}</span></div>
         <span className="nz-st est">{target}</span>
         <span className={`nz-st ${validation.valid ? "done" : "nof"}`}>{validation.valid ? "Publication gate passed" : "Publication blocked"}</span>
       </div>

@@ -127,7 +127,7 @@ test("pre-fill answers only what the client's record actually shows", () => {
   assert.ok(scope1, "Scope 1 is answered from the assured footprint");
   assert.equal(scope1!.maturity, 3);
   assert.equal(scope1!.evidence?.kind, "data");
-  assert.match(scope1!.evidence!.note, /2 assured reporting years/);
+  assert.match(scope1!.evidence!.note, /2 verified reporting years/);
   assert.ok(filled.find((entry) => entry.requirementId === "m2"), "targets are answered from the target model");
   // Nothing is claimed for a requirement the record does not answer.
   assert.ok(!filled.some((entry) => entry.requirementId === "g1"));

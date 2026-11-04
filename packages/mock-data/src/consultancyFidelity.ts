@@ -29,7 +29,7 @@ export const retainerOverBudgetDetail: ConsultancyDetail = {
 export const fixedScopeDetail: ConsultancyDetail = {
   jobId: "719",
   engagementType: "fixed_scope",
-  scope: "Net-zero transition plan: baseline review, target setting, roadmap, board pack, assurance-readiness memo.",
+  scope: "Net-zero transition plan: baseline review, target setting, roadmap, board pack, verification-readiness memo.",
   hoursBudget: 140,
   hoursUsed: 96,
   nextReviewDate: "2026-09-15",
@@ -75,7 +75,7 @@ export const fixedScopeDeliverables: ConsultancyDeliverable[] = [
     reworkNote: "Add a methodology annex and per-scope marginal abatement cost curve before re-submission.",
   }),
   deliverable({
-    id: "dlv-assurance", title: "Assurance-readiness memo", sortOrder: 5, status: "planned",
+    id: "dlv-assurance", title: "Verification-readiness memo", sortOrder: 5, status: "planned",
     dueDate: "2026-09-30",
   }),
 ];

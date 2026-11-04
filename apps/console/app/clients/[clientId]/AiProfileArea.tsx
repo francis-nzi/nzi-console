@@ -25,7 +25,7 @@ export function AiProfileArea({ workspace }: { workspace: ClientWorkspaceReadMod
     { label: "Certifications", value: (profile.certifications ?? []).join(" · "), why: "what it already holds" },
     { label: "Primary Scope 3 categories", value: (profile.primaryScope3Categories ?? []).join(" · "), why: "where its value-chain emissions sit" },
     { label: "Sites in the boundary", value: sites.length ? `${sites.length} recorded` : "", why: "the operational emissions" },
-    { label: "Assured reporting years", value: history.length ? `${history.length} year${history.length === 1 ? "" : "s"}` : "", why: "the measured position" },
+    { label: "Verified reporting years", value: history.length ? `${history.length} year${history.length === 1 ? "" : "s"}` : "", why: "the measured position" },
     { label: "Forward targets", value: targets.model ? "Set" : "", why: "the commitment to advise against" },
     { label: "Named contacts", value: contacts.length ? `${contacts.length} active` : "", why: "who the advice is for" },
   ];
@@ -47,7 +47,7 @@ export function AiProfileArea({ workspace }: { workspace: ClientWorkspaceReadMod
             </div>)}
           </div>
           <div className="nz-card-b">
-            <p className="nz-maps">Every input here is a recorded fact from this client&apos;s own record — the compliance context on the client, its sites, its assured years and its targets. Nothing here is inferred.</p>
+            <p className="nz-maps">Every input here is a recorded fact from this client&apos;s own record — the compliance context on the client, its sites, its verified years and its targets. Nothing here is inferred.</p>
           </div>
         </section>
       </div>
@@ -56,7 +56,7 @@ export function AiProfileArea({ workspace }: { workspace: ClientWorkspaceReadMod
         <section className="nz-panel">
           <CardHead eyebrow="Not available yet" title="Advisory output" right={<span className="nz-st need">Not built</span>} />
           <div className="nz-card-b">
-            <p className="sub" style={{ margin: "8px 0" }}>No model integration exists in this platform, so no advisory content is produced. When it is built, it will be <b>grounded and advisory only</b>: drawn from the record above, never from the assured figures themselves, and always marked as advice rather than evidence.</p>
+            <p className="sub" style={{ margin: "8px 0" }}>No model integration exists in this platform, so no advisory content is produced. When it is built, it will be <b>grounded and advisory only</b>: drawn from the record above, never from the verified figures themselves, and always marked as advice rather than evidence.</p>
             <p className="nz-maps">Report narrative already carries a source label (default / AI-drafted / client-edited) so a reader can tell generated prose from recorded fact. The same separation applies here.</p>
           </div>
         </section>

@@ -22,8 +22,8 @@ test.describe("Portal A2-lite — qualitative action tracker", () => {
 
     const baselineBefore = await (await page.request.get(`/api/portal/jobs/${job!.id}/dashboard`)).json() as { published?: boolean; total?: number; dataHash?: string };
     expect(baselineBefore.published, "A2 staging job must have an assured published baseline").toBe(true);
-    await expect(page.locator(".nz-portal-dash-head")).toContainText("Assured emissions");
-    await expect(page.locator(".nz-action-tracker")).toContainText("Engagement data · not assured emissions");
+    await expect(page.locator(".nz-portal-dash-head")).toContainText("Verified emissions");
+    await expect(page.locator(".nz-action-tracker")).toContainText("Engagement data · not verified emissions");
     await expect(page.locator(".nz-action-tracker details.nz-lever")).toHaveCount(24);
     await expect(page.locator(".nz-spheres > section")).toHaveCount(3);
 
