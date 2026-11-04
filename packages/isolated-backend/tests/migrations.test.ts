@@ -24,6 +24,7 @@ const matrixV10 = readFileSync(resolve(here, "../migrations/0157_permission_matr
 const staffCredentialReset = readFileSync(resolve(here, "../migrations/0203_staff_credential_reset.sql"), "utf8");
 const messageNotifications = readFileSync(resolve(here, "../migrations/0206_portal_message_notifications.sql"), "utf8");
 const firstName = readFileSync(resolve(here, "../migrations/0207_first_name.sql"), "utf8").replace(/\r\n/g, "\n");
+const verificationWording = readFileSync(resolve(here, "../migrations/0208_verification_wording.sql"), "utf8").replace(/\r\n/g, "\n");
 const matrixV11 = readFileSync(resolve(here, "../migrations/0204_permission_matrix_v11.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
@@ -374,6 +375,17 @@ describe("isolated Postgres migrations", () => {
     assert.ok(firstName.includes("'Hello {{displayName}}', 'Hello {{firstName}}'"));
     assert.match(firstName, /version = t\.version \+ 1/);
     assert.match(firstName, /'migration:0207'/);
+  });
+  it("rewrites stored assurance wording to verification by exact string, audited, lifting the published-framework triggers only inside its own transaction (0208)", () => {
+    for (const clause of ["BEGIN;", "COMMIT;", "ALTER TABLE nzi_console.srs_maturity_levels DISABLE TRIGGER srs_maturity_levels_follow_their_draft", "ALTER TABLE nzi_console.srs_requirements DISABLE TRIGGER srs_requirements_follow_their_draft",
+      "ALTER TABLE nzi_console.srs_maturity_levels ENABLE TRIGGER srs_maturity_levels_follow_their_draft", "ALTER TABLE nzi_console.srs_requirements ENABLE TRIGGER srs_requirements_follow_their_draft",
+      "pg_get_functiondef('nzi_console.provision_organisation(text)'::regprocedure)", "'migration:0208'", "version = t.version + 1"]) assert.ok(verificationWording.includes(clause), clause);
+    // Every DISABLE has its ENABLE after it and before the commit: the lift never outlives the transaction.
+    assert.equal((verificationWording.match(/DISABLE TRIGGER/g) ?? []).length, (verificationWording.match(/ ENABLE TRIGGER/g) ?? []).length);
+    assert.ok(verificationWording.lastIndexOf("DISABLE TRIGGER") < verificationWording.indexOf(" ENABLE TRIGGER"));
+    assert.ok(verificationWording.lastIndexOf(" ENABLE TRIGGER") < verificationWording.lastIndexOf("COMMIT;"));
+    // Wording only, matched exactly: no identifier column (key, nzi_source_key) is written, and updated_by is left as it was.
+    assert.doesNotMatch(verificationWording, /SET[^;]*\b(key|nzi_source_key|updated_by)\s*=/);
   });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });

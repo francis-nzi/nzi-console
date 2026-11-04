@@ -42,13 +42,15 @@ describe("the verification-wording guard", () => {
     ]) assert.equal(hits(line), 0, line);
   });
 
-  it("exempts only what is not carbon verification or is held for a decision, each with its reason", () => {
+  it("exempts only identifiers and the pinned report layouts, each with its reason - no screen, no legal text, no platform page", () => {
     for (const entry of ASSURANCE_SANCTIONED as Array<{ why: string }>) assert.ok(entry.why.trim().length > 25, entry.why);
-    assert.equal(isAssuranceSanctioned("apps/console/app/platform/PlatformBoard.tsx", "anything assurance"), true, "platform security/audit assurance");
-    assert.equal(isAssuranceSanctioned("apps/console/app/portal/portalTermsContent.ts", "x assured"), true, "legal text");
-    assert.equal(isAssuranceSanctioned("apps/console/app/admin/suppliers/SuppliersBoard.tsx", 'placeholder="e.g. Limited assurance"'), true);
-    for (const path of ["apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx", "packages/contracts/src/reportComposition.ts", "apps/console/app/reports/[versionId]/ReportComposedV5.tsx"]) {
-      assert.equal(isAssuranceSanctioned(path, "<b>Assured</b>"), false, path);
+    // Pinned composed@1-4 wording (an issued report never moves).
+    assert.equal(isAssuranceSanctioned("apps/console/app/reports/[versionId]/ReportComposedView.tsx", "<b>Assured</b>"), true);
+    assert.equal(isAssuranceSanctioned("packages/contracts/src/reportComposition.ts", "FY${y} assured emissions: ${t}"), true);
+    assert.equal(isAssuranceSanctioned("packages/contracts/src/reportComposition.ts", '<b>Assured</b> elsewhere in the file'), false, "the exemption is by line, not the whole file");
+    for (const path of ["apps/console/app/platform/PlatformBoard.tsx", "apps/console/app/portal/portalTermsContent.ts", "apps/console/app/admin/suppliers/SuppliersBoard.tsx",
+      "apps/console/app/portal/jobs/[jobId]/PortalDashboard.tsx", "apps/console/app/reports/[versionId]/ReportComposedV5.tsx", "packages/charts/src/SrsLadder.tsx"]) {
+      assert.equal(isAssuranceSanctioned(path, "<b>Assured</b> Limited assurance"), false, path);
     }
   });
 

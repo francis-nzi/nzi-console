@@ -22,7 +22,7 @@ export const PORTAL_TERMS: ReadonlyArray<{ title: string; body: string }> = [
   },
   {
     title: "5. Reported figures",
-    body: "Figures shown in the portal are drawn from assured, published report versions. Draft or in-progress values are never shown as reported results.",
+    body: "Figures shown in the portal are drawn from verified, published report versions. Draft or in-progress values are never shown as reported results.",
   },
   {
     title: "6. Limitation of liability",

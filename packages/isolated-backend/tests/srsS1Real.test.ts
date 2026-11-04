@@ -236,7 +236,7 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
 
     it("is admin.lookups: a consultant cannot version the framework, and every step is audited", async () => {
       await assert.rejects(createSrsFrameworkDraft(database.pool, {}, context("consultant")), /admin\.lookups|permission|not allowed/i);
-      const actions = (await q<{ action: string }>(`SELECT DISTINCT action FROM nzi_console.audit_events WHERE action LIKE 'srs_framework_%'`)).map((row) => row.action).sort();
+      const actions = (await q<{ action: string }>(`SELECT DISTINCT action FROM nzi_console.audit_events WHERE action LIKE 'srs_framework_%' AND actor_id <> 'migration:0208'`)).map((row) => row.action).sort();
       assert.deepEqual(actions, ["srs_framework_draft_created", "srs_framework_maturity_updated", "srs_framework_published", "srs_framework_requirement_upserted"]);
     });
   });
