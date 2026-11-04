@@ -75,7 +75,8 @@ describe("password reset (phase 4-1), against a real database", { skip: TEST_DAT
     assert.equal(more.length, 0);
     assert.deepEqual([email!.template_code, email!.to_email], ["password.reset.staff", "sam@netzero.international"]);
     assert.match(email!.text_body, new RegExp(`${ORIGIN.replace(/\./g, "\\.")}/reset-password#token=[A-Za-z0-9_-]{43}`));
-    assert.match(email!.text_body, /^Hello Sam Adviser,/);
+    assert.match(email!.text_body, /^Hello Sam,/, "greeted by first name (0207), not the full name");
+    assert.doesNotMatch(email!.text_body, /Adviser/);
     const token = tokenIn(email!.text_body);
     const [row] = await q(`SELECT * FROM nzi_console.password_reset_tokens WHERE reset_id = $1`, [email!.correlation_id]);
     assert.ok(row, "the email is correlated to its reset row");

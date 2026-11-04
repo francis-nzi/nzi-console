@@ -1,4 +1,4 @@
-import { DEFAULT_STAFF_ROLE } from "@nzi/contracts";
+import { DEFAULT_STAFF_ROLE, firstWordOf } from "@nzi/contracts";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { sealMembershipRow } from "./piiWriteThrough";
 
@@ -287,17 +287,17 @@ export async function importTeamMembers(
     for (const member of input.members) {
       let current = byId.get(member.userId);
       if (!current && input.createMissing) {
-        const inserted = await db.query<{ display_name: string | null; email: string | null }>(
-          `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, email)
-           VALUES ($1,$2,$3,'active',$4,$5)
+        const inserted = await db.query<{ display_name: string | null; first_name: string | null; email: string | null }>(
+          `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, first_name, email)
+           VALUES ($1,$2,$3,'active',$4,$6,$5)
            ON CONFLICT (organisation_id, user_id) DO NOTHING
-           RETURNING display_name, email`,
+           RETURNING display_name, first_name, email`,
           [input.organisationId, member.userId, LEAST_PRIVILEGE_ROLE, member.displayName.trim(),
-            member.email?.trim().toLowerCase() || null]);
+            member.email?.trim().toLowerCase() || null, firstWordOf(member.displayName)]);
         // Sealed from what was written, so a conflict that wrote nothing seals nothing (NZC-119).
         if (inserted.rows[0]) {
           await sealMembershipRow({ db, organisationId: input.organisationId, actorId: input.actorId },
-            { userId: member.userId, displayName: inserted.rows[0].display_name, email: inserted.rows[0].email });
+            { userId: member.userId, displayName: inserted.rows[0].display_name, firstName: inserted.rows[0].first_name, email: inserted.rows[0].email });
         }
         created += 1;
         continue;
@@ -306,12 +306,13 @@ export async function importTeamMembers(
       const displayName = member.displayName.trim();
       const email = member.email?.trim().toLowerCase() || null;
       if (current.named && current.displayName === displayName && current.email === email) { unchanged += 1; continue; }
-      await db.query(
-        `UPDATE nzi_console.memberships SET display_name=$3, email=$4
-          WHERE organisation_id=$1 AND user_id=$2`,
-        [input.organisationId, member.userId, displayName, email]);
+      // A first name already held stays (it may have been edited); one not held yet takes the default (0207).
+      const renamed = await db.query<{ first_name: string | null }>(
+        `UPDATE nzi_console.memberships SET display_name=$3, email=$4, first_name=coalesce(first_name,$5)
+          WHERE organisation_id=$1 AND user_id=$2 RETURNING first_name`,
+        [input.organisationId, member.userId, displayName, email, firstWordOf(displayName)]);
       await sealMembershipRow({ db, organisationId: input.organisationId, actorId: input.actorId },
-        { userId: member.userId, displayName, email });
+        { userId: member.userId, displayName, firstName: renamed.rows[0]?.first_name ?? null, email });
       updated += 1;
     }
 

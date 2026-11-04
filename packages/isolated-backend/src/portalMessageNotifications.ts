@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { FIRST_NAME_FALLBACK } from "@nzi/contracts";
+import { portalUserFirstNameSql, staffFirstNameSql } from "./addressName";
 import { EmailValidationError } from "./email";
 import type { Queryable } from "./postgres";
 import { sendTemplatedEmail, TemplatedEmailError } from "./templatedEmail";
@@ -94,12 +96,12 @@ export async function scanMessageNotifications(db: Queryable, input: { organisat
   return summary;
 }
 
-type ClientRecipient = { portal_user_id: string; email: string; display_name: string; consent: "granted" | "declined" | "unknown"; held_job: string | null };
+type ClientRecipient = { portal_user_id: string; email: string; display_name: string; first_name: string | null; consent: "granted" | "declined" | "unknown"; held_job: string | null };
 
 async function notifyClient(db: Queryable, organisationId: string, origin: string, row: DueRow): Promise<{ emailed: number; blocked: number; noRecipient: boolean }> {
   // Who can see the thread now, and what consent their address carries now - read fresh, not remembered from when the message was written.
   const { rows: candidates } = await db.query<ClientRecipient>(
-    `SELECT u.portal_user_id, u.email_normalized AS email, u.display_name,
+    `SELECT u.portal_user_id, u.email_normalized AS email, u.display_name, ${portalUserFirstNameSql("u")} AS first_name,
             CASE WHEN EXISTS (SELECT 1 FROM nzi_console.client_contacts k WHERE k.organisation_id = u.organisation_id AND k.client_id = u.client_id AND k.status = 'active'
                                  AND lower(k.email) = lower(u.email_normalized) AND k.email_consent = 'declined') THEN 'declined'
                  WHEN EXISTS (SELECT 1 FROM nzi_console.client_contacts k WHERE k.organisation_id = u.organisation_id AND k.client_id = u.client_id AND k.status = 'active'
@@ -116,7 +118,8 @@ async function notifyClient(db: Queryable, organisationId: string, origin: strin
     if (person.consent !== "granted") { blocked += 1; continue; }
     await sendTemplatedEmail(db, organisationId, {
       templateCode: CLIENT_MESSAGE_TEMPLATE, to: person.email, consoleOrigin: origin,
-      vars: { displayName: person.display_name?.trim() || "there", clientName: row.client_name, threadLink: portalLink(origin, row.job_id ?? person.held_job, row.thread_id) },
+      // Greeted by first name; the full name stays available to wording that still uses it (0207).
+      vars: { firstName: person.first_name || FIRST_NAME_FALLBACK, displayName: person.display_name?.trim() || FIRST_NAME_FALLBACK, clientName: row.client_name, threadLink: portalLink(origin, row.job_id ?? person.held_job, row.thread_id) },
       correlationId: row.notification_id, idempotencyKey: `${CLIENT_MESSAGE_TEMPLATE}:${row.notification_id}:${person.portal_user_id}`,
     });
     emailed += 1;
@@ -126,12 +129,12 @@ async function notifyClient(db: Queryable, organisationId: string, origin: strin
 
 async function notifyStaff(db: Queryable, organisationId: string, origin: string, row: DueRow): Promise<{ emailed: number; blocked: number; noRecipient: boolean }> {
   const recipient = row.owner_id ?? row.crm_user_id;
-  const member = recipient ? (await db.query<{ email: string | null; display_name: string | null }>(
-    `SELECT email, display_name FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2 AND status = 'active'`, [organisationId, recipient])).rows[0] : undefined;
+  const member = recipient ? (await db.query<{ email: string | null; first_name: string | null }>(
+    `SELECT m.email, ${staffFirstNameSql("m")} AS first_name FROM nzi_console.memberships m WHERE m.organisation_id = $1 AND m.user_id = $2 AND m.status = 'active'`, [organisationId, recipient])).rows[0] : undefined;
   if (!member?.email) return { emailed: 0, blocked: 0, noRecipient: true };
   await sendTemplatedEmail(db, organisationId, {
     templateCode: STAFF_MESSAGE_TEMPLATE, to: member.email, consoleOrigin: origin,
-    vars: { firstName: member.display_name?.trim().split(/\s+/)[0] || "there", clientName: row.client_name, threadLink: `${origin}/clients/${encodeURIComponent(row.client_id)}?area=portal` },
+    vars: { firstName: member.first_name || FIRST_NAME_FALLBACK, clientName: row.client_name, threadLink: `${origin}/clients/${encodeURIComponent(row.client_id)}?area=portal` },
     correlationId: row.notification_id, idempotencyKey: `${STAFF_MESSAGE_TEMPLATE}:${row.notification_id}`,
   });
   return { emailed: 1, blocked: 0, noRecipient: false };

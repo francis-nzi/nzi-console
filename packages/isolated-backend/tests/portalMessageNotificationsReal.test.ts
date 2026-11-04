@@ -119,7 +119,8 @@ describe("message notifications: debounced, consent-gated, notify-only", { skip:
     const [email, ...more] = await mails("message.notification");
     assert.equal(more.length, 0, "three replies sent more than one email");
     assert.equal(email!.to_email, "alice@client.example");
-    assert.match(email!.text_body, /Hello Alice Client,/);
+    assert.match(email!.text_body, /Hello Alice,/, "greeted by first name (0207), not the full name");
+    assert.doesNotMatch(email!.text_body, /Alice Client/);
     assert.match(email!.text_body, /new message for Example Manufacturing Ltd/);
     assert.match(email!.text_body, new RegExp(`${ORIGIN.replace(/\./g, "\\.")}/portal/jobs/${JOB}/messages\\?thread=${threadId}`), "a deep link to the conversation");
     for (const text of [email!.text_body, email!.html_body, email!.subject]) assert.ok(!/reviewed|Details inside|another|One more/.test(text), "message content in the email");
@@ -146,6 +147,31 @@ describe("message notifications: debounced, consent-gated, notify-only", { skip:
     assert.deepEqual(await scan(), { due: 1, emailed: 1, blockedNoConsent: 2, noRecipient: 0, refused: 0 });
     assert.equal((await mails("message.notification")).at(-1)!.to_email, "bob@client.example");
     await setConsent("alice@client.example", "granted");
+  });
+
+  it("people are greeted by the first name they are held under (0207): a contact's first name beats the first word of the portal name; the adviser's own first name beats the first word of theirs", async () => {
+    const threadId = (await q(`SELECT thread_id FROM nzi_console.portal_threads LIMIT 1`))[0]!.thread_id as string;
+    await db.query(`UPDATE nzi_console.client_contacts SET first_name = 'Ally' WHERE contact_id = 'k-alice'`);
+    await db.query(`UPDATE nzi_console.memberships SET first_name = 'Olly' WHERE user_id = $1`, [OWNER]);
+    try {
+      await postClientMessage(database.pool, { clientId: CLIENT, threadId, body: "Greeting check." }, staff(OWNER));
+      await windowPasses();
+      await scan();
+      const toAlice = (await mails("message.notification")).filter((m) => m.to_email === "alice@client.example").at(-1)!;
+      assert.match(toAlice.text_body, /^Hello Ally,/);
+      assert.match(toAlice.html_body, />Hello Ally,</, "the HTML part greets the same way");
+      assert.ok(![toAlice.text_body, toAlice.html_body, toAlice.subject].some((text) => text.includes("Alice")), "the full name is not used to address her");
+      await postPortalMessage(database.pool, { clientId: CLIENT, threadId, body: "Reply for the adviser." }, portal(ALICE));
+      await windowPasses();
+      await scan();
+      const toAdviser = (await mails("portal.message.staff-notification")).at(-1)!;
+      assert.equal(toAdviser.to_email, "olive@netzero.international", "the thread's owner");
+      assert.match(toAdviser.text_body, /^Hello Olly,/);
+      assert.doesNotMatch(toAdviser.text_body, /Olive/);
+    } finally {
+      await db.query(`UPDATE nzi_console.client_contacts SET first_name = NULL WHERE contact_id = 'k-alice'`);
+      await db.query(`UPDATE nzi_console.memberships SET first_name = NULL WHERE user_id = $1`, [OWNER]);
+    }
   });
 
   it("a new burst after the window is a new notification: one more email, not a trickle", async () => {

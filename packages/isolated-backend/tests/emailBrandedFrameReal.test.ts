@@ -19,7 +19,7 @@ import { sendTemplatedEmail } from "../src/templatedEmail";
 const ORG = "brand-org";
 const ORIGIN = "https://console.example.test";
 const KEYED = { NZI_DATABASE_BOUNDARY: "isolated-non-production", NEXT_PUBLIC_APP_ENV: "staging", RESEND_API_KEY: "re_test_0123456789abcdef", EMAIL_FROM: "Net Zero International <no-reply@netzero.international>" };
-const RESET = { displayName: "Sam Adviser", resetLink: "https://console.example.test/reset#token=abc", expiresAt: "17:00 (UK time)" };
+const RESET = { firstName: "Sam", displayName: "Sam Adviser", resetLink: "https://console.example.test/reset#token=abc", expiresAt: "17:00 (UK time)" };
 
 describe("the house email signature on the send path (phase 5-1), against a real database", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;

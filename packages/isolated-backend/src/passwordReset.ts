@@ -1,6 +1,8 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { FIRST_NAME_FALLBACK } from "@nzi/contracts";
 import type { PoolLike, Queryable } from "./postgres";
 import { withAuthTransaction, withTenantWrite } from "./postgres";
+import { portalUserFirstName, staffFirstName } from "./addressName";
 import { hashPassword } from "./credentials";
 import { sendTemplatedEmail } from "./templatedEmail";
 
@@ -113,10 +115,13 @@ export async function requestPasswordReset(
   try {
     // The email is the console role's to queue (it renders the organisation's wording and footer); the token is the
     // authentication role's to hold. Two transactions, so a send that fails withdraws the link below.
-    await withTenantWrite(pool, input.organisationId, (db) => sendTemplatedEmail(db, input.organisationId, {
+    await withTenantWrite(pool, input.organisationId, async (db) => sendTemplatedEmail(db, input.organisationId, {
       templateCode: input.principal === "staff" ? "password.reset.staff" : "password.reset.portal", consoleOrigin: origin.origin,
       to: issued.account.email,
-      vars: { displayName: issued.account.displayName ?? "there", resetLink: resetLink(origin.origin, input.principal, issued.token), expiresAt: expiryForPeople(issued.expiresAt) },
+      // Greeted by first name (0207): read here, as the console role — the authentication role does not read contacts.
+      vars: { displayName: issued.account.displayName ?? "there",
+        firstName: (input.principal === "staff" ? await staffFirstName(db, input.organisationId, issued.account.subjectId) : await portalUserFirstName(db, input.organisationId, issued.account.subjectId)) ?? FIRST_NAME_FALLBACK,
+        resetLink: resetLink(origin.origin, input.principal, issued.token), expiresAt: expiryForPeople(issued.expiresAt) },
       correlationId: issued.resetId, idempotencyKey: `password.reset:${issued.resetId}`,
     }));
   } catch {

@@ -1,6 +1,7 @@
 import { messageContentFor, messageTemplateDefinition, renderMessage, type MessageContent } from "./messageTemplates";
 import { strategyDeadline, type ClientStrategy, type StrategyDeadline, type StrategyStatus } from "./reductionStrategies";
 import { dateOnly, londonDayOf, utcDay } from "./dayValues";
+import { greetingName } from "./firstName";
 
 /**
  * What a deadline reminder says, and who is allowed to receive it.
@@ -11,11 +12,12 @@ import { dateOnly, londonDayOf, utcDay } from "./dayValues";
  */
 
 /** Who may be written to, and why that decision is safe to act on. */
-export type ReminderRecipient = { email: string; name: string };
+export type ReminderRecipient = { email: string; name: string; /** How they are greeted (0207); absent, the first word of `name`. */ firstName?: string | null };
 
 export type ClientContactLike = {
   email: string | null;
   fullName: string;
+  firstName?: string | null;
   status: "active" | "inactive";
   emailConsent: "unknown" | "granted" | "declined";
 };
@@ -37,7 +39,7 @@ export function reminderRecipients(contacts: readonly ClientContactLike[]): Remi
     if (contact.emailConsent !== "granted") continue;
     const email = (contact.email ?? "").trim().toLowerCase();
     if (email === "" || !email.includes("@")) continue;
-    if (!byEmail.has(email)) byEmail.set(email, { email, name: contact.fullName });
+    if (!byEmail.has(email)) byEmail.set(email, { email, name: contact.fullName, firstName: contact.firstName ?? null });
   }
   return [...byEmail.values()].sort((a, b) => a.email.localeCompare(b.email));
 }
@@ -76,7 +78,7 @@ export function reminderMessage(input: {
   // organisation name — the worker runs as nzi_console_worker, which cannot read the organisation profile.
   const definition = messageTemplateDefinition(reminderTemplateKey(input.kind))!;
   return renderMessage(messageContentFor(definition, template), {
-    firstName: firstName(input.recipient.name),
+    firstName: greetingName({ firstName: input.recipient.firstName, fullName: input.recipient.name }),
     clientName: input.clientName,
     strategyTitle: input.strategyTitle,
     ownerLine: input.owner.trim() === "" ? "" : `\nOwner: ${input.owner.trim()}`,
@@ -92,8 +94,6 @@ function formatUkDate(value: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
-
-const firstName = (name: string): string => name.trim().split(/\s+/)[0] || "there";
 
 /**
  * Everything the worker needs to claim one reminder, derived in one place so the scan and
@@ -185,7 +185,7 @@ export function dueReminderTiming(
 }
 
 /** The owner as the scan reads them: the action's `owner_contact_id`, joined to the contact. Null: no owner chosen. */
-export type ReminderOwner = { contactId: string; fullName: string; email: string | null; status: string; emailConsent: string } | null;
+export type ReminderOwner = { contactId: string; fullName: string; firstName?: string | null; email: string | null; status: string; emailConsent: string } | null;
 
 /** Why an owed reminder cannot go (R3) — surfaced to staff, never a send to nobody. */
 export type ReminderBlock = "no-owner" | "owner-inactive" | "no-email" | "no-consent";
@@ -200,7 +200,7 @@ export function dueReminderRecipient(owner: ReminderOwner): { ok: true; contactI
   const email = (owner.email ?? "").trim().toLowerCase();
   if (email === "" || !email.includes("@")) return { ok: false, why: "no-email" };
   if (owner.emailConsent !== "granted") return { ok: false, why: "no-consent" };
-  return { ok: true, contactId: owner.contactId, email, firstName: firstName(owner.fullName) };
+  return { ok: true, contactId: owner.contactId, email, firstName: greetingName({ firstName: owner.firstName, fullName: owner.fullName }) };
 }
 
 export const reminderBlockLabels: Record<ReminderBlock, string> = {

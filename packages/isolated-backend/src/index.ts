@@ -3,6 +3,7 @@ import { TenantContextError, VersionConflictError } from "./errors";
 export * from "./databaseBoundary";
 export * from "./errors";
 export * from "./auth";
+export { portalUserFirstName, staffFirstName } from "./addressName";
 export * from "./credentials";
 export * from "./login";
 export * from "./staffEnrolment";

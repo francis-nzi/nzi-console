@@ -2,12 +2,12 @@
 // and the contact commands. Every write bumps the version and appends a history row;
 // nothing is ever deleted.
 import { randomUUID } from "node:crypto";
-import { clientContactRoles, type ClientContactReadModel, type ClientContactRole, type ClientContactWriteFields, type CommandContext, type ContactConsentState } from "@nzi/contracts";
+import { callName, clientContactRoles, firstNameToStore, firstWordOf, type ClientContactReadModel, type ClientContactRole, type ClientContactWriteFields, type CommandContext, type ContactConsentState } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 import { sealClientContactRow, sealContactVersionSnapshot } from "./piiWriteThrough";
 
 export type ClientContactRow = {
-  contact_id: string; client_id: string; full_name: string; job_title: string | null; email: string | null; phone: string | null;
+  contact_id: string; client_id: string; full_name: string; first_name: string | null; job_title: string | null; email: string | null; phone: string | null;
   is_primary: boolean; roles: string[]; status: "active" | "inactive"; version: number; updated_at: Date | string; updated_by: string;
   email_consent: ContactConsentState;
 };
@@ -18,17 +18,17 @@ export const normaliseContactRoles = (roles: readonly string[]): ClientContactRo
 
 export function mapClientContact(row: ClientContactRow): ClientContactReadModel {
   return {
-    id: row.contact_id, clientId: row.client_id, fullName: row.full_name, jobTitle: row.job_title, email: row.email, phone: row.phone,
+    id: row.contact_id, clientId: row.client_id, fullName: row.full_name, firstName: callName({ firstName: row.first_name, fullName: row.full_name }), jobTitle: row.job_title, email: row.email, phone: row.phone,
     isPrimary: row.is_primary, roles: normaliseContactRoles(row.roles ?? []), status: row.status, version: row.version,
     updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at), updatedBy: row.updated_by,
     emailConsent: row.email_consent ?? "unknown",
   };
 }
 
-export const CLIENT_CONTACT_COLUMNS = "contact_id,client_id,full_name,job_title,email,phone,is_primary,roles,status,version,updated_at,updated_by,email_consent";
+export const CLIENT_CONTACT_COLUMNS = "contact_id,client_id,full_name,first_name,job_title,email,phone,is_primary,roles,status,version,updated_at,updated_by,email_consent";
 
 export async function recordContactVersion(db: Queryable, context: CommandContext, row: ClientContactRow): Promise<void> {
-  const snapshot = JSON.stringify({ fullName: row.full_name, jobTitle: row.job_title, email: row.email, phone: row.phone, isPrimary: row.is_primary, roles: normaliseContactRoles(row.roles ?? []), status: row.status });
+  const snapshot = JSON.stringify({ fullName: row.full_name, firstName: row.first_name, jobTitle: row.job_title, email: row.email, phone: row.phone, isPrimary: row.is_primary, roles: normaliseContactRoles(row.roles ?? []), status: row.status });
   // Sealed before the insert, not after it: the history table is append-only (0067 revokes UPDATE from
   // every runtime role), so the ciphertext has to be part of the row rather than a correction to it.
   // Under the contact's own key, so one shred reaches the live record and every version of it (NZC-120).
@@ -55,9 +55,11 @@ export async function demoteOtherPrimary(db: Queryable, context: CommandContext,
 export async function insertClientContact(db: Queryable, context: CommandContext, clientId: string, fields: ClientContactWriteFields): Promise<ClientContactRow> {
   if (fields.isPrimary) await demoteOtherPrimary(db, context, clientId, null);
   const inserted = await db.query<ClientContactRow>(
-    `INSERT INTO nzi_console.client_contacts (organisation_id,contact_id,client_id,full_name,job_title,email,phone,is_primary,roles,created_by,updated_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::text[],$10,$10) RETURNING ${CLIENT_CONTACT_COLUMNS}`,
-    [context.organisationId, randomUUID(), clientId, fields.fullName.trim(), clean(fields.jobTitle), clean(fields.email), clean(fields.phone), fields.isPrimary, normaliseContactRoles(fields.roles), context.actorId],
+    `INSERT INTO nzi_console.client_contacts (organisation_id,contact_id,client_id,full_name,first_name,job_title,email,phone,is_primary,roles,created_by,updated_by)
+     VALUES ($1,$2,$3,$4,$11,$5,$6,$7,$8,$9::text[],$10,$10) RETURNING ${CLIENT_CONTACT_COLUMNS}`,
+    // The first name is the last parameter: not offered, or offered blank, it is the default from the full name (0207); offered, what was typed.
+    [context.organisationId, randomUUID(), clientId, fields.fullName.trim(), clean(fields.jobTitle), clean(fields.email), clean(fields.phone), fields.isPrimary, normaliseContactRoles(fields.roles), context.actorId,
+      firstNameToStore(fields.firstName ?? "", fields.fullName) ?? null],
   );
   const row = inserted.rows[0]!;
   await recordContactVersion(db, context, row);
@@ -74,7 +76,7 @@ export async function insertClientContact(db: Queryable, context: CommandContext
 export function sealContact(db: Queryable, context: CommandContext, row: ClientContactRow) {
   return sealClientContactRow(
     { db, organisationId: context.organisationId, actorId: context.actorId },
-    { contactId: row.contact_id, fullName: row.full_name, jobTitle: row.job_title, email: row.email, phone: row.phone },
+    { contactId: row.contact_id, fullName: row.full_name, firstName: row.first_name, jobTitle: row.job_title, email: row.email, phone: row.phone },
   );
 }
 

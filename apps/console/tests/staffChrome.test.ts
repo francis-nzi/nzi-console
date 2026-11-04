@@ -25,8 +25,11 @@ describe("the console chrome shows the signed-in principal", () => {
   it("derives name, initials and role from the principal - a different principal, a different chip", () => {
     const sam = chromeUserFor({ userId: "u-sam", displayName: "Sam Staff", role: "consultant" });
     const bea = chromeUserFor({ userId: "u-bea", displayName: "Bea Brown-Jones", role: "admin" });
-    assert.deepEqual(sam, { initials: "SS", name: "Sam Staff", role: "Consultant" });
-    assert.deepEqual(bea, { initials: "BB", name: "Bea Brown-Jones", role: "Administrator" });
+    // The chip names the person the way they are addressed - the first name (0207) - while the initials still come from the full name.
+    assert.deepEqual(sam, { initials: "SS", name: "Sam", role: "Consultant" });
+    assert.deepEqual(bea, { initials: "BB", name: "Bea", role: "Administrator" });
+    assert.equal(chromeUserFor({ userId: "u-liz", displayName: "Elizabeth Windsor", firstName: "Liz", role: "viewer" }).name, "Liz", "a first name that was set wins over the first word");
+    assert.equal(chromeUserFor({ userId: "u-liz", displayName: "Elizabeth Windsor", firstName: "  ", role: "viewer" }).name, "Elizabeth", "a blank one falls back to the first word, never to nothing");
     assert.deepEqual(chromeUserFor({ userId: "u-rev", displayName: "Rae Reviewer", role: "reviewer" }).role, "Reviewer");
     assert.equal(chromeUserFor({ userId: "u-vic", displayName: "Vic Viewer", role: "viewer" }).role, "Viewer");
     assert.equal(chromeUserFor({ userId: "u-fin", displayName: "Fin", role: "finance" }).role, "Finance");
@@ -45,6 +48,7 @@ describe("the console chrome shows the signed-in principal", () => {
 
   it("greets by the principal's first name, and by no name when there is none", () => {
     assert.equal(greetingNameFor({ userId: "u", displayName: "Sam Staff", role: "viewer" }), "Sam");
+    assert.equal(greetingNameFor({ userId: "u", displayName: "Samuel Staff", firstName: "Sam", role: "viewer" }), "Sam", "the first name they are addressed by, not the first word of the record");
     assert.equal(greetingNameFor({ userId: "u", displayName: null, role: "viewer" }), null);
     for (const none of [undefined, "signed-out", null] as const) assert.equal(greetingNameFor(none), null);
   });
@@ -54,8 +58,8 @@ describe("the console chrome shows the signed-in principal", () => {
     const nav = (await import("../app/lib/nav")).NAV;
     const asSam = renderToStaticMarkup(createElement(WorkspaceRail, { sections: nav, activeId: "clients", user: chromeUserFor({ userId: "u-sam", displayName: "Sam Staff", role: "consultant" }) }));
     const asBea = renderToStaticMarkup(createElement(WorkspaceRail, { sections: nav, activeId: "clients", user: chromeUserFor({ userId: "u-bea", displayName: "Bea Brown-Jones", role: "admin" }) }));
-    assert.match(asSam, /Sam Staff/); assert.match(asSam, /Consultant/); assert.doesNotMatch(asSam, /Francis|Doherty|Administrator|Bea/);
-    assert.match(asBea, /Bea Brown-Jones/); assert.match(asBea, /Administrator/); assert.doesNotMatch(asBea, /Francis|Doherty|Sam Staff/);
+    assert.match(asSam, /class="who"[^>]*>Sam</); assert.match(asSam, /Consultant/); assert.doesNotMatch(asSam, /Francis|Doherty|Administrator|Bea|Sam Staff/, "the full name is not on the chip");
+    assert.match(asBea, /class="who"[^>]*>Bea</); assert.match(asBea, /Administrator/); assert.doesNotMatch(asBea, /Francis|Doherty|Sam|Brown-Jones/);
     const before = renderToStaticMarkup(createElement(StaffRail, { activeId: "clients" }));
     assert.doesNotMatch(before, /Francis|Doherty|Administrator/, "before the session is known the chip names no one");
     assert.match(before, /Checking sign-in/);

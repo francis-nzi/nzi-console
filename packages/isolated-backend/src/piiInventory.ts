@@ -344,6 +344,7 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
   { table: "client_contacts", column: "email", label: "Email address", stage: "sealed", erasure: "shred-key",
     storage: indexed("email_sealed", "email_bidx", "client_contacts.email", "email") },
   { table: "client_contacts", column: "full_name", label: "Name", stage: "sealed", erasure: "shred-key", storage: sealed("full_name_sealed") },
+  { table: "client_contacts", column: "first_name", label: "First name", stage: "sealed", erasure: "shred-key", storage: sealed("first_name_sealed") },
   { table: "client_contacts", column: "job_title", label: "Job title", stage: "sealed", erasure: "shred-key", storage: sealed("job_title_sealed") },
   { table: "client_contacts", column: "phone", label: "Phone number", stage: "sealed", erasure: "shred-key", storage: sealed("phone_sealed") },
   { table: "portal_users", column: "email_normalized", label: "Portal sign-in address", stage: "sealed", erasure: "shred-key",
@@ -352,6 +353,7 @@ export const PII_COLUMNS: ReadonlyArray<PiiColumn> = [
   { table: "memberships", column: "email", label: "Work email address", stage: "sealed", erasure: "shred-key",
     storage: indexed("email_sealed", "email_bidx", "memberships.email", "email") },
   { table: "memberships", column: "display_name", label: "Name", stage: "sealed", erasure: "shred-key", storage: sealed("display_name_sealed") },
+  { table: "memberships", column: "first_name", label: "First name", stage: "sealed", erasure: "shred-key", storage: sealed("first_name_sealed") },
   // The member's email signature (0185, email phase 5-2): written by the member, sealed in the same transaction.
   { table: "memberships", column: "signature_title", label: "Email signature title", stage: "sealed", erasure: "shred-key", storage: sealed("signature_title_sealed") },
   { table: "memberships", column: "signature_email", label: "Email signature address", stage: "sealed", erasure: "shred-key", storage: sealed("signature_email_sealed") },

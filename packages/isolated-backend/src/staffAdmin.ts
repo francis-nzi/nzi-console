@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  commandGrantForRole, STAFF_RATE_DEFAULT_CURRENCY, staffListSpec, staffRoles, type CapabilityGrant, type CommandContext, type CommandInputMap,
+  firstNameForUpdate, firstNameToStore, firstWordOf, commandGrantForRole, STAFF_RATE_DEFAULT_CURRENCY, staffListSpec, staffRoles, type CapabilityGrant, type CommandContext, type CommandInputMap,
   type ListPage, type StaffListFilterKey, type StaffListQuery, type StaffListSortKey, type StaffRole,
 } from "@nzi/contracts";
 import { AuthorizationError } from "./auth";
@@ -41,7 +41,7 @@ export type StaffSignIn = "enrolled" | "invited" | "expired" | "revoked" | "none
  */
 export type StaffInviteEmail = "queued" | "sent" | "stubbed" | "failed";
 export type StaffRow = {
-  userId: string; displayName: string; named: boolean; email: string | null; role: StaffRole;
+  userId: string; displayName: string; /** How they are addressed (0207): the first name held, else the first word of `displayName`. */ firstName: string | null; named: boolean; email: string | null; role: StaffRole;
   status: "active" | "deactivated" | "invited" | "suspended";
   positionValueId: string | null; positionLabel: string | null; positionActive: boolean | null;
   provenance: "v7" | "added"; signIn: StaffSignIn; version: number; deactivatedAt: string | null;
@@ -52,6 +52,7 @@ export type StaffPage = ListPage<StaffRow, StaffListFilterKey, Record<string, ne
 const staffSql = defineListSql<StaffListSortKey, StaffListFilterKey>({
   base: `SELECT m.organisation_id, m.user_id,
       coalesce(nullif(btrim(m.display_name), ''), m.user_id) AS name, nullif(btrim(m.display_name), '') IS NOT NULL AS named,
+      coalesce(nullif(btrim(m.first_name), ''), substring(btrim(m.display_name) from '^\\S+')) AS first_name,
       m.email, m.role_id AS role, m.status, m.position_value_id AS position, pv.label AS position_label, pv.active AS position_active,
       m.version, m.deactivated_at,
       CASE WHEN m.source_system IS NOT NULL THEN 'v7' ELSE 'added' END AS provenance,
@@ -84,7 +85,7 @@ const iso = (value: unknown) => value === null || value === undefined ? null : v
 export async function listStaffPage(db: Queryable, query: StaffListQuery): Promise<StaffPage> {
   return readListPage(db, staffSql, staffListSpec, query, {
     mapRow: (row) => ({
-      userId: String(row.user_id), displayName: String(row.name), named: row.named === true, email: row.email === null ? null : String(row.email),
+      userId: String(row.user_id), displayName: String(row.name), firstName: row.first_name === null || row.first_name === undefined ? null : String(row.first_name), named: row.named === true, email: row.email === null ? null : String(row.email),
       role: row.role as StaffRole, status: row.status as StaffRow["status"],
       positionValueId: row.position === null ? null : String(row.position), positionLabel: row.position_label === null ? null : String(row.position_label),
       positionActive: row.position_active === null ? null : row.position_active === true,
@@ -120,7 +121,7 @@ export async function readStaffHistory(db: Queryable, userId: string): Promise<S
 
 // ── Commands ───────────────────────────────────────────────────────────────────────────────────────────────────
 
-type Stored = { role_id: StaffRole; status: string; position_value_id: string | null; display_name: string | null; version: number };
+type Stored = { role_id: StaffRole; status: string; position_value_id: string | null; display_name: string | null; first_name: string | null; version: number };
 
 /** What every roster command returns — and so what its audit event records. Ids and states only. */
 export type StaffResult = { userId: string; version: number; role: StaffRole; status: string; positionValueId: string | null; changed: string[] };
@@ -134,7 +135,7 @@ async function lockForChange(db: Queryable, context: CommandContext, userId: str
   const { rows: admins } = await db.query<{ user_id: string }>(
     `SELECT user_id FROM nzi_console.memberships WHERE organisation_id = $1 AND role_id = 'admin' AND status = 'active' ORDER BY user_id FOR UPDATE`, [context.organisationId]);
   const { rows: [person] } = await db.query<Stored>(
-    `SELECT role_id, status, position_value_id, display_name, version FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2 FOR UPDATE`,
+    `SELECT role_id, status, position_value_id, display_name, first_name, version FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2 FOR UPDATE`,
     [context.organisationId, userId]);
   if (!person) throw new CommandValidationError([{ field: "userId", code: "NOT_FOUND", message: `${userId} is not a member of ${context.organisationId}.` }]);
   if (person.version !== expectedVersion) throw new VersionConflictError(expectedVersion, person.version);
@@ -164,6 +165,8 @@ const blank = (value: string | null | undefined) => value?.trim() ? value.trim()
 export function addStaff(pool: PoolLike, input: CommandInputMap["staff.add"], context: CommandContext): Promise<StoredOutcome<StaffResult>> {
   return runPostgresCommand(pool, "staff.add", input, context, async (db) => {
     const displayName = cleanName(input.displayName);
+    // Not offered, or blank: the first word of the name (0207). Offered: what was typed.
+    const firstName = firstNameToStore(input.firstName ?? "", displayName) ?? null;
     const email = input.email.trim().toLowerCase();
     const positionValueId = blank(input.positionValueId);
     const digest = blindIndex("memberships.email", email, resolveSealingKeys().indexKey);
@@ -175,12 +178,12 @@ export function addStaff(pool: PoolLike, input: CommandInputMap["staff.add"], co
     const userId = randomUUID();
     // Least privilege, always: a role is granted afterwards, deliberately and audited (the roster seed's rule).
     await db.query(
-      `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, email, position_value_id, updated_at, updated_by)
-       VALUES ($1, $2, 'viewer', 'active', $3, $4, $5, now(), $6)`,
-      [context.organisationId, userId, displayName, email, positionValueId, context.actorId]);
-    await sealMembershipRow({ db, organisationId: context.organisationId, actorId: context.actorId }, { userId, displayName, email });
+      `INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name, first_name, email, position_value_id, updated_at, updated_by)
+       VALUES ($1, $2, 'viewer', 'active', $3, $7, $4, $5, now(), $6)`,
+      [context.organisationId, userId, displayName, email, positionValueId, context.actorId, firstName]);
+    await sealMembershipRow({ db, organisationId: context.organisationId, actorId: context.actorId }, { userId, displayName, firstName, email });
     return {
-      data: { userId, version: 1, role: "viewer", status: "active", positionValueId, changed: ["displayName", "email", "positionValueId", "role", "status"] },
+      data: { userId, version: 1, role: "viewer", status: "active", positionValueId, changed: ["displayName", "firstName", "email", "positionValueId", "role", "status"] },
       entityType: "membership", entityId: userId, topic: "staff.added",
     };
   });
@@ -190,19 +193,22 @@ export function updateStaff(pool: PoolLike, input: CommandInputMap["staff.update
   return runPostgresCommand(pool, "staff.update", input, context, async (db) => {
     const { person } = await lockForChange(db, context, input.userId, input.expectedVersion);
     const displayName = cleanName(input.displayName);
+    const firstName = firstNameForUpdate(person.first_name, person.display_name, displayName, input.firstName);
     const positionValueId = input.positionValueId === undefined ? person.position_value_id : blank(input.positionValueId);
     const changed = [
       ...(displayName !== (person.display_name ?? "").trim() ? ["displayName"] : []),
+      // Against what is effectively held: a member with no first name stored is, in effect, called the first word of their name.
+      ...(firstName !== (person.first_name?.trim() || firstWordOf(person.display_name)) ? ["firstName"] : []),
       ...(positionValueId !== person.position_value_id ? ["positionValueId"] : []),
     ];
     if (changed.length === 0) throw new CommandValidationError([{ field: "userId", code: "NO_CHANGE", message: "Nothing to change." }]);
     await assertPosition(db, context, positionValueId, person.position_value_id);
     const { rows: [saved] } = await db.query<{ version: number }>(
-      `UPDATE nzi_console.memberships SET display_name = $3, position_value_id = $4, version = version + 1, updated_at = now(), updated_by = $5
+      `UPDATE nzi_console.memberships SET display_name = $3, first_name = $6, position_value_id = $4, version = version + 1, updated_at = now(), updated_by = $5
         WHERE organisation_id = $1 AND user_id = $2 RETURNING version`,
-      [context.organisationId, input.userId, displayName, positionValueId, context.actorId]);
-    if (changed.includes("displayName")) {
-      await sealMembershipRow({ db, organisationId: context.organisationId, actorId: context.actorId }, { userId: input.userId, displayName });
+      [context.organisationId, input.userId, displayName, positionValueId, context.actorId, firstName]);
+    if (changed.includes("displayName") || changed.includes("firstName")) {
+      await sealMembershipRow({ db, organisationId: context.organisationId, actorId: context.actorId }, { userId: input.userId, displayName, firstName });
     }
     return {
       data: { userId: input.userId, version: saved!.version, role: person.role_id, status: person.status, positionValueId, changed },

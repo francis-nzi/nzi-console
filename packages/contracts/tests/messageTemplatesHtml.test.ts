@@ -35,10 +35,11 @@ describe("the transactional keys (R3)", () => {
 
   it("declares the tokens the brief names, the link required and typed as a link", () => {
     const names = (key: string) => definition(key).tokens.map((token) => token.name);
-    assert.deepEqual(names("portal.access.invite"), ["displayName", "clientName", "senderName", "inviteLink", "expiresAt"]);
-    assert.deepEqual(names("password.reset.staff"), ["displayName", "resetLink", "expiresAt"]);
-    assert.deepEqual(names("password.reset.portal"), ["displayName", "resetLink", "expiresAt"]);
-    assert.deepEqual(names("message.notification"), ["displayName", "clientName", "threadLink"]);
+    // The greeting is the first name (0207); the full name stays declared so wording saved before it still renders.
+    assert.deepEqual(names("portal.access.invite"), ["firstName", "displayName", "clientName", "senderName", "inviteLink", "expiresAt"]);
+    assert.deepEqual(names("password.reset.staff"), ["firstName", "displayName", "resetLink", "expiresAt"]);
+    assert.deepEqual(names("password.reset.portal"), ["firstName", "displayName", "resetLink", "expiresAt"]);
+    assert.deepEqual(names("message.notification"), ["firstName", "displayName", "clientName", "threadLink"]);
     assert.deepEqual(names("staff.invitation"), ["inviteLink", "expiresAt"], "one link name across every invite (phase 3; 0180 rewrote saved wording)");
     for (const [key, link] of [["portal.access.invite", "inviteLink"], ["password.reset.staff", "resetLink"], ["password.reset.portal", "resetLink"], ["message.notification", "threadLink"], ["staff.invitation", "inviteLink"]]) {
       const token = definition(key!).tokens.find((entry) => entry.name === link)!;
@@ -108,7 +109,7 @@ describe("the strict render (R2, R4)", () => {
 
   it("escapes values into the HTML part and leaves the text part as written", () => {
     const entry = definition("message.notification");
-    const rendered = renderEmailTemplate(entry, entry.builtIn, { ...samples("message.notification"), displayName: `<img src=x onerror="alert(1)">`, clientName: "Smith & Sons" });
+    const rendered = renderEmailTemplate(entry, entry.builtIn, { ...samples("message.notification"), firstName: `<img src=x onerror="alert(1)">`, clientName: "Smith & Sons" });
     assert.ok(rendered.ok);
     assert.ok(!rendered.email.html.includes("<img"), "markup in a value is never live");
     assert.ok(rendered.email.html.includes("&#60;img src=x onerror=&#34;alert(1)&#34;&#62;"));

@@ -8,6 +8,7 @@ import { FILE_TYPE_FOLDER_PATTERN, FILE_TYPE_KEY_PATTERN, FILE_TYPE_NAME_MAX, ty
 import { CURRENCY_NAME_MAX, CURRENCY_SYMBOL_MAX, isCurrencyCodeForSet, isVatPercentage, VAT_RATE_NAME_MAX, type CurrencyEditableFields, type VatRateEditableFields } from "./adminCommercialLookups";
 import { isCatalogueAmount, isTemplateQuantity, JOB_ITEM_AMOUNT_MAX, JOB_ITEM_CODE_PATTERN, JOB_ITEM_DESCRIPTION_MAX, JOB_ITEM_HOURS_MAX, JOB_ITEM_NAME_MAX, JOB_TYPE_ITEMS_MAX, type JobItemEditableFields, type JobTypeTemplateEntry } from "./adminServiceCatalogue";
 import { isCurrencyCode, isWorkEmail, STAFF_NAME_MAX, STAFF_RATE_MAX } from "./adminStaff";
+import { FIRST_NAME_MAX_LENGTH } from "./firstName";
 import {
   MESSAGE_TEMPLATE_BODY_MAX, MESSAGE_TEMPLATE_HTML_MAX, MESSAGE_TEMPLATE_SUBJECT_MAX, messageTemplateDefinition, messageTemplateHtmlIssues, messageTemplateLinkIssues,
   messageTemplateRequiredIssues, messageTemplateTokenIssues,
@@ -694,8 +695,9 @@ export type ClientContactRole = (typeof clientContactRoles)[number];
 export const clientContactRoleLabels: Record<ClientContactRole, string> = {
   report_signee: "Report signee", portal_candidate: "Portal candidate", invoice_recipient: "Quote & invoice recipient", training_attendee: "Training attendee",
 };
-export type ClientContactWriteFields = { fullName: string; jobTitle?: string | null; email?: string | null; phone?: string | null; isPrimary: boolean; roles: ClientContactRole[] };
-export type ClientContactReadModel = { id: string; clientId: string; fullName: string; jobTitle: string | null; email: string | null; phone: string | null; isPrimary: boolean; roles: ClientContactRole[]; status: "active" | "inactive"; version: number; updatedAt: string; updatedBy: string ; /** `0083` default is `unknown`, which blocks. The basis behind it travels separately, in the consent events. */ emailConsent: ContactConsentState };
+/** `firstName`: how the contact is addressed (0207). Absent on a create: the first word of `fullName`. Absent on an update: left as held. Blank: back to that default. */
+export type ClientContactWriteFields = { fullName: string; firstName?: string | null; jobTitle?: string | null; email?: string | null; phone?: string | null; isPrimary: boolean; roles: ClientContactRole[] };
+export type ClientContactReadModel = { id: string; clientId: string; fullName: string; /** How they are addressed: the first name held, else the first word of `fullName` — so a form is never pre-filled blank. */ firstName: string | null; jobTitle: string | null; email: string | null; phone: string | null; isPrimary: boolean; roles: ClientContactRole[]; status: "active" | "inactive"; version: number; updatedAt: string; updatedBy: string ; /** `0083` default is `unknown`, which blocks. The basis behind it travels separately, in the consent events. */ emailConsent: ContactConsentState };
 
 /** A milestone is a year and the reduction committed to by then; both or neither. */
 export type TargetMilestoneFields = { year: number | null; pct: number | null };
@@ -1043,8 +1045,8 @@ export type CommandInputMap = {
   "portal_broadcast.deactivate": { broadcastId: string; expectedVersion: number };
   "portal_broadcast.reinstate": { broadcastId: string; expectedVersion: number };
   // Team & access (admin Phase B, B1). A person is named by their membership user_id; the email is read-only once added (Q6).
-  "staff.add": { displayName: string; email: string; positionValueId?: string | null };
-  "staff.update": { userId: string; expectedVersion: number; displayName: string; positionValueId?: string | null };
+  "staff.add": { displayName: string; firstName?: string | null; email: string; positionValueId?: string | null };
+  "staff.update": { userId: string; expectedVersion: number; displayName: string; firstName?: string | null; positionValueId?: string | null };
   "staff.role.assign": { userId: string; expectedVersion: number; role: StaffRole };
   "staff.deactivate": { userId: string; expectedVersion: number };
   "staff.reinstate": { userId: string; expectedVersion: number };
@@ -1356,6 +1358,13 @@ const baseIssues = (context: CommandContext, reasonRequired: boolean) => {
   return issues;
 };
 /** A person's display name: present, within bounds (admin Phase B). */
+/** A first name is optional (absent or blank means the default), one line, and short. */
+const firstNameIssues = (issues: CommandIssue[], firstName: unknown) => {
+  if (firstName === undefined || firstName === null) return;
+  if (typeof firstName !== "string") issues.push({ field: "firstName", code: "INVALID", message: "A first name is text." });
+  else if (firstName.trim().length > FIRST_NAME_MAX_LENGTH) issues.push({ field: "firstName", code: "INVALID", message: `A first name is at most ${FIRST_NAME_MAX_LENGTH} characters.` });
+  else if (/[\r\n]/.test(firstName)) issues.push({ field: "firstName", code: "INVALID", message: "A first name is one line." });
+};
 const staffNameIssues = (issues: CommandIssue[], name: unknown) => {
   if (!text(name)) issues.push({ field: "displayName", code: "REQUIRED", message: "A name is required." });
   else if ((name as string).trim().length > STAFF_NAME_MAX) issues.push({ field: "displayName", code: "INVALID", message: `A name is at most ${STAFF_NAME_MAX} characters.` });
@@ -2001,6 +2010,7 @@ const forwardTargetIssues = (input: ForwardTargetWriteFields) => {
 const clientContactIssues = (input: ClientContactWriteFields) => {
   const issues: CommandIssue[] = [];
   required(issues, "fullName", input.fullName);
+  firstNameIssues(issues, input.firstName);
   if (text(input.email) && !/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(input.email!.trim())) issues.push({ field: "email", code: "INVALID", message: "Enter a valid email address." });
   if (typeof input.isPrimary !== "boolean") issues.push({ field: "isPrimary", code: "INVALID", message: "Primary contact must be true or false." });
   optionalMembers(issues, "roles", input.roles, clientContactRoles);
@@ -2955,6 +2965,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "staff.add": { key: "staff.add", label: "Add a member of staff", permission: "admin.users", reasonRequired: false, transaction: "membership (sealed) + audit + outbox + idempotency", auditAction: "staff.added", validate: (input, context) => {
     const issues = baseIssues(context, false);
     staffNameIssues(issues, input.displayName);
+    firstNameIssues(issues, input.firstName);
     if (!isWorkEmail(input.email)) issues.push({ field: "email", code: "INVALID", message: "Enter a work email address." });
     if (input.positionValueId !== undefined && input.positionValueId !== null && !text(input.positionValueId)) issues.push({ field: "positionValueId", code: "INVALID", message: "Choose a position, or none." });
     return issues;
@@ -2964,6 +2975,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     required(issues, "userId", input.userId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     staffNameIssues(issues, input.displayName);
+    firstNameIssues(issues, input.firstName);
     if (input.positionValueId !== undefined && input.positionValueId !== null && !text(input.positionValueId)) issues.push({ field: "positionValueId", code: "INVALID", message: "Choose a position, or none." });
     return issues;
   } },

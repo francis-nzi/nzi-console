@@ -235,6 +235,11 @@ jobs:
       # worker part is off unless the deployment turns it on; the ledger and the audit hold ids and counts only.
       - name: A conversation message sends one notify-only email per burst, to a consenting client or the adviser
         run: npx tsx --test packages/isolated-backend/tests/portalMessageNotificationsReal.test.ts
+      # A first name on client contacts and the team (0207): backfilled from the full name by the migration's own statements, defaulted and always
+      # editable on both forms, sealed with the write and in the PII inventory, following a rename only while it is still the default; the full
+      # name is untouched in version history and audit.
+      - name: A first name is captured, defaulted, editable, sealed, and never blank
+        run: npx tsx --test packages/isolated-backend/tests/firstNameReal.test.ts
       # Portal updates (RULING-portal-messages, M2): notices derived at read time from events that already exist (a published report, a reviewer's
       # decision on the client's own entries, a closing data-entry window, a live broadcast), the exact scope, no reviewer note, nothing stored
       # or emitted for a notice, and a per-user seen watermark that only moves forward.

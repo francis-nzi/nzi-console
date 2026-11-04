@@ -1,7 +1,7 @@
 // Client contacts with roles (contact.manage). Versioned; deactivated, never deleted.
 // Each role feeds a downstream picker — see `contactsWithRole`.
 import { randomUUID } from "node:crypto";
-import type { CommandContext, CommandInputMap, ContactConsentEvent } from "@nzi/contracts";
+import { firstNameForUpdate, type CommandContext, type CommandInputMap, type ContactConsentEvent } from "@nzi/contracts";
 import { CLIENT_CONTACT_COLUMNS, demoteOtherPrimary, insertClientContact, normaliseContactRoles, recordContactVersion, sealContact, type ClientContactRow } from "./clientContactRecords";
 export { contactsWithRole, listClientContacts, listJobReportSignees } from "./clientContactRecords";
 import { VersionConflictError } from "./errors";
@@ -39,10 +39,11 @@ export function updateClientContact(pool: PoolLike, input: CommandInputMap["clie
     const current = await lockContact(db, context, input.contactId, input.expectedVersion);
     if (input.isPrimary) await demoteOtherPrimary(db, context, current.client_id, current.contact_id);
     const updated = await db.query<ClientContactRow>(
-      `UPDATE nzi_console.client_contacts SET full_name=$4,job_title=$5,email=$6,phone=$7,is_primary=$8,roles=$9::text[],version=version+1,updated_by=$10,updated_at=now()
+      `UPDATE nzi_console.client_contacts SET full_name=$4,first_name=$11,job_title=$5,email=$6,phone=$7,is_primary=$8,roles=$9::text[],version=version+1,updated_by=$10,updated_at=now()
        WHERE organisation_id=$1 AND contact_id=$2 AND version=$3 RETURNING ${CLIENT_CONTACT_COLUMNS}`,
       [context.organisationId, input.contactId, input.expectedVersion, input.fullName.trim(), input.jobTitle?.trim() || null, input.email?.trim() || null,
-        input.phone?.trim() || null, input.isPrimary, normaliseContactRoles(input.roles), context.actorId],
+        input.phone?.trim() || null, input.isPrimary, normaliseContactRoles(input.roles), context.actorId,
+        firstNameForUpdate(current.first_name, current.full_name, input.fullName.trim(), input.firstName)],
     );
     const row = updated.rows[0];
     if (!row) throw new VersionConflictError();

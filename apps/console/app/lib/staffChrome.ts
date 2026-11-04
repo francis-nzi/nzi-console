@@ -1,4 +1,4 @@
-import type { StaffRole } from "@nzi/contracts";
+import { callName, firstWordOf, type StaffRole } from "@nzi/contracts";
 
 /**
  * What the console chrome shows for the signed-in member of staff: their name, initials and role - from the authenticated principal, never a
@@ -20,19 +20,19 @@ export function initialsOf(name: string): string {
 export const CHROME_CHECKING: ChromeUser = { initials: "·", name: "Checking sign-in…", role: "" };
 export const CHROME_SIGNED_OUT: ChromeUser = { initials: "–", name: "Not signed in", role: "" };
 
-type Me = { userId: string; displayName?: string | null; role: StaffRole };
+type Me = { userId: string; displayName?: string | null; /** How they are addressed (0207): the first name held, else the first word of displayName. */ firstName?: string | null; role: StaffRole };
 
 /** `undefined` = still checking; `"signed-out"` / `null` = no principal (signed out, or auth switched off / unreachable). */
 export function chromeUserFor(me: Me | "signed-out" | null | undefined): ChromeUser {
   if (me === undefined) return CHROME_CHECKING;
   if (me === "signed-out" || me === null) return CHROME_SIGNED_OUT;
-  const name = me.displayName?.trim() || me.userId;
-  return { initials: initialsOf(name), name, role: STAFF_ROLE_LABEL[me.role] ?? me.role };
+  const fullName = me.displayName?.trim() || me.userId;
+  // The chip names the signed-in person the way they are addressed (first name, 0207); the initials still come from the full name.
+  return { initials: initialsOf(fullName), name: me.firstName?.trim() || firstWordOf(me.displayName) || me.userId, role: STAFF_ROLE_LABEL[me.role] ?? me.role };
 }
 
 /** The first name for the greeting, or null when there is no named principal - the greeting then says no name rather than a wrong one. */
 export function greetingNameFor(me: Me | "signed-out" | null | undefined): string | null {
   if (me === undefined || me === "signed-out" || me === null) return null;
-  const name = me.displayName?.trim();
-  return name ? name.split(/\s+/)[0]! : null;
+  return callName({ firstName: me.firstName, fullName: me.displayName });
 }

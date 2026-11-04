@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import type { CommandContext, CommandInputMap } from "@nzi/contracts";
+import { FIRST_NAME_FALLBACK, type CommandContext, type CommandInputMap } from "@nzi/contracts";
+import { staffFirstNameSql } from "./addressName";
 import { VersionConflictError } from "./errors";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 import { requireShownCategory } from "./portalCapture";
@@ -72,8 +73,8 @@ export function requestScopeRowReopen(pool: PoolLike, input: CommandInputMap["po
  */
 async function notifyCrm(db: Queryable, context: CommandContext, input: { requestId: string; jobId: string; row: RowForRequest; consoleOrigin: string | null }): Promise<string | null> {
   if (!input.row.crm_user_id || !input.consoleOrigin) return null;
-  const crm = (await db.query<{ email: string | null; display_name: string | null }>(
-    `SELECT email,display_name FROM nzi_console.memberships WHERE organisation_id=$1 AND user_id=$2 AND status='active'`,
+  const crm = (await db.query<{ email: string | null; first_name: string | null }>(
+    `SELECT m.email,${staffFirstNameSql("m")} AS first_name FROM nzi_console.memberships m WHERE m.organisation_id=$1 AND m.user_id=$2 AND m.status='active'`,
     [context.organisationId, input.row.crm_user_id])).rows[0];
   if (!crm?.email) return null;
   const requester = (await db.query<{ display_name: string }>(
@@ -81,7 +82,7 @@ async function notifyCrm(db: Queryable, context: CommandContext, input: { reques
   const queued = await sendTemplatedEmail(db, context.organisationId, {
     templateCode: REOPEN_REQUEST_TEMPLATE, to: crm.email, consoleOrigin: input.consoleOrigin,
     vars: {
-      firstName: crm.display_name?.trim().split(/\s+/)[0] || "there",
+      firstName: crm.first_name || FIRST_NAME_FALLBACK,
       clientName: input.row.client_name, jobNumber: input.row.job_number, entryLabel: input.row.label,
       requestedBy: requester?.display_name?.trim() || "Your client",
       jobLink: `${input.consoleOrigin.replace(/\/+$/, "")}/jobs/${encodeURIComponent(input.jobId)}`,

@@ -23,6 +23,7 @@ const matrixV9 = readFileSync(resolve(here, "../migrations/0156_permission_matri
 const matrixV10 = readFileSync(resolve(here, "../migrations/0157_permission_matrix_v10.sql"), "utf8");
 const staffCredentialReset = readFileSync(resolve(here, "../migrations/0203_staff_credential_reset.sql"), "utf8");
 const messageNotifications = readFileSync(resolve(here, "../migrations/0206_portal_message_notifications.sql"), "utf8");
+const firstName = readFileSync(resolve(here, "../migrations/0207_first_name.sql"), "utf8").replace(/\r\n/g, "\n");
 const matrixV11 = readFileSync(resolve(here, "../migrations/0204_permission_matrix_v11.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
@@ -354,6 +355,25 @@ describe("isolated Postgres migrations", () => {
     assert.ok(messageNotifications.includes("GRANT SELECT (organisation_id, portal_user_id, client_id, email_normalized, display_name, status) ON nzi_console.portal_users TO nzi_console_worker"));
     const grants = messageNotifications.split("\n").filter((line) => !line.startsWith("--") && line.startsWith("GRANT"));
     for (const line of grants.filter((entry) => /portal_threads|portal_users|portal_access_grants|nzi_console\.clients/.test(entry))) assert.ok(line.startsWith("GRANT SELECT ("), `a column-level read only: ${line}`);
+  });
+  it("adds a first name to contacts and the team, sealed beside the plaintext, backfilled without bumping a version, and readable by the worker column by column (0207)", () => {
+    for (const clause of [
+      "ALTER TABLE nzi_console.client_contacts\n  ADD COLUMN first_name text CHECK",
+      "ADD COLUMN first_name_sealed jsonb;",
+      "ALTER TABLE nzi_console.memberships\n  ADD COLUMN first_name text CHECK",
+      "GRANT SELECT (first_name) ON nzi_console.memberships TO nzi_console_worker",
+    ]) assert.ok(firstName.includes(clause), clause);
+    // Only the plaintext is backfilled: the key lives in the application, and a default is not an edit.
+    const updates = [...firstName.matchAll(/UPDATE nzi_console\.(client_contacts|memberships)\s+SET ([^;]*);/g)].filter((match) => /first_name = left/.test(match[2]!));
+    assert.deepEqual(updates.map((match) => match[1]), ["client_contacts", "memberships"]);
+    for (const match of updates) assert.doesNotMatch(match[2]!, /version|updated_at|first_name_sealed/, "the backfill is not an edit and cannot seal");
+    // The worker is given the one column, never the table.
+    const grants = firstName.split("\n").filter((line) => line.startsWith("GRANT"));
+    assert.deepEqual(grants, ["GRANT SELECT (first_name) ON nzi_console.memberships TO nzi_console_worker;"]);
+    // Saved wording is rewritten for the greeting only, audited, and the version bumped.
+    assert.ok(firstName.includes("'Hello {{displayName}}', 'Hello {{firstName}}'"));
+    assert.match(firstName, /version = t\.version \+ 1/);
+    assert.match(firstName, /'migration:0207'/);
   });
   it("isolates credentials behind a dedicated non-login database role", () => { assert.match(staffAuth, /CREATE ROLE nzi_console_auth .*NOBYPASSRLS NOLOGIN/); assert.match(staffAuth, /REVOKE ALL ON staff_credentials, staff_login_challenges, staff_sessions FROM PUBLIC/); assert.match(staffAuth, /GRANT SELECT, INSERT, UPDATE ON staff_credentials/); });
   it("lets only the authentication role inspect credential-backed membership state", () => { assert.match(authMembership, /FOR SELECT\s+TO nzi_console_auth/i); assert.match(authMembership, /EXISTS \(\s*SELECT 1\s+FROM nzi_console\.staff_credentials/i); assert.match(authMembership, /credential\.enabled = true/i); assert.doesNotMatch(authMembership, /FOR (?:INSERT|UPDATE|DELETE|ALL)/i); });
