@@ -31,7 +31,7 @@ describe("the report composition", () => {
     it("states the honest basis", () => {
       const basis = reportAssurance({ reviewedBy: "reviewer-a", reviewedAt: "2026-04-01T00:00:00Z" });
       assert.equal(basis.statement, REPORT_ASSURANCE_STATEMENT);
-      assert.match(basis.statement, /not third-party assured/);
+      assert.match(basis.statement, /not third-party verified/);
       assert.equal(basis.kind, "internal-review");
     });
 

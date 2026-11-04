@@ -30,7 +30,7 @@ test("the projected series is never presented as the measured one", () => {
   assert.match(out, /stroke-dasharray="7 4"/, "projected is dashed");
   // And named, in the legend and in the accessible description.
   assert.match(out, /Projected — planned/);
-  assert.match(out, /Measured — assured/);
+  assert.match(out, /Measured — verified/);
   assert.match(out, /not a measurement/);
 });
 

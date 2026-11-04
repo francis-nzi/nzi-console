@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 import {
   composeScopedComparison, defaultReportSectionPlan, drawsMockupSectionSet, isMovableReportSection, isOptionalReportSection,
   isReportStandaloneNarrativeSection, legacyReportSectionPlanV3, REPORT_RENDERER_LATEST, reportOmittedSections, reportSectionMetaFor,
-  reportSectionMetaV4, reportSectionPlanIssues, reportSectionPlanOf, reportStandaloneNarrativeSections, setReportSectionIncluded,
+  reportSectionMetaV4, reportSectionMetaV5, reportSectionPlanIssues, reportSectionPlanOf, reportStandaloneNarrativeSections, setReportSectionIncluded,
   type ReportComposition, type ScopedHistoryPeriod,
 } from "../src/index";
 
@@ -19,7 +19,12 @@ describe("composed@5: the renderer and its plan", () => {
     assert.equal(drawsMockupSectionSet({ renderer: "composed@5" }), true);
     assert.equal(drawsMockupSectionSet({ renderer: "composed@4" }), true);
     for (const renderer of [undefined, "composed@1", "composed@2", "composed@3"]) assert.equal(drawsMockupSectionSet({ renderer }), false, String(renderer));
-    assert.equal(reportSectionMetaFor({ renderer: "composed@5" }), reportSectionMetaV4);
+    assert.equal(reportSectionMetaFor({ renderer: "composed@5" }), reportSectionMetaV5);
+    assert.equal(reportSectionMetaFor({ renderer: "composed@6" }), reportSectionMetaV5);
+    assert.equal(reportSectionMetaFor({ renderer: "composed@4" }), reportSectionMetaV4, "composed@4 is pinned: it still heads Methodology as it was issued");
+    assert.equal(reportSectionMetaV4.methodology.eyebrow, "Assurance");
+    assert.equal(reportSectionMetaV5.methodology.eyebrow, "Verification");
+    assert.deepEqual({ ...reportSectionMetaV5, methodology: reportSectionMetaV4.methodology }, reportSectionMetaV4, "composed@5+ differ from composed@4 in that one heading only");
     const partial = legacyReportSectionPlanV3;
     assert.ok(reportSectionPlanOf({ renderer: "composed@5", sectionPlan: partial } as unknown as ReportComposition).some((entry) => entry.key === "glossary"), "read complete");
     assert.equal(reportSectionPlanOf({ renderer: "composed@3", sectionPlan: partial } as unknown as ReportComposition), partial, "composed@1/2/3 untouched");

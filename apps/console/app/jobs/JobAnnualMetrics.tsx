@@ -74,7 +74,7 @@ export function JobAnnualMetrics({ jobId, reportingYear, writeEnabled, clientId 
       <span className="hint">reporting year {reportingYear}</span></div>
 
     <div className="nz-basis-strip">
-      <span>Assured emissions this year</span>
+      <span>Verified emissions this year</span>
       <b>{assuredTotalTco2e === null ? "Not yet issued" : `${Math.round(assuredTotalTco2e).toLocaleString("en-GB")} tCO₂e`}</b>
       <span className="hint">{assuredTotalTco2e === null
         ? "— intensity appears once this year has a reviewed snapshot"
@@ -120,7 +120,7 @@ export function JobAnnualMetrics({ jobId, reportingYear, writeEnabled, clientId 
           : <>No intensity is reported in the CRP: no standard metric (turnover, employees, floor area) has a client target. A target on a custom metric is shown here but is not reported in this version.</>}
         {clientId ? <> <a className="nz-editlink" href={`/clients/${encodeURIComponent(clientId)}#client-intensity-targets`}>Targets and metric order on the client</a></> : null}
       </p>
-      <p className="nz-maps">Metrics are defined on the client (Carbon Analytics → Manage metrics). This job records the annual values; intensity = assured emissions × divider ÷ value. Adding a metric happens on the client, not here.</p>
+      <p className="nz-maps">Metrics are defined on the client (Carbon Analytics → Manage metrics). This job records the annual values; intensity = verified emissions × divider ÷ value. Adding a metric happens on the client, not here.</p>
       <div className="nz-gov"><span className="lk" aria-hidden="true">🔒</span><span>Values are captured <b>per reporting year</b> and versioned; each writes an audit event. A site-derived metric resolves from the client&apos;s in-service sites for this year — override it if this job needs a different basis. These figures feed the client year-on-year, the portal and the report.</span></div>
     </div>
   </section>;

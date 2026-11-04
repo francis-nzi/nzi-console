@@ -35,7 +35,7 @@ describe("composed@5: the mockup's document", () => {
       "01 · Overview | Executive Summary", "02 · Commitment | Net Zero Commitment", "03 · Background | Background &amp; Organisation",
       "04 · Boundary | Sites &amp; Reporting Boundary", "05 · Overview | Carbon Emissions Overview", "06 · Performance | Intensity Metric Analysis",
       "07 · Trajectory | Targets &amp; Reduction Pathway", "08 · Analysis | Analysis by Scope", "09 · Analysis | Emissions by Scope &amp; Category",
-      "10 · Plan | Carbon Reduction Actions", "11 · Disclosure | UK SRS Readiness Statement", "12 · Assurance | Standards, Methodology &amp; Sign-off",
+      "10 · Plan | Carbon Reduction Actions", "11 · Disclosure | UK SRS Readiness Statement", "12 · Verification | Standards, Methodology &amp; Sign-off",
       "Reference | Glossary", "Appendix 1 | Full Emissions Audit", "Appendix 2 | Emissions by Site, Scope &amp; Category"]);
     assert.match(html, /Page 16 of 16/);
   });

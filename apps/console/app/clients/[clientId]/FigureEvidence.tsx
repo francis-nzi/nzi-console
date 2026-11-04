@@ -42,7 +42,7 @@ export function EvidenceButton({ label, onOpen }: { label: string; onOpen: () =>
 export function FigureStatus({ figure }: { figure: FigureEvidence }) {
   if (figure.state === "unavailable") return <span className="nz-tier none">Unavailable</span>;
   return <><TierBadge tier={figure.qualityTier} />{figure.provenance
-    ? isAssuredProvenance(figure.provenance) ? null : <span className="nz-figure-flag" title="Stamped after issue; context, not assurance.">Provenance migrated</span>
+    ? isAssuredProvenance(figure.provenance) ? null : <span className="nz-figure-flag" title="Stamped after issue; context, not verification.">Provenance migrated</span>
     : <span className="nz-figure-flag">Provenance unavailable</span>}</>;
 }
 
@@ -90,7 +90,7 @@ export function FigureEvidenceBody({ figure, context, scopes }: { figure: Figure
       {provenance
         ? <>
           {SIGNATURE_LABELS.map(([key, label]) => <Kv key={key} label={label}>{key === "asAtDate" ? formatDate(provenance.asAtDate) : signatureText(figure, key)}</Kv>)}
-          {isAssuredProvenance(provenance) ? null : <div className="nz-banner warn" role="status">{figure.note ?? "This stamp was reconstructed after issue — context, not assurance."}</div>}
+          {isAssuredProvenance(provenance) ? null : <div className="nz-banner warn" role="status">{figure.note ?? "This stamp was reconstructed after issue — context, not verification."}</div>}
         </>
         : <div className="nz-banner warn" role="status">{figure.note ?? "Provenance unavailable for this figure."}</div>}
     </> : null}
@@ -101,6 +101,6 @@ export function FigureEvidenceBody({ figure, context, scopes }: { figure: Figure
       {scopes ? <p className="nz-figure-note" style={{ marginTop: 8 }}>Each scope is a roll-up of its reviewed rows with per-row quality tiers — open a row in the job to see its individual factor and tier.</p> : null}
     </> : null}
 
-    <div className="nz-gov"><span className="lk" aria-hidden="true">🔒</span><span>Every figure carries its factor set, version, data hash and as-at date. Numbers are <b>derived from the assured snapshot</b>, never captured — the same figure renders identically to screen, PDF and portal.</span></div>
+    <div className="nz-gov"><span className="lk" aria-hidden="true">🔒</span><span>Every figure carries its factor set, version, data hash and as-at date. Numbers are <b>derived from the verified snapshot</b>, never captured — the same figure renders identically to screen, PDF and portal.</span></div>
   </div>;
 }

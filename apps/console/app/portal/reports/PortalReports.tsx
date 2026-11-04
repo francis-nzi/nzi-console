@@ -106,7 +106,7 @@ function ReadyReports({ entries, unread, org }: { entries: PortalReportEntry[]; 
   return (
     <>
       {unread.length ? <p className="nz-pd-quiet" role="alert">{unread.length === 1 ? "One report" : `${unread.length} reports`} could not be loaded just now ({unread.map((job) => job.jobNumber).join(", ")}). {unread.length === 1 ? "It is" : "They are"} not shown here, and nothing about {unread.length === 1 ? "it" : "them"} has been assumed.</p> : null}
-      {entries.length === 0 && unread.length === 0 ? <div className="nz-portal-state empty"><i>✓</i><div><b>No published reports yet</b><span>{org.Your("team")} will release each report here once it has passed assurance.</span></div></div> : null}
+      {entries.length === 0 && unread.length === 0 ? <div className="nz-portal-state empty"><i>✓</i><div><b>No published reports yet</b><span>{org.Your("team")} will release each report here once it has passed verification.</span></div></div> : null}
       {awaiting.length ? <ReportGroup title="Awaiting your approval" intro="Review each report, then approve it as your record for the period." entries={awaiting} org={org} /> : null}
       {issued.length ? <ReportGroup title="Issued" intro="Approved reports, each fixed to the version you approved." entries={issued} org={org} /> : null}
     </>

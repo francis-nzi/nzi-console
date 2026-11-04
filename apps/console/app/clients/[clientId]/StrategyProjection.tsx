@@ -71,7 +71,7 @@ export function StrategyProjection({ workspace }: { workspace: ClientWorkspaceRe
       {/* Said before the chart, not after it: everything below is a forward estimate. */}
       <p className="nz-maps">
         These are <b>consultant estimates</b>, not measurements. The projected line is built from the
-        reductions entered against each strategy and is not assured. It is shown against the measured
+        reductions entered against each strategy and is not validated. It is shown against the measured
         footprint so the two can be compared — never combined.
       </p>
 

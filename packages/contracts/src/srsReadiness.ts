@@ -351,16 +351,16 @@ export function prefillFromNzi(framework: SrsFramework, facts: SrsNziFacts): Srs
 
   for (const requirement of framework.requirements) {
     if (requirement.source !== "nzi-data" || !requirement.active) continue;
-    const years = `${facts.assuredYears} assured reporting year${facts.assuredYears === 1 ? "" : "s"}`;
+    const years = `${facts.assuredYears} verified reporting year${facts.assuredYears === 1 ? "" : "s"}`;
     switch (requirement.nziSourceKey) {
       case "footprint.scope1":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope1), `Scope 1 resolved from the client's reviewed snapshot · ${years}`, "The assured emissions already report Scope 1.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope1), `Scope 1 resolved from the client's reviewed snapshot · ${years}`, "The verified emissions already report Scope 1.");
         break;
       case "footprint.scope2":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope2), `Scope 2 resolved from the client's reviewed snapshot · ${years}`, "The assured emissions already report Scope 2.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope2), `Scope 2 resolved from the client's reviewed snapshot · ${years}`, "The verified emissions already report Scope 2.");
         break;
       case "footprint.scope3":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope3), `Scope 3 resolved from the client's reviewed snapshot · ${years}`, "The assured emissions already report Scope 3 by category.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope3), `Scope 3 resolved from the client's reviewed snapshot · ${years}`, "The verified emissions already report Scope 3 by category.");
         break;
       case "footprint.method":
         add(requirement.id, facts.assuredYears > 0 ? 3 : null, "GHG Protocol basis and boundary recorded on the job's emissions configuration", "The measurement approach is recorded with the snapshot.");
@@ -374,7 +374,7 @@ export function prefillFromNzi(framework: SrsFramework, facts: SrsNziFacts): Srs
         add(requirement.id, facts.targetsSet ? 3 : null, "Targets held in the client's forward target model, versioned and audited", "Forward targets are set against the baseline in force.");
         break;
       case "targets.gap":
-        add(requirement.id, facts.targetProgressMeasured ? 3 : null, "Progress measured against the target line by the gap engine", "Progress against target is already computed from assured years.");
+        add(requirement.id, facts.targetProgressMeasured ? 3 : null, "Progress measured against the target line by the gap engine", "Progress against target is already computed from verified years.");
         break;
       case "intensity.metrics":
         add(requirement.id, facts.intensityBasesResolved > 0 ? (facts.intensityBasesResolved > 1 ? 3 : 2) : null,
@@ -384,7 +384,7 @@ export function prefillFromNzi(framework: SrsFramework, facts: SrsNziFacts): Srs
       case "footprint.assurance":
         // The platform records who reviewed a snapshot, not whether a third party assured
         // it. Saying nothing is right: claiming assurance we cannot see would be a lie.
-        if (facts.independentlyAssured) add(requirement.id, 4, "Independent assurance recorded against the inventory", "The inventory is recorded as independently assured.");
+        if (facts.independentlyAssured) add(requirement.id, 4, "Independent verification recorded against the inventory", "The inventory is recorded as independently verified.");
         break;
       default:
         break;

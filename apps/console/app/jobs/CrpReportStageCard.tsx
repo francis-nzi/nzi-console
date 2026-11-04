@@ -17,7 +17,7 @@ export function reportStageNext(stage: ReportStage, readyForReporting: boolean):
     case "in-preparation": return readyForReporting
       ? "Evidence is complete — sign off and freeze the reviewed snapshot in Review & QA."
       : "Finish calculation and independent review in Review & QA, then freeze the reviewed snapshot.";
-    case "awaiting-review": return "The reviewed snapshot is awaiting approval — approve it in Review & QA, under Data assurance.";
+    case "awaiting-review": return "The reviewed snapshot is awaiting approval — approve it in Review & QA, under Data checks.";
     case "ready-to-validate": return "The snapshot is approved. Draft the report, choose its signee and validate it in the Report Studio.";
     case "ready-to-publish": return "A validated version is ready. Publish it to the client portal from the Report Studio.";
     case "awaiting-client": return "Published — the client has not yet approved it.";

@@ -83,9 +83,11 @@ describe("retiring demo job-number clashes", { skip: DATABASE_URL ? false : "NZI
 
   it("moves the demo's numbers above v7's range and past its own highest, in order, audited — and touches nothing else", async () => {
     const nziBefore = await jobsOf(NZI);
+    // Audit already there before the command runs: 0208's one-time wording rewrite of the seeded SRS framework (migration:0208). The command adds none.
+    const seeded = Number((await db.query<{ n: string }>(`SELECT count(*) AS n FROM nzi_console.audit_events WHERE organisation_id = $1`, [NZI])).rows[0]!.n);
     const outcome = await retireDemoJobNumbers(database.pool, { organisationId: DEMO, above: 764, commit: true });
-    assert.deepEqual(outcome.protectedCheck, { organisationId: NZI, jobs: 1, auditEvents: 0, unchanged: true },
-      "net-zero-international checked before, inside and after: its one job untouched, no audit written there");
+    assert.deepEqual(outcome.protectedCheck, { organisationId: NZI, jobs: 1, auditEvents: seeded, unchanged: true },
+      "net-zero-international checked before, inside and after: its one job untouched, no audit written there by this command");
     assert.equal(outcome.moved.length, 3);
     assert.deepEqual((await jobsOf(DEMO)).map((job) => [job.job_id, job.job_number]),
       [["demo-a", "J000901"], ["demo-b", "J000902"], ["demo-c", "J000903"], ["demo-d", "J000900"]]);

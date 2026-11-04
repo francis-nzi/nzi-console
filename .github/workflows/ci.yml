@@ -244,6 +244,11 @@ jobs:
       # -> a new CRP job seeds from the amended set -> amend again -> the next job seeds from that. No master-template import on the path.
       - name: A client's data entry template is amended in place, and each new job seeds from the newest version
         run: npx tsx --test packages/isolated-backend/tests/dataEntryTemplateYearOnYearReal.test.ts
+      # NZI offers emissions verification, not assurance (0208, NZC-170): the stored wording - the seeded SRS framework (a published version, its immutability
+      # triggers lifted only for the rewrite and re-enabled), the seeding function, saved message wording - is rewritten by exact string, audited per row,
+      # idempotent; an organisation provisioned afterwards starts with the new wording.
+      - name: Stored wording says verification, audited per row, and a published framework is still never edited
+        run: npx tsx --test packages/isolated-backend/tests/verificationWordingReal.test.ts
       # Portal updates (RULING-portal-messages, M2): notices derived at read time from events that already exist (a published report, a reviewer's
       # decision on the client's own entries, a closing data-entry window, a live broadcast), the exact scope, no reviewer note, nothing stored
       # or emitted for a notice, and a per-user seen watermark that only moves forward.

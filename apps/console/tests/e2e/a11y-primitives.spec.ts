@@ -26,7 +26,7 @@ test.describe("A11y primitives — shared keyboard / screen-reader building bloc
 
   test("Tabs: roving tabindex + Arrow/Home/End move and activate; Tab leaves the tablist", async ({ page }) => {
     const surface = await openAssurance(page);
-    const tablist = surface.locator('[role="tablist"][aria-label="Data assurance views"]');
+    const tablist = surface.locator('[role="tablist"][aria-label="Data checks views"]');
     const tabs = tablist.getByRole("tab");
     await expect(tabs.first()).toHaveAttribute("aria-selected", "true");
     await expect(tabs.first()).toHaveAttribute("tabindex", "0");
@@ -51,12 +51,12 @@ test.describe("A11y primitives — shared keyboard / screen-reader building bloc
 
   test("Drawer: role=dialog, Escape closes it, focus returns to the opener", async ({ page }) => {
     const surface = await openAssurance(page);
-    const dialog = page.locator('[role="dialog"][aria-label="Data assurance detail"]');
+    const dialog = page.locator('[role="dialog"][aria-label="Data checks detail"]');
     await expect(dialog).toBeVisible();
     await expect(dialog).toHaveAttribute("aria-modal", "true");
 
     // Close it, then reopen via the keyboard-reachable reopen button.
-    await dialog.getByRole("button", { name: /Close data assurance detail/ }).click();
+    await dialog.getByRole("button", { name: /Close data checks detail/ }).click();
     await expect(dialog).toHaveCount(0);
     const reopen = surface.locator("button.nz-assurance-reopen");
     await expect(reopen).toBeVisible();

@@ -44,7 +44,7 @@ export function ProjectedPathway({ data, width, showChrome = true }: Props) {
   const series = [
     { key: "target", label: "Target — needed", colour: tokens.projection.target, dash: "2 4", data: data.target, opacity: 0.75 },
     { key: "projected", label: "Projected — planned", colour: tokens.projection.projected, dash: "7 4", data: data.projected, opacity: 1 },
-    { key: "actual", label: "Measured — assured", colour: tokens.projection.actual, dash: undefined, data: data.actual, opacity: 1 },
+    { key: "actual", label: "Measured — verified", colour: tokens.projection.actual, dash: undefined, data: data.actual, opacity: 1 },
   ] as const;
 
   const titleId = `${data.spec.id}-title`;
@@ -122,7 +122,7 @@ export function ProjectedPathway({ data, width, showChrome = true }: Props) {
       {svg}
       <p style={noteStyle}>
         Projected is an estimate built from this client&rsquo;s reduction plan. It is not a measurement and
-        is not assured.
+        is not validated.
       </p>
     </figure>
   );

@@ -184,7 +184,7 @@ export function resolveIntensity(input: {
   const { definition, emissionsTco2e, value } = input;
   const metricKey = definition.key;
   if (emissionsTco2e === null) {
-    return { state: "unavailable", metricKey, reason: "No assured total is resolved for this year, so no intensity can be formed." };
+    return { state: "unavailable", metricKey, reason: "No verified total is resolved for this year, so no intensity can be formed." };
   }
   if (value === null) {
     return {

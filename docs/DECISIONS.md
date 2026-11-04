@@ -5729,3 +5729,31 @@ reviewed, frozen and published like any other.
 
 **What this does not decide.** Which jobs are re-ingested (each is its own dry run and Francis's sign-off); the residual rows
 for Francis; composing from v7 totals for renewed totals-only jobs (ruling 7).
+
+
+### NZC-170 — NZI offers emissions verification, not assurance: user-facing copy says "verification" / "verified" [Decided 4 Nov 2026 — Francis]
+
+**Decision.** In the carbon context, everything a client or a member of staff reads says **verification** / **verified** /
+**verify**, never "assurance" / "assured" / "assure": the console, the client portal, the generated report layouts in use and the
+messages the app raises. `check:terminology` refuses the old words in copy (`scripts/assurance-wording.mjs`).
+
+- **Internal names keep theirs:** `assured_period_snapshots`, the `assurance.gap.resolve` command, component and CSS names,
+  identifiers and stored enum values (`"assured"`, `footprint.assurance`). Only what a person reads changes.
+- **The email/MFA "verify / verification" is untouched** — a different word's business.
+- **Not emissions verification, so not swept:** the Platform governance page's own "tenant assurance" (security and audit assurance) keeps its
+  wording, sanctioned line by line in the guard.
+- **The internal data-QA stage is "Data checks"** (Review & QA), not "Data verification": that name now belongs to the external service.
+- **No "limited" review.** The supplier-service example reads "Verification & validation"; the opinion wording is a separate piece.
+- **"validated / validation" is valid copy** and is never flagged. Where the subject is a forward plan or projection (the strategy projection, the
+  projected pathway, the pathway target input) it reads "validated", not "verified"; history and measurements stay "verified".
+- **Stored wording is rewritten by a migration** (0208, audited per row, exact string): the seeded UK SRS framework (maturity
+  level 4's label and definition; requirement S2 M13's title and help text), the `provision_organisation` seeding function, and any
+  saved message wording. A published framework version is otherwise never edited; the migration lifts the two row triggers only
+  inside its own transaction and re-enables them (asserted).
+- **Pinned layouts do not move.** A report issued under `composed@1`–`@4` reads as it was issued (F-0: an issued report is
+  immutable), so those layouts' wording is frozen and is the guard's only non-identifier exemption. `composed@5`/`@6` draw
+  "Verification" (goldens re-pinned, the diff being only these words). Text already stored in an issued composition is never rewritten.
+
+**Why.** NZI sells emissions verification. "Assurance" claims a regime (assurance engagement, assurer, standard, scope) that the
+platform does not record and the company does not offer; the report's own basis statement already says it is not third-party
+assured, and the word should not sit beside it as though it were.

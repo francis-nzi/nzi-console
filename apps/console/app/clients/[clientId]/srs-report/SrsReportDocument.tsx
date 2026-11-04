@@ -84,13 +84,13 @@ function SectionBody({ section, report }: { section: ReadinessReportSection; rep
     case "metrics": {
       const fromRecord = dashboard.requirements.filter((requirement) => requirement.source === "auto");
       return fromRecord.length === 0
-        ? <p>No requirement in this assessment was answered from the assured record.</p>
+        ? <p>No requirement in this assessment was answered from the verified record.</p>
         : <table className="nz-srs-table"><caption>Answered from your reviewed data</caption>
           <thead><tr><th scope="col">Requirement</th><th scope="col">Step reached</th><th scope="col">From</th></tr></thead>
           <tbody>{fromRecord.map((requirement) => <tr key={requirement.id}>
             <th scope="row">{requirement.code} · {requirement.title}</th>
             <td>{requirement.maturity === null ? "Not answered" : `${requirement.maturity} · ${requirement.stepName}`}</td>
-            <td>{requirement.evidence?.ref ?? "Your assured record"}</td>
+            <td>{requirement.evidence?.ref ?? "Your verified record"}</td>
           </tr>)}</tbody>
         </table>;
     }

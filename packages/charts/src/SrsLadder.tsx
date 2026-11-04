@@ -332,7 +332,7 @@ export function SrsTrend({ title, points: series, mode = "light", width, compact
   const scope = idFor("srs-trend", `${title}-${mode}`);
   const x = (index: number) => M.left + (series.length <= 1 ? plotW / 2 : (plotW * index) / (series.length - 1));
   const y = (level: number) => M.top + plotH - (plotH * clamp(level)) / MAX;
-  const names = ["Not started", "Developing", "Established", "Advanced", "Assured"];
+  const names = ["Not started", "Developing", "Established", "Advanced", "Verified"];
   const stroke = SRS_LADDER[mode].ramp[3];
   return <svg id={scope} viewBox={`0 0 ${W} ${H}`} width={width ?? "100%"} role="img"
     aria-label={`${title}: ${series.length === 0 ? "no completed assessment yet" : series.map((point) => `${point.label} ${one(point.level)}`).join(", ")}`} style={{ display: "block", fontFamily: tokens.font }}>

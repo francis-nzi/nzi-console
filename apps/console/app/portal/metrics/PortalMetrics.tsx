@@ -36,7 +36,7 @@ export function PortalMetrics({ jobId }: { jobId: string }) {
       const [dashRes, reportRes, jobsRes] = await Promise.all([fetch(`${base}/dashboard`, { cache: "no-store" }), fetch(`${base}/published-report`, { cache: "no-store" }), fetch(`${surface.api}/jobs`, { cache: "no-store" })]);
       if (await surface.sessionEnded(dashRes) || await surface.sessionEnded(reportRes)) return;
       const dashboard: unknown = dashRes.ok ? await dashRes.json() : null;
-      if (!isPortalAssuredDashboard(dashboard)) { setState({ kind: "failed", message: "The assured figures could not be verified." }); return; }
+      if (!isPortalAssuredDashboard(dashboard)) { setState({ kind: "failed", message: "The verified figures could not be confirmed." }); return; }
       if (!dashboard.published) { setState({ kind: "empty" }); return; }
       const reportBody: unknown = reportRes.ok ? await reportRes.json() : null;
       const report = reportBody && typeof reportBody === "object" ? (reportBody as { report?: unknown }).report : undefined;
@@ -49,9 +49,9 @@ export function PortalMetrics({ jobId }: { jobId: string }) {
   }, [jobId, surface]);
   useEffect(() => { void load(); }, [load]);
 
-  if (state.kind === "loading") return <div className="nz-portal-state loading" role="status"><i>↻</i><div><b>Loading your metrics</b><span>Reading your latest assured report…</span></div></div>;
+  if (state.kind === "loading") return <div className="nz-portal-state loading" role="status"><i>↻</i><div><b>Loading your metrics</b><span>Reading your latest verified report…</span></div></div>;
   if (state.kind === "failed") return <div className="nz-portal-state failed" role="alert"><i>!</i><div><b>Your metrics are temporarily unavailable</b><span>{state.message} No figures have been inferred.</span><button className="nz-btn" onClick={() => void load()}>Try again</button></div></div>;
-  if (state.kind === "empty") return <div className="nz-portal-state empty"><i>✓</i><div><b>Your metrics will appear here</b><span>Once your first assured report for this job is published, its figures can be explored here — always the assured figures, never a draft.</span></div></div>;
+  if (state.kind === "empty") return <div className="nz-portal-state empty"><i>✓</i><div><b>Your metrics will appear here</b><span>Once your first verified report for this job is published, its figures can be explored here — always the verified figures, never a draft.</span></div></div>;
   return <MetricsReady state={state} jobId={jobId} filters={filters} setFilters={setFilters} forms={forms} setForms={setForms} />;
 }
 
@@ -79,7 +79,7 @@ function MetricsReady({ state, jobId, filters, setFilters, forms, setForms }: {
         <div>
           <span className="nz-eyebrow">Your emissions, your way</span>
           <h1 className="nz-pd-client">Metrics</h1>
-          <p className="nz-pd-meta">Reporting year {state.dashboard.reportingYear} · from your assured, published report · switch any chart to the form that suits you</p>
+          <p className="nz-pd-meta">Reporting year {state.dashboard.reportingYear} · from your verified, published report · switch any chart to the form that suits you</p>
         </div>
       </header>
 
@@ -136,7 +136,7 @@ function MetricsReady({ state, jobId, filters, setFilters, forms, setForms }: {
             : <MetricTrend years={trend.years} series={trendSeries} form={forms.trend === "bar" ? "bar" : "line"} unit={UNIT} title="Emissions over time" />}
         </Panel>
       </div>
-      <p className="nzp-metric-note">Every figure is from your assured, published report for reporting year {state.dashboard.reportingYear} — the same figures as your dashboard and report.</p>
+      <p className="nzp-metric-note">Every figure is from your verified, published report for reporting year {state.dashboard.reportingYear} — the same figures as your dashboard and report.</p>
     </div>
   );
 }

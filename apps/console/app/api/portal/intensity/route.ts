@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     );
     if (!isPortalIntensity(intensity)) {
       return Response.json(
-        { code: "INVALID_INTENSITY_EVIDENCE", message: "The assured intensity evidence could not be verified." },
+        { code: "INVALID_INTENSITY_EVIDENCE", message: "The verified intensity evidence could not be confirmed." },
         { status: 502, headers: { "Cache-Control": "private, no-store" } },
       );
     }

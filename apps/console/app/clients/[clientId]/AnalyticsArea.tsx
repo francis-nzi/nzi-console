@@ -59,7 +59,7 @@ export function AnalyticsArea({ workspace, onEvidence, access, onDrawer }: {
   if (history.length === 0) {
     return <section className="nz-panel">
       <CardHead eyebrow="Carbon" title="Carbon analytics" />
-      <Empty text="No reviewed snapshot has been issued for this client, so there is nothing to analyse yet. Figures appear here once a CRP job issues its first assured year." />
+      <Empty text="No reviewed snapshot has been issued for this client, so there is nothing to analyse yet. Figures appear here once a CRP job issues its first verified year." />
     </section>;
   }
 
@@ -86,7 +86,7 @@ export function AnalyticsArea({ workspace, onEvidence, access, onDrawer }: {
         <section className="nz-panel">
           <CardHead eyebrow="Year on year" title="Emissions by scope" right={<EvidenceButton label="Year on year" onOpen={() => onEvidence("yoy")} />} />
           {years.length < 2
-            ? <Empty text="One assured year so far — a year-on-year comparison needs two." />
+            ? <Empty text="One verified year so far — a year-on-year comparison needs two." />
             : <ScopeYearOnYearBar showChrome={false} data={{
               spec: { id: `client-yoy-${client.id}`, type: "scope_year_on_year_bar", title: "Annual emissions by scope", family: "crp", specVersion: 1 },
               unit: "tCO₂e", state: "success",

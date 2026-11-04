@@ -31,7 +31,7 @@ export function ClientPathway({ client, targets, actuals }: { client: { id: stri
           spec: { id: `client-pathway-${client.id}`, type: "reduction_pathway", title: `${client.name} reduction pathway`, subtitle: `vs ${FY(benchmark!.year)} benchmark`, family: "crp", specVersion: 1 },
           unit: "tCO₂e",
           state: actuals.length ? "success" : "empty",
-          stateMessage: actuals.length ? undefined : "No assured reporting year yet — the target line stands alone until one is issued.",
+          stateMessage: actuals.length ? undefined : "No verified reporting year yet — the target line stands alone until one is issued.",
           actual: actuals.map((actual) => ({ year: actual.year, value: actual.tco2e })),
           target: targets.trajectory.map((point) => ({ year: point.year, value: point.tco2e })),
           milestones: targets.trajectory.map((point) => ({
@@ -50,10 +50,10 @@ export function ClientPathway({ client, targets, actuals }: { client: { id: stri
             ? <div className="nz-cw-kv"><span className="k">{FY(latest.year)} against the line</span><span className={`v ${latest.status === "behind" ? "up" : "ok"}`}>
               {latest.status === "on-track" ? "On track" : latest.status === "behind" ? `${Math.abs(latest.gapPct ?? 0).toFixed(1)}% above target` : `${Math.abs(latest.gapPct ?? 0).toFixed(1)}% below target`}
             </span></div>
-            : <p className="sub" style={{ margin: "8px 0" }}>No assured year falls on or after the benchmark year yet, so there is nothing to measure against the line.</p>}
+            : <p className="sub" style={{ margin: "8px 0" }}>No verified year falls on or after the benchmark year yet, so there is nothing to measure against the line.</p>}
           {targets.benchmarkStale ? <p className="nz-maps">These targets are held against the benchmark they were set with; the baseline in force has moved since.</p> : null}
         </div>
       </>}
-    <p className="nz-maps">Actual is the assured total from each year&apos;s reviewed snapshot. The target line is the benchmark and each committed milestone — the same model the gap engine measures against, so the chart and the gap cannot disagree.</p>
+    <p className="nz-maps">Actual is the verified total from each year&apos;s reviewed snapshot. The target line is the benchmark and each committed milestone — the same model the gap engine measures against, so the chart and the gap cannot disagree.</p>
   </section>;
 }

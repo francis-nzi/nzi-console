@@ -172,7 +172,7 @@ function RequirementDrawer({ framework, requirement, editable, onClose, onSaved 
       <SelectField label="Target" value={draft.targetMaturity} options={framework.maturityLevels.map((level) => ({ value: String(level.level), label: `${level.level} · ${level.label}` }))}
         disabled={readOnly} error={issues.targetMaturity} onChange={(targetMaturity) => setDraft({ ...draft, targetMaturity })} />
     </FieldRow>
-    {requirement?.source === "nzi-data" ? <div className="nz-a-hint-strip"><span aria-hidden="true">i</span><div>Answered from the client&rsquo;s own assured NZI data ({requirement.nziSourceKey}) rather than asked.</div></div> : null}
+    {requirement?.source === "nzi-data" ? <div className="nz-a-hint-strip"><span aria-hidden="true">i</span><div>Answered from the client&rsquo;s own verified NZI data ({requirement.nziSourceKey}) rather than asked.</div></div> : null}
     {!isNew ? <Switch label="Active" description="A retired requirement leaves new assessments; assessments already made keep it." checked={draft.active} disabled={readOnly}
       onChange={(active) => setDraft({ ...draft, active })} /> : null}
   </DrawerEditor>;
