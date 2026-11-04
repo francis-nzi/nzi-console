@@ -63,7 +63,7 @@ export function PortalTermsGate() {
 
   if (!status?.mustAccept) return null;
   return (
-    <Drawer open onClose={() => undefined} ariaLabel="Portal terms of access" className="nz-portal-terms">
+    <Drawer open onClose={() => undefined} ariaLabel="Portal terms of access" className="nz-portal-terms" dismissible={false}>
       <div className="nz-portal-terms-card">
         <div className="nz-portal-terms-head">
           <span className="nz-eyebrow">Client portal</span>

@@ -79,7 +79,7 @@ export function PortalInactivityGuard() {
   const mm = Math.floor(warnLeft / 60);
   const ss = String(warnLeft % 60).padStart(2, "0");
   return (
-    <Drawer open onClose={stayIn} ariaLabel="Session about to end" className="nz-portal-idle">
+    <Drawer open onClose={stayIn} ariaLabel="Session about to end" className="nz-portal-idle" dismissible={false}>
       <div className="nz-portal-idle-card">
         <h2 id="nz-portal-idle-h">Still there?</h2>
         <p>For your security you&rsquo;ll be signed out after {Math.round(idleMs / 60_000)} minutes of inactivity. You have <b>{mm}:{ss}</b> left.</p>

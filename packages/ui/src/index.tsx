@@ -6,6 +6,7 @@ import { NziLogo, NziMark } from "./Brand";
 
 export { Tabs, TabPanel, type TabDescriptor } from "./Tabs";
 export { Drawer } from "./Drawer";
+export { EvidenceDrawer } from "./EvidenceDrawer";
 export { GatedButton } from "./GatedButton";
 export { Collapsible } from "./Collapsible";
 export { NziLogo, NziMark } from "./Brand";
@@ -122,21 +123,5 @@ export function TopBar({ crumbs }: { crumbs: ReactNode }) {
           help provider is mounted. */}
       <HelpAffordance />
     </div>
-  );
-}
-
-export function EvidenceDrawer({
-  kicker, title, subtitle, children, actions,
-}: { kicker: string; title: string; subtitle: string; children: ReactNode; actions?: ReactNode }) {
-  return (
-    <aside className="nz-drawer" aria-label={`${kicker}: ${title}`}>
-      <div className="nz-dh">
-        <div className="kick">{kicker}</div>
-        <h3>{title}</h3>
-        <div className="m">{subtitle}</div>
-      </div>
-      <div className="nz-dbody" tabIndex={0}>{children}</div>
-      {actions && <div className="nz-dact">{actions}</div>}
-    </aside>
   );
 }

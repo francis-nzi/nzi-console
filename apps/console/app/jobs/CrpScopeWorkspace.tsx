@@ -462,6 +462,7 @@ export function CrpScopeWorkspace({
       kicker={`${addingCategory.code} · ${addingCategory.name}`}
       title="Add entry"
       subtitle={`Scope ${addingCategory.scope} · ${siteLabel}`}
+      onClose={() => { setAddingCategory(null); setQuickAddError(""); }}
     >
       <EmissionEntryForm
         key={addingCategory.code}
@@ -492,6 +493,7 @@ export function CrpScopeWorkspace({
       kicker={`Scope row · version ${detailRow.version}`}
       title={detailRow.sourceLabel}
       subtitle={`Scope ${detailRow.scope}`}
+      onClose={() => setSelectedId("")}
     >
       <Editor
         key={detailRow.id}

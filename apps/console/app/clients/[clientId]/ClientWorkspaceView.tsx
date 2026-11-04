@@ -105,7 +105,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   // The evidence drawer keeps the shell's right-hand slot; the edit drawers share one host.
   const evidenceDrawer = evidenceKey ? (() => {
     const figure = figureFor(evidenceKey);
-    return <EvidenceDrawer kicker={`Evidence · ${EVIDENCE_TITLE[evidenceKey].toLowerCase()}`} title={EVIDENCE_TITLE[evidenceKey]}
+    return <EvidenceDrawer onClose={() => setEvidenceKey(null)} kicker={`Evidence · ${EVIDENCE_TITLE[evidenceKey].toLowerCase()}`} title={EVIDENCE_TITLE[evidenceKey]}
       subtitle={figure.source ? `Resolved from ${figure.source.jobNumber} · reviewed snapshot v${figure.source.snapshotVersion}` : "No reviewed snapshot"}
       actions={<>{figure.source ? <Link className="nz-btn nz-dact-fit" href={`/jobs/${encodeURIComponent(figure.source.jobId)}`}>Open source snapshot →</Link> : null}<span style={{ flex: 1 }} /><button type="button" className="nz-btn pri nz-dact-fit" onClick={() => setEvidenceKey(null)}>Close</button></>}>
       <FigureEvidenceBody figure={figure} context={context[evidenceKey]} scopes={evidenceKey === "scopes" ? evidence.scopes : undefined} />

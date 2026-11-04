@@ -390,7 +390,7 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
         <div className="nz-import-modal-card">
           <div className="nz-import-modal-h">
             <h2>{importFor?.title}</h2>
-            <button type="button" className="nz-btn" aria-label={`Close ${importFor?.title ?? "import and templates"}`} onClick={() => setImportFor(null)}>✕</button>
+            <button type="button" className="nz-btn" data-drawer-close aria-label={`Close ${importFor?.title ?? "import and templates"}`} onClick={() => setImportFor(null)}>✕</button>
           </div>
           <div className="nz-import-modal-b">{importFor?.body}</div>
         </div>
