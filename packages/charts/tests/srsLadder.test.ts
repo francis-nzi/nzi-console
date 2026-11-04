@@ -111,7 +111,7 @@ test("the trend: one assessment is one point and no line; two are a line on the 
   assert.match(one, />1\.2</);
   const two = html(createElement(SrsTrend, { title: "Overall", points: [{ label: "Mar", level: 1.2 }, { label: "Jun", level: 2.1 }] }));
   assert.match(two, /<polyline/);
-  assert.match(two, />4 Assured</, "the axis names the steps");
+  assert.match(two, />4 Verified</, "the axis names the steps");
   const none = html(createElement(SrsTrend, { title: "Overall", points: [] }));
   assert.match(none, /No completed assessment yet/);
 });
