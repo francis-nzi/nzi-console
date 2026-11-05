@@ -9,7 +9,7 @@ import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } 
 import { withTenantRead } from "../src/postgres";
 import { assignClientStrategy, removeClientStrategy } from "../src/reductionStrategies";
 import { createSrsFrameworkDraft, listSrsFrameworkVersions, publishSrsFramework, updateSrsMaturityLevel, upsertSrsRequirement } from "../src/srsFramework";
-import { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, reopenSrsAssessment, setSrsAssessmentItem, startSrsAssessment } from "../src/srsReadiness";
+import { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, reopenSrsAssessment, setSrsAssessmentItem, setSrsAssessmentNotes, startSrsAssessment } from "../src/srsReadiness";
 
 /**
  * SRS S1 against a real database (0187 on 0070): the framework managed as versions — a draft copied, edited, published
@@ -243,10 +243,32 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
       assert.ok((await assessment(first)).items.filter((entry) => entry.source === "auto").every((entry) => entry.priority === null));
     });
 
+    it("sets the assessment's context note on a draft — versioned, audited, srs.manage, refused once complete (B3)", async () => {
+      const draft = (await read((db) => listSrsAssessments(db, A))).find((entry) => entry.status === "draft")!;
+      const note = "Board paper due in March; finance lead is the contact.";
+      await assert.rejects(setSrsAssessmentNotes(database.pool, { assessmentId: draft.assessmentId, notes: note, expectedVersion: draft.version }, context("viewer")), /srs.manage|permission|not allowed/i);
+      await assert.rejects(setSrsAssessmentNotes(database.pool, { assessmentId: draft.assessmentId, notes: note, expectedVersion: draft.version + 1 }, context()), /version|conflict/i);
+      assert.equal((await assessment(draft.assessmentId)).notes, "", "the refused writes changed nothing");
+
+      const saved = await setSrsAssessmentNotes(database.pool, { assessmentId: draft.assessmentId, notes: note, expectedVersion: draft.version }, context());
+      assert.equal(saved.data.version, draft.version + 1);
+      const read1 = await assessment(draft.assessmentId);
+      assert.deepEqual([read1.notes, read1.version], [note, draft.version + 1], "the note round-trips through the read model");
+      await setSrsAssessmentNotes(database.pool, { assessmentId: draft.assessmentId, notes: "", expectedVersion: saved.data.version }, context());
+      assert.equal((await assessment(draft.assessmentId)).notes, "", "it can be cleared");
+
+      const audited = await q<{ after_json: { notes: string } }>(`SELECT after_json FROM nzi_console.audit_events WHERE action = 'srs_assessment_notes_set' AND entity_id = $1 ORDER BY occurred_at ASC LIMIT 1`, [draft.assessmentId]);
+      assert.equal(audited[0]!.after_json.notes, note);
+
+      const done = await assessment(first);
+      assert.equal(done.status, "complete");
+      await assert.rejects(setSrsAssessmentNotes(database.pool, { assessmentId: done.assessmentId, notes: note, expectedVersion: done.version }, context()), refused("ASSESSMENT_COMPLETE"));
+    });
+
     it("is srs.manage: a viewer cannot assess, and every start, answer and completion is audited", async () => {
       await assert.rejects(startSrsAssessment(database.pool, { clientId: "legacy-client" }, context("viewer")), /srs\.manage|permission|not allowed/i);
       const actions = (await q<{ action: string }>(`SELECT DISTINCT action FROM nzi_console.audit_events WHERE action LIKE 'srs_assessment_%'`)).map((row) => row.action).sort();
-      assert.deepEqual(actions, ["srs_assessment_completed", "srs_assessment_item_set", "srs_assessment_reopened", "srs_assessment_started"]);
+      assert.deepEqual(actions, ["srs_assessment_completed", "srs_assessment_item_set", "srs_assessment_notes_set", "srs_assessment_reopened", "srs_assessment_started"]);
     });
   });
 

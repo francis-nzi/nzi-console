@@ -128,7 +128,7 @@ export { getTraineePortal, type TraineePortalReadModel, type TraineeDetails, typ
 export { createTrainingBooking, getTrainingRun, issueTrainingCertificates, jobHasTrainingRun, listTrainingRunsForJob, reviewTrainingRun, setTrainingAttendance, setTrainingEntitlementExpiry, setTrainingRunStage, type TrainingBookingRecord, type TrainingRunRecord } from "./trainingRuns";
 export { getJobAnnualMetrics, type JobAnnualMetricsReadModel } from "./intensityMetricRecords";
 export { deactivateClientIntensityMetric, denominatorFor, listClientIntensityMetrics, listClientIntensityValues, listJobIntensityValues, setClientIntensityMetric, setJobIntensityValue } from "./intensityMetrics";
-export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, reopenSrsAssessment, resolveNziFacts, setSrsAssessmentItem, startSrsAssessment } from "./srsReadiness";
+export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, reopenSrsAssessment, resolveNziFacts, setSrsAssessmentItem, setSrsAssessmentNotes, startSrsAssessment } from "./srsReadiness";
 export {
   createSrsFrameworkDraft, listSrsFrameworkVersions, publishSrsFramework, updateSrsMaturityLevel, upsertSrsRequirement, type SrsFrameworkVersion,
 } from "./srsFramework";

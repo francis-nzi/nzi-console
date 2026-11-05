@@ -205,6 +205,31 @@ export function reopenSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.
   });
 }
 
+export type SetSrsAssessmentNotesResult = { assessmentId: string; version: number; notes: string };
+
+/** Set the assessment's context note. It is editable while the assessment is in progress; a completed one is reopened first. */
+export function setSrsAssessmentNotes(pool: PoolLike, input: CommandInputMap["srs.assessment.notes.set"], context: CommandContext): Promise<StoredOutcome<SetSrsAssessmentNotesResult>> {
+  return runPostgresCommand(pool, "srs.assessment.notes.set", input, context, async (db) => {
+    const current = await db.query<{ version: number; status: "draft" | "complete" }>(
+      `SELECT version,status FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND assessment_id=$2 FOR UPDATE`,
+      [context.organisationId, input.assessmentId]);
+    const row = current.rows[0];
+    if (!row) throw new CommandValidationError([{ field: "assessmentId", code: "NOT_FOUND", message: "That assessment does not exist." }]);
+    if (row.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, row.version);
+    if (row.status !== "draft") throw new CommandValidationError([{ field: "assessmentId", code: "ASSESSMENT_COMPLETE", message: "This assessment is complete. Reopen it to correct it before changing its note." }]);
+
+    const saved = await db.query<{ version: number }>(
+      `UPDATE nzi_console.srs_assessments SET notes=$3,updated_at=now(),version=version+1
+       WHERE organisation_id=$1 AND assessment_id=$2 RETURNING version`, [context.organisationId, input.assessmentId, input.notes]);
+
+    return {
+      // `data` is the audit event's after_json.
+      data: { assessmentId: input.assessmentId, version: saved.rows[0]!.version, notes: input.notes },
+      entityType: "srs_assessment", entityId: input.assessmentId, topic: "srs.assessment.notes_set",
+    };
+  });
+}
+
 /**
  * What NZI already holds for this client, read from the assured record rather than asked.
  * Each fact is something the platform can actually see; anything it cannot see stays false

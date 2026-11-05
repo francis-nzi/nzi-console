@@ -13,6 +13,8 @@
 
 import type { Priority } from "./priority";
 export const srsMaturityLevels = 5;
+/** The longest an assessment's context note may be. */
+export const SRS_ASSESSMENT_NOTES_MAX = 4000;
 export type SrsMaturity = 0 | 1 | 2 | 3 | 4;
 export type SrsStandardKey = string;
 export type SrsPillarKey = string;
