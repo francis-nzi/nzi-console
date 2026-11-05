@@ -14,6 +14,9 @@ import { pathToFileURL } from "node:url";
  *   2. **Colour is a token.** A raw hex in component source (`*.tsx`, component CSS) must be one of the colours
  *      `packages/ui/src/styles.css` defines as a custom property. Components reference `var(--…)`.
  *   3. **Type is Inter** (or the system stack). A `font-family` that introduces any other face is refused.
+ *   4. **One title per section** (the UX conventions in `docs/BRAND.md`). An eyebrow / kicker element directly followed by a
+ *      heading that says the same thing ("DATA ENTRY" over "Data entry template") is refused. Best-effort: only static text is
+ *      compared, so a computed label is never guessed at.
  *
  * Like `check:terminology` it is a heuristic on source text, not a parse, so every exception is a line in
  * `BRAND_SANCTIONED` with its reason: an exception is a decision somebody wrote down, never a silent pass.
@@ -26,7 +29,7 @@ export const TOKEN_FILE = "packages/ui/src/styles.css";
 
 /**
  * What may still carry an off-brand value, each with why. `file` is an exact path, or a prefix ending in `/`; `rule` is
- * `logo` | `colour` | `font`; `line` (optional) is a substring of the offending source line; `hexes` (optional) lists the only colours it covers.
+ * `logo` | `colour` | `font` | `title`; `line` (optional) is a substring of the offending source line; `hexes` (optional) lists the only colours it covers.
  */
 export const BRAND_SANCTIONED = [
   // The token-definition files. They *are* the palette, so they cannot be held to it.
@@ -48,6 +51,13 @@ export const BRAND_SANCTIONED = [
   { file: "apps/console/app/portal-preview/PortalWorkspace.tsx", rule: "colour", hexes: ["#68766f", "#bce8d0"], why: "inline styles in the portal preview, baselined until tokenised" },
   { file: "apps/console/app/jobs/SpendImportPanel.tsx", rule: "colour", hexes: ["#b23b2e"], why: "an inline error ink on the spend import issues column, baselined until it becomes var(--danger)" },
   { file: "apps/console/app/portal/portal-intensity.css", rule: "colour", hexes: ["#bce3ce"], why: "the verified chip's border, baselined until tokenised" },
+  // Double titles that predate the guard (an eyebrow over a heading that says the same thing). Each is a real breach of the one-title-per-section
+  // convention, baselined per line so a *new* one fails; each is to be fixed by deleting the kicker in an ungoverned display change - not a precedent.
+  { file: "apps/console/app/clients/[clientId]/AnalyticsArea.tsx", rule: "title", line: "<h2>Carbon analytics</h2>", why: "\"Carbon\" over \"Carbon analytics\"; baselined until the kicker is removed" },
+  { file: "apps/console/app/clients/[clientId]/ClientReportingTemplate.tsx", rule: "title", line: "<h2>Data entry template</h2>", why: "\"Data entry\" over \"Data entry template\"; baselined until the kicker is removed" },
+  { file: "apps/console/app/knowledge/KnowledgeViews.tsx", rule: "title", line: "<h2>Knowledge library</h2>", why: "\"Knowledge\" over \"Knowledge library\"; baselined until the kicker is removed" },
+  { file: "apps/console/app/portal/PortalReductionPlan.tsx", rule: "title", line: "nz-eyebrow", why: "\"Your reduction plan\" over a heading that restates it; baselined until the kicker is removed" },
+  { file: "apps/console/app/time/TimeBoard.tsx", rule: "title", line: "nz-eyebrow", why: "\"Time\" over \"Time\"; baselined until the kicker is removed" },
   // The system monospace stack for a code a person copies - a system face, not a brand typeface.
   { file: TOKEN_FILE, rule: "font", line: "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace", why: "the system monospace stack for the recovery codes a person copies" },
 ];
@@ -180,6 +190,32 @@ export function fontHits(line) {
   return bad;
 }
 
+/* ------------------------------------------------------------------ 4. one title per section */
+
+/** A kicker/eyebrow element (static text) immediately followed by a heading (static text). `nz-eyebrow light`, `nz-a-eyebrow`, `r5-kicker` all match. */
+const KICKER_HEADING = /<(div|span|p|small)\b[^>]*\bclassName\s*=\s*"[^"]*(?:eyebrow|kicker)[^"]*"[^>]*>([^<>{}]*)<\/\1>\s*<h([1-6])\b[^>]*>([^<>{}]*)<\/h\3>/gi;
+
+/** Lower-case words with a trailing plural `s` folded, so "Clients" and "client" are the same word. */
+const titleWords = (text) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean).map((word) => (word.length > 3 ? word.replace(/s$/, "") : word));
+
+/** Near-identical: one title's words are all in the other's ("data entry" / "data entry template"), which includes a leading substring. */
+export function repeatsTitle(kicker, heading) {
+  const a = titleWords(kicker), b = titleWords(heading);
+  if (a.length === 0 || b.length === 0) return false;
+  const within = (small, large) => small.every((word) => large.includes(word));
+  return within(a, b) || within(b, a);
+}
+
+/** Every kicker that repeats the heading under it: `[{ line, why }]`. Pure; takes comment-stripped source. */
+export function titleHits(text) {
+  const hits = [];
+  for (const match of text.matchAll(KICKER_HEADING)) {
+    const kicker = match[2].replace(/\s+/g, " ").trim(), heading = match[4].replace(/\s+/g, " ").trim();
+    if (repeatsTitle(kicker, heading)) hits.push({ line: lineOf(text, match.index), why: `the kicker "${kicker}" repeats the heading "${heading}" - one title per section` });
+  }
+  return hits;
+}
+
 /* ------------------------------------------------------------------ the scan */
 
 export function isBrandSanctioned(rel, rule, lineText = "", hex = "") {
@@ -198,6 +234,7 @@ export function scanSource(rel, text, tokens) {
   const out = [];
   const add = (rule, line, message) => out.push({ rule, line, message, source: (text.split("\n")[line - 1] ?? "").trim().slice(0, 110) });
   for (const hit of logoHits(code)) if (!isBrandSanctioned(rel, "logo", lines[hit.line - 1] ?? "")) add("logo", hit.line, hit.why);
+  if (!css) for (const hit of titleHits(code)) if (!isBrandSanctioned(rel, "title", lines[hit.line - 1] ?? "")) add("title", hit.line, hit.why);
   lines.forEach((lineText, index) => {
     for (const hex of colourHits(lineText, tokens)) if (!isBrandSanctioned(rel, "colour", lineText, hex)) add("colour", index + 1, `${hex} is not a styles.css token - use var(--…)`);
     for (const face of fontHits(lineText)) if (!isBrandSanctioned(rel, "font", lineText)) add("font", index + 1, `font "${face}" is not Inter or the system stack`);
@@ -239,10 +276,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     process.exit(1);
   }
   if (offences.length > 0) {
-    console.error("✖ docs/BRAND.md: off-brand UI. The logo is the real asset, colours are styles.css tokens, type is Inter:");
+    console.error("✖ docs/BRAND.md: off-brand UI. The logo is the real asset, colours are styles.css tokens, type is Inter, one title per section:");
     for (const o of offences) console.error(`    ${o.file}:${o.line}  [${o.rule}] ${o.message}\n        ${o.source}`);
     console.error("  Fix it - or, for a genuine one-off, add it to BRAND_SANCTIONED in scripts/brand-guard.mjs with the reason.");
     process.exit(1);
   }
-  console.log(`✓ brand: ${scanned} files, no hand-drawn logo, no colour outside the styles.css tokens (bar the sanctioned print palettes and baseline), type is Inter (${tokens} tokens)`);
+  console.log(`✓ brand: ${scanned} files, no hand-drawn logo, one title per section, no colour outside the styles.css tokens (bar the sanctioned print palettes and baseline), type is Inter (${tokens} tokens)`);
 }

@@ -42,3 +42,12 @@ Surfaces & text:
 
 ## Charts
 Brand tokens are the single styling source; scope colours as above; one SVG spec renders the same to screen, PDF and portal; charts are derived from data, never captured. Run the dataviz palette validator before adding any categorical colours.
+
+## UX conventions (reduce noise — apply on every screen)
+The product manages complexity so the person doesn't have to. These hold everywhere, not just where they were first raised:
+
+- **One title per section.** Never an eyebrow/kicker plus a near-duplicate heading (not "DATA ENTRY / Data entry template" or "RECORD / Company profile") — one plain, descriptive heading. On a tabbed page the tab already does the grouping the eyebrow used to.
+- **Explanatory prose goes behind an "i" pill**, not inline on the page. The screen shows the thing and its controls; the "why/how" sits in an info popover for those who want it. Keep on-page copy to what a confident user needs.
+- **No permanent right rail of cards.** Reference detail (contacts, sites, vehicles, financials, profile) lives under tabs/nav; its detail opens in an **on-demand right drawer**, which closes (×, Esc, scrim). Don't park standing cards down the right.
+- **An action does the action.** A primary control starts the thing in one click (e.g. "Start assessment" starts it) — no intermediate "are you sure / set options first" drawer. Sensible defaults are applied; optional choices and overrides live *inside* the thing, not as a gate before it. (A genuinely destructive or irreversible action is the only exception.)
+- **Manage by exception.** Surface what needs attention; keep the rest one click away. An honest screen shows what's outstanding rather than burying it.

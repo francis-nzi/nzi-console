@@ -91,6 +91,31 @@ describe("the brand guard", () => {
     assert.deepEqual(rules('<text fontFamily="Inter" fontSize={9} />'), []);
   });
 
+  it("refuses a kicker that repeats the heading under it, and passes a kicker that adds something", () => {
+    for (const source of [
+      '<div className="nz-eyebrow">Data entry</div><h2>Data entry template</h2>',
+      '<span className="eyebrow">DATA ENTRY</span>\n  <h2>Data entry template</h2>',
+      '<div className="nz-eyebrow light">Clients</div><h1>Client portfolio</h1>',
+      '<div className="r5-kicker">Time</div><h1>Time</h1>',
+      '<div className="nz-a-eyebrow">Data entry template</div><h2>Data entry</h2>',
+    ]) assert.deepEqual(rules(source), ["title"], source);
+    assert.equal(scan('const a = 1;\n<div className="eyebrow">Carbon</div><h2>Carbon analytics</h2>')[0]?.line, 2);
+    for (const source of [
+      '<div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1>',
+      '<div className="nz-eyebrow">Step {n} of 4</div><h2>Details</h2>',
+      '<div className="nz-eyebrow">{kicker}</div><h1>{title}</h1>',
+      '<div className="note">Data entry</div><h2>Data entry template</h2>',
+      '<div className="nz-eyebrow">Data entry</div><p>Data entry template</p>',
+    ]) assert.deepEqual(rules(source), [], source);
+    assert.deepEqual(rules('<div className="nz-eyebrow">Time</div><h1>Time</h1>', "apps/console/app/x.css"), [], "not scanned in CSS");
+  });
+
+  it("baselines the existing double titles by line, so a new one still fails", () => {
+    const file = "apps/console/app/time/TimeBoard.tsx";
+    assert.deepEqual(rules('<div className="nz-eyebrow">Time</div><h1>Time</h1>', file), []);
+    assert.deepEqual(rules('<div className="eyebrow">Jobs</div><h1>Jobs board</h1>', file), ["title"]);
+  });
+
   it("allows the token files, and the charts' print hex, with their reasons", () => {
     assert.deepEqual(rules(".nz-x{background:#FFDE00;color:#123456}", "packages/ui/src/styles.css"), []);
     assert.equal(isBrandSanctioned("packages/charts/src/tokens.ts", "colour", "export const INK = \"#0B1B2B\";"), true);
