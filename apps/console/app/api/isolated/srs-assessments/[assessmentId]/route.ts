@@ -1,4 +1,4 @@
-import { completeSrsAssessment, setSrsAssessmentItem } from "@nzi/isolated-backend";
+import { completeSrsAssessment, reopenSrsAssessment, setSrsAssessmentItem } from "@nzi/isolated-backend";
 import type { CommandInputMap } from "@nzi/contracts";
 import { requireCommandPrincipal } from "../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../lib/commandResponse";
@@ -23,5 +23,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ ass
     const { assessmentId } = await params;
     const body = await request.json() as Omit<CommandInputMap["srs.assessment.complete"], "assessmentId">;
     return commandSuccess(await completeSrsAssessment(isolatedPool(), { ...body, assessmentId }, commandContext(request, principal)));
+  } catch (error) { return commandFailure(error); }
+}
+
+// Reopen a completed assessment to correct it — the same assessment, so no new trend point.
+export async function PATCH(request: Request, { params }: { params: Promise<{ assessmentId: string }> }) {
+  try {
+    const principal = await requireCommandPrincipal(request, "srs.assessment.reopen");
+    const { assessmentId } = await params;
+    const body = await request.json() as Omit<CommandInputMap["srs.assessment.reopen"], "assessmentId">;
+    return commandSuccess(await reopenSrsAssessment(isolatedPool(), { ...body, assessmentId }, commandContext(request, principal)));
   } catch (error) { return commandFailure(error); }
 }

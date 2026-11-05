@@ -9,7 +9,7 @@ import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } 
 import { withTenantRead } from "../src/postgres";
 import { assignClientStrategy, removeClientStrategy } from "../src/reductionStrategies";
 import { createSrsFrameworkDraft, listSrsFrameworkVersions, publishSrsFramework, updateSrsMaturityLevel, upsertSrsRequirement } from "../src/srsFramework";
-import { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, setSrsAssessmentItem, startSrsAssessment } from "../src/srsReadiness";
+import { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, reopenSrsAssessment, setSrsAssessmentItem, startSrsAssessment } from "../src/srsReadiness";
 
 /**
  * SRS S1 against a real database (0187 on 0070): the framework managed as versions — a draft copied, edited, published
@@ -162,6 +162,49 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
       }
     });
 
+    it("reopens a completed assessment to correct it — same assessment, dates cleared, no new trend point — and re-completes it (B1)", async () => {
+      const id = (await read((db) => listSrsAssessments(db, B))).find((entry) => entry.status === "complete")!.assessmentId;
+      const done = await assessment(id);
+      const before = (await read((db) => listSrsAssessments(db, B))).length;
+      const requirement = v1.requirements.find((entry) => entry.active)!;
+      const held = done.items.find((item) => item.requirementId === requirement.id)!;
+      await assert.rejects(reopenSrsAssessment(database.pool, { assessmentId: id, expectedVersion: done.version }, context("viewer")), /srs\.manage|permission|not allowed/i);
+      await assert.rejects(reopenSrsAssessment(database.pool, { assessmentId: id, expectedVersion: done.version + 1 }, context()), /version|conflict/i);
+      // A client with an assessment already in progress cannot also reopen one: A's third is a draft.
+      const aDone = (await read((db) => listSrsAssessments(db, A))).find((entry) => entry.status === "complete")!;
+      await assert.rejects(reopenSrsAssessment(database.pool, { assessmentId: aDone.assessmentId, expectedVersion: aDone.version }, context()), refused("ASSESSMENT_OPEN"));
+
+      const reopened = await reopenSrsAssessment(database.pool, { assessmentId: id, expectedVersion: done.version }, context());
+      assert.equal(reopened.data.version, done.version + 1);
+      const draft = await assessment(id);
+      assert.deepEqual([draft.status, draft.assessedOn], ["draft", null]);
+      assert.equal((await q(`SELECT completed_at FROM nzi_console.srs_assessments WHERE assessment_id = $1`, [id]))[0]!.completed_at, null);
+      assert.equal((await read((db) => listSrsAssessments(db, B))).length, before, "reopening adds no assessment");
+      assert.equal(readinessTrend(v1, await read((db) => listSrsAssessments(db, B))).length, 0, "while reopened it is off the trend");
+      await assert.rejects(reopenSrsAssessment(database.pool, { assessmentId: id, expectedVersion: draft.version }, context()), refused("NOT_COMPLETE"));
+
+      // It takes answers again, and completing it dates it afresh.
+      await setSrsAssessmentItem(database.pool, { assessmentId: id, requirementId: requirement.id, maturity: 3, expectedVersion: held.version }, context());
+      await completeSrsAssessment(database.pool, { assessmentId: id, expectedVersion: (await assessment(id)).version }, context());
+      const again = await assessment(id);
+      assert.deepEqual([again.status, again.assessedOn, again.items.find((item) => item.requirementId === requirement.id)!.maturity], ["complete", todayInLondon(), 3]);
+      assert.equal(readinessTrend(v1, await read((db) => listSrsAssessments(db, B))).length, 1);
+    });
+
+    it("reopens only the latest assessment: with two completed, the older is refused NOT_LATEST and the latest reopens (B1)", async () => {
+      const [older] = (await read((db) => listSrsAssessments(db, B))).filter((entry) => entry.status === "complete");
+      await q(`UPDATE nzi_console.srs_assessments SET started_on = started_on - 30, assessed_on = assessed_on - 30 WHERE assessment_id = $1`, [older!.assessmentId]);
+      const second = (await startSrsAssessment(database.pool, { clientId: B }, context())).data.assessmentId;
+      await answerAll(second, v1, () => 2);
+      await completeSrsAssessment(database.pool, { assessmentId: second, expectedVersion: (await assessment(second)).version }, context());
+      const olderNow = await assessment(older!.assessmentId), latest = await assessment(second);
+      await assert.rejects(reopenSrsAssessment(database.pool, { assessmentId: older!.assessmentId, expectedVersion: olderNow.version }, context()), refused("NOT_LATEST"));
+      assert.equal((await assessment(older!.assessmentId)).status, "complete", "the refused reopen changed nothing");
+      await reopenSrsAssessment(database.pool, { assessmentId: second, expectedVersion: latest.version }, context());
+      assert.equal((await assessment(second)).status, "draft");
+      await completeSrsAssessment(database.pool, { assessmentId: second, expectedVersion: (await assessment(second)).version }, context()); // leave the client with none in progress
+    });
+
     it("links a gap to an action on this client's plan only — the Actions spine (R7)", async () => {
       const draft = (await read((db) => listSrsAssessments(db, A))).find((entry) => entry.status === "draft")!;
       const requirement = v1.requirements.find((entry) => entry.active)!;
@@ -203,7 +246,7 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
     it("is srs.manage: a viewer cannot assess, and every start, answer and completion is audited", async () => {
       await assert.rejects(startSrsAssessment(database.pool, { clientId: "legacy-client" }, context("viewer")), /srs\.manage|permission|not allowed/i);
       const actions = (await q<{ action: string }>(`SELECT DISTINCT action FROM nzi_console.audit_events WHERE action LIKE 'srs_assessment_%'`)).map((row) => row.action).sort();
-      assert.deepEqual(actions, ["srs_assessment_completed", "srs_assessment_item_set", "srs_assessment_started"]);
+      assert.deepEqual(actions, ["srs_assessment_completed", "srs_assessment_item_set", "srs_assessment_reopened", "srs_assessment_started"]);
     });
   });
 
