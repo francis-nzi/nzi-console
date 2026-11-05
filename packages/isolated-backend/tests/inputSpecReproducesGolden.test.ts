@@ -66,7 +66,7 @@ describe("the governed spec reproduces the pinned renders", { skip: DATABASE_URL
 
     assert.deepEqual(mismatches, [],
       `the spec renders differently from the pinned model:\n  ${mismatches.slice(0, 2).join("\n  ")}`);
-    // 160 when pinned (0093); 168 since 0165 added Other Stationary Fuels (NZC-168) — the golden regenerated in its own commit; 176 since 0211 added Purchased Heat & Steam.
+    // 160 when pinned (0093); 168 since 0165 added Other Stationary Fuels (NZC-168) — the golden regenerated in its own commit; 176 since 0212 added Purchased Heat & Steam.
     assert.equal(Object.keys(golden).length, 176, "and all 176 renders were checked, not a subset");
   });
 

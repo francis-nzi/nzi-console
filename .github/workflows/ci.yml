@@ -311,11 +311,11 @@ jobs:
       # a drifted spec rather than overwriting it.
       - name: The v7 taxonomy additions land as ruled, and refuse a drifted spec
         run: npx tsx --test packages/isolated-backend/tests/taxonomy0165Real.test.ts
-      # 0211: Purchased Heat & Steam (Scope 2) is Purchased Electricity's form without the electricity-only supply question; the held-back
+      # 0212: Purchased Heat & Steam (Scope 2) is Purchased Electricity's form without the electricity-only supply question; the held-back
       # "Heat and steam" rule is retired and the family filed under it (held-back count 0); the migration's guards refuse a second run
       # and a drifted ground rather than overwriting it.
       - name: Purchased Heat & Steam lands as ruled and Heat and steam is no longer held back
-        run: npx tsx --test packages/isolated-backend/tests/heatSteam0211Real.test.ts
+        run: npx tsx --test packages/isolated-backend/tests/heatSteam0212Real.test.ts
       # The declared dataset mapping (NZC-149). Two things only a real database shows: that the rows 0112
       # seeds are shaped the way the resolver reads them — a mapping right in the abstract and mis-keyed
       # in the migration resolves nothing while every unit test stays green — and that the shape
