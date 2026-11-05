@@ -191,6 +191,20 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
       assert.equal(readinessTrend(v1, await read((db) => listSrsAssessments(db, B))).length, 1);
     });
 
+    it("reopens only the latest assessment: with two completed, the older is refused NOT_LATEST and the latest reopens (B1)", async () => {
+      const [older] = (await read((db) => listSrsAssessments(db, B))).filter((entry) => entry.status === "complete");
+      await q(`UPDATE nzi_console.srs_assessments SET started_on = started_on - 30, assessed_on = assessed_on - 30 WHERE assessment_id = $1`, [older!.assessmentId]);
+      const second = (await startSrsAssessment(database.pool, { clientId: B }, context())).data.assessmentId;
+      await answerAll(second, v1, () => 2);
+      await completeSrsAssessment(database.pool, { assessmentId: second, expectedVersion: (await assessment(second)).version }, context());
+      const olderNow = await assessment(older!.assessmentId), latest = await assessment(second);
+      await assert.rejects(reopenSrsAssessment(database.pool, { assessmentId: older!.assessmentId, expectedVersion: olderNow.version }, context()), refused("NOT_LATEST"));
+      assert.equal((await assessment(older!.assessmentId)).status, "complete", "the refused reopen changed nothing");
+      await reopenSrsAssessment(database.pool, { assessmentId: second, expectedVersion: latest.version }, context());
+      assert.equal((await assessment(second)).status, "draft");
+      await completeSrsAssessment(database.pool, { assessmentId: second, expectedVersion: (await assessment(second)).version }, context()); // leave the client with none in progress
+    });
+
     it("links a gap to an action on this client's plan only — the Actions spine (R7)", async () => {
       const draft = (await read((db) => listSrsAssessments(db, A))).find((entry) => entry.status === "draft")!;
       const requirement = v1.requirements.find((entry) => entry.active)!;

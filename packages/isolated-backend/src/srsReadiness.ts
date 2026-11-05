@@ -186,6 +186,13 @@ export function reopenSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.
       [context.organisationId, row.client_id]);
     if (open.rows[0]) throw new CommandValidationError([{ field: "assessmentId", code: "ASSESSMENT_OPEN", message: "This client already has an assessment in progress. Complete it before reopening another." }]);
 
+    // Only the most recent assessment — ordered as the read model orders them — can be reopened: an older one may already have a
+    // report issued against it and sits on the trend, so correcting it is a new reassessment, not a reopen.
+    const latest = await db.query<{ assessment_id: string }>(
+      `SELECT assessment_id FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND client_id=$2
+       ORDER BY coalesce(assessed_on, started_on) DESC, assessment_id DESC LIMIT 1`, [context.organisationId, row.client_id]);
+    if (latest.rows[0]?.assessment_id !== input.assessmentId) throw new CommandValidationError([{ field: "assessmentId", code: "NOT_LATEST", message: "Only the latest assessment can be reopened; start a reassessment instead." }]);
+
     const saved = await db.query<{ version: number }>(
       `UPDATE nzi_console.srs_assessments SET status='draft',assessed_on=NULL,completed_at=NULL,updated_at=now(),version=version+1
        WHERE organisation_id=$1 AND assessment_id=$2 RETURNING version`, [context.organisationId, input.assessmentId]);
