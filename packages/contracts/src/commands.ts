@@ -231,6 +231,7 @@ export type CommandKey =
   | "srs.assessment.start"
   | "srs.assessment.item.set"
   | "srs.assessment.complete"
+  | "srs.assessment.reopen"
   | "srs.gap.suggestions.record"
   | "srs.gap.suggestion.withdraw"
   | "srs.gap.bridge"
@@ -1134,6 +1135,8 @@ export type CommandInputMap = {
     owner?: string; dueDate?: string | null; linkedActionId?: string | null; expectedVersion: number;
   };
   "srs.assessment.complete": { assessmentId: string; expectedVersion: number };
+  /** Reopen a completed assessment to correct it — the same assessment, not a reassessment, so no new trend point. */
+  "srs.assessment.reopen": { assessmentId: string; expectedVersion: number };
   /**
    * SRS S3. `srs.gap.suggestions.record`: AI ideas for one gap, already grounded (no figure, no claim), with the model that
    * answered and the SHA-256 of the exact prompt — the request by reference, never its text. `srs.gap.bridge`: one source —
@@ -3396,6 +3399,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     return issues;
   } },
   "srs.assessment.complete": { key: "srs.assessment.complete", label: "Complete an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment status + completion stamp + audit + outbox + idempotency", auditAction: "srs_assessment_completed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "assessmentId", input.assessmentId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
+  "srs.assessment.reopen": { key: "srs.assessment.reopen", label: "Reopen a completed SRS readiness assessment to correct it", permission: "srs.manage", reasonRequired: false, transaction: "assessment status back to draft + completion stamp cleared + audit + outbox + idempotency", auditAction: "srs_assessment_reopened", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "assessmentId", input.assessmentId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
   // The SRS framework (S1, R1): reference data an Admin versions, so admin.lookups as the action library is. A draft is
   // edited; publishing it supersedes the version in force; a published version never changes (0187's triggers).
   "srs.framework.draft.create": { key: "srs.framework.draft.create", label: "Start a new SRS framework version", permission: "admin.lookups", reasonRequired: false, transaction: "draft framework copied from the version in force + audit + outbox + idempotency", auditAction: "srs_framework_draft_created", validate: (input, context) => {

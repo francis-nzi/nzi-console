@@ -56,7 +56,7 @@ describe("SRS readiness", () => {
   it("gates assessing on srs.manage and audits every answer", () => {
     assert.match(read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx"), /useEditAccess\("srs\.manage"/);
     const commands = read("packages/contracts/src/commands.ts");
-    for (const key of ["srs.assessment.start", "srs.assessment.item.set", "srs.assessment.complete"]) {
+    for (const key of ["srs.assessment.start", "srs.assessment.item.set", "srs.assessment.complete", "srs.assessment.reopen"]) {
       assert.match(commands, new RegExp(`"${key}": \\{ key: "${key}"[^}]*permission: "srs\\.manage"`), key);
     }
     assert.match(forms, /GatedButton/);

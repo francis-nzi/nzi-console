@@ -162,6 +162,42 @@ export function completeSrsAssessment(pool: PoolLike, input: CommandInputMap["sr
   });
 }
 
+export type ReopenSrsAssessmentResult = { assessmentId: string; version: number };
+
+/**
+ * Reopen a completed assessment to correct it. It is the same assessment, not a reassessment, so it adds no trend point:
+ * it goes back to a draft with its assessed and completed dates cleared, and is dated afresh when completed again. While
+ * it is a draft the portal and reports (which read completed assessments only) fall back to the previous completed one,
+ * or show "not assessed" — an in-progress position is never shown as final.
+ */
+export function reopenSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.assessment.reopen"], context: CommandContext): Promise<StoredOutcome<ReopenSrsAssessmentResult>> {
+  return runPostgresCommand(pool, "srs.assessment.reopen", input, context, async (db) => {
+    const current = await db.query<{ version: number; status: "draft" | "complete"; client_id: string }>(
+      `SELECT version,status,client_id FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND assessment_id=$2 FOR UPDATE`,
+      [context.organisationId, input.assessmentId]);
+    const row = current.rows[0];
+    if (!row) throw new CommandValidationError([{ field: "assessmentId", code: "NOT_FOUND", message: "That assessment does not exist." }]);
+    if (row.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, row.version);
+    if (row.status !== "complete") throw new CommandValidationError([{ field: "assessmentId", code: "NOT_COMPLETE", message: "Only a completed assessment can be reopened." }]);
+
+    // One assessment in progress per client, as at start: a second draft would leave two competing positions.
+    const open = await db.query(
+      `SELECT 1 FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND client_id=$2 AND status='draft' LIMIT 1`,
+      [context.organisationId, row.client_id]);
+    if (open.rows[0]) throw new CommandValidationError([{ field: "assessmentId", code: "ASSESSMENT_OPEN", message: "This client already has an assessment in progress. Complete it before reopening another." }]);
+
+    const saved = await db.query<{ version: number }>(
+      `UPDATE nzi_console.srs_assessments SET status='draft',assessed_on=NULL,completed_at=NULL,updated_at=now(),version=version+1
+       WHERE organisation_id=$1 AND assessment_id=$2 RETURNING version`, [context.organisationId, input.assessmentId]);
+
+    return {
+      data: { assessmentId: input.assessmentId, version: saved.rows[0]!.version },
+      entityType: "srs_assessment", entityId: input.assessmentId, topic: "srs.assessment.reopened",
+      before: { status: "complete" },
+    };
+  });
+}
+
 /**
  * What NZI already holds for this client, read from the assured record rather than asked.
  * Each fact is something the platform can actually see; anything it cannot see stays false
