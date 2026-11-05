@@ -4,7 +4,7 @@
 // keep meaning what they meant when the framework moves. Reassessment is a new assessment,
 // which is what gives readiness a trend.
 import { randomUUID } from "node:crypto";
-import { prefillFromNzi, todayInLondon, type CommandContext, type CommandInputMap, type SrsNziFacts } from "@nzi/contracts";
+import { prefillFromNzi, todayInLondon, type CommandContext, type CommandInputMap, type Priority, type SrsNziFacts } from "@nzi/contracts";
 import { getSrsFramework } from "./srsReadinessRecords";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
@@ -62,7 +62,7 @@ export function startSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.a
   });
 }
 
-export type SetSrsItemResult = { assessmentId: string; requirementId: string; version: number };
+export type SetSrsItemResult = { assessmentId: string; requirementId: string; version: number; priority: Priority | null };
 
 /** Answer one requirement. The assessment must still be a draft — a completed one is a record. */
 export function setSrsAssessmentItem(pool: PoolLike, input: CommandInputMap["srs.assessment.item.set"], context: CommandContext): Promise<StoredOutcome<SetSrsItemResult>> {
@@ -100,23 +100,23 @@ export function setSrsAssessmentItem(pool: PoolLike, input: CommandInputMap["srs
     const values = [
       context.organisationId, input.assessmentId, input.requirementId, input.maturity,
       evidenceKind, input.evidenceRef ?? null, input.evidenceNote ?? "",
-      input.owner ?? "", input.dueDate ?? null, input.linkedActionId ?? null, context.actorId,
+      input.owner ?? "", input.dueDate ?? null, input.linkedActionId ?? null, context.actorId, input.priority ?? null,
     ];
     const saved = previous
       ? await db.query<{ version: number }>(
-        `UPDATE nzi_console.srs_assessment_items SET maturity=$4,source='entered',evidence_kind=$5,evidence_ref=$6,evidence_note=$7,owner=$8,due_date=$9,linked_action_id=$10,updated_by=$11,updated_at=now(),version=version+1
+        `UPDATE nzi_console.srs_assessment_items SET maturity=$4,source='entered',evidence_kind=$5,evidence_ref=$6,evidence_note=$7,owner=$8,due_date=$9,linked_action_id=$10,updated_by=$11,priority=$12,updated_at=now(),version=version+1
          WHERE organisation_id=$1 AND assessment_id=$2 AND requirement_id=$3 RETURNING version`, values)
       : await db.query<{ version: number }>(
-        `INSERT INTO nzi_console.srs_assessment_items (organisation_id,assessment_id,requirement_id,maturity,source,evidence_kind,evidence_ref,evidence_note,owner,due_date,linked_action_id,updated_by)
-         VALUES ($1,$2,$3,$4,'entered',$5,$6,$7,$8,$9,$10,$11) RETURNING version`, values);
+        `INSERT INTO nzi_console.srs_assessment_items (organisation_id,assessment_id,requirement_id,maturity,source,evidence_kind,evidence_ref,evidence_note,owner,due_date,linked_action_id,updated_by,priority)
+         VALUES ($1,$2,$3,$4,'entered',$5,$6,$7,$8,$9,$10,$11,$12) RETURNING version`, values);
 
     await db.query(`UPDATE nzi_console.srs_assessments SET updated_at=now() WHERE organisation_id=$1 AND assessment_id=$2`, [context.organisationId, input.assessmentId]);
 
     return {
-      data: { assessmentId: input.assessmentId, requirementId: input.requirementId, version: saved.rows[0]!.version },
+      data: { assessmentId: input.assessmentId, requirementId: input.requirementId, version: saved.rows[0]!.version, priority: input.priority ?? null },
       entityType: "srs_assessment_item", entityId: `${input.assessmentId}:${input.requirementId}`, topic: "srs.assessment.item_set",
       ...(previous ? { before: { maturity: previous.maturity } } : {}),
-      after: { maturity: input.maturity, evidence: evidenceKind, owner: input.owner ?? "", dueDate: input.dueDate ?? null, linkedActionId: input.linkedActionId ?? null },
+      after: { maturity: input.maturity, evidence: evidenceKind, owner: input.owner ?? "", dueDate: input.dueDate ?? null, linkedActionId: input.linkedActionId ?? null, priority: input.priority ?? null },
     };
   });
 }

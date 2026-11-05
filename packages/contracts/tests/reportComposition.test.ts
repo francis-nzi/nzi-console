@@ -263,7 +263,7 @@ describe("the readiness roadmap a report freezes", () => {
     ],
   };
   const item = (requirementId: string, maturity: SrsMaturity | null): SrsAssessmentItem => ({
-    requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, version: 1,
+    requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, priority: null, version: 1,
   });
 
   it("orders by shortfall through gaps(), and groups by pillar", () => {

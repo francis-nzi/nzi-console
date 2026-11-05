@@ -82,6 +82,7 @@ export * from "./factorVariants";
 export * from "./factorMembership";
 export * from "./datasetMapping";
 export * from "./commands";
+export * from "./priority";
 export * from "./portalFiles";
 export * from "./portalClientAccess";
 export * from "./portalConversations";

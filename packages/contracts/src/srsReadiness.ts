@@ -11,6 +11,7 @@
  * functions, so they cannot disagree about how ready a client is.
  */
 
+import type { Priority } from "./priority";
 export const srsMaturityLevels = 5;
 export type SrsMaturity = 0 | 1 | 2 | 3 | 4;
 export type SrsStandardKey = string;
@@ -57,6 +58,8 @@ export type SrsAssessmentItem = {
   owner: string;
   dueDate: string | null;
   linkedActionId: string | null;
+  /** Triage urgency of the gap; null = unset. A consultant working record, never shown to the client. */
+  priority: Priority | null;
   version: number;
 };
 export type SrsAssessment = {

@@ -117,7 +117,7 @@ const frameworkV = (version: number, requirements: SrsFramework["requirements"])
   maturityLevels: [level(0, "Not started"), level(1, "Developing"), level(2, "Established"), level(3, "Advanced"), level(4, "Assured")],
   requirements,
 });
-const item = (requirementId: string, maturity: SrsMaturity | null): SrsAssessmentItem => ({ requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, version: 1 });
+const item = (requirementId: string, maturity: SrsMaturity | null): SrsAssessmentItem => ({ requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, priority: null, version: 1 });
 const assessed = (id: string, frameworkId: string, on: string, items: SrsAssessmentItem[]): SrsAssessment => ({
   assessmentId: id, clientId: "c1", frameworkId, frameworkVersion: Number(frameworkId.slice(-1)), status: "complete", startedOn: on, assessedOn: on,
   assessedBy: "x", completedAt: on, notes: "", sectorKey: null, benchmarkPercentile: null, benchmarkSource: null, version: 1, items,
