@@ -221,7 +221,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
 
     {/* R2: the dials — with the linear meters as the compact equivalent, and the table view. */}
     <section className="nz-panel">
-      <CardHead eyebrow="Maturity" title="By pillar" right={<span className="nz-srs-seg" role="group" aria-label="Show as">
+      <CardHead title="By pillar" right={<span className="nz-srs-seg" role="group" aria-label="Show as">
         <button type="button" aria-pressed={dialsAs === "dials"} onClick={() => setDialsAs("dials")}>Dials</button>
         <button type="button" aria-pressed={dialsAs === "meters"} onClick={() => setDialsAs("meters")}>Meters</button>
         <button type="button" aria-pressed={Boolean(showTable.dials)} onClick={() => toggle("dials")}>Table</button>
@@ -238,7 +238,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       <div className="nz-cw-col">
         {/* R3: the radar — four fixed axes, the client and the target, and its table beside it (always). */}
         <section className="nz-panel">
-          <CardHead eyebrow="Maturity" title="The readiness web" right={<span className="hint">4 pillars · ≤ 2 shapes</span>} />
+          <CardHead title="The readiness web" right={<span className="hint">4 pillars · ≤ 2 shapes</span>} />
           <div className="nz-card-b nz-srs-radar2">
             <SrsRadar axes={model.pillars.map((pillar) => ({ label: shortPillar(pillar.label), value: pillar.level, target: pillar.targetLevel }))}
               seriesLabel={client.name.length > 24 ? "This client" : client.name} provisional={provisional} />
@@ -249,7 +249,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       <div className="nz-cw-col">
         {/* R5: the trend — completed assessments only; one assessment is one point. */}
         <section className="nz-panel">
-          <CardHead eyebrow="Change" title="Readiness over time" right={<span className="nz-srs-seg" role="group" aria-label="Trend by">
+          <CardHead title="Readiness over time" right={<span className="nz-srs-seg" role="group" aria-label="Trend by">
             <button type="button" aria-pressed={trendBy === "overall"} onClick={() => setTrendBy("overall")}>Overall</button>
             <button type="button" aria-pressed={trendBy === "pillar"} onClick={() => setTrendBy("pillar")}>By pillar</button>
             <button type="button" aria-pressed={Boolean(showTable.trend)} onClick={() => toggle("trend")}>Table</button>
@@ -275,7 +275,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
 
     {/* R4: the heatmap — every requirement on the ramp, with its number; the register below is its table view. */}
     <section className="nz-panel">
-      <CardHead eyebrow="Detail" title="Every requirement, by pillar" right={<span className="hint">{standardLabel} · the register below lists the same scores</span>} />
+      <CardHead title="Every requirement, by pillar" right={<span className="hint">{standardLabel} · the register below lists the same scores</span>} />
       <div className="nz-card-b">
         <SrsHeatmap provisional={provisional} columns={groupByPillar(model).map(({ label, requirements }) => ({
           label, cells: requirements.map((requirement) => ({
@@ -291,7 +291,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       <div className="nz-cw-col">
         <MetricsReadThrough model={model} />
         <section className="nz-panel">
-          <CardHead eyebrow="Benchmark" title="Sector comparison" right={<span className="nz-st est">Future</span>} />
+          <CardHead title="Sector comparison" right={<span className="nz-st est">Future</span>} />
           <div className="nz-card-b">
             {/* R8: truthful — what it will show, never an invented number and no bar that reads as data. */}
             <div className="nz-srs-future">
@@ -304,7 +304,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       </div>
       <div className="nz-cw-col">
         <section className="nz-panel">
-          <CardHead eyebrow="Roadmap" title="Path to SRS-ready" right={<span className="hint">gaps → actions</span>} />
+          <CardHead title="Path to SRS-ready" right={<span className="hint">gaps → actions</span>} />
           <div style={{ padding: "6px 16px 12px" }}>
             {gaps.length === 0
               ? <p className="sub" style={{ margin: "6px 0" }}>No requirement sits below its target. Reassess as the framework moves.</p>
@@ -351,7 +351,7 @@ function groupByPillar(model: SrsDashboardModel) {
 function MetricsReadThrough({ model }: { model: SrsDashboardModel }) {
   const fromData = model.requirements.filter((requirement) => requirement.source === "auto");
   return <section className="nz-panel">
-    <CardHead eyebrow="Metrics & targets" title="From the verified NZI record" right={<span className="hint">read-through · not re-keyed</span>} />
+    <CardHead title="From the verified NZI record" right={<span className="hint">read-through · not re-keyed</span>} />
     <div style={{ padding: "6px 16px 12px" }}>
       {fromData.length === 0
         ? <p className="sub" style={{ margin: "6px 0" }}>Nothing in this assessment was answered from the client&apos;s verified record — no verified emissions, targets or intensity metrics were held when it was started, so the consultant answered every requirement.</p>
@@ -404,7 +404,7 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, strategie
   const editable = assessment.status === "draft";
 
   return <section className="nz-panel" style={{ marginTop: 16 }}>
-    <CardHead eyebrow="Assessment" title="Requirement register" right={<span className="hint">{model.requirements.length} requirements · sortable · the heatmap&apos;s table</span>} />
+    <CardHead title="Requirement register" right={<span className="hint">{model.requirements.length} requirements · sortable · the heatmap&apos;s table</span>} />
     <div className="nz-srs-tablewrap">
       <table className="nz-tbl nz-srs-register">
         <thead><tr>{header("code", "Requirement")}<th scope="col">Pillar</th>{header("maturity", "Maturity")}<th scope="col">Target</th><th scope="col">Evidence</th><th scope="col">Owner</th>{header("due", "Due")}{header("gap", "Gap → action")}<th /></tr></thead>

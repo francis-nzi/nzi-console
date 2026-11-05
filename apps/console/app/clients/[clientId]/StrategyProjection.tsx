@@ -41,7 +41,7 @@ export function StrategyProjection({ workspace }: { workspace: ClientWorkspaceRe
   // would imply a commitment the client has not made.
   if (benchmark === null || targets.trajectory.length === 0) {
     return <section className="nz-panel">
-      <CardHead eyebrow="Projection" title="What the plan is expected to deliver" />
+      <CardHead title="What the plan is expected to deliver" />
       <div className="nz-card-b">
         <p className="sub" style={{ margin: "8px 0" }}>
           A projection needs a baseline and a target to be read against. Set this client&rsquo;s targets and
@@ -53,7 +53,7 @@ export function StrategyProjection({ workspace }: { workspace: ClientWorkspaceRe
 
   if (model.contributions.length === 0) {
     return <section className="nz-panel">
-      <CardHead eyebrow="Projection" title="What the plan is expected to deliver" />
+      <CardHead title="What the plan is expected to deliver" />
       <div className="nz-card-b">
         <p className="sub" style={{ margin: "8px 0" }}>
           No strategy on this plan carries a reduction estimate with a target date yet, so there is nothing
@@ -65,7 +65,7 @@ export function StrategyProjection({ workspace }: { workspace: ClientWorkspaceRe
   }
 
   return <section className="nz-panel">
-    <CardHead eyebrow="Projection" title="What the plan is expected to deliver"
+    <CardHead title="What the plan is expected to deliver"
       right={<span className="nz-st est">Estimate</span>} />
     <div className="nz-card-b">
       {/* Said before the chart, not after it: everything below is a forward estimate. */}

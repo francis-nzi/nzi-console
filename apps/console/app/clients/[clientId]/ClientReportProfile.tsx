@@ -4,7 +4,7 @@
 // optional line for the cover. It seeds a report's order when the report is validated; a report already validated or
 // issued keeps its own (RULING-reporting-F Q3). A version is the whole profile — every save or withdraw writes the next one.
 import { useRef, useState } from "react";
-import { Collapsible, GatedButton } from "@nzi/ui";
+import { Collapsible, GatedButton, InfoTip } from "@nzi/ui";
 import { postBrowserCommandWithReason, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { defaultReportSectionPlan, isReportDataSection, REPORT_ISSUER_LINE_MAX, reportIssuerLineIssues, reportOmittedSections, reportPlanSectionTitle, type ReportSectionPlan } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
@@ -27,12 +27,12 @@ const orderText = (plan: ReportSectionPlan) => {
 export function ReportProfileCard({ profile, access, onEdit }: { profile: Profile; access: EditAccess; onEdit: () => void }) {
   const current = profile.current;
   return <Collapsible className="nz-panel nz-collapsible-card nz-report-profile" headingClassName="nz-card-h"
-    title={<><span className="eyebrow">Reporting</span><h2>Report profile</h2></>}
+    title={<h2>Report profile</h2>}
     count={current ? `Version ${current.version}` : "Standard order"}>
     <div className="nz-card-b">
       {current
-        ? <p className="sub">Version {current.version} · {current.setBy}, {formatDate(current.setAt)}. A report starts in this order when it is validated; one already validated or issued keeps its own.</p>
-        : <p className="sub">No profile yet: this client&rsquo;s reports start in the standard order. A profile sets this client&rsquo;s own order, and a line for the cover.</p>}
+        ? <p className="sub">Version {current.version} · {current.setBy}, {formatDate(current.setAt)}.<InfoTip label="the report profile">A report starts in this order when it is validated; one already validated or issued keeps its own.</InfoTip></p>
+        : <p className="sub">No profile yet: reports start in the standard order.<InfoTip label="the report profile">A profile sets this client&rsquo;s own order, and a line for the cover.</InfoTip></p>}
       <div className="nz-kv"><span className="k">Order</span><span className="v">{orderText(current?.sectionPlan ?? defaultReportSectionPlan)}</span></div>
       {current?.issuerLine ? <div className="nz-kv"><span className="k">Cover line</span><span className="v">{current.issuerLine}</span></div> : null}
       {access.state === "allowed" ? <button type="button" className="nz-editlink" style={{ marginTop: 6 }} onClick={onEdit}>{current ? "Edit the profile" : "Set up a profile"}</button> : null}

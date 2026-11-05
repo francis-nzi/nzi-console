@@ -52,12 +52,16 @@ export async function getClientReportingTemplate(db: Queryable, clientId: string
   return { current, latestVersion: header.version };
 }
 
-/** The active master templates a client's template may begin from: name and how many lines each would bring. Archived and empty ones are not offered. */
-export async function listActiveMasterTemplateChoices(db: Queryable): Promise<Array<{ masterId: string; name: string; lineCount: number }>> {
+/**
+ * The active master templates a client's template may begin from: name and how many lines each would bring. Archived ones
+ * are not offered. An active master with no lines yet is listed, with `selectable: false`, so the picker can show it
+ * disabled ("no lines yet") rather than leave it out as though it did not exist; only a master with lines can be started from.
+ */
+export async function listActiveMasterTemplateChoices(db: Queryable): Promise<Array<{ masterId: string; name: string; lineCount: number; selectable: boolean }>> {
   const { rows } = await db.query<{ master_id: string; name: string; line_count: string }>(
     `SELECT m.master_id, m.name, (SELECT count(*) FROM nzi_console.master_template_rows r WHERE r.master_id = m.master_id AND r.rows_version = m.rows_version) AS line_count
-       FROM nzi_console.master_templates m WHERE m.active AND m.rows_version > 0 ORDER BY lower(m.name), m.master_id`);
-  return rows.map((row) => ({ masterId: row.master_id, name: row.name, lineCount: Number(row.line_count) }));
+       FROM nzi_console.master_templates m WHERE m.active ORDER BY lower(m.name), m.master_id`);
+  return rows.map((row) => ({ masterId: row.master_id, name: row.name, lineCount: Number(row.line_count), selectable: Number(row.line_count) > 0 }));
 }
 
 /** The categories a line may be filed under: the active input-spec categories, by scope and name. */

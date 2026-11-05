@@ -1,7 +1,8 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
-import { GatedButton } from "@nzi/ui";
+import { GatedButton, InfoTip } from "@nzi/ui";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead } from "./OverviewArea";
 import { ClientLocation } from "./ClientLocation";
@@ -17,9 +18,11 @@ import type { DrawerRequest } from "./clientDrawers";
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const monthName = (month: number | null | undefined) => month && month >= 1 && month <= 12 ? MONTHS[month - 1]! : null;
 
-export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factorsEnabled, geocodingEnabled = false }: {
+export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factorsEnabled, geocodingEnabled = false, contactsCard }: {
   /** Opens Portal Management → Access; absent when the viewer cannot manage this client's portal. */
   onOpenPortal?: () => void;
+  /** The full contacts card (with consent), where the host has it; stands in for the plain list below so contacts show once. */
+  contactsCard?: ReactNode;
   geocodingEnabled?: boolean;
   workspace: ClientWorkspaceReadModel;
   access: { client: EditAccess; contact: EditAccess };
@@ -42,14 +45,14 @@ export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factors
     reasonClassName="hint nz-gated-reason" onClick={() => onDrawer(request)}>{label}</GatedButton>;
 
   return <>
-    <div className="nz-cw-vhead"><div><div className="eyebrow">Record</div><h2>Company profile</h2></div><span style={{ flex: 1 }} />
+    <div className="nz-cw-vhead"><div><h2>Company profile</h2></div><span style={{ flex: 1 }} />
       <span className="sub">Version {client.version}</span></div>
     <p className="nz-cw-vsub">What this client is, as the platform holds it. Every block is edited in its own drawer, and every change is versioned and audited.</p>
 
     <div className="nz-cw-grid">
       <div className="nz-cw-col">
         <section className="nz-panel">
-          <CardHead eyebrow="Identity" title="Identity" right={edit({ kind: "identity" })} />
+          <CardHead title="Identity" right={edit({ kind: "identity" })} />
           <div style={{ padding: "6px 16px 12px" }}>
             <Row label="Client name" value={client.name} />
             <Row label="Status" value={client.status} />
@@ -66,7 +69,7 @@ export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factors
         </section>
 
         <section className="nz-panel">
-          <CardHead eyebrow="Obligations" title="Compliance" right={edit({ kind: "compliance" })} />
+          <CardHead title="Compliance" right={edit({ kind: "compliance" })} />
           <div style={{ padding: "6px 16px 12px" }}>
             <Row label="Parent company" value={profile.parentCompany} />
             <Row label="Group structure" value={profile.groupStructure} />
@@ -79,7 +82,7 @@ export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factors
 
       <div className="nz-cw-col">
         <section className="nz-panel">
-          <CardHead eyebrow="Invoicing" title="Addresses" right={edit({ kind: "address" })} />
+          <CardHead title="Addresses" right={edit({ kind: "address" })} />
           <div style={{ padding: "6px 16px 12px" }}>
             <div className="nz-kv"><span className="k">Registered</span><span className="v">{address.length ? address.join(", ") : <span className="muted">Not set</span>}</span></div>
             <div className="nz-kv"><span className="k">Billing</span><span className="v">{profile.billingSameAsRegistered
@@ -90,8 +93,8 @@ export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factors
           </div>
         </section>
 
-        <section className="nz-panel">
-          <CardHead eyebrow="Relationship" title="Contacts" right={<button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "contact", contact: null })}>Add</button>} />
+        {contactsCard ?? <section className="nz-panel">
+          <CardHead title="Contacts" right={<button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "contact", contact: null })}>Add</button>} />
           <div style={{ padding: "6px 16px 12px" }}>
             {contacts.length === 0
               ? <p className="sub" style={{ margin: "6px 0" }}>No contact is recorded for this client.</p>
@@ -100,14 +103,13 @@ export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factors
                 <span className="v"><button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "contact", contact })}>{contact.jobTitle || "Edit"}</button></span>
               </div>)}
           </div>
-        </section>
+        </section>}
 
         <section className="nz-panel">
-          <CardHead eyebrow="Reference data" title="Client factors" />
+          <CardHead title="Client factors" right={factorsEnabled ? <InfoTip label="client factors">Client-specific, EPD-backed factors reusable across this client&apos;s jobs, with the same versioning and evidence lineage as dataset factors.</InfoTip> : undefined} />
           <div style={{ padding: "6px 16px 12px" }}>
             {factorsEnabled
               ? <>
-                <p className="sub" style={{ margin: "6px 0" }}>Client-specific, EPD-backed factors reusable across this client&apos;s jobs, with the same versioning and evidence lineage as dataset factors.</p>
                 <button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "factors" })}>Manage client factors</button>
               </>
               : <p className="sub" style={{ margin: "6px 0" }}>Client factors are not enabled in this environment.</p>}
@@ -115,10 +117,7 @@ export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factors
         </section>
 
         <section className="nz-panel">
-          <CardHead eyebrow="Client experience" title="Portal access" right={onOpenPortal ? <button type="button" className="nz-editlink" onClick={onOpenPortal}>Open</button> : undefined} />
-          <div style={{ padding: "6px 16px 12px" }}>
-            <p className="sub" style={{ margin: "6px 0" }}>Portal users, their job-level access and data-entry windows.</p>
-          </div>
+          <CardHead title="Portal access" right={<><InfoTip label="portal access">Portal users, their job-level access and data-entry windows.</InfoTip>{onOpenPortal ? <button type="button" className="nz-editlink" onClick={onOpenPortal}>Open</button> : null}</>} />
         </section>
       </div>
     </div>

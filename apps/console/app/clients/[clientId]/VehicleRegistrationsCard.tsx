@@ -24,7 +24,7 @@ export function VehicleRegistrationsCard({ clientId, version, optOut, access }: 
   }
 
   return <section className="nz-panel nz-vehicle-regs" aria-labelledby={`vehicle-regs-${clientId}`}>
-    <div className="nz-card-h"><div><span className="eyebrow">Company vehicles</span><h2 id={`vehicle-regs-${clientId}`}>Vehicle registrations</h2></div>
+    <div className="nz-card-h"><div><h2 id={`vehicle-regs-${clientId}`}>Vehicle registrations</h2></div>
       <span className={`nz-st ${optOut ? "need" : "done"}`}>{optOut ? "Not held" : "Held encrypted"}</span></div>
     <div style={{ padding: "6px 16px 12px" }}>
       <p className="muted">{optOut

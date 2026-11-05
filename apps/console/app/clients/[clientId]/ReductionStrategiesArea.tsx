@@ -82,7 +82,7 @@ export function ReductionStrategiesArea({ workspace, today, access, onDrawer }: 
     {proposals.length > 0 ? <ProposalsQueue proposals={proposals} access={access} onDrawer={onDrawer} /> : null}
 
     <section className="nz-panel">
-      <CardHead eyebrow="Job" title="Reduction strategies" />
+      <CardHead title="Reduction strategies" />
       <div className="nz-card-b">
         <div className="nz-actions-head">
           <p className="sub" style={{ margin: 0, flex: 1 }}>

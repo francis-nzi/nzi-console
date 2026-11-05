@@ -74,7 +74,7 @@ describe("the wiring", () => {
     assert.match(form, /Measured in/);
   });
   it("the client's page holds the opt-out, through the gated command", () => {
-    assert.match(source("app/clients/[clientId]/OverviewArea.tsx"), /<VehicleRegistrationsCard clientId=\{client\.id\}/);
+    assert.match(source("app/clients/[clientId]/ClientTabCards.tsx"), /<VehicleRegistrationsCard clientId=\{client\.id\}/);
     assert.match(source("app/api/isolated/clients/[clientId]/vehicle-registrations/route.ts"), /requireCommandPrincipal\(request, "client\.vehicle_registrations\.set"\)/);
     assert.match(source("app/clients/[clientId]/VehicleRegistrationsCard.tsx"), /destroyed now, and cannot be recovered/);
   });

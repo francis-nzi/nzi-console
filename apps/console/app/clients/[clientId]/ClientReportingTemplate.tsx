@@ -4,9 +4,9 @@
 // Client. Scopes → categories → lines; a line with no category is "to categorise" (data-entry R7; it came from v7's
 // history, which carries none) and is never guessed. A version is the whole template — every save, initialise or withdraw writes the next one.
 import { useRef, useState } from "react";
-import { Collapsible, GatedButton } from "@nzi/ui";
+import { Collapsible, GatedButton, InfoTip } from "@nzi/ui";
 import { postBrowserCommand, postBrowserCommandWithReason, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { groupReportingTemplateLines, type ReportingTemplateLineInput, type ReportingTemplateScope } from "@nzi/contracts";
+import { groupReportingTemplateLines, masterTemplateTitle, type ReportingTemplateLineInput, type ReportingTemplateScope } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
@@ -20,7 +20,7 @@ const originText = (template: NonNullable<Template["current"]>) =>
     : template.origin === "master" ? `initialised from ${template.originMasterName ? `Master · ${template.originMasterName}` : "a master template"}`
     : `${template.origin === "v7-import" ? "imported from history on" : "initialised from"} ${template.originJobNumber ?? "a job"}`;
 
-/** The card on the Overview: the template in force, grouped scope → category → line, or how to start one. */
+/** The card on the Data entry tab: the template in force, grouped scope → category → line, or how to start one. */
 export function ReportingTemplateCard({ template, access, onEdit, onInitialise, onInitialiseFromMaster }: {
   template: Template; access: EditAccess; onEdit: () => void; onInitialise: () => void; onInitialiseFromMaster: () => void;
 }) {
@@ -28,12 +28,12 @@ export function ReportingTemplateCard({ template, access, onEdit, onInitialise, 
   const toFile = current?.lines.filter((line) => line.categoryCode === null).length ?? 0;
   const canEdit = access.state === "allowed";
   return <Collapsible className="nz-panel nz-collapsible-card nz-reporting-template" headingClassName="nz-card-h"
-    title={<><span className="eyebrow">Data entry</span><h2>Data entry template</h2></>}
+    title={<h2>Data entry template</h2>}
     count={current ? `${current.lines.length} line${current.lines.length === 1 ? "" : "s"}${toFile ? ` · ${toFile} to categorise` : ""}` : "None set"}>
     <div className="nz-card-b">
       {current
-        ? <p className="sub">Version {current.version} · {originText(current)} · {current.setBy}, {formatDate(current.setAt)}. Each year&rsquo;s job captures these lines; quantities stay on the job.</p>
-        : <p className="sub">No data entry template yet. It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page. Start it from a master template, from a job, or by hand.</p>}
+        ? <p className="sub">Version {current.version} · {originText(current)} · {current.setBy}, {formatDate(current.setAt)}.<InfoTip label="the data entry template">Each year&rsquo;s job captures these lines; quantities stay on the job.</InfoTip></p>
+        : <p className="sub">No data entry template yet.<InfoTip label="the data entry template">It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page. Start it from a master template, from a job, or by hand.</InfoTip></p>}
       {canEdit ? <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
         <button type="button" className="nz-editlink" onClick={onInitialiseFromMaster}>Initialise from a master template…</button>
         <button type="button" className="nz-editlink" onClick={onInitialise}>Initialise from a job…</button>
@@ -144,7 +144,8 @@ export function ReportingTemplateFromMasterForm({ clientId, template, access, on
   clientId: string; template: Template; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const masters = template.masters;
-  const [masterId, setMasterId] = useState(masters[0]?.masterId ?? "");
+  // Nothing is chosen until the person chooses: the prompt is the selected option, so a master is never started from by default.
+  const [masterId, setMasterId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -164,10 +165,11 @@ export function ReportingTemplateFromMasterForm({ clientId, template, access, on
       <p className="sub">The master&rsquo;s lines become the template&rsquo;s lines, with no site (Unallocated). Each line&rsquo;s factor is the newest active edition in your datasets; one your datasets do not carry is kept and marked &ldquo;needs a factor&rdquo;. After this you can edit the lines by hand.</p>
       {template.current ? <div className="nz-banner warn" role="status">This client already has a template (version {template.current.version}, {template.current.lines.length} line{template.current.lines.length === 1 ? "" : "s"}). Its lines will be replaced by the master&rsquo;s; the current version stays in the record.</div> : null}
       {masters.length === 0
-        ? <p className="sub">There are no active master templates with lines to start from.</p>
+        ? <p className="sub">There are no active master templates to start from.</p>
         : <label className="nz-fl"><span>Master template</span>
           <select className="nz-inp" value={masterId} onChange={(e) => setMasterId(e.target.value)}>
-            {masters.map((master) => <option key={master.masterId} value={master.masterId}>{master.name} · {master.lineCount} line{master.lineCount === 1 ? "" : "s"}</option>)}
+            <option value="">Choose a template…</option>
+            {masters.map((master) => <option key={master.masterId} value={master.masterId} disabled={!master.selectable}>{masterTemplateTitle(master.name)} — {master.selectable ? `${master.lineCount} line${master.lineCount === 1 ? "" : "s"}` : "no lines yet"}</option>)}
           </select></label>}
       {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
     </div>

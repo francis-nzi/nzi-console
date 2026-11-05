@@ -62,7 +62,7 @@ export function ClientContacts({ contacts, consent, consentUnavailable, access, 
 
   return <section className="nz-panel">
     <div className="nz-card-h">
-      <span className="eyebrow">Relationship</span><h2>Contacts</h2><span className="sp" />
+      <h2>Contacts</h2><span className="sp" />
       <GatedButton className="nz-editlink" blocked={blocked} blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason" onClick={() => onEdit(null)}>＋ Add</GatedButton>
     </div>
     <div className="nz-card-b">

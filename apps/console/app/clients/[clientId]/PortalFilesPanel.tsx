@@ -84,7 +84,7 @@ export function PortalFilesPanel({ clientId, access }: { clientId: string; acces
   }
 
   return <section className="nz-panel nz-pm" aria-labelledby="pm-files">
-    <div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="pm-files">Files</h2></div>
+    <div className="nz-card-h"><h2 id="pm-files">Files</h2></div>
     <div className="nz-card-b">
       <p className="sub">Documents shared with this client, and the client&apos;s own uploads. Every file is held until it has been checked; nothing held, refused or withdrawn can be downloaded. Downloads are signed, short-lived links, and each one is recorded.</p>
       {message ? <div className={`nz-banner ${message.tone}`} role={message.tone === "ok" ? "status" : "alert"}>{message.text}</div> : null}

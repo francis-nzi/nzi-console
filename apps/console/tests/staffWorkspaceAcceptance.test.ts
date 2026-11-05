@@ -12,14 +12,14 @@ const routes=["apps/console/app/clients/page.tsx","apps/console/app/clients/[cli
 const clientWorkspace=["apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx","apps/console/app/clients/[clientId]/ClientSites.tsx","apps/console/app/clients/[clientId]/FigureEvidence.tsx","apps/console/app/clients/[clientId]/ClientContacts.tsx","apps/console/app/clients/[clientId]/ClientIdentity.tsx","apps/console/app/clients/[clientId]/ClientTargets.tsx","apps/console/app/clients/[clientId]/ClientPathway.tsx","apps/console/app/clients/[clientId]/OverviewArea.tsx","apps/console/app/clients/[clientId]/AnalyticsArea.tsx","apps/console/app/clients/[clientId]/ClientAreaStates.tsx","apps/console/app/clients/[clientId]/ClientRecordDrawers.tsx","apps/console/app/clients/[clientId]/ReportingArea.tsx","apps/console/app/clients/[clientId]/ProfileArea.tsx","apps/console/app/clients/[clientId]/CommsFilesAreas.tsx","apps/console/app/clients/[clientId]/AiProfileArea.tsx"];
 
 describe("staff workspace acceptance contracts",()=>{
-  it("renders the client workspace as the v10 shell: rail, client area sub-nav, content, drawer",()=>{
+  it("renders the client workspace as the v10 shell: rail, client header with its tab bar, content, drawer",()=>{
     const shell=read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");
-    assert.ok(shell.includes("<ClientWorkspaceNav"),"the client area sub-nav");
-    assert.ok(shell.includes("areas={"),"the nav sits in the shell's own column");
+    assert.ok(shell.includes("<Tabs className=\"nz-tabs\""),"the client tab bar");
+    assert.ok(!shell.includes("areas={"),"no left sub-nav column any more");
     assert.ok(shell.includes("<EvidenceDrawer"),"the evidence drawer keeps the shell slot");
     const areas=read("apps/console/app/clients/[clientId]/clientAreas.ts");
     for(const area of ["overview","analytics","reporting","strategies","srs","tasks","notes","files","comms","profile","financials","ai"])assert.ok(areas.includes(`"${area}"`),area);
-    for(const group of ["Client","Manage","Record"])assert.ok(areas.includes(`label: "${group}"`),group);
+    for(const tab of ["Overview","Carbon","Data entry","Reporting","Record","Manage"])assert.ok(areas.includes(`label: "${tab}"`),tab);
   });
   it("hosts every record drawer in one place — no card owns a drawer, and there is no separate edit page",()=>{
     const shell=read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");

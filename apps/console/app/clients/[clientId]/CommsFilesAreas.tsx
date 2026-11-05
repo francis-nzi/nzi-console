@@ -24,7 +24,7 @@ export function CommsArea({ workspace }: { workspace: ClientWorkspaceReadModel }
   }
 
   return <>
-    <div className="nz-cw-vhead"><div><div className="eyebrow">Relationship</div><h2>Communications</h2></div><span style={{ flex: 1 }} />
+    <div className="nz-cw-vhead"><div><h2>Communications</h2></div><span style={{ flex: 1 }} />
       <span className="sub">{messages.length === 0 ? "Nothing recorded" : `${messages.length} message${messages.length === 1 ? "" : "s"} · ${threads.size} thread${threads.size === 1 ? "" : "s"}`}</span></div>
     <p className="nz-cw-vsub">The correspondence this platform records: the review conversation between your team and the client on each published report.</p>
 
@@ -55,7 +55,7 @@ export function FilesArea({ workspace }: { workspace: ClientWorkspaceReadModel }
   const size = (bytes: number | null) => bytes === null ? "—" : bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
   return <>
-    <div className="nz-cw-vhead"><div><div className="eyebrow">Record</div><h2>Files</h2></div><span style={{ flex: 1 }} />
+    <div className="nz-cw-vhead"><div><h2>Files</h2></div><span style={{ flex: 1 }} />
       <span className="sub">{files.length === 0 ? "No files" : `${files.length} file${files.length === 1 ? "" : "s"}`}</span></div>
     <p className="nz-cw-vsub">The files held against this client. There is no general document store yet — what is here is the client logo and the evidence attached to client factors.</p>
 

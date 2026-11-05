@@ -83,7 +83,7 @@ export function PortalConversationsPanel({ clientId, access }: { clientId: strin
     else setMessage({ tone: "warn", text: result.message! });
   }
   return <section className="nz-panel nz-pm" aria-labelledby="pm-messages">
-    <div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="pm-messages">Messages</h2></div>
+    <div className="nz-card-h"><h2 id="pm-messages">Messages</h2></div>
     <div className="nz-card-b">
       <p className="sub">This client&apos;s conversations. Whatever you write here the client reads in their portal; the response target is a date to look at, not a deadline that is enforced.</p>
       {message ? <div className={`nz-banner ${message.tone}`} role={message.tone === "ok" ? "status" : "alert"}>{message.text}</div> : null}

@@ -127,7 +127,7 @@ export function PortalManagementBody({ load, note, onNote, pending, message, pro
   const live = new Set<PortalManagementTab>([...LIVE, ...(files ? (["files"] as const) : []), ...(messages ? (["messages"] as const) : []), ...(users ? (["users"] as const) : [])]);
   const items = TABS.map((entry) => ({ id: entry.id, label: entry.label, disabled: !live.has(entry.id) }));
   return <section className="nz-panel nz-pm" aria-labelledby="area-portal">
-    <div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="area-portal">Portal Management</h2></div>
+    <div className="nz-card-h"><h2 id="area-portal">Portal Management</h2></div>
     <div className="nz-card-b">
       <Tabs items={items} value={tab} onChange={(id) => onTab(id as PortalManagementTab)} ariaLabel="Portal Management" idBase="pm" className="nz-tabs nz-pm-tabs" />
       {message ? <div className={`nz-banner ${message.tone}`} role={message.tone === "ok" ? "status" : "alert"}>{message.text}</div> : null}

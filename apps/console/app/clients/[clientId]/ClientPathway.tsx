@@ -10,8 +10,8 @@ import type { ClientTargetsReadModel, TargetActual } from "@nzi/isolated-backend
  * (`benchmark × (1 − pct)`). Nothing here is a fixed point, and the gap shown underneath
  * is the same measurement the gap engine makes.
  */
-function CardHead({ eyebrow, title, right }: { eyebrow: string; title: string; right?: ReactNode }) {
-  return <div className="nz-card-h"><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><span className="sp" />{right}</div>;
+function CardHead({ eyebrow, title, right }: { eyebrow?: string; title: string; right?: ReactNode }) {
+  return <div className="nz-card-h">{eyebrow ? <span className="eyebrow">{eyebrow}</span> : null}<h2>{title}</h2><span className="sp" />{right}</div>;
 }
 
 export function ClientPathway({ client, targets, actuals }: { client: { id: string; name: string }; targets: ClientTargetsReadModel; actuals: TargetActual[] }) {
@@ -21,7 +21,7 @@ export function ClientPathway({ client, targets, actuals }: { client: { id: stri
   const FY = (year: number) => `FY${String(year).slice(-2)}`;
 
   return <section className="nz-panel">
-    <CardHead eyebrow="Commitment" title="Reduction pathway" right={benchmark ? <span className="sub">vs {FY(benchmark.year)} benchmark</span> : undefined} />
+    <CardHead title="Reduction pathway" right={benchmark ? <span className="sub">vs {FY(benchmark.year)} benchmark</span> : undefined} />
     {!ready
       ? <div className="nz-card-b"><p className="sub" style={{ margin: "8px 0" }}>{targets.benchmarkInForce
         ? "No targets set, so there is no pathway to draw. Set a near-term or net-zero commitment on Baseline & targets."

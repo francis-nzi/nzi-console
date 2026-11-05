@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { GatedButton } from "@nzi/ui";
+import { GatedButton, InfoTip } from "@nzi/ui";
 import { putBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import { forwardTargetFields, netZeroPctLabel, type ForwardTargetModel, type TargetBenchmark, type TargetMilestone, type TargetScope } from "@nzi/contracts";
 import { netZeroDraft } from "../netZeroDefault";
@@ -46,12 +46,12 @@ export function ClientTargets({ targets, access, onEdit, hideHead = false }: { t
   return <section className={hideHead ? "nz-panel bare" : "nz-panel"}>
     {hideHead
       ? <div className="nz-card-b" style={{ paddingBottom: 0, display: "flex", justifyContent: "flex-end" }}>{editButton}</div>
-      : <div className="nz-card-h"><span className="eyebrow">Commitment</span><h2>Baseline &amp; targets</h2><span className="sp" />{editButton}</div>}
+      : <div className="nz-card-h"><h2>Baseline &amp; targets</h2><span className="sp" />{editButton}</div>}
     <div className="nz-card-b">
       <div className="nz-kv"><span className="k">Baseline in force</span><span className="v">{targets.benchmarkInForce
         ? <>{FY(targets.benchmarkInForce.year)} · {tonnes(targets.benchmarkInForce.totalTco2e)}</>
         : "Not set"}</span></div>
-      {targets.benchmarkInForce ? null : <p className="nz-maps">Targets are reductions against the baseline, so the baseline comes first — set it on the client record.</p>}
+      {targets.benchmarkInForce ? null : <p className="nz-maps">No baseline, so no targets yet.<InfoTip label="targets">Targets are reductions against the baseline, so the baseline comes first — set it on the client record.</InfoTip></p>}
 
       {model
         ? <>

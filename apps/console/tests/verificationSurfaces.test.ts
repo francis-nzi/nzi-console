@@ -82,7 +82,7 @@ describe("the job workspace, the client record and the portal say Verification",
 
   it("the client record, the SRS readiness views, the LCA board, the platform page and the portal terms say it too", () => {
     assert.match(read("apps/console/app/clients/[clientId]/OverviewArea.tsx"), /Verified year/);
-    assert.match(read("apps/console/app/clients/[clientId]/OverviewArea.tsx"), /<span className="eyebrow">Verification<\/span>/);
+    assert.match(read("apps/console/app/clients/[clientId]/ClientTabCards.tsx"), /verified year/);
     assert.match(read("apps/console/app/lca/LcaBoard.tsx"), /Verification gate/);
     // The platform's own security/audit assurance is a different domain from the emissions service: its wording is as it was.
     assert.match(read("apps/console/app/platform/PlatformBoard.tsx"), /Tenant assurance is awaiting audit evidence/);

@@ -27,12 +27,13 @@ describe("the client's data entry template: what the screen says", () => {
   it("the empty card is headed Data entry template and describes data entry, not reporting", async () => {
     const { ReportingTemplateCard } = await import("../app/clients/[clientId]/ClientReportingTemplate");
     const html = renderToStaticMarkup(createElement(ReportingTemplateCard, { template: empty, access: allowed, onEdit: noop, onInitialise: noop, onInitialiseFromMaster: noop }));
-    assert.match(html, /<span class="eyebrow">Data entry<\/span><h2>Data entry template<\/h2>/);
+    assert.match(html, /<h2>Data entry template<\/h2>/);
+    assert.doesNotMatch(html, /class="eyebrow"/, "one title: no eyebrow above the heading");
     assert.match(html, /None set/);
     assert.doesNotMatch(html, /[Rr]eporting template|>Reporting</);
     // The card's body is collapsed in static markup, so its copy is read from the source.
     const source = readFileSync(resolve(root, "apps/console/app/clients/[clientId]/ClientReportingTemplate.tsx"), "utf8");
-    assert.ok(source.includes("No data entry template yet. It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page. Start it from a master template, from a job, or by hand."));
+    assert.ok(source.includes("No data entry template yet.<InfoTip label=\"the data entry template\">It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page. Start it from a master template, from a job, or by hand.</InfoTip>"));
     assert.ok(source.includes("Initialise from a master template…") && source.includes("Initialise from a job…") && source.includes("Set it up by hand"), "the three ways in");
   });
 
