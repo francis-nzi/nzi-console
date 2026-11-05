@@ -35,7 +35,7 @@ const framework: SrsFramework = {
 };
 
 const item = (requirementId: string, maturity: SrsMaturity | null, over: Partial<SrsAssessmentItem> = {}): SrsAssessmentItem => ({
-  requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, version: 1, ...over,
+  requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, priority: null, version: 1, ...over,
 });
 const assessment = (id: string, status: "draft" | "complete", assessedOn: string | null, items: SrsAssessmentItem[]): SrsAssessment => ({
   assessmentId: id, clientId: "c1", frameworkId: framework.frameworkId, frameworkVersion: 1, status,
@@ -43,7 +43,7 @@ const assessment = (id: string, status: "draft" | "complete", assessedOn: string
   benchmarkPercentile: null, benchmarkSource: null, version: 1, items,
 });
 
-const working = { owner: "Ada Admin", dueDate: "2027-01-31", linkedActionId: "strategy-1", evidence: { kind: "document" as const, ref: "Board minutes", note: "Minuted" } };
+const working = { owner: "Ada Admin", dueDate: "2027-01-31", linkedActionId: "strategy-1", priority: "high" as const, evidence: { kind: "document" as const, ref: "Board minutes", note: "Minuted" } };
 const first = assessment("a1", "complete", "2026-03-01", [item("g1", 1), item("g2", 1), item("m1", 0), item("s1g1", 1)]);
 const second = assessment("a2", "complete", "2026-06-01", [item("g1", 3, working), item("g2", 2), item("m1", 2), item("s1g1", 2)]);
 const draft = assessment("a3", "draft", null, [item("g1", 4), item("g2", null)]);
@@ -112,7 +112,7 @@ test("the portal reads the latest completed assessment, and none of the staff wo
   assert.equal(portal.assessment.id, "a2", "never the draft");
   assert.equal(portal.assessment.provisional, false);
   for (const requirement of portal.requirements) {
-    for (const field of ["owner", "dueDate", "linkedActionId"]) assert.ok(!(field in requirement), `${requirement.id} carries no ${field}`);
+    for (const field of ["owner", "dueDate", "linkedActionId", "priority"]) assert.ok(!(field in requirement), `${requirement.id} carries no ${field}`);
   }
   // R9: the client sees the evidence and the history on each question.
   const g1 = portal.requirements.find((entry) => entry.id === "g1")!;

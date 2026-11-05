@@ -45,7 +45,7 @@ const framework: SrsFramework = {
 };
 
 const item = (requirementId: string, maturity: SrsMaturity | null, over: Partial<SrsAssessmentItem> = {}): SrsAssessmentItem => ({
-  requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, version: 1, ...over,
+  requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, priority: null, version: 1, ...over,
 });
 
 test("readiness is weighted, and an unanswered requirement is not readiness", () => {
