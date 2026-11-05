@@ -1,0 +1,73 @@
+# Auto-merge enabler. Render deploys on every push to main, so merging IS deploying; this makes the merge happen by itself,
+# and only once GitHub says every required check has passed.
+#
+# It turns on GitHub's own auto-merge (squash) for a ready pull request and does nothing else: it approves nothing, bypasses
+# nothing and merges nothing itself. What actually gates the merge is the branch-protection required-checks list, including
+# the ruling gate — so a migration PR waits for the `ruled` label and an ungoverned PR merges on green.
+#
+# Pull requests touching CI config, the gates or the decision register are left for a human (scripts/auto-merge.mjs), because
+# the ruling gate does not hold those. Drafts are skipped; converting a pull request back to draft makes GitHub drop auto-merge.
+#
+# `pull_request_target`, like the ruling gate, so the workflow and script run from the default branch and a pull request cannot
+# edit the thing that decides whether it merges. Same safety rules, asserted by scripts/auto-merge.test.mjs: the pull request's
+# code is never checked out or run, its changed files are listed through the API by name only, and event values reach the script
+# through the environment, never interpolated into a shell line.
+name: Auto-merge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, ready_for_review]
+
+permissions:
+  contents: write        # merging
+  pull-requests: write   # enabling auto-merge
+
+concurrency:
+  group: auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  enable:
+    name: enable auto-merge on a ready pull request
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The default branch — the enabler's own trusted copy. Never the pull request's head.
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Decide
+        id: decide
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+        run: |
+          CHANGED_FILES="$(gh api --paginate "repos/$REPO/pulls/$PR_NUMBER/files" --jq '.[].filename')"
+          export CHANGED_FILES
+          node scripts/auto-merge.mjs
+      - name: Enable auto-merge (squash)
+        if: steps.decide.outputs.enable == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Idempotent: already being on is success, not failure.
+          if out="$(gh pr merge "$PR_NUMBER" --repo "$REPO" --auto --squash 2>&1)"; then
+            echo "$out"
+          elif echo "$out" | grep -qi "already"; then
+            echo "Auto-merge was already enabled."
+          else
+            echo "$out"
+            echo "::error::Could not enable auto-merge. Repo settings need 'Allow auto-merge' and 'Allow squash merging' on, and a protected main with required checks."
+            exit 1
+          fi
