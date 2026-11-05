@@ -1,6 +1,6 @@
 import type { Queryable } from "./postgres";
 import { dateOnlyOrNull } from "./dates";
-import type { SrsAssessment, SrsAssessmentItem, SrsFramework, SrsMaturity } from "@nzi/contracts";
+import type { Priority, SrsAssessment, SrsAssessmentItem, SrsFramework, SrsMaturity } from "@nzi/contracts";
 
 /**
  * Reading the SRS framework and a client's assessments. Read-only and dependency-free, so
@@ -69,8 +69,8 @@ export async function listSrsAssessments(db: Queryable, clientId: string): Promi
   const { rows } = await db.query<AssessmentRow>(
     `SELECT ${ASSESSMENT_COLUMNS} FROM nzi_console.srs_assessments WHERE client_id=$1 ORDER BY coalesce(assessed_on, started_on) DESC, assessment_id DESC`, [clientId]);
   if (rows.length === 0) return [];
-  const items = await db.query<{ assessment_id: string; requirement_id: string; maturity: number | null; source: "entered" | "auto"; evidence_kind: "document" | "data" | "note" | null; evidence_ref: string | null; evidence_note: string; owner: string; due_date: Date | string | null; linked_action_id: string | null; version: number }>(
-    `SELECT assessment_id,requirement_id,maturity,source,evidence_kind,evidence_ref,evidence_note,owner,due_date,linked_action_id,version FROM nzi_console.srs_assessment_items WHERE assessment_id = ANY($1::text[])`,
+  const items = await db.query<{ assessment_id: string; requirement_id: string; maturity: number | null; source: "entered" | "auto"; evidence_kind: "document" | "data" | "note" | null; evidence_ref: string | null; evidence_note: string; owner: string; due_date: Date | string | null; linked_action_id: string | null; priority: Priority | null; version: number }>(
+    `SELECT assessment_id,requirement_id,maturity,source,evidence_kind,evidence_ref,evidence_note,owner,due_date,linked_action_id,priority,version FROM nzi_console.srs_assessment_items WHERE assessment_id = ANY($1::text[])`,
     [rows.map((row) => row.assessment_id)]);
   const byAssessment = new Map<string, SrsAssessmentItem[]>();
   for (const item of items.rows) {
@@ -79,7 +79,7 @@ export async function listSrsAssessments(db: Queryable, clientId: string): Promi
       maturity: item.maturity === null ? null : item.maturity as SrsMaturity,
       source: item.source,
       evidence: item.evidence_kind === null ? null : { kind: item.evidence_kind, ref: item.evidence_ref, note: item.evidence_note },
-      owner: item.owner, dueDate: dateOnlyValue(item.due_date), linkedActionId: item.linked_action_id, version: item.version,
+      owner: item.owner, dueDate: dateOnlyValue(item.due_date), linkedActionId: item.linked_action_id, priority: item.priority, version: item.version,
     }]);
   }
   return rows.map((row) => ({

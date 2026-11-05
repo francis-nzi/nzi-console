@@ -2,6 +2,7 @@ import {
   benchmark as resolveBenchmark, isAssessed, orderedRequirements, overallReadiness, pillarReadiness, rollup, srsCompletion,
   type SrsAssessment, type SrsBenchmark, type SrsEvidence, type SrsFramework, type SrsMaturity,
 } from "./srsReadiness";
+import type { Priority } from "./priority";
 
 /**
  * The readiness dashboard's view model (SRS S2) — one read of S1's assessment model that the CRM dashboard and the client
@@ -61,6 +62,7 @@ export type SrsDashboardRequirement = {
   owner?: string;
   dueDate?: string | null;
   linkedActionId?: string | null;
+  priority?: Priority | null;
 };
 
 export type SrsTrendPoint = { assessmentId: string; assessedOn: string; level: number };
@@ -159,6 +161,7 @@ export function srsDashboard(inForce: SrsFramework, assessment: SrsAssessment, a
           return { assessedOn: point.assessedOn, maturity: value, stepName: value === null ? null : stepName(value) };
         }),
         owner: item?.owner ?? "", dueDate: item?.dueDate ?? null, linkedActionId: item?.linkedActionId ?? null,
+        priority: item?.priority ?? null,
       };
     }),
     trend: {
@@ -183,7 +186,7 @@ export function srsPortalDashboard(framework: SrsFramework, assessments: readonl
   const model = srsDashboard(framework, latest, assessments, options);
   return {
     ...model,
-    requirements: model.requirements.map(({ owner: _owner, dueDate: _due, linkedActionId: _link, ...client }) => ({
+    requirements: model.requirements.map(({ owner: _owner, dueDate: _due, linkedActionId: _link, priority: _priority, ...client }) => ({
       ...client,
       // The S2 review's ruling: evidence crosses as its kind and reference only. The free-text note is a consultant's
       // working record ("client slow to engage") and stays one — blanked here, before the model leaves the contract,

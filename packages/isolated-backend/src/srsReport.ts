@@ -61,7 +61,7 @@ export async function getSrsReport(db: Queryable, holder: CapabilityHolder, inpu
   // Field by field, as the portal's: no owner, due date, action link or evidence note crosses into a client document.
   const dashboard: SrsDashboardModel = {
     ...model,
-    requirements: model.requirements.map(({ owner: _owner, dueDate: _due, linkedActionId: _link, ...requirement }) => ({
+    requirements: model.requirements.map(({ owner: _owner, dueDate: _due, linkedActionId: _link, priority: _priority, ...requirement }) => ({
       ...requirement,
       evidence: requirement.evidence === null ? null : { kind: requirement.evidence.kind, ref: requirement.evidence.ref, note: "" },
     })),

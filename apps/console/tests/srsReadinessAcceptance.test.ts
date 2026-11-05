@@ -192,7 +192,7 @@ describe("the portal readiness statement", () => {
     // staff working fields (owner, due date, the action link) are taken out field by field before the model leaves
     // the contract, so the portal cannot reach them even by accident (NZC-110).
     const strip = read("packages/contracts/src/srsDashboard.ts");
-    assert.match(strip, /requirements: model\.requirements\.map\(\(\{ owner: _owner, dueDate: _due, linkedActionId: _link, \.\.\.client \}\) => \(\{/);
+    assert.match(strip, /requirements: model\.requirements\.map\(\(\{ owner: _owner, dueDate: _due, linkedActionId: _link, priority: _priority, ...client \}\) => \(\{/);
     // The S2 review's ruling: evidence as kind + ref only — the consultant's free-text note is blanked in the same strip.
     assert.match(strip, /evidence: client\.evidence === null \? null : \{ kind: client\.evidence\.kind, ref: client\.evidence\.ref, note: "" \}/);
     assert.doesNotMatch(portal, /evidence\.note/, "the view never reaches for the note");

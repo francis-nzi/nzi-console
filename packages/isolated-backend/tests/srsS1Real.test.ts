@@ -178,6 +178,28 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
       await assert.rejects(q(`UPDATE nzi_console.srs_assessment_items SET linked_action_id = 'no-such-action' WHERE assessment_id = $1`, [draft.assessmentId]), /foreign key/);
     });
 
+    it("carries a priority on the item — high, medium, low or unset — and nothing else (0211)", async () => {
+      const draft = (await read((db) => listSrsAssessments(db, A))).find((entry) => entry.status === "draft")!;
+      const requirement = v1.requirements.filter((entry) => entry.active)[1]!;
+      const item = async () => (await assessment(draft.assessmentId)).items.find((entry) => entry.requirementId === requirement.id);
+      assert.equal(await item(), undefined, "nothing answered yet, so nothing set");
+      await setSrsAssessmentItem(database.pool, { assessmentId: draft.assessmentId, requirementId: requirement.id, maturity: 1, priority: "high", expectedVersion: 0 }, context());
+      assert.equal((await item())!.priority, "high");
+      await setSrsAssessmentItem(database.pool, { assessmentId: draft.assessmentId, requirementId: requirement.id, maturity: 1, priority: "low", expectedVersion: 1 }, context());
+      assert.equal((await item())!.priority, "low");
+      await setSrsAssessmentItem(database.pool, { assessmentId: draft.assessmentId, requirementId: requirement.id, maturity: 1, expectedVersion: 2 }, context());
+      assert.equal((await item())!.priority, null, "unset is null");
+      // Outside the vocabulary: refused by the command, and by the database underneath it.
+      await assert.rejects(setSrsAssessmentItem(database.pool, { assessmentId: draft.assessmentId, requirementId: requirement.id, maturity: 1, priority: "urgent" as never, expectedVersion: 3 }, context()), refused("INVALID"));
+      await assert.rejects(q(`UPDATE nzi_console.srs_assessment_items SET priority = 'urgent' WHERE assessment_id = $1`, [draft.assessmentId]), /check constraint/);
+      // The audit payload carries it.
+      await setSrsAssessmentItem(database.pool, { assessmentId: draft.assessmentId, requirementId: requirement.id, maturity: 1, priority: "medium", expectedVersion: 3 }, context());
+      const audited = await q<{ after_json: { priority: string | null } }>(`SELECT after_json FROM nzi_console.audit_events WHERE action = 'srs_assessment_item_set' AND entity_id = $1 ORDER BY occurred_at DESC LIMIT 1`, [`${draft.assessmentId}:${requirement.id}`]);
+      assert.equal(audited[0]!.after_json.priority, "medium");
+      // A pre-filled answer carries none until a consultant sets one.
+      assert.ok((await assessment(first)).items.filter((entry) => entry.source === "auto").every((entry) => entry.priority === null));
+    });
+
     it("is srs.manage: a viewer cannot assess, and every start, answer and completion is audited", async () => {
       await assert.rejects(startSrsAssessment(database.pool, { clientId: "legacy-client" }, context("viewer")), /srs\.manage|permission|not allowed/i);
       const actions = (await q<{ action: string }>(`SELECT DISTINCT action FROM nzi_console.audit_events WHERE action LIKE 'srs_assessment_%'`)).map((row) => row.action).sort();

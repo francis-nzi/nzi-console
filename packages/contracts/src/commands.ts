@@ -1,6 +1,7 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { PORTAL_ACCESS_NOTES_MAX, PORTAL_ACCESS_NOTE_MAX, PORTAL_ACCESS_PAYMENT_REF_MAX, PORTAL_PAYMENT_STATUSES, type PortalClientAccessChanges } from "./portalClientAccess";
 import type { PortalSpendImportPayload } from "./portalSpendImport";
+import { isPriority, type Priority } from "./priority";
 import { PORTAL_MESSAGE_MAX, PORTAL_MESSAGE_MAX_ATTACHMENTS, PORTAL_SUBJECT_CODE_PATTERN, PORTAL_THREAD_STATES, PORTAL_THREAD_TITLE_MAX, type PortalThreadState } from "./portalConversations";
 import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, isPortalFileCategory, type PortalFileCategory, type PortalFileIngest } from "./portalFiles";
 import { isMilestoneKind, type MilestoneKind, MILESTONE_ITEM_LABEL_MAX, MILESTONE_KINDS, MILESTONE_OFFSET_MAX, MILESTONE_TEMPLATE_DESCRIPTION_MAX, MILESTONE_TEMPLATE_NAME_MAX, type MilestoneTemplateFields } from "./adminMilestoneTemplates";
@@ -1131,7 +1132,7 @@ export type CommandInputMap = {
   "srs.assessment.item.set": {
     assessmentId: string; requirementId: string; maturity: number | null;
     evidenceKind?: "document" | "data" | "note" | null; evidenceRef?: string | null; evidenceNote?: string;
-    owner?: string; dueDate?: string | null; linkedActionId?: string | null; expectedVersion: number;
+    owner?: string; dueDate?: string | null; linkedActionId?: string | null; priority?: Priority | null; expectedVersion: number;
   };
   "srs.assessment.complete": { assessmentId: string; expectedVersion: number };
   /**
@@ -3345,6 +3346,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     // Evidence that names nothing is not evidence.
     if (input.evidenceKind != null && !text(input.evidenceRef) && !text(input.evidenceNote)) issues.push({ field: "evidenceNote", code: "REQUIRED", message: "Evidence needs a reference or a note." });
     if (input.dueDate != null && !isoDate(input.dueDate)) issues.push({ field: "dueDate", code: "INVALID", message: "Enter the due date as dd/mm/yyyy." });
+    if (input.priority != null && !isPriority(input.priority)) issues.push({ field: "priority", code: "INVALID", message: "Priority is high, medium or low." });
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
     return issues;
   } },
