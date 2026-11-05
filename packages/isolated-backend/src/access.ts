@@ -226,6 +226,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "srs.assessment.item.set": srsAssessment,
   "srs.assessment.complete": srsAssessment,
   "srs.assessment.reopen": srsAssessment,
+  "srs.assessment.notes.set": srsAssessment,
   // SRS S3: every gap act concerns one assessment, so its client — resolved and held to the own-clients scope as ever.
   "srs.gap.suggestions.record": srsAssessment,
   "srs.gap.suggestion.withdraw": srsAssessment,

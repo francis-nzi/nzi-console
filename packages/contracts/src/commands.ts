@@ -46,6 +46,7 @@ import { entryBasisUnitIssue, isCurrencyUnit, isEntryBasis, type EntryBasis } fr
 import { isFxRate } from "./spendCurrency";
 import { SPEND_ALLOCATION_KEY_KINDS, SPEND_ALLOCATION_KEY_MAX, SPEND_SUGGESTION_REASON_MAX, spendAllocationFieldIssues, type SpendAllocationKeyKind } from "./spendAllocation";
 import { groundSrsSuggestion, SRS_SUGGESTION_LIMITS } from "./srsBridge";
+import { SRS_ASSESSMENT_NOTES_MAX } from "./srsReadiness";
 import { readinessReportTemplates } from "./readinessReportTemplates";
 import { intensityDividers, intensityUnitKinds, isIntensityIconKey, monetaryKindIssue, type IntensityDivider, type IntensityUnitKind } from "./intensityMetrics";
 import { REPORTING_TEMPLATE_LABEL_MAX, REPORTING_TEMPLATE_MAX_LINES, reportingTemplateCategoryScope, type ReportingTemplateLineInput } from "./reportingTemplate";
@@ -233,6 +234,7 @@ export type CommandKey =
   | "srs.assessment.item.set"
   | "srs.assessment.complete"
   | "srs.assessment.reopen"
+  | "srs.assessment.notes.set"
   | "srs.gap.suggestions.record"
   | "srs.gap.suggestion.withdraw"
   | "srs.gap.bridge"
@@ -1139,6 +1141,8 @@ export type CommandInputMap = {
   "srs.assessment.complete": { assessmentId: string; expectedVersion: number };
   /** Reopen a completed assessment to correct it — the same assessment, not a reassessment, so no new trend point. */
   "srs.assessment.reopen": { assessmentId: string; expectedVersion: number };
+  /** The assessment's one context note (a consultant's working record, never shown to the client). Replaces it; a draft only. */
+  "srs.assessment.notes.set": { assessmentId: string; notes: string; expectedVersion: number };
   /**
    * SRS S3. `srs.gap.suggestions.record`: AI ideas for one gap, already grounded (no figure, no claim), with the model that
    * answered and the SHA-256 of the exact prompt — the request by reference, never its text. `srs.gap.bridge`: one source —
@@ -3351,6 +3355,14 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (input.evidenceKind != null && !text(input.evidenceRef) && !text(input.evidenceNote)) issues.push({ field: "evidenceNote", code: "REQUIRED", message: "Evidence needs a reference or a note." });
     if (input.dueDate != null && !isoDate(input.dueDate)) issues.push({ field: "dueDate", code: "INVALID", message: "Enter the due date as dd/mm/yyyy." });
     if (input.priority != null && !isPriority(input.priority)) issues.push({ field: "priority", code: "INVALID", message: "Priority is high, medium or low." });
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  "srs.assessment.notes.set": { key: "srs.assessment.notes.set", label: "Set an SRS assessment's context note", permission: "srs.manage", reasonRequired: false, transaction: "assessment note + version + audit + outbox + idempotency", auditAction: "srs_assessment_notes_set", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "assessmentId", input.assessmentId);
+    if (typeof input.notes !== "string") issues.push({ field: "notes", code: "INVALID", message: "The note is text." });
+    else if (input.notes.length > SRS_ASSESSMENT_NOTES_MAX) issues.push({ field: "notes", code: "TOO_LONG", message: `The note is ${SRS_ASSESSMENT_NOTES_MAX} characters or fewer.` });
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
     return issues;
   } },
