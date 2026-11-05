@@ -47,14 +47,15 @@ describe("the client's SRS area, dated on completion (R3)", () => {
   it("says in progress — with how much is addressed — or assessed, never an assessed date on a draft", () => {
     // S2: the completion reads through the dashboard model (S1's `srsCompletion`), and the date only from a completed one.
     assert.match(area, /In progress · \$\{currentCompletion\.addressed\} of \$\{currentCompletion\.total\} addressed/);
-    assert.match(area, /not yet assessed — it is dated when every requirement is addressed/);
+    assert.match(area, /started \{formatDate\(model\.assessment\.startedOn\)\} · not yet assessed/);
+    assert.match(area, /dated as assessed only when every requirement has been addressed/);
     assert.match(area, /model\.assessment\.assessedOn\s*\?/);
     assert.match(read("../../packages/contracts/src/srsDashboard.ts"), /assessedOn: isAssessed\(assessment\) \? assessment\.assessedOn : null/);
   });
 
   it("holds Complete until every requirement is addressed, and reassessing starts a new assessment", () => {
     assert.match(area, /blocked=\{access\.state !== "allowed" \|\| !completionReady \|\| completing\}/);
-    assert.match(area, /onClick=\{\(\) => onDrawer\(\{ kind: "srs-start" \}\)\}>Reassess/);
+    assert.match(area, /<StartButton clientId=\{client\.id\} access=\{access\} onSaved=\{onSaved\} label="Reassess"/);
   });
 
   it("draws the trend from completed assessments only, and asks for no date at start", () => {
@@ -63,5 +64,44 @@ describe("the client's SRS area, dated on completion (R3)", () => {
     assert.match(dashboard, /overall: completed\.map\(/);
     assert.match(area, /model\.trend\.overall\.map/);
     assert.doesNotMatch(start, /assessedOn/);
+  });
+});
+
+describe("one-click start, one title, noise behind i-pills", () => {
+  const forms = read("app/clients/[clientId]/SrsAssessmentForms.tsx");
+  const workspaceView = read("app/clients/[clientId]/ClientWorkspaceView.tsx");
+  const drawers = read("app/clients/[clientId]/srsDrawers.ts");
+
+  it("starts the assessment in one action: no start drawer, the gated command posted from the button", () => {
+    assert.doesNotMatch(forms, /SrsStartForm|Start a readiness assessment/);
+    assert.doesNotMatch(workspaceView, /srs-start|SrsStartForm/);
+    assert.doesNotMatch(drawers, /srs-start/);
+    assert.doesNotMatch(area, /srs-start/);
+    assert.match(area, /`\/api\/isolated\/clients\/\$\{encodeURIComponent\(clientId\)\}\/srs-assessments`/);
+    assert.match(area, /blocked=\{pending \|\| access\.state !== "allowed"\}/);
+  });
+
+  it("applies the record pre-fill on every one-click start (a start that drops it fails here)", () => {
+    assert.match(area, /\{ notes: "", prefillFromNziData: true \}/);
+    assert.doesNotMatch(area, /prefillFromNziData: false/);
+  });
+
+  it("leaves per-answer overrides inside the assessment, on the item form", () => {
+    assert.match(forms, /Override it if the disclosure needs something different/);
+    assert.match(forms, /export function SrsItemForm/);
+  });
+
+  it("shows one title, not an eyebrow and a title", () => {
+    assert.equal((area.match(/<h2>UK SRS Readiness<\/h2>/g) ?? []).length, 3);
+    assert.doesNotMatch(area, /<div className="eyebrow">Disclosure<\/div>/);
+    assert.doesNotMatch(area, /eyebrow="Disclosure"/);
+  });
+
+  it("keeps the explanatory prose behind i-pills, not inline on the page", () => {
+    assert.match(area, /<InfoTip label="starting an assessment">/);
+    assert.match(area, /<InfoTip label="this assessment">/);
+    assert.match(area, /gated on <b>srs\.manage<\/b> and every answer is audited/);
+    assert.doesNotMatch(area, /<p className="nz-maps">Requirements the client/);
+    assert.doesNotMatch(area, /<p className="nz-maps">The framework is Admin-managed/);
   });
 });

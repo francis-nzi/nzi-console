@@ -24,7 +24,7 @@ import { SrsArea } from "./SrsArea";
 import { ReductionStrategiesArea } from "./ReductionStrategiesArea";
 import { StrategyBespokeForm, StrategyEditForm, StrategyLibraryForm, StrategyProposalForm } from "./StrategyForms";
 import { strategyDrawerLabel, type StrategyDrawerRequest } from "./strategyDrawers";
-import { SrsItemForm, SrsStartForm } from "./SrsAssessmentForms";
+import { SrsItemForm } from "./SrsAssessmentForms";
 import { SrsBridgeForm } from "./SrsBridgeForm";
 import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
 import { orderedRequirements, type SrsRequirement } from "@nzi/contracts";
@@ -225,8 +225,6 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
     </Drawer>
 
     <Drawer open={srsDrawer !== null} onClose={closeSrsDrawer} ariaLabel={srsDrawer ? srsDrawerLabel(srsDrawer) : "SRS drawer"} className="nz-site-drawer" dismissOnOutsideClick>
-      {srsDrawer?.kind === "srs-start" && workspace.srs.framework
-        ? <SrsStartForm clientId={client.id} framework={workspace.srs.framework} access={access.srs} onClose={closeSrsDrawer} onSaved={(text: string) => { closeSrsDrawer(); srsSaved(text); }} /> : null}
       {srsDrawer?.kind === "srs-bridge"
         ? <SrsBridgeForm key={`${srsDrawer.assessment.assessmentId}-${srsDrawer.requirementId}`} workspace={workspace} assessment={srsDrawer.assessment}
           requirementId={srsDrawer.requirementId} access={access.srs} onClose={closeSrsDrawer} onSaved={(text: string) => { closeSrsDrawer(); srsSaved(text); }} /> : null}

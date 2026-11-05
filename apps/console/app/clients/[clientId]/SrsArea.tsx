@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
 import { SrsDial, SrsHeatmap, SrsMeter, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
 import { GatedButton, InfoTip } from "@nzi/ui";
@@ -41,36 +41,70 @@ export function SrsArea({ workspace, access, onDrawer, onSaved }: {
 
   if (!framework) {
     return <section className="nz-panel">
-      <CardHead eyebrow="Disclosure" title="UK SRS Readiness" />
+      <div className="nz-cw-vhead"><h2>UK SRS Readiness</h2></div>
       <Empty text="No SRS framework is published for this organisation, so there is nothing to assess against. An administrator publishes the framework — standards, pillars, requirements, weights and the maturity ladder — and it is versioned from then on." />
     </section>;
   }
-  if (!current) return <SrsEmpty framework={framework} access={access} onDrawer={onDrawer} />;
+  if (!current) return <SrsEmpty framework={framework} clientId={workspace.client.id} access={access} onSaved={onSaved} />;
 
   return <SrsDashboard workspace={workspace} framework={framework} current={current} assessments={assessments} access={access} onDrawer={onDrawer} onSaved={onSaved} />;
 }
 
-function SrsEmpty({ framework, access, onDrawer }: { framework: SrsFramework; access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void }) {
+function SrsEmpty({ framework, clientId, access, onSaved }: { framework: SrsFramework; clientId: string; access: EditAccess; onSaved: (text: string) => void }) {
   const climate = framework.standards.find((standard) => standard.climateLed);
+  const fromNzi = framework.requirements.filter((requirement) => requirement.active && requirement.source === "nzi-data").length;
   return <>
-    <div className="nz-cw-vhead"><div><div className="eyebrow">Disclosure</div><h2>UK SRS Readiness</h2></div><span style={{ flex: 1 }} />
-      <StartButton access={access} onDrawer={onDrawer} label="Start assessment" /></div>
+    <div className="nz-cw-vhead"><div><h2>UK SRS Readiness</h2></div>
+      <InfoTip label="starting an assessment">
+        <p>Requirements the client&apos;s own verified record already answers — the emissions, their targets and its intensity metrics — are filled in from that record rather than asked again ({fromNzi} of them). Each is marked as resolved from NZI data, carries the record it came from as evidence, and can be overridden inside the assessment.</p>
+        <p>The assessment is stamped with {framework.label} version {framework.version}, so a later framework change never restates what was assessed today. It is opened today and saved as you go, and is dated as assessed only when every requirement has been addressed and you complete it — until then it reads as in progress.</p>
+        <p>Assessing is gated on <b>srs.manage</b> and every answer is audited. The framework itself is Admin-managed and versioned.</p>
+      </InfoTip><span style={{ flex: 1 }} />
+      <StartButton clientId={clientId} access={access} onSaved={onSaved} label="Start assessment" /></div>
     <p className="nz-cw-vsub">How ready this client is against the UK Sustainability Reporting Standards, and what the path looks like.</p>
     <section className="nz-panel">
       <CardHead eyebrow="Not assessed yet" title="No readiness assessment" />
       <div className="nz-card-b">
         <p className="sub" style={{ margin: "8px 0" }}>This client has not been assessed. An assessment works through <b>{framework.requirements.filter((requirement) => requirement.active).length} requirements</b> across {framework.pillars.length} pillars, {climate ? <>led by <b>{climate.label}</b></> : null} — scoring each on the five-step ladder with its evidence.</p>
-        <p className="nz-maps">Requirements the client&apos;s own verified record already answers — the emissions, their targets and its intensity metrics — can be filled in from that record rather than asked again, each marked as resolved from NZI data.</p>
-        <div className="nz-kv"><span className="k">Framework</span><span className="v">{framework.label} · version {framework.version}</span></div>
       </div>
     </section>
   </>;
 }
 
-function StartButton({ access, onDrawer, label }: { access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void; label: string }) {
-  return <GatedButton className="nz-btn pri" blocked={access.state !== "allowed"}
-    blockedReason={access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason"
-    onClick={() => onDrawer({ kind: "srs-start" })}>{label}</GatedButton>;
+/**
+ * One click starts the assessment — the same gated, audited `srs.assessment.start` command the drawer ran, with the
+ * client's-record pre-fill on (`prefillFromNziData: true`): the requirements its verified record answers arrive resolved
+ * from NZI data, carrying that record as evidence, and are overridden per answer inside the assessment.
+ */
+function StartButton({ clientId, access, onSaved, label, primary = true }: {
+  clientId: string; access: EditAccess; onSaved: (text: string) => void; label: string; primary?: boolean;
+}) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const key = useRef<string | null>(null);
+  async function start() {
+    setPending(true); setError(null);
+    key.current ??= crypto.randomUUID();
+    const result = await postBrowserCommand<{ assessmentId: string; prefilled: number }>(
+      `/api/isolated/clients/${encodeURIComponent(clientId)}/srs-assessments`,
+      { notes: "", prefillFromNziData: true }, key.current);
+    setPending(false);
+    if (result.state !== "success") {
+      key.current = null;
+      setError(result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.message);
+      return;
+    }
+    key.current = null;
+    onSaved(result.data.prefilled > 0
+      ? `Assessment started — ${result.data.prefilled} requirements answered from this client's own record.`
+      : "Assessment started.");
+  }
+  return <>
+    <GatedButton className={primary ? "nz-btn pri" : "nz-btn"} blocked={pending || access.state !== "allowed"}
+      blockedReason={pending ? "Starting…" : access.state === "allowed" ? undefined : access.reason} reasonClassName="hint nz-gated-reason"
+      onClick={() => void start()}>{pending ? "Starting…" : label}</GatedButton>
+    {error ? <span className="nz-banner warn" role="alert">{error}</span> : null}
+  </>;
 }
 
 const signed = (delta: number | null) => delta === null ? null : delta === 0 ? "no change" : `${delta > 0 ? "▲ +" : "▼ −"}${Math.abs(delta).toFixed(1)}`;
@@ -118,7 +152,12 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   const standardLabel = standardKey ? model.standards.find((standard) => standard.key === standardKey)?.label ?? standardKey : "S1 and S2";
 
   return <>
-    <div className="nz-cw-vhead"><div><div className="eyebrow">Disclosure</div><h2>UK SRS Readiness</h2></div><span style={{ flex: 1 }} />
+    <div className="nz-cw-vhead"><div><h2>UK SRS Readiness</h2></div>
+      <InfoTip label="this assessment">
+        <p>Each assessment is measured against {model.frameworkLabel} version {model.frameworkVersion}; the version is stamped on it, so a later framework change never restates what was assessed. It is dated as assessed only when every requirement has been addressed and it is completed — until then it reads as in progress.</p>
+        <p>Requirements the client&apos;s verified record answers are filled in from it and marked resolved from NZI data; override any of them with Assess.</p>
+        <p>Assessing is gated on <b>srs.manage</b> and every answer is audited. The framework is Admin-managed and versioned.</p>
+      </InfoTip><span style={{ flex: 1 }} />
       <span className={current.status === "draft" ? "nz-st need" : "nz-st done"}>{current.status === "draft" ? `In progress · ${currentCompletion.addressed} of ${currentCompletion.total} addressed` : "Assessed"}</span>
       {current.status === "draft"
         ? <>
@@ -131,8 +170,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
             reasonClassName="hint nz-gated-reason" onClick={() => void complete()}>{completing ? "Completing…" : "Complete assessment"}</GatedButton>
         </>
         // A completed assessment is a record; reassessing starts a new one, which is what gives readiness a trend.
-        : <GatedButton className="nz-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
-          reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-start" })}>Reassess</GatedButton>}
+        : <StartButton clientId={client.id} access={access} onSaved={onSaved} label="Reassess" primary={false} />}
       {/* S3, R5: the report — from the latest completed assessment, as the UK SRS template draws it. */}
       {assessments.some((entry) => entry.status === "complete")
         ? <a className="nz-btn" href={`/clients/${encodeURIComponent(client.id)}/srs-report?template=uk-srs${model.assessment.assessedOn ? `&assessment=${encodeURIComponent(model.assessment.id)}` : ""}`}>Readiness report (PDF)</a>
@@ -141,7 +179,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
     {completeError ? <div className="nz-banner warn" role="alert">{completeError}</div> : null}
     <p className="nz-cw-vsub">{client.name} · {model.assessment.assessedOn
       ? <>assessed {formatDate(model.assessment.assessedOn)}</>
-      : <>started {formatDate(model.assessment.startedOn)} · not yet assessed — it is dated when every requirement is addressed</>} · consultant-led by {assessment.assessedBy} · measured against {model.frameworkLabel} version {model.frameworkVersion}.</p>
+      : <>started {formatDate(model.assessment.startedOn)} · not yet assessed</>} · consultant-led by {assessment.assessedBy}.</p>
 
     {/* The filter row (R10): which standard, which assessment — one row, above every graphic. */}
     <div className="nz-srs-filters" role="group" aria-label="Readiness filters">
@@ -405,9 +443,6 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, strategie
           })}
         </tbody>
       </table>
-    </div>
-    <div className="nz-card-b">
-      <p className="nz-maps">The framework is Admin-managed and versioned; this assessment is measured against version {model.frameworkVersion}, and a later version does not restate it.</p>
     </div>
   </section>;
 }

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { GatedButton } from "@nzi/ui";
-import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
+import { putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { orderedRequirements, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity, type SrsRequirement } from "@nzi/contracts";
 import type { EditAccess } from "../../lib/useEditAccess";
 
@@ -14,56 +14,6 @@ import type { EditAccess } from "../../lib/useEditAccess";
 
 const errorText = (result: BrowserCommandResult<unknown>) =>
   result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.state === "success" ? "" : result.message;
-
-export function SrsStartForm({ clientId, framework, access, onClose, onSaved }: {
-  clientId: string; framework: SrsFramework; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
-}) {
-  // No date to enter (S1, R3): it is opened today, and dated "assessed" on the day every requirement is addressed.
-  const [prefill, setPrefill] = useState(true);
-  const [notes, setNotes] = useState("");
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const key = useRef<string | null>(null);
-  const requirementCount = framework.requirements.filter((requirement) => requirement.active).length;
-  const fromNzi = framework.requirements.filter((requirement) => requirement.active && requirement.source === "nzi-data").length;
-
-  async function save() {
-    setPending(true);
-    setError(null);
-    key.current ??= crypto.randomUUID();
-    const result = await postBrowserCommand<{ assessmentId: string; prefilled: number }>(
-      `/api/isolated/clients/${encodeURIComponent(clientId)}/srs-assessments`,
-      { notes, prefillFromNziData: prefill }, key.current);
-    setPending(false);
-    if (result.state !== "success") { key.current = null; setError(errorText(result)); return; }
-    key.current = null;
-    onSaved(result.data.prefilled > 0
-      ? `Assessment started — ${result.data.prefilled} requirements answered from this client's own record.`
-      : "Assessment started.");
-  }
-
-  return <>
-    <div className="nz-dh"><div className="k">Disclosure</div><h3>Start a readiness assessment</h3><button type="button" className="x" onClick={onClose} aria-label="Close">×</button></div>
-    <div className="nz-db">
-      <p className="nz-hint" style={{ marginTop: 0 }}>An assessment scores <b>{requirementCount} requirements</b> against <b>{framework.label} version {framework.version}</b>. The version is stamped on it, so a later framework change never restates what was assessed today.</p>
-      <p className="nz-hint">It is opened today and saved as you go. It is <b>dated as assessed when every requirement has been addressed</b> and you complete it — until then it reads as in progress.</p>
-      <label className="nz-check"><input type="checkbox" checked={prefill} onChange={(event) => setPrefill(event.target.checked)} />
-        Answer what this client&apos;s record already answers</label>
-      <span className="nz-hint">{fromNzi} requirements read the verified emissions, their targets and their intensity metrics. Each is marked as resolved from NZI data, carries the record it came from as evidence, and can be overridden.</span>
-      <label className="nz-fl" style={{ marginTop: 10 }}><span>Notes</span>
-        <input className="nz-inp" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Context for this assessment — optional" />
-      </label>
-      {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
-      <div className="nz-gov"><span className="lk" aria-hidden="true">🔒</span><span>Assessing is gated on <b>srs.manage</b> and every answer is audited. The framework itself is Admin-managed and versioned.</span></div>
-    </div>
-    <div className="nz-df">
-      <button type="button" className="nz-btn" onClick={onClose}>Cancel</button><span className="sp" />
-      <GatedButton className="nz-btn pri" blocked={pending || access.state !== "allowed"}
-        blockedReason={pending ? "Starting…" : access.state === "allowed" ? undefined : access.reason}
-        reasonClassName="hint nz-gated-reason" onClick={() => void save()}>{pending ? "Starting…" : "Start assessment"}</GatedButton>
-    </div>
-  </>;
-}
 
 export function SrsItemForm({ framework, assessment, requirement, item, access, onClose, onSaved, onNext }: {
   framework: SrsFramework;
