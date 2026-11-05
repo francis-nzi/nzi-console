@@ -5577,6 +5577,24 @@ migration gate, the other thing that makes migrations safe to merge).
 > #353 (`ba7beb8`, this ledger, docs only) matches its ruled head `5baa3c5`. The enforcement works end to end: blocked
 > without a ruling, released only at the ruled head with the label on, confirmed by tree after the merge.
 
+> **Addendum to NZC-163 (5 Nov 2026) — the gate holds command and permission changes for `ruled`, like migrations.**
+>
+> *The gap.* The gate went red on two things only: a migration in the diff, or a `hold/` branch. With auto-merge live, a
+> pull request changing a command definition or who may run one would go green and merge itself unruled.
+>
+> *The change* (`scripts/ruling-gate.mjs`, `isGovernedPath`; deciding review NZC-022, Cowork). "Needs ruled" widens from
+> a migration to a migration **or** a command/permission file: `packages/contracts/src/commands.ts` (the command
+> contract), `packages/contracts/src/permissions.ts` and `packages/isolated-backend/src/access.ts` (the permission
+> surface), and every `packages/isolated-backend/src/*Commands.ts`, matched by suffix so a new one is gated without
+> editing the list. Reads and display (`readModels`, `*Records`, `*Reads`, UI) are not governed and still merge on
+> green. The reason names what triggered the hold; every other property (fail-closed, the ruling is the `labeled` event
+> on this head, a push re-holds) is unchanged.
+>
+> *Two layers, one division.* The ruling gate holds what can be ruled and then merged (migrations, commands,
+> permissions), so a ruled one auto-merges on green. The CI, gate and config machinery stays walled in
+> `scripts/auto-merge.mjs`'s `GOVERNED_PATHS` and is merged by hand; commands and `access.ts` are deliberately not on
+> that wall.
+
 ### NZC-164 — The T&D companion cannot activate until the portal can state how electricity arrived [Confirmed 24 Sep 2026]
 
 **Decision.** Activating the transmission-and-distribution companion (NZC-160 H4) has two preconditions, and both

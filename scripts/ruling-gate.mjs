@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The ruling gate (NZC-163, hardened): a pull request that adds or changes a migration cannot go green until it is
-// ruled, and a branch named hold/ cannot go green at all.
+// The ruling gate (NZC-163, hardened): a pull request that adds or changes a migration, a command or the permission
+// surface cannot go green until it is ruled, and a branch named hold/ cannot go green at all.
 //
 // ## Why it no longer trusts the branch name alone
 //
@@ -25,7 +25,28 @@ import { appendFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 export const MIGRATIONS_DIR = "packages/isolated-backend/migrations/";
+const BACKEND_SRC = "packages/isolated-backend/src/";
+/** The permission surface: the capability list and the runner's per-command access check. */
+const PERMISSION_FILES = ["packages/contracts/src/permissions.ts", `${BACKEND_SRC}access.ts`];
+/** The command contract: every command's definition and validation. */
+const COMMAND_CONTRACT = "packages/contracts/src/commands.ts";
 export const RULED_LABEL = "ruled";
+
+/** A migration: schema is migration-owned and always needs a ruling. */
+export const isMigrationPath = (file) => file.startsWith(MIGRATIONS_DIR);
+
+/**
+ * A command or permission file (NZC-163 amendment, NZC-022): the command contract, the capability matrix and the access
+ * check, and every `*Commands.ts` in the backend — matched by suffix so a new one is gated without editing this list.
+ * Reads and display (readModels, *Records, *Reads, UI) are deliberately not here: they merge without a ruling.
+ */
+export const isCommandOrPermissionPath = (file) =>
+  file === COMMAND_CONTRACT ||
+  PERMISSION_FILES.includes(file) ||
+  (file.startsWith(BACKEND_SRC) && /^[^/]+Commands\.ts$/.test(file.slice(BACKEND_SRC.length)));
+
+/** Anything that needs a ruling before it merges: a migration, a command or a permission file. */
+export const isGovernedPath = (file) => isMigrationPath(file) || isCommandOrPermissionPath(file);
 /** Written when a ruling is applied to the head this run judged; ruling-gate.yml uploads it for ruling-verify.mjs. */
 export const RULED_RECORD = "ruled-head.json";
 
@@ -37,17 +58,23 @@ export function decide({ branch, action, labelName, labels, changedFiles }) {
   if (branch.startsWith("hold/")) {
     return { pass: false, reason: `'${branch}' is on hold (NZC-163). Rename it without the hold/ prefix once ruled.` };
   }
-  const migrations = changedFiles.filter((file) => file.startsWith(MIGRATIONS_DIR));
-  if (migrations.length === 0) return { pass: true, reason: "No migration in this diff, and the branch is not on hold." };
+  const governed = changedFiles.filter(isGovernedPath);
+  if (governed.length === 0) return { pass: true, reason: "No governed path in this diff, and the branch is not on hold." };
+  const migrations = governed.filter(isMigrationPath);
+  const surface = governed.filter(isCommandOrPermissionPath);
+  const carries = [
+    migrations.join(", "),
+    surface.length ? `a governed command/permission surface (${surface.map((file) => file.split("/").pop()).join(", ")})` : "",
+  ].filter(Boolean).join(" and ");
   // Only the act of applying the label is a ruling. Its mere presence on any other event is not: that is what makes
   // a push after the ruling fail again.
   if (action === "labeled" && labelName === RULED_LABEL && labels.includes(RULED_LABEL)) {
-    return { pass: true, reason: `Ruled: '${RULED_LABEL}' applied to this head, which carries ${migrations.join(", ")}.` };
+    return { pass: true, reason: `Ruled: '${RULED_LABEL}' applied to this head, which carries ${carries}.` };
   }
   const why = action === "synchronize" && labels.includes(RULED_LABEL)
     ? `A commit was pushed after the ruling, so it no longer covers this head. Remove and re-apply '${RULED_LABEL}' to rule it again.`
     : `Apply the '${RULED_LABEL}' label once it is ruled.`;
-  return { pass: false, reason: `This pull request carries ${migrations.join(", ")}, which needs a ruling (NZC-163). ${why}` };
+  return { pass: false, reason: `This pull request carries ${carries}, which needs a ruling (NZC-163). ${why}` };
 }
 
 const git = (cwd, args) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();

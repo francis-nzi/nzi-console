@@ -11,7 +11,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
-import { decide, MIGRATIONS_DIR, RULED_LABEL } from "./ruling-gate.mjs";
+import { decide, isGovernedPath, MIGRATIONS_DIR, RULED_LABEL } from "./ruling-gate.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = resolve(HERE, "ruling-gate.mjs");
@@ -54,6 +54,74 @@ describe("the decision", () => {
     // and no git log, the command that would read one.
     const code = readFileSync(SCRIPT, "utf8").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
     assert.doesNotMatch(code, /\bDate\b|%[ac][dDrtiIs]\b|--date|--since|--until|--after|--before|"log"/);
+  });
+});
+
+// ── Command and permission files are governed like migrations (NZC-163 amendment) ───────────────────────────────
+
+describe("the command and permission surface", () => {
+  const SRC = "packages/isolated-backend/src/";
+  const base = { branch: "feat/x", action: "synchronize", labelName: "", labels: [] };
+
+  const governedFiles = [
+    `${SRC}access.ts`, `${SRC}postgresCommands.ts`, `${SRC}milestoneCommands.ts`, `${SRC}factorApplicabilityCommands.ts`,
+    `${SRC}portalStrategyCommands.ts`, `${SRC}someFutureCommands.ts`, "packages/contracts/src/commands.ts", "packages/contracts/src/permissions.ts",
+    `${MIGRATIONS_DIR}0999_example.sql`,
+  ];
+  const readOrDisplayFiles = [
+    `${SRC}readModels.ts`, `${SRC}listReads.ts`, `${SRC}clientAreaRecords.ts`, `${SRC}portalDataEntryRecords.ts`, `${SRC}auth.ts`,
+    `${SRC}commandsHelper.ts`, `${SRC}Commands.ts.bak`, "packages/isolated-backend/tests/support/access.ts",
+    "packages/contracts/src/index.ts", "apps/console/app/page.tsx", "apps/console/app/lib/postgresCommands.ts",
+  ];
+
+  it("isGovernedPath: every command and permission file is governed, every read and display file is not", () => {
+    for (const file of governedFiles) assert.equal(isGovernedPath(file), true, file);
+    for (const file of readOrDisplayFiles) assert.equal(isGovernedPath(file), false, file);
+  });
+
+  for (const file of [`${SRC}access.ts`, `${SRC}postgresCommands.ts`, `${SRC}milestoneCommands.ts`]) {
+    const name = file.split("/").pop();
+    describe(name, () => {
+      const changedFiles = [file];
+      it("is held without a ruling, and the reason names the surface", () => {
+        const held = decide({ ...base, changedFiles });
+        assert.equal(held.pass, false);
+        assert.match(held.reason, new RegExp(`governed command/permission surface \\(${name.replace(".", "\\.")}\\)`));
+      });
+      it("is held when the label is merely present on a push", () => {
+        assert.equal(decide({ ...base, labels: [RULED_LABEL], changedFiles }).pass, false);
+      });
+      it("passes when ruled is applied to this head", () => {
+        assert.equal(decide({ ...base, action: "labeled", labelName: RULED_LABEL, labels: [RULED_LABEL], changedFiles }).pass, true);
+      });
+      it("is held again by a push after the ruling", () => {
+        const after = decide({ ...base, action: "synchronize", labels: [RULED_LABEL], changedFiles });
+        assert.equal(after.pass, false);
+        assert.match(after.reason, /pushed after the ruling/);
+      });
+    });
+  }
+
+  it("passes a diff touching only read or display files, with no ruling", () => {
+    for (const file of readOrDisplayFiles) {
+      for (const action of ["opened", "synchronize", "labeled"]) assert.equal(decide({ ...base, action, changedFiles: [file] }).pass, true, `${file} on ${action}`);
+    }
+  });
+
+  it("holds a mixed command and migration diff, and names both triggers", () => {
+    const held = decide({ ...base, changedFiles: [`${SRC}postgresCommands.ts`, `${MIGRATIONS_DIR}0999_example.sql`, "apps/console/app/page.tsx"] });
+    assert.equal(held.pass, false);
+    assert.match(held.reason, new RegExp(`${MIGRATIONS_DIR}0999_example\\.sql and a governed command/permission surface \\(postgresCommands\\.ts\\)`));
+  });
+
+  it("keeps the migration wording when a migration is the only trigger", () => {
+    assert.match(decide({ ...base, changedFiles: [`${MIGRATIONS_DIR}0999_example.sql`] }).reason, /carries packages\/isolated-backend\/migrations\/0999_example\.sql, which needs a ruling/);
+  });
+
+  it("still fails a hold/ branch whatever the diff", () => {
+    for (const changedFiles of [[], [`${SRC}access.ts`], ["apps/console/app/page.tsx"]]) {
+      assert.equal(decide({ ...base, branch: "hold/x", action: "labeled", labelName: RULED_LABEL, labels: [RULED_LABEL], changedFiles }).pass, false);
+    }
   });
 });
 
