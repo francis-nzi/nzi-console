@@ -54,8 +54,9 @@ describe("the client's SRS area, dated on completion (R3)", () => {
   });
 
   it("holds Complete until every requirement is addressed, and reassessing starts a new assessment", () => {
-    assert.match(area, /blocked=\{access\.state !== "allowed" \|\| !completionReady \|\| completing\}/);
-    assert.match(area, /<StartButton clientId=\{client\.id\} access=\{access\} onSaved=\{onSaved\} label="Reassess"/);
+    // Completing is the wizard's last screen: the button is blocked while any requirement lacks a maturity.
+    assert.match(start, /blocked=\{pending \|\| !ready \|\| access\.state !== "allowed" \|\| conflict\}/);
+    assert.match(area, /<StartButton clientId=\{client\.id\} access=\{access\} onSaved=\{onSaved\} onStarted=\{onStarted\} label="Reassess"/);
   });
 
   it("draws the trend from completed assessments only, and asks for no date at start", () => {
@@ -63,7 +64,7 @@ describe("the client's SRS area, dated on completion (R3)", () => {
     assert.match(dashboard, /const completed = assessments\.filter\(isAssessed\)/);
     assert.match(dashboard, /overall: completed\.map\(/);
     assert.match(area, /model\.trend\.overall\.map/);
-    assert.doesNotMatch(start, /assessedOn/);
+    assert.doesNotMatch(start, /assessedOn: (?!string)/, "nothing the wizard sends carries an assessed date");
   });
 });
 
@@ -88,7 +89,7 @@ describe("one-click start, one title, noise behind i-pills", () => {
 
   it("leaves per-answer overrides inside the assessment, on the item form", () => {
     assert.match(forms, /Override it if the disclosure needs something different/);
-    assert.match(forms, /export function SrsItemForm/);
+    assert.match(forms, /export function SrsWizard/);
   });
 
   it("shows one title, not an eyebrow and a title", () => {

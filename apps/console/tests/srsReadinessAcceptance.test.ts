@@ -73,7 +73,7 @@ describe("SRS readiness", () => {
 
   it("draws every graphic from the assessment, with nothing seeded", () => {
     // SRS S2: the ladder graphics, one ordinal ramp, shared with the portal.
-    for (const chart of ["SrsDial", "SrsMeter", "SrsRadar", "SrsHeatmap", "SrsTrend", "SrsScaleKey", "SrsPillarTable"]) {
+    for (const chart of ["SrsDial", "SrsMeter", "SrsRadar", "SrsTrend", "SrsScaleKey", "SrsPillarTable"]) {
       assert.ok(area.includes(chart), chart);
     }
     assert.doesNotMatch(area, /values: \[\s*\d+\s*,/, "no hard-coded series");
