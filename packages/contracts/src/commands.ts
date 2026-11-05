@@ -463,6 +463,7 @@ export const emissionCategoryTaxonomy: readonly EmissionCategory[] = [
   { scope: "1", code: "1.refrigerants", name: "Refrigerants", kind: "fugitive" },
   { scope: "2", code: "2.purchased-electricity", name: "Purchased Electricity", kind: "manual" },
   { scope: "2", code: "2.renewable-electricity", name: "Renewable Electricity", kind: "manual" },
+  { scope: "2", code: "2.purchased-heat-steam", name: "Purchased Heat & Steam", kind: "manual" },
   { scope: "3", code: "3.1", name: "Purchased Goods and Services", kind: "spend" },
   { scope: "3", code: "3.2", name: "Capital Goods", kind: "spend" },
   { scope: "3", code: "3.3", name: "Fuel & Energy Related", kind: "manual" },

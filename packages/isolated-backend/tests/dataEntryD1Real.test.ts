@@ -79,7 +79,7 @@ describe("Data entry D1: spend on any category with a spend factor, and the basi
     const closed = (await db.query<{ category_code: string }>(
       `SELECT category_code FROM nzi_console.input_spec_fields
         WHERE field_key = 'unit' AND accepted_units IS NOT NULL AND NOT ('GBP' = ANY(accepted_units)) ORDER BY category_code`)).rows.map((r) => r.category_code);
-    assert.deepEqual(closed, ["1.company-vehicles", "1.natural-gas", "1.other-stationary-fuels", "2.purchased-electricity", "2.renewable-electricity", "3.7"]);
+    assert.deepEqual(closed, ["1.company-vehicles", "1.natural-gas", "1.other-stationary-fuels", "2.purchased-electricity", "2.purchased-heat-steam", "2.renewable-electricity", "3.7"]);
   });
 
   it("R2: a spend entry records under Business Travel (3.6) as a spend-based row, and calculates as PG&S's do", async () => {
