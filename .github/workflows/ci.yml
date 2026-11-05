@@ -55,6 +55,9 @@ jobs:
       # the next copy before it is written (NZC-106).
       - run: npm run check:dates
       - run: npm run check:terminology
+      # docs/BRAND.md as a gate (scripts/brand-guard.mjs): the real logo only, colours are styles.css tokens, type is Inter. The brand regressed
+      # repeatedly - a hand-drawn tree, stray hex - because nothing enforced the doc; off-brand UI cannot merge.
+      - run: npm run check:brand
       # The ruling gate (ruling-gate.yml) runs from main under pull_request_target, so this is where its own logic is
       # proved on the change that edits it: real repositories, a ruled head, and a backdated push that must go red.
       - run: npm run test:ruling-gate

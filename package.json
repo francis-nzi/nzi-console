@@ -13,6 +13,7 @@
     "acceptance:provision": "npm run acceptance:provision -w @nzi/isolated-backend",
     "backfill:client-references": "npm run backfill:client-references -w @nzi/isolated-backend",
     "build": "npm run build -w @nzi/console",
+    "check:brand": "node scripts/brand-guard.mjs",
     "check:conflicts": "node scripts/check-conflict-markers.mjs",
     "check:dates": "node scripts/check-date-helpers.mjs",
     "check:decisions": "node scripts/check-decisions.mjs",

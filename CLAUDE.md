@@ -3,6 +3,39 @@
 You are working on **NZI Console**, the redesigned front-end for the NZI Pro (*NZ Insights Pro*) carbon
 platform. Read this first, then the `docs/` set below before making changes.
 
+## Ways of working (applies to every change — read every time)
+
+- **Change the minimum.** Reuse the existing design system (`packages/ui`, the `styles.css` tokens) and the
+  real brand assets (**`docs/BRAND.md`**) exactly as they are.
+- **"Organize / clean up / improve / tidy the layout" means reallocate and regroup the *existing* components
+  into clearer areas** — it never means restyling working UI, inventing a new visual language, or adding new
+  components. **No redesign unless the request literally says "redesign."**
+- **Never reproduce a brand asset from memory — the logo above all.** Reference the real file (see
+  `docs/BRAND.md`); if it isn't to hand, stop and get it, don't approximate. The same goes for the palette,
+  scope colours and components: load the real source, don't reconstruct it.
+- **Confirm scope before building anything new.** When in doubt, do less and ask.
+
+## Operating model & delivery (holds — do not drift to an older process)
+
+Enforced by branch protection + the CI gates below, not by habit. Do not revert to pasting work by hand,
+opening PRs manually, or merging by hand.
+
+- **Francis** = real-world testing + UX/product direction. He reviews each change on the **live site**,
+  decides if it makes sense, and gives change requirements and new UX ideas. He is not the integration layer.
+- **Cowork** (design authority, NZC-022) = tech lead. Turns Francis's reviews into briefs, reviews CC's work,
+  and **challenges any UX ask that hits a governance or logic gate** (migration, auth, command, data
+  integrity, architecture) — plainly, with the nearest workable alternative. Owns the gates and quality.
+- **CC** (Claude Code) = implementer: builds from the brief, writes tests, opens its own PR.
+- **Delivery is automatic.** A PR merges and deploys itself once its required checks pass. **Ungoverned
+  changes merge on green with no human step.** **Governed changes** (anything the ruling gate flags —
+  migrations, `access.ts`, `commands.ts`, `ci.yml`, v7 code) merge on green **and** Francis's one-click
+  `ruled` label. Nothing else needs Francis.
+- Every live change reaches Francis as one line — what changed, where to look, what to check — never a PR to
+  wade through.
+
+**Required CI gates (the enforcement — keep green, never weaken or bypass):** typecheck/build/tests ·
+real-Postgres migration + capture-surface · the ruling gate · `check:terminology` · `check:brand`.
+
 ## What this is (and is not)
 
 - A **redesign of the NZI Pro front-end**, built as a **separate, isolated, additive** environment. It does
@@ -25,6 +58,8 @@ platform. Read this first, then the `docs/` set below before making changes.
    need Francis before the relevant phase.
 4. **`GRAPHICS_PIPELINE.md`** — why the live graphics pipeline breaks and the single SVG-first subsystem that
    replaces it. `@nzi/charts` is the first piece of this.
+5. **`BRAND.md`** — the brand & visual foundation: the real logo assets and how to place them, the exact
+   palette, the scope-colour lock, type and shell. Never reconstruct the look from memory; this names the source.
 
 ## Repo shape
 
@@ -32,10 +67,11 @@ platform. Read this first, then the `docs/` set below before making changes.
 apps/console/        Next.js (App Router, TS) — the redesigned UI
   app/               / (Control Room) · /clients · /jobs · /charts (chart library)
   app/lib/nav.ts     workspace nav
+  public/brand/      the real NZI logo assets (full lockup + tree mark) — see docs/BRAND.md
 packages/ui/         design system — AppShell, WorkspaceRail, TopBar, EvidenceDrawer, tokens (styles.css)
 packages/mock-data/  illustrative data only — NO PII, NO real client data
 packages/charts/     @nzi/charts — SVG-first chart engine (EmissionsScopeDonut, ReductionPathway)
-docs/                the four design docs above + DEPLOYMENT, FIRST_GATE
+docs/                the design docs above + BRAND, DEPLOYMENT, FIRST_GATE
 ```
 
 npm workspaces + Turborepo. Node 22.23.4.
@@ -45,6 +81,9 @@ npm workspaces + Turborepo. Node 22.23.4.
 - **Type:** Inter throughout. **Palette:** Emerald `#0BA75E`, Deep Pine `#0B7A4B`, Midnight `#0B1B2B`,
   Signal Amber `#FFC24B`, Drop Coral `#FF5C48`, Mint Tint `#DFF5E9`. Scope identity is brand-locked:
   Scope 1 coral, Scope 2 amber, Scope 3 emerald — categorical, fixed order, never recoloured by rank.
+- **Logo:** the real assets live in `apps/console/public/brand/` (`netzero-logo.*` full lockup, drawn for
+  white; `netzero-logo-big-tree.*` the tree mark). Full lockup on a white plate on the navy rail; the mark on
+  a white disc on dark grounds. **Never redraw it** — use the file. Full detail in `docs/BRAND.md`.
 - **Shell:** left Workspace Rail · top command/search bar · main · right Evidence Drawer (provenance +
   calculation lineage). Evidence-drawer-first: no number appears without its lineage one click away.
 - **Charts:** one SVG spec renders identically to screen, PDF and portal. Charts are **derived from data,
