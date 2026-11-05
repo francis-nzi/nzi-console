@@ -37,7 +37,8 @@ const FACTORS: Fixture[] = [
   F("grid", "UK electricity - Electricity generated", "kWh", "2", ["UK electricity", "Electricity generated"]),
   F("ev", "UK electricity for EVs - Cars", "km", "2", ["UK electricity for EVs", "Cars (by size)"]),
   F("renew", "UK Renewable Electricity", "kWh", "2", ["UK Renewable Electricity", "Electricity generated"], NZI),
-  F("heat", "Heat and steam", "kWh", "2", ["Heat and steam", "Heat and steam"]),
+  F("heat", "Heat and steam", "kWh", "2", ["Heat and steam", "Heat and steam", "District heat and steam"]),
+  F("wttheat", "WTT- heat and steam", "kWh", "3", ["WTT- heat and steam", "WTT- heat and steam", "District heat and steam"]),
   F("td", "T&D- UK electricity", "kWh", "3", ["Transmission and distribution", "T&D- UK electricity"]),
   F("wttfuel", "WTT- liquid fuels", "litres", "3", ["WTT- fuels", "Liquid fuels"]),
   F("freight", "Freighting goods - Cargo ship - Container ship", "tonne.km", "3", ["Freighting goods", "Cargo ship"]),
@@ -118,10 +119,13 @@ describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ?
   });
   after(async () => { await database?.end(); });
 
-  it("the migration seeds the ruled map: 124 rules, one family held back, every category named but the four without a family", async () => {
+  it("the migrations seed the ruled map: 125 rules (0211 retired the held-back one and filed Heat and steam), none held back, every category named but the four without a family", async () => {
     const rules = await withTenantRead(database.pool, ORG, (db) => listMembershipRules(db, { includeRetired: true }));
-    assert.equal(rules.length, 124);
-    assert.deepEqual(rules.filter((rule) => rule.categoryCode === null).map((rule) => rule.sourceL1), ["Heat and steam"]);
+    assert.equal(rules.length, 125);
+    assert.deepEqual(rules.filter((rule) => rule.categoryCode === null).map((rule) => [rule.sourceL1, rule.status]), [["Heat and steam", "retired"]], "the held-back rule is retired, its record kept");
+    const live = await withTenantRead(database.pool, ORG, (db) => listMembershipRules(db));
+    assert.deepEqual(live.filter((rule) => rule.categoryCode === null), [], "no family is held back: the held-back count is 0");
+    assert.deepEqual(live.filter((rule) => rule.sourceL1 === "Heat and steam").map((rule) => rule.categoryCode), ["2.purchased-heat-steam"]);
     assert.deepEqual(familylessCategories(rules), ["3.10", "3.11", "3.14", "3.15"]);
     const audited = await q<{ n: string }>(`SELECT count(*)::text n FROM nzi_console.audit_events WHERE organisation_id=$1 AND action='factor.membership.seeded' AND actor_id='migration:0210'`, [ORG]);
     assert.equal(audited[0]!.n, "1", "the seed is audited, once per organisation");
@@ -135,9 +139,10 @@ describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ?
       "1.refrigerants": setOf("refrig"),
       "2.purchased-electricity": setOf("grid", "ev"),
       "2.renewable-electricity": setOf("renew"),
+      "2.purchased-heat-steam": setOf("heat"),
       "3.1": setOf("materials", "concrete", "water", "SPEND-air", "SPEND-legal"),
       "3.2": setOf("materials", "concrete", "SPEND-air", "SPEND-legal"),
-      "3.3": setOf("td", "wttfuel"),
+      "3.3": setOf("td", "wttfuel", "wttheat"),
       "3.4": setOf("freight", "wttfreight"),
       "3.5": setOf("waste", "watertreat"),
       "3.6": setOf("flight", "btcar", "ferry", "walk", "wttcar", "hotel", "SPEND-air", "SPEND-air-b"),
@@ -178,7 +183,7 @@ describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ?
   it("the unfiled report names what no rule claims, lists the held-back family apart, and a rule filed by an Admin clears it", async () => {
     const before = await withTenantRead(database.pool, ORG, (db) => membershipReport(db, ORG));
     assert.deepEqual(before.unfiled.map((factor) => factor.factorId), [factorId("mystery")], "the one family the map does not know");
-    assert.deepEqual(before.heldBack.map((factor) => factor.factorId), [factorId("heat")], "heat and steam is known, held back, and listed");
+    assert.deepEqual(before.heldBack, [], "nothing is held back since 0211 filed Heat and steam: the held-back count is 0");
     assert.ok(!(await offered("3.6")).members!.includes(factorId("mystery")) && !(await offered("3.1")).members!.includes(factorId("mystery")), "offered in no list");
 
     await addMembershipCommand(database.pool, { sourceL1: "Hovercraft", sourceL2: "Cushions", categoryCode: "3.4", note: "Test family" }, context());
@@ -212,7 +217,7 @@ describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ?
     const unclaimed = paths.filter((path) => !path.suffixed && !levelsAreFiled(rules, [path.l1, path.l2, path.l3].filter((level): level is string => level !== null)));
     assert.deepEqual(unclaimed.map((path) => `${path.family}: ${path.l1} / ${path.l2} / ${path.l3}`), [], "no physical path is unfiled");
     const heldBack = paths.filter((path) => !path.suffixed && categoriesForLevels(rules, [path.l1, path.l2, path.l3].filter((level): level is string => level !== null)).length === 0);
-    assert.deepEqual([...new Set(heldBack.map((path) => path.l1))], ["Heat and steam"], "the only family with no category is the one held back");
+    assert.deepEqual([...new Set(heldBack.map((path) => path.l1))], [], "every physical family has a category: none is held back");
     const resolves = (l1: string, l2: string | null, l3: string | null, want: string[]) =>
       assert.deepEqual(categoriesForLevels(rules, [l1, l2, l3].filter((level): level is string => level !== null)), want.sort(), `${l1}/${l2}/${l3}`);
     resolves("Business travel- land", "Cars (by size)", null, ["3.6", "3.7"]);
@@ -225,6 +230,9 @@ describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ?
     resolves("Employee commuting- land", "Cars (by size)", null, ["3.7"]);
     resolves("Waste disposal", "Plastic", null, ["3.12", "3.5"]);
     resolves("Central  Government\n", null, null, []);
+    resolves("Heat and steam", "Heat and steam", "District heat and steam", ["2.purchased-heat-steam"]);
+    resolves("Heat and steam", "Heat and steam", "Onsite heat and steam", ["2.purchased-heat-steam"]);
+    resolves("WTT- heat and steam", "WTT- heat and steam", "District heat and steam", ["3.3"]);
   });
 
   it("reconciliation: the derived map includes every base the existing applicability pairs file, in the category the pair names", async () => {

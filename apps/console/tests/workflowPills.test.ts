@@ -13,14 +13,18 @@ const docsDir = new URL("../public/workflows/", import.meta.url);
 const source = (path: string) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 describe("workflow doc mapping (keyed on category_code)", () => {
-  it("maps every one of the 21 taxonomy categories to a doc that is hosted", () => {
-    assert.equal(emissionCategoryTaxonomy.length, 21);
-    for (const category of emissionCategoryTaxonomy) {
+  // A category added after the doc set was written has no doc until one is authored: its header renders no pill, never a guessed link.
+  const NO_DOC_YET = ["2.purchased-heat-steam"];
+
+  it("maps every one of the 22 taxonomy categories to a doc that is hosted, bar those with no doc yet", () => {
+    assert.equal(emissionCategoryTaxonomy.length, 22);
+    for (const category of emissionCategoryTaxonomy.filter((c) => !NO_DOC_YET.includes(c.code))) {
       const href = categoryWorkflowHref(category.code);
       assert.ok(href, `${category.code} has a doc`);
       assert.ok(existsSync(new URL(`.${href!.replace("/workflows", "")}`, docsDir)), `${href} is hosted`);
     }
-    assert.deepEqual([...workflowCategoryCodes].sort(), emissionCategoryTaxonomy.map((c) => c.code).sort(), "no mapped code is outside the taxonomy");
+    for (const code of NO_DOC_YET) assert.equal(categoryWorkflowHref(code), null, `${code} renders no pill rather than a guessed link`);
+    assert.deepEqual([...workflowCategoryCodes].sort(), emissionCategoryTaxonomy.map((c) => c.code).filter((code) => !NO_DOC_YET.includes(code)).sort(), "no mapped code is outside the taxonomy");
   });
 
   it("pins the Scope 1 and Scope 2 stored codes to their docs", () => {

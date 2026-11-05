@@ -1292,6 +1292,212 @@
     ]
   },
   {
+    "categoryCode": "2.purchased-heat-steam",
+    "scope": "2",
+    "name": "Purchased Heat & Steam",
+    "kind": "manual",
+    "units": [
+      "kWh",
+      "tonnes",
+      "km",
+      "mi",
+      "m²",
+      "units"
+    ],
+    "manualEntryHint": "make · model · fuel",
+    "fields": [
+      {
+        "fieldKey": "siteBanner",
+        "ordering": 10,
+        "control": "banner",
+        "label": "Site",
+        "hint": "This entry is allocated to the site chosen at the top of data entry.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "activity",
+        "ordering": 20,
+        "control": "smart-search",
+        "label": "Activity / source",
+        "hint": "Smart search — {scopedTo} factors only.",
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Activity"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Activity"
+          }
+        ]
+      },
+      {
+        "fieldKey": "quantity",
+        "ordering": 30,
+        "control": "number",
+        "label": "Quantity",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "unit",
+        "ordering": 40,
+        "control": "unit-select",
+        "label": "Unit",
+        "hint": null,
+        "optional": false,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "monthly",
+        "ordering": 50,
+        "control": "months",
+        "label": "Add monthly breakdown",
+        "hint": "Reporting-period aligned (NZC-032).",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "factor",
+        "ordering": 60,
+        "control": "factor-select",
+        "label": "Emission factor",
+        "hint": "Set from the selected activity; limited to {scopedTo}.",
+        "optional": null,
+        "whenAudiences": [
+          "crm",
+          "portal"
+        ],
+        "whenModes": null,
+        "whenLean": null,
+        "labelVariants": [
+          {
+            "audience": "crm",
+            "mode": "new",
+            "lean": true,
+            "hint": "Matched from the activity you picked — refine or override in the row's evidence panel after saving.",
+            "control": "factor-review"
+          },
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "hint": "Set to this category's usual factor. Change it only if your adviser has asked you to."
+          }
+        ]
+      },
+      {
+        "fieldKey": "qualityTier",
+        "ordering": 70,
+        "control": "select",
+        "label": "Quality tier",
+        "hint": null,
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "dataConfidence",
+        "ordering": 80,
+        "control": "select",
+        "label": "Data confidence",
+        "hint": "NZC-044.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "note",
+        "ordering": 90,
+        "control": "textarea",
+        "label": "Notes",
+        "hint": null,
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": [
+          {
+            "audience": "portal",
+            "mode": "new",
+            "lean": false,
+            "label": "Evidence note"
+          },
+          {
+            "audience": "portal",
+            "mode": "existing",
+            "lean": false,
+            "label": "Evidence note"
+          }
+        ]
+      },
+      {
+        "fieldKey": "documents",
+        "ordering": 100,
+        "control": "dropzone",
+        "label": "Supporting documents",
+        "hint": "PDF · image · spreadsheet · virus-scanned on upload.",
+        "optional": true,
+        "whenAudiences": null,
+        "whenModes": null,
+        "whenLean": false,
+        "labelVariants": []
+      },
+      {
+        "fieldKey": "lineage",
+        "ordering": 110,
+        "control": "lineage",
+        "label": "Calculation lineage",
+        "hint": "Scope 2 · Purchased energy · provenance travels with the row.",
+        "optional": null,
+        "whenAudiences": [
+          "crm"
+        ],
+        "whenModes": [
+          "existing"
+        ],
+        "whenLean": false,
+        "labelVariants": []
+      }
+    ]
+  },
+  {
     "categoryCode": "3.1",
     "scope": "3",
     "name": "Purchased Goods and Services",
