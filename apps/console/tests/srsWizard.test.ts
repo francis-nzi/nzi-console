@@ -3,9 +3,9 @@ import { readFileSync } from "node:fs";
 import { before, describe, it } from "node:test";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { SrsAssessment, SrsAssessmentItem, SrsFramework, SrsMaturity } from "@nzi/contracts";
+import { gaps as resolveGaps, type Priority, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity } from "@nzi/contracts";
 
-import { addressedCount, canComplete, entersNewPillar, maturityMap, pillarSummary, resumeIndex, wizardSteps } from "../app/clients/[clientId]/srsWizard";
+import { addressedCount, canComplete, entersNewPillar, gapsByPriority, maturityMap, pillarSummary, resumeIndex, wizardSteps } from "../app/clients/[clientId]/srsWizard";
 
 /**
  * SRS guided assessment (BRIEF-srs-assessment-ux): conducting is a one-question-per-screen modal; the page only reviews.
@@ -39,13 +39,13 @@ const framework: SrsFramework = {
     requirement("r1", "risk", 1), requirement("m1", "metrics", 1),
   ],
 };
-const item = (requirementId: string, maturity: SrsMaturity | null): SrsAssessmentItem => ({
-  requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, priority: null, version: 1,
+const item = (requirementId: string, maturity: SrsMaturity | null, priority: Priority | null = null): SrsAssessmentItem => ({
+  requirementId, maturity, source: "entered", evidence: null, owner: "", dueDate: null, linkedActionId: null, priority, version: 1,
 });
-const assessment = (items: SrsAssessmentItem[], status: "draft" | "complete" = "draft"): SrsAssessment => ({
+const assessment = (items: SrsAssessmentItem[], status: "draft" | "complete" = "draft", notes = ""): SrsAssessment => ({
   assessmentId: "a1", clientId: "c1", frameworkId: framework.frameworkId, frameworkVersion: 2, status,
   startedOn: "2026-09-01", assessedOn: status === "complete" ? "2026-10-01" : null, assessedBy: "Ada", completedAt: status === "complete" ? "2026-10-01" : null,
-  notes: "", sectorKey: null, benchmarkPercentile: null, benchmarkSource: null, version: 3, items,
+  notes, sectorKey: null, benchmarkPercentile: null, benchmarkSource: null, version: 3, items,
 });
 const allowed = { state: "allowed" as const };
 const render = (a: SrsAssessment, startAt: string | null = null, access: import("../app/lib/useEditAccess").EditAccess = allowed) =>
@@ -85,6 +85,18 @@ describe("the wizard's rules", () => {
   });
 });
 
+describe("the Path-to-SRS-ready order", () => {
+  it("is by priority — high, medium, low, unset — and within a priority the biggest shortfall still leads", () => {
+    // Targets are all Established (2): g1 at 0 and s1 at 1 are the big and small gaps; r1 and m1 unanswered (shortfall 2).
+    const items = [item("g1", 0, "low"), item("g2", 1, "high"), item("s1", 1, "high"), item("s2", 0, "medium"), item("r1", null, null), item("m1", 0, null)];
+    const ordered = gapsByPriority(resolveGaps(framework, items), items).map((gap) => gap.requirement.id);
+    assert.deepEqual(ordered, ["s1", "g2", "s2", "g1", "r1", "m1"], "high (s1, g2 — same shortfall, the existing tie-break), medium, low, then unset in shortfall order");
+    const unprioritised = items.map((entry) => item(entry.requirementId, entry.maturity));
+    assert.deepEqual(gapsByPriority(resolveGaps(framework, unprioritised), unprioritised).map((gap) => gap.requirement.id),
+      resolveGaps(framework, unprioritised).map((gap) => gap.requirement.id), "with no priorities set the existing order is untouched");
+  });
+});
+
 describe("the wizard screen", () => {
   it("shows one question at a time, with its pillar and standard, progress, and a jump-to-section menu of the pillars", () => {
     const html = render(assessment([item("g1", 2), item("g2", 2)]));
@@ -103,6 +115,23 @@ describe("the wizard screen", () => {
     for (const field of [">Kind<", ">Priority<", ">Owner<", ">Target date<", ">Gap → action<"]) assert.match(html, new RegExp(field));
     assert.match(html, /<option value="high">High<\/option><option value="medium">Medium<\/option><option value="low">Low<\/option>/);
     assert.match(html, /SRS expects <b>Established<\/b>/, "the target maturity");
+  });
+
+  it("gives Priority its own labelled section beside Owner and date, and Notes its own, in that order", () => {
+    const html = render(assessment([]), "g1");
+    const sections = [...html.matchAll(/<div class="nz-sect">([^<]*)<\/div>/g)].map((match) => match[1]);
+    assert.deepEqual(sections, ["Maturity", "Evidence", "Priority", "Owner and date", "Notes", "Gap → action"]);
+    const priority = html.slice(html.indexOf(">Priority</div>"), html.indexOf(">Owner and date</div>"));
+    assert.match(priority, /<select[^>]*>[\s\S]*<option value="high">High<\/option>/);
+    assert.doesNotMatch(priority, /Owner|Target date/, "priority is its own section, not mixed in with the owner fields");
+  });
+
+  it("shows the assessment's note on every question — the same text — editable on a draft, read-only when complete or without access", () => {
+    const note = "Board paper due in March";
+    for (const at of ["g1", "m1"]) assert.match(render(assessment([], "draft", note), at), new RegExp(`<textarea[^>]*maxLength="4000"[^>]*>${note}</textarea>`), at);
+    assert.match(render(assessment([], "draft", note), "g1"), /one note for the whole assessment, the same on every question/);
+    assert.match(render(assessment(everyItem(2), "complete", note), "g1"), /<textarea[^>]*disabled=""[^>]*>Board paper due in March<\/textarea>/);
+    assert.match(render(assessment([], "draft", note), "g1", { state: "denied", reason: "No." }), /<textarea[^>]*disabled=""/);
   });
 
   it("lands on a requested question (a register row's Edit)", () => {
@@ -161,6 +190,25 @@ describe("the review page", () => {
     assert.match(area, />\{reopening \? "Reopening…" : "Reopen to correct"\}</);
     assert.match(area, /patchBrowserCommand\(`\/api\/isolated\/srs-assessments\/\$\{encodeURIComponent\(assessment\.assessmentId\)\}`,\s*\{ expectedVersion: assessment\.version \}/);
     assert.match(read("app/api/isolated/srs-assessments/[assessmentId]/route.ts"), /export async function PATCH[\s\S]*"srs\.assessment\.reopen"/);
+  });
+
+  it("only offers Reopen to correct on the latest assessment — the command refuses an older one", () => {
+    assert.ok(area.includes('assessment.status === "complete" && assessment.assessmentId === current.assessmentId'));
+  });
+
+  it("orders the Path to SRS-ready by priority, and the register's Priority column sorts", () => {
+    assert.ok(area.includes("gapsByPriority(resolveGaps(framework, assessment.items), assessment.items)"));
+    assert.ok(area.includes('header("priority", "Priority")'));
+    assert.ok(area.includes("priority: comparePriority(a.priority, b.priority)"));
+  });
+
+  it("saves the note through srs.assessment.notes.set, carrying the assessment's version, at the same moments as the answer", () => {
+    const forms = read("app/clients/[clientId]/SrsAssessmentForms.tsx");
+    assert.ok(forms.includes("/api/isolated/srs-assessments/${encodeURIComponent(assessment.assessmentId)}/notes"));
+    assert.ok(forms.includes("{ notes, expectedVersion: assessmentVersion.current }"));
+    assert.ok(forms.includes("if (!(await saveNotes())) return false;"), "saveCurrent — and so Next, Back, a jump, Complete, close — saves the note first");
+    assert.ok(forms.includes("{ expectedVersion: assessmentVersion.current }, crypto.randomUUID()"), "Complete carries the version the note save returned");
+    assert.match(read("app/api/isolated/srs-assessments/[assessmentId]/notes/route.ts"), /export async function PUT[\s\S]*"srs\.assessment\.notes\.set"/);
   });
 
   it("completes in the wizard only: the page has no second Complete path", () => {

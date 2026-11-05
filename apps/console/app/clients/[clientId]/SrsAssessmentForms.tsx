@@ -4,7 +4,7 @@ import { useRef, useState, type KeyboardEvent, type MutableRefObject } from "rea
 import { GatedButton, InfoTip } from "@nzi/ui";
 import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  PRIORITIES, isPriority, priorityLabels, srsBridgedBy, strategyStatusLabels,
+  PRIORITIES, SRS_ASSESSMENT_NOTES_MAX, isPriority, priorityLabels, srsBridgedBy, strategyStatusLabels,
   type ClientStrategy, type Priority, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
@@ -18,6 +18,8 @@ import { addressedCount, canComplete, entersNewPillar, maturityMap, resumeIndex,
  * the gap→action link. Each question is saved on its own, through the same `srs.assessment.item.set` command, when you
  * move off it (Next, Back, a jump, or close), carrying the item's `expectedVersion` so a second person on the same
  * assessment is told rather than overwritten. A requirement with no maturity is not addressed — it is not a zero.
+ * Below the fields sits the assessment's one context note — the same note on every question, saved through
+ * `srs.assessment.notes.set` (carrying the assessment's version) at the same moments as the answer.
  * Complete assessment is offered only when every requirement has a maturity. A completed assessment opens read-only.
  */
 
@@ -67,6 +69,11 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
   const versions = useRef<Record<string, number>>(Object.fromEntries(assessment.items.map((item) => [item.requirementId, item.version])));
   const changed = useRef(false);
   const key = useRef<string | null>(null);
+  // The assessment's note is one record for every screen: its own draft, baseline, version and idempotency key.
+  const [notes, setNotes] = useState(assessment.notes);
+  const savedNotes = useRef(assessment.notes);
+  const assessmentVersion = useRef(assessment.version);
+  const notesKey = useRef<string | null>(null);
 
   const [index, setIndex] = useState(() => {
     const requested = startAt ? steps.findIndex((step) => step.requirement.id === startAt) : -1;
@@ -92,9 +99,31 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
   const set = (patch: Partial<Draft>) => setDrafts((now) => ({ ...now, [requirement.id]: { ...now[requirement.id]!, ...patch } }));
   const addressedIn = (pillarKey: string) => steps.filter((entry) => entry.pillar.key === pillarKey && maturities.get(entry.requirement.id) != null).length;
 
-  /** Save the question on screen if it changed. False means stay put — the reason is on screen. */
+  /** Save the assessment note if it changed. False means stay put — the reason is on screen. */
+  async function saveNotes(): Promise<boolean> {
+    if (notes === savedNotes.current) return true;
+    setPending(true); setError(null);
+    notesKey.current ??= crypto.randomUUID();
+    const result = await putBrowserCommand<{ version: number }>(
+      `/api/isolated/srs-assessments/${encodeURIComponent(assessment.assessmentId)}/notes`,
+      { notes, expectedVersion: assessmentVersion.current }, notesKey.current);
+    setPending(false);
+    notesKey.current = null;
+    if (result.state !== "success") {
+      if (result.state === "conflict") setConflict(true);
+      setError(result.state === "conflict" ? "Someone else has changed this assessment since you opened it. Close and reopen it to see the latest." : errorText(result));
+      return false;
+    }
+    assessmentVersion.current = result.data.version;
+    savedNotes.current = notes;
+    changed.current = true;
+    return true;
+  }
+
+  /** Save the note and the question on screen if they changed. False means stay put — the reason is on screen. */
   async function saveCurrent(): Promise<boolean> {
     if (readOnly) return true;
+    if (!(await saveNotes())) return false;
     const current = drafts[requirement.id]!;
     if (sameDraft(current, baseline.current[requirement.id]!)) return true;
     const problem = evidenceProblem(current);
@@ -146,7 +175,7 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
     if (!(await saveCurrent())) return;
     setPending(true);
     const result = await postBrowserCommand<{ assessedOn: string }>(`/api/isolated/srs-assessments/${encodeURIComponent(assessment.assessmentId)}`,
-      { expectedVersion: assessment.version }, crypto.randomUUID());
+      { expectedVersion: assessmentVersion.current }, crypto.randomUUID());
     setPending(false);
     if (result.state !== "success") { setError(errorText(result)); return; }
     onCompleted(result.data.assessedOn);
@@ -236,17 +265,25 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
             <label className="nz-fl"><span>Note</span><input className="nz-inp" disabled={readOnly} value={draft.evidenceNote} onChange={(event) => set({ evidenceNote: event.target.value })} placeholder="What the evidence shows" /></label>
           </> : <span className="nz-hint">Readiness that cannot be evidenced is shown as unevidenced rather than counted as verified.</span>}
 
-          <div className="nz-sect">Priority, owner and date</div>
+          <div className="nz-sect">Priority</div>
+          <label className="nz-fl"><span>How soon this gap is closed</span>
+            <select className="nz-sel" disabled={readOnly} value={draft.priority} onChange={(event) => set({ priority: isPriority(event.target.value) ? event.target.value : "" })}>
+              <option value="">Not set</option>
+              {PRIORITIES.map((priority) => <option key={priority} value={priority}>{priorityLabels[priority]}</option>)}
+            </select>
+          </label>
+          <span className="nz-hint">Orders the Path to SRS-ready list, high first. For your team only — the client does not see it.</span>
+
+          <div className="nz-sect">Owner and date</div>
           <div className="nz-two">
-            <label className="nz-fl"><span>Priority</span>
-              <select className="nz-sel" disabled={readOnly} value={draft.priority} onChange={(event) => set({ priority: isPriority(event.target.value) ? event.target.value : "" })}>
-                <option value="">Not set</option>
-                {PRIORITIES.map((priority) => <option key={priority} value={priority}>{priorityLabels[priority]}</option>)}
-              </select>
-            </label>
             <label className="nz-fl"><span>Owner</span><input className="nz-inp" disabled={readOnly} value={draft.owner} onChange={(event) => set({ owner: event.target.value })} placeholder="Who closes this" /></label>
+            <label className="nz-fl"><span>Target date</span><input className="nz-inp" type="date" disabled={readOnly} value={draft.dueDate} onChange={(event) => set({ dueDate: event.target.value })} /></label>
           </div>
-          <label className="nz-fl"><span>Target date</span><input className="nz-inp" type="date" disabled={readOnly} value={draft.dueDate} onChange={(event) => set({ dueDate: event.target.value })} /></label>
+
+          <div className="nz-sect">Notes</div>
+          <label className="nz-fl"><span>Assessment notes — one note for the whole assessment, the same on every question</span>
+            <textarea className="nz-in" rows={3} maxLength={SRS_ASSESSMENT_NOTES_MAX} disabled={readOnly} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Context for this assessment — kept with it, for your team only" />
+          </label>
 
           <div className="nz-sect">Gap → action</div>
           {bridged.length > 0

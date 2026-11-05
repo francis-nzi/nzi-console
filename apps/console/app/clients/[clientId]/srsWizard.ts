@@ -1,4 +1,4 @@
-import { requirementsByPillar, rollup, type SrsAssessmentItem, type SrsFramework, type SrsMaturity, type SrsPillar, type SrsRequirement } from "@nzi/contracts";
+import { comparePriority, requirementsByPillar, rollup, type SrsAssessmentItem, type SrsGap, type SrsFramework, type SrsMaturity, type SrsPillar, type SrsRequirement } from "@nzi/contracts";
 
 /**
  * The guided assessment's logic, apart from its screen: the order the questions come in, where a reopened wizard lands,
@@ -37,6 +37,17 @@ export const canComplete = (steps: readonly WizardStep[], maturities: MaturityMa
 /** Stepping from `from` to `to` crosses into a new pillar — the moment for the brief section divider. */
 export const entersNewPillar = (steps: readonly WizardStep[], from: number, to: number): boolean =>
   steps[to] !== undefined && steps[from] !== undefined && steps[to]!.pillar.key !== steps[from]!.pillar.key;
+
+/**
+ * The Path-to-SRS-ready order: by the consultant's priority (high → medium → low → unset), and within a priority the existing
+ * order — the biggest shortfall first — is kept. `gaps()` already returns that shortfall order, and the sort is stable.
+ */
+export function gapsByPriority(gaps: readonly SrsGap[], items: readonly SrsAssessmentItem[]): SrsGap[] {
+  const priority = new Map(items.map((item) => [item.requirementId, item.priority]));
+  return gaps.map((gap, position) => ({ gap, position }))
+    .sort((a, b) => comparePriority(priority.get(a.gap.requirement.id), priority.get(b.gap.requirement.id)) || a.position - b.position)
+    .map((entry) => entry.gap);
+}
 
 /** A pillar's rollup for its header: "Maturing · avg 2.3 · 6/6 addressed". Nothing answered says so rather than showing 0.0. */
 export function pillarSummary(framework: SrsFramework, pillarKey: string, items: readonly SrsAssessmentItem[], standardKey: string | null = null): { text: string; assessed: number; total: number } {

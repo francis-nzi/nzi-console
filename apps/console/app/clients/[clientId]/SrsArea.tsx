@@ -5,7 +5,7 @@ import { patchBrowserCommand, postBrowserCommand } from "@nzi/api-client";
 import { SrsDial, SrsMeter, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
 import { Collapsible, Drawer, GatedButton, InfoTip } from "@nzi/ui";
 import {
-  gaps as resolveGaps, priorityLabels, srsBridgedBy, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
+  comparePriority, gaps as resolveGaps, priorityLabels, srsBridgedBy, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
   type ClientStrategy, type SrsAssessment, type SrsDashboardModel, type SrsFramework, type SrsGapSuggestion,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
@@ -14,7 +14,7 @@ import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead, Empty } from "./OverviewArea";
 import { SrsWizard } from "./SrsAssessmentForms";
 import type { SrsDrawerRequest } from "./srsDrawers";
-import { pillarSummary } from "./srsWizard";
+import { gapsByPriority, pillarSummary } from "./srsWizard";
 
 /**
  * UK SRS Readiness — the CRM readiness dashboard (SRS S2), on S1's model.
@@ -163,7 +163,9 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   const model = useMemo(() => srsDashboard(framework, assessment, assessments, { standardKey, frameworks }), [framework, assessment, assessments, standardKey, frameworks]);
   const provisional = model.assessment.provisional;
   const strategiesByRequirement = useMemo(() => strategiesBySrsRequirement(workspace.strategies.plan), [workspace.strategies.plan]);
-  const gaps = useMemo(() => resolveGaps(framework, assessment.items).filter((gap) => !standardKey || gap.requirement.standardKey === standardKey), [framework, assessment, standardKey]);
+  const gaps = useMemo(() => gapsByPriority(resolveGaps(framework, assessment.items), assessment.items).filter((gap) => !standardKey || gap.requirement.standardKey === standardKey), [framework, assessment, standardKey]);
+
+  const gapPriority = useMemo(() => new Map(assessment.items.map((item) => [item.requirementId, item.priority])), [assessment]);
 
   // Reopen to correct: the same assessment goes back to a draft (no new round, no new trend point), through the gated command.
   const [reopening, setReopening] = useState(false);
@@ -195,7 +197,8 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
           reasonClassName="hint nz-gated-reason" onClick={() => onWizard(current.assessmentId)}>Continue assessment</GatedButton>
         // A completed assessment is a record; reassessing starts a new one, which is what gives readiness a trend.
         : <>
-          {assessment.status === "complete"
+          {/* Only the latest assessment can be reopened (the command refuses an older one, NOT_LATEST): an earlier one may have a report issued against it. */}
+          {assessment.status === "complete" && assessment.assessmentId === current.assessmentId
             ? <GatedButton className="nz-btn" blocked={access.state !== "allowed" || reopening || inProgress !== null}
               blockedReason={access.state !== "allowed" ? access.reason : inProgress ? "Another assessment is in progress for this client — complete it first." : reopening ? "Reopening…" : undefined}
               reasonClassName="hint nz-gated-reason" onClick={() => void reopen()}>{reopening ? "Reopening…" : "Reopen to correct"}</GatedButton> : null}
@@ -321,7 +324,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       </div>
       <div className="nz-cw-col">
         <section className="nz-panel">
-          <CardHead title="Path to SRS-ready" right={<span className="hint">gaps → actions</span>} />
+          <CardHead title="Path to SRS-ready" right={<span className="hint">by priority · gaps → actions</span>} />
           <div style={{ padding: "6px 16px 12px" }}>
             {gaps.length === 0
               ? <p className="sub" style={{ margin: "6px 0" }}>No requirement sits below its target. Reassess as the framework moves.</p>
@@ -330,7 +333,8 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
                 <div>
                   <div className="nm">{gap.requirement.title}</div>
                   <div className="sub">{framework.pillars.find((pillar) => pillar.key === gap.requirement.pillarKey)?.label} · {gap.requirement.standardKey}
-                    {gap.owner ? ` · owner ${gap.owner}` : ""}</div>
+                    {gap.owner ? ` · owner ${gap.owner}` : ""}
+                    {gapPriority.get(gap.requirement.id) ? ` · ${priorityLabels[gapPriority.get(gap.requirement.id)!]} priority` : ""}</div>
                   <AlignedStrategies strategies={strategiesByRequirement.get(gap.requirement.id) ?? []} />
                 </div>
                 <span className="d">{gap.dueDate ? formatDate(gap.dueDate) : "No date"}</span>
@@ -377,7 +381,7 @@ function AlignedStrategies({ strategies }: { strategies: readonly ClientStrategy
   </div>;
 }
 
-type SortKey = "order" | "code" | "maturity" | "gap" | "due";
+type SortKey = "order" | "code" | "maturity" | "gap" | "priority" | "due";
 
 /**
  * R6: the register — every requirement with its score, evidence, owner, due and priority, sortable: the always-available
@@ -401,6 +405,7 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, onWizard,
       code: a.code.localeCompare(b.code),
       maturity: (a.maturity ?? -1) - (b.maturity ?? -1),
       gap: Number(b.gap) - Number(a.gap) || ((a.maturity ?? -1) - a.target) - ((b.maturity ?? -1) - b.target),
+      priority: comparePriority(a.priority, b.priority),
       due: (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"),
     };
     return (by[sort.key] || order.get(a.id)! - order.get(b.id)!) * sort.dir;
@@ -418,7 +423,7 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, onWizard,
       {pillars.map(({ pillar, rows }) => <Collapsible key={pillar.key} title={pillar.label} count={pillarSummary(framework, pillar.key, assessment.items, standardKey).text}>
         <div className="nz-srs-tablewrap">
           <table className="nz-tbl nz-srs-register">
-            <thead><tr>{header("code", "Requirement")}{header("maturity", "Maturity")}<th scope="col">Target</th><th scope="col">Evidence</th><th scope="col">Priority</th><th scope="col">Owner</th>{header("due", "Due")}{header("gap", "Gap → action")}<th /></tr></thead>
+            <thead><tr>{header("code", "Requirement")}{header("maturity", "Maturity")}<th scope="col">Target</th><th scope="col">Evidence</th>{header("priority", "Priority")}<th scope="col">Owner</th>{header("due", "Due")}{header("gap", "Gap → action")}<th /></tr></thead>
             <tbody>
               {rows.map((requirement) => {
                 const bridged = srsBridgedBy(requirement.id, plan, requirement.linkedActionId ?? null);
