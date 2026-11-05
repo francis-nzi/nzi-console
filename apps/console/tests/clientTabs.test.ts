@@ -7,8 +7,8 @@ import { AREA_TAB, CLIENT_AREA_IDS, CLIENT_TABS, CLIENT_TAB_IDS, tabForParam, ty
 import { listActiveMasterTemplateChoices } from "../../../packages/isolated-backend/src/clientReportingTemplateRecords";
 
 /**
- * Client workspace reallocation: the left sub-nav became a top tab bar (Overview · Carbon · Data entry · Reporting · Record ·
- * Manage), the Overview became at-a-glance only, and each working section moved — unchanged — to its tab. Plus the data-entry
+ * Client workspace reallocation: the left sub-nav became a top tab bar (Overview · Carbon · Data entry · Reporting · Reduction
+ * Strategies · SRS Readiness · Record · Manage), the Overview became at-a-glance only, and each working section moved — unchanged — to its tab. Plus the data-entry
  * picker fix. Nothing is dropped: every area that was reachable from the sub-nav is reachable under some tab.
  */
 (globalThis as { React?: unknown }).React = React;
@@ -27,12 +27,12 @@ const tabSource = (tab: ClientTabId): string => {
 };
 
 describe("the client tab bar", () => {
-  it("has the six tabs, in order, and renders as a tablist with the active one selected", async () => {
-    assert.deepEqual(CLIENT_TABS.map((tab) => tab.label), ["Overview", "Carbon", "Data entry", "Reporting", "Record", "Manage"]);
+  it("has the eight tabs, in order, and renders as a tablist with the active one selected", async () => {
+    assert.deepEqual(CLIENT_TABS.map((tab) => tab.label), ["Overview", "Carbon", "Data entry", "Reporting", "Reduction Strategies", "SRS Readiness", "Record", "Manage"]);
     const { Tabs } = await import("@nzi/ui");
     const html = renderToStaticMarkup(createElement(Tabs, { items: CLIENT_TABS, value: "carbon", onChange: () => undefined, ariaLabel: "Client sections", idBase: "client", className: "nz-tabs" }));
     assert.match(html, /role="tablist" aria-label="Client sections" class="nz-tabs"/);
-    assert.equal((html.match(/role="tab"/g) ?? []).length, 6);
+    assert.equal((html.match(/role="tab"/g) ?? []).length, 8);
     assert.match(html, /id="client-tab-carbon"[^>]*aria-selected="true"/);
     assert.match(html, /id="client-tab-overview"[^>]*aria-selected="false"/);
   });
@@ -42,8 +42,10 @@ describe("the client tab bar", () => {
     assert.match(view, /<Tabs className="nz-tabs" items=\{CLIENT_TABS\} value=\{tab\} onChange=\{selectTab\}/);
     assert.match(view, /window\.history\.replaceState\(null, "", target === "overview" \?/);
     assert.doesNotMatch(view, /ClientWorkspaceNav|clientAreaGroups/, "the left sub-nav is gone");
-    assert.equal(tabForParam("srs"), "reporting");
-    assert.equal(tabForParam("strategies"), "carbon");
+    assert.equal(tabForParam("srs"), "srs");
+    assert.equal(tabForParam("strategies"), "strategies");
+    assert.equal(tabForParam("analytics"), "carbon");
+    assert.equal(tabForParam("reporting"), "reporting");
     assert.equal(tabForParam("history"), "manage");
     assert.equal(tabForParam("carbon"), "carbon");
     assert.equal(tabForParam("nonsense"), "overview");
@@ -100,6 +102,16 @@ describe("every client area is still reachable under a tab", () => {
     // Record: the right rail's contacts, sites and vehicles, with the company profile.
     const record = client("ClientTabCards.tsx");
     for (const component of ["<ProfileArea", "<ClientContacts", "<ClientSites", "<VehicleRegistrationsCard"]) assert.ok(record.includes(component), `${component} under Record`);
+  });
+
+  it("gives Reduction Strategies and SRS Readiness their own tabs, and renders each only there", () => {
+    assert.equal(AREA_TAB.strategies, "strategies");
+    assert.equal(AREA_TAB.srs, "srs");
+    assert.ok(!tabSource("carbon").includes("<ReductionStrategiesArea"), "not on Carbon");
+    assert.ok(!tabSource("reporting").includes("<SrsArea"), "not on Reporting");
+    for (const [tab, kept] of [["carbon", ["<EmissionsHistoryCard", "<BaselineTargetsCard", "<AnalyticsArea"]], ["reporting", ["<ReportingArea", "<ReportProfileCard"]]] as const) {
+      for (const component of kept) assert.ok(tabSource(tab).includes(component), `${component} stays on ${tab}`);
+    }
   });
 
   it("keeps the gates it had: History under audit.view, Portal Management under the flag + portal.admin", () => {

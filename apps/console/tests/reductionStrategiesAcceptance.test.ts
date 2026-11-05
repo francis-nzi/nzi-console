@@ -166,7 +166,7 @@ describe("Reduction Strategies", () => {
   it("renders as a real area rather than the unavailable placeholder", () => {
     assert.match(read("apps/console/app/clients/[clientId]/clientAreas.ts"), /BUILT_AREAS[\s\S]*?"strategies"/);
     const view = read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");
-    assert.match(view, /case "carbon":[\s\S]*?<ReductionStrategiesArea/);
+    assert.match(view, /case "strategies":[\s\S]*?<ReductionStrategiesArea/);
     assert.match(view, /useEditAccess\("strategy\.manage", writeEnabled\)/);
   });
 

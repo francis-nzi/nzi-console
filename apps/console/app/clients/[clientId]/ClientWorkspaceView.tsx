@@ -44,7 +44,7 @@ import { FigureEvidenceBody, fyLabel } from "./FigureEvidence";
 
 /**
  * The client workspace shell (client workspace v10): the global rail, then the client header with its top tab bar
- * (Overview · Carbon · Data entry · Reporting · Record · Manage), then the tab's sections, with one drawer host on the right.
+ * (Overview · Carbon · Data entry · Reporting · Reduction Strategies · SRS Readiness · Record · Manage), then the tab's sections, with one drawer host on the right.
  *
  * The shell composes — it does not resolve. Every figure, site, contact and target comes
  * from the workspace read model; every change goes through the command the drawer sends,
@@ -152,7 +152,6 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           <EmissionsHistoryCard history={workspace.history} />
           <BaselineTargetsCard workspace={workspace} access={access.target} onDrawer={openDrawer} />
           <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} access={access.client} onDrawer={openDrawer} />
-          <ReductionStrategiesArea workspace={workspace} today={today} access={access.actions} onDrawer={openStrategyDrawer} />
         </>;
       case "data-entry":
         // Phase 1c — what the client reports, year to year, held on the Client rather than rebuilt on every job.
@@ -164,8 +163,11 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           <ReportingArea workspace={workspace} />
           {/* F-1b (R-D1) — the order this client's reports start in, and a line for the cover. */}
           <ReportProfileCard profile={workspace.reportProfile ?? { current: null, latestVersion: 0 }} access={access.client} onEdit={() => openDrawer({ kind: "report-profile" })} />
-          <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} onSaved={srsSaved} />
         </>;
+      case "strategies":
+        return <ReductionStrategiesArea workspace={workspace} today={today} access={access.actions} onDrawer={openStrategyDrawer} />;
+      case "srs":
+        return <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} onSaved={srsSaved} />;
       case "record":
         return <>
           <RecordTab workspace={workspace} today={today} access={access} onDrawer={openDrawer} onOpenPortal={openPortal} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
@@ -208,7 +210,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
         <Link className="nz-btn pri" href={clientJobsHref(client.id)}>Create job</Link>
       </div>
     </div>
-    {/* The tab bar sits on the client header: one place to move between the client's six sections. */}
+    {/* The tab bar sits on the client header: one place to move between the client's eight sections. */}
     <div style={{ marginTop: 14 }}><Tabs className="nz-tabs" items={CLIENT_TABS} value={tab} onChange={selectTab} ariaLabel="Client sections" idBase="client" /></div>
     </div>
 

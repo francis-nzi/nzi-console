@@ -1,6 +1,6 @@
 /**
- * The client workspace areas (v10). Each area is a section under one of the six top tabs
- * (Overview · Carbon · Data entry · Reporting · Record · Manage); `AREA_TAB` says which, so every
+ * The client workspace areas (v10). Each area is a section under one of the eight top tabs
+ * (Overview · Carbon · Data entry · Reporting · Reduction Strategies · SRS Readiness · Record · Manage); `AREA_TAB` says which, so every
  * area stays reachable and an old `?area=` link still lands where it always did.
  *
  * `built` marks the areas this phase renders for real. The rest are part of the approved
@@ -35,18 +35,18 @@ export const BUILT_AREAS: ReadonlySet<ClientAreaId> = new Set<ClientAreaId>([
  * (audit.view, CLIENT-12) and Portal Management (the `portal-management` flag + portal.admin) sit under Manage and are
  * offered there only to whoever may use them — the same gates as before, now applied to a section rather than a nav item.
  */
-export type ClientTabId = "overview" | "carbon" | "data-entry" | "reporting" | "record" | "manage";
+export type ClientTabId = "overview" | "carbon" | "data-entry" | "reporting" | "strategies" | "srs" | "record" | "manage";
 export const CLIENT_TABS: ReadonlyArray<{ id: ClientTabId; label: string }> = [
   { id: "overview", label: "Overview" }, { id: "carbon", label: "Carbon" }, { id: "data-entry", label: "Data entry" },
-  { id: "reporting", label: "Reporting" }, { id: "record", label: "Record" }, { id: "manage", label: "Manage" },
+  { id: "reporting", label: "Reporting" }, { id: "strategies", label: "Reduction Strategies" }, { id: "srs", label: "SRS Readiness" },
+  { id: "record", label: "Record" }, { id: "manage", label: "Manage" },
 ];
 export const CLIENT_TAB_IDS: ClientTabId[] = CLIENT_TABS.map((tab) => tab.id);
 
 /** The tab each area sits under. Total over ClientAreaId, so an area cannot be added without being placed. */
 export const AREA_TAB: Record<ClientAreaId, ClientTabId> = {
   overview: "overview",
-  analytics: "carbon", strategies: "carbon",
-  reporting: "reporting", srs: "reporting",
+  analytics: "carbon", reporting: "reporting", strategies: "strategies", srs: "srs",
   profile: "record", financials: "record", ai: "record",
   tasks: "manage", notes: "manage", files: "manage", comms: "manage", portal: "manage", history: "manage",
 };
