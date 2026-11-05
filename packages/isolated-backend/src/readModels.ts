@@ -375,8 +375,8 @@ export type ClientWorkspaceReadModel = {
   intensityTargets: ClientIntensityTarget[];
   /** Phase 1c (0159) — the client's reporting template in force (or none), and the categories a line may be filed under. */
   reportingTemplate: ClientReportingTemplateReadModel & { categories: Array<{ code: string; scope: ReportingTemplateScope; name: string }>;
-    /** The active master templates a template may begin from. */
-    masters: Array<{ masterId: string; name: string; lineCount: number }> };
+    /** The active master templates a template may begin from; one with no lines yet is listed but not `selectable`. */
+    masters: Array<{ masterId: string; name: string; lineCount: number; selectable: boolean }> };
   /**
    * F-1 (0164, R-D1) — the client's report profile in force (or none), and the latest version, withdrawn or not, which the
    * next save expects.

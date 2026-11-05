@@ -95,8 +95,11 @@ describe("intensity metrics", () => {
     const defaults = overview.match(/defaultOpen/g) ?? [];
     assert.equal(defaults.length, 1, "exactly one Overview card opens by default");
     assert.match(overview, /defaultOpen[\s\S]{0,200}Active jobs/, "and it is the delivery card");
+    // The working cards moved to their tabs (Carbon, Manage) and are still cards, collapsed by default.
+    const cards = app("ClientTabCards.tsx");
+    assert.doesNotMatch(cards, /defaultOpen/);
     for (const card of ["Emissions history", "Baseline &amp; targets", "Activity"]) {
-      assert.match(overview, new RegExp(`<h2>${card}</h2>`), `${card} is still a card`);
+      assert.match(cards, new RegExp(`<h2>${card}</h2>`), `${card} is still a card`);
     }
   });
 

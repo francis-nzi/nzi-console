@@ -1,12 +1,11 @@
-import type { ClientAreaGroup } from "@nzi/ui";
-
 /**
- * The client workspace areas (v10). Grouped as the prototype groups them: Client — what
- * the job produces; Manage — how it is run; Record — what the client is.
+ * The client workspace areas (v10). Each area is a section under one of the six top tabs
+ * (Overview · Carbon · Data entry · Reporting · Record · Manage); `AREA_TAB` says which, so every
+ * area stays reachable and an old `?area=` link still lands where it always did.
  *
- * `built` marks the areas this phase renders for real. The rest are in the nav because
- * they are part of the approved information architecture, and each says plainly that it
- * is not available yet rather than showing an empty screen that looks like no data.
+ * `built` marks the areas this phase renders for real. The rest are part of the approved
+ * information architecture, and each says plainly that it is not available yet rather than
+ * showing an empty screen that looks like no data.
  */
 export type ClientAreaId =
   | "overview" | "analytics" | "reporting" | "strategies" | "srs"
@@ -31,22 +30,29 @@ export const BUILT_AREAS: ReadonlySet<ClientAreaId> = new Set<ClientAreaId>([
   "overview", "analytics", "reporting", "strategies", "srs", "profile", "comms", "files", "portal", "ai", "history",
 ]);
 
-const ICONS: Record<ClientAreaId, string> = {
-  overview: "▦", analytics: "▤", reporting: "▥", strategies: "⚡", srs: "◎",
-  tasks: "☑", notes: "✎", files: "🗂", comms: "✉", portal: "◐",
-  profile: "🏢", financials: "£", ai: "✦", history: "↺",
+/**
+ * The top tab bar on the client header. The sections each tab hosts are composed in ClientWorkspaceView. History
+ * (audit.view, CLIENT-12) and Portal Management (the `portal-management` flag + portal.admin) sit under Manage and are
+ * offered there only to whoever may use them — the same gates as before, now applied to a section rather than a nav item.
+ */
+export type ClientTabId = "overview" | "carbon" | "data-entry" | "reporting" | "record" | "manage";
+export const CLIENT_TABS: ReadonlyArray<{ id: ClientTabId; label: string }> = [
+  { id: "overview", label: "Overview" }, { id: "carbon", label: "Carbon" }, { id: "data-entry", label: "Data entry" },
+  { id: "reporting", label: "Reporting" }, { id: "record", label: "Record" }, { id: "manage", label: "Manage" },
+];
+export const CLIENT_TAB_IDS: ClientTabId[] = CLIENT_TABS.map((tab) => tab.id);
+
+/** The tab each area sits under. Total over ClientAreaId, so an area cannot be added without being placed. */
+export const AREA_TAB: Record<ClientAreaId, ClientTabId> = {
+  overview: "overview",
+  analytics: "carbon", strategies: "carbon",
+  reporting: "reporting", srs: "reporting",
+  profile: "record", financials: "record", ai: "record",
+  tasks: "manage", notes: "manage", files: "manage", comms: "manage", portal: "manage", history: "manage",
 };
 
-/**
- * `showHistory` — History is offered only to a holder of audit.view who may read this client's (CLIENT-12).
- * `showPortal` — Portal Management (portal data-entry phase 1) is offered only behind the `portal-management` flag, to a
- * holder of portal.admin on this client — the same mechanism, so a member of staff never sees an area they cannot use.
- */
-export function clientAreaGroups(counts: Partial<Record<ClientAreaId, number | string | null>> = {}, showHistory = false, showPortal = false): ClientAreaGroup[] {
-  const item = (id: ClientAreaId) => ({ id, label: CLIENT_AREA_LABELS[id], icon: ICONS[id], count: counts[id] ?? null, unavailable: !BUILT_AREAS.has(id) });
-  return [
-    { id: "client", label: "Client", items: (["overview", "analytics", "reporting", "strategies", "srs"] as const).map(item) },
-    { id: "manage", label: "Manage", items: ([...["tasks", "notes", "files", "comms"] as const, ...(showPortal ? ["portal"] as const : [])]).map(item) },
-    { id: "record", label: "Record", items: ([...["profile", "financials", "ai"] as const, ...(showHistory ? ["history"] as const : [])]).map(item) },
-  ];
+/** The tab a URL asks for: a tab id, or an area id from before the tabs (`?area=srs`). */
+export function tabForParam(value: string | null | undefined): ClientTabId {
+  if (CLIENT_TAB_IDS.includes(value as ClientTabId)) return value as ClientTabId;
+  return isClientAreaId(value) ? AREA_TAB[value] : "overview";
 }

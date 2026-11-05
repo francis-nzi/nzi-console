@@ -6,7 +6,7 @@
 import { useRef, useState } from "react";
 import { Collapsible, GatedButton } from "@nzi/ui";
 import { postBrowserCommand, postBrowserCommandWithReason, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
-import { groupReportingTemplateLines, type ReportingTemplateLineInput, type ReportingTemplateScope } from "@nzi/contracts";
+import { groupReportingTemplateLines, masterTemplateTitle, type ReportingTemplateLineInput, type ReportingTemplateScope } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
@@ -20,7 +20,7 @@ const originText = (template: NonNullable<Template["current"]>) =>
     : template.origin === "master" ? `initialised from ${template.originMasterName ? `Master · ${template.originMasterName}` : "a master template"}`
     : `${template.origin === "v7-import" ? "imported from history on" : "initialised from"} ${template.originJobNumber ?? "a job"}`;
 
-/** The card on the Overview: the template in force, grouped scope → category → line, or how to start one. */
+/** The card on the Data entry tab: the template in force, grouped scope → category → line, or how to start one. */
 export function ReportingTemplateCard({ template, access, onEdit, onInitialise, onInitialiseFromMaster }: {
   template: Template; access: EditAccess; onEdit: () => void; onInitialise: () => void; onInitialiseFromMaster: () => void;
 }) {
@@ -144,7 +144,8 @@ export function ReportingTemplateFromMasterForm({ clientId, template, access, on
   clientId: string; template: Template; access: EditAccess; onClose: () => void; onSaved: (text: string) => void;
 }) {
   const masters = template.masters;
-  const [masterId, setMasterId] = useState(masters[0]?.masterId ?? "");
+  // Nothing is chosen until the person chooses: the prompt is the selected option, so a master is never started from by default.
+  const [masterId, setMasterId] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -164,10 +165,11 @@ export function ReportingTemplateFromMasterForm({ clientId, template, access, on
       <p className="sub">The master&rsquo;s lines become the template&rsquo;s lines, with no site (Unallocated). Each line&rsquo;s factor is the newest active edition in your datasets; one your datasets do not carry is kept and marked &ldquo;needs a factor&rdquo;. After this you can edit the lines by hand.</p>
       {template.current ? <div className="nz-banner warn" role="status">This client already has a template (version {template.current.version}, {template.current.lines.length} line{template.current.lines.length === 1 ? "" : "s"}). Its lines will be replaced by the master&rsquo;s; the current version stays in the record.</div> : null}
       {masters.length === 0
-        ? <p className="sub">There are no active master templates with lines to start from.</p>
+        ? <p className="sub">There are no active master templates to start from.</p>
         : <label className="nz-fl"><span>Master template</span>
           <select className="nz-inp" value={masterId} onChange={(e) => setMasterId(e.target.value)}>
-            {masters.map((master) => <option key={master.masterId} value={master.masterId}>{master.name} · {master.lineCount} line{master.lineCount === 1 ? "" : "s"}</option>)}
+            <option value="">Choose a template…</option>
+            {masters.map((master) => <option key={master.masterId} value={master.masterId} disabled={!master.selectable}>{masterTemplateTitle(master.name)} — {master.selectable ? `${master.lineCount} line${master.lineCount === 1 ? "" : "s"}` : "no lines yet"}</option>)}
           </select></label>}
       {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}
     </div>

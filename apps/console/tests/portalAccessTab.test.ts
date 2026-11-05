@@ -95,8 +95,10 @@ describe("the old drawer is gone and the tab is wired", () => {
   it("has no Portal access drawer, and its openers open the Access tab (only for someone who may manage the portal)", () => {
     for (const file of ["ClientRecordDrawers.tsx", "ClientWorkspaceView.tsx", "clientDrawers.ts"]) assert.doesNotMatch(read(`apps/console/app/clients/[clientId]/${file}`), /PortalDrawerBody|kind: "portal"|Platform & audit/, file);
     const view = read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");
-    assert.match(view, /\{canManagePortal \? <button type="button" className="nz-btn" onClick=\{\(\) => selectArea\("portal"\)\}>Portal access<\/button> : null\}/);
-    assert.match(view, /onOpenPortal=\{canManagePortal \? \(\) => selectArea\("portal"\) : undefined\}/);
+    // Portal Management sits under the Manage tab, so its openers open that tab.
+    assert.match(view, /\{canManagePortal \? <button type="button" className="nz-btn" onClick=\{\(\) => selectTab\("manage"\)\}>Portal access<\/button> : null\}/);
+    assert.match(view, /const openPortal = canManagePortal \? \(\) => selectTab\("manage"\) : undefined;/);
+    assert.match(view, /onOpenPortal=\{openPortal\}/);
     for (const file of ["OverviewArea.tsx", "ProfileArea.tsx"]) assert.doesNotMatch(read(`apps/console/app/clients/[clientId]/${file}`), /kind: "portal"/, file);
   });
 

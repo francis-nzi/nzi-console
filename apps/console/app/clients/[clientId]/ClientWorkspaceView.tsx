@@ -3,8 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AppShell, ClientWorkspaceNav, Drawer, EvidenceDrawer, TopBar } from "@nzi/ui";
-import { siteLifecycleStatus, type FigureEvidence } from "@nzi/contracts";
+import { AppShell, Drawer, EvidenceDrawer, TabPanel, Tabs, TopBar } from "@nzi/ui";
+import type { FigureEvidence } from "@nzi/contracts";
 import { clientStatusMeta } from "@nzi/mock-data";
 import type { ClientHistoryEntry, ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import type { ScreenResult } from "@nzi/contracts";
@@ -14,12 +14,11 @@ import { clientCrumbs, clientJobsHref, crumbTrail } from "../../lib/crumbTrail";
 import { AiProfileArea } from "./AiProfileArea";
 import { AnalyticsArea } from "./AnalyticsArea";
 import { CommsArea, FilesArea } from "./CommsFilesAreas";
-import { ProfileArea } from "./ProfileArea";
 import { ReportingArea } from "./ReportingArea";
 import { IntensityMetricsDrawer } from "./IntensityMetricsDrawer";
 import { IntensityTargetForm } from "./ClientIntensityTargets";
-import { ReportingTemplateForm, ReportingTemplateFromMasterForm, ReportingTemplateInitialiseForm } from "./ClientReportingTemplate";
-import { ReportProfileForm } from "./ClientReportProfile";
+import { ReportingTemplateCard, ReportingTemplateForm, ReportingTemplateFromMasterForm, ReportingTemplateInitialiseForm } from "./ClientReportingTemplate";
+import { ReportProfileCard, ReportProfileForm } from "./ClientReportProfile";
 import { SrsArea } from "./SrsArea";
 import { ReductionStrategiesArea } from "./ReductionStrategiesArea";
 import { StrategyBespokeForm, StrategyEditForm, StrategyLibraryForm, StrategyProposalForm } from "./StrategyForms";
@@ -37,14 +36,15 @@ import { ClientLogoBadge, IdentityForm } from "./ClientIdentity";
 import { AddressForm, ComplianceForm, FactorsDrawerBody, RebaselineForm } from "./ClientRecordDrawers";
 import { SiteForm } from "./ClientSites";
 import { TargetsForm } from "./ClientTargets";
-import { clientAreaGroups, isClientAreaId, type ClientAreaId } from "./clientAreas";
+import { CLIENT_TABS, tabForParam, type ClientTabId } from "./clientAreas";
 import { drawerLabel, type DrawerRequest } from "./clientDrawers";
-import { MetricEvidence, Metric, OverviewArea, OverviewAside } from "./OverviewArea";
-import { FigureEvidenceBody, formatFigure, fyLabel } from "./FigureEvidence";
+import { OverviewArea } from "./OverviewArea";
+import { ActivityCard, BaselineTargetsCard, EmissionsHistoryCard, RecordTab } from "./ClientTabCards";
+import { FigureEvidenceBody, fyLabel } from "./FigureEvidence";
 
 /**
- * The client workspace shell (client workspace v10): the global rail, then this client's
- * area sub-nav, then the area itself, with one drawer host on the right.
+ * The client workspace shell (client workspace v10): the global rail, then the client header with its top tab bar
+ * (Overview · Carbon · Data entry · Reporting · Record · Manage), then the tab's sections, with one drawer host on the right.
  *
  * The shell composes — it does not resolve. Every figure, site, contact and target comes
  * from the workspace read model; every change goes through the command the drawer sends,
@@ -61,8 +61,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   geocodingEnabled?: boolean;
 }) {
   const router = useRouter();
-  const { client, sites, evidence, contacts, targets, history } = workspace;
-  const [area, setArea] = useState<ClientAreaId>(isClientAreaId(initialArea) ? initialArea : "overview");
+  const { client, sites, evidence, contacts, targets } = workspace;
+  const [tab, setTab] = useState<ClientTabId>(tabForParam(initialArea));
   const [evidenceKey, setEvidenceKey] = useState<EvidenceKey | null>(null);
   const [drawer, setDrawer] = useState<DrawerRequest | null>(null);
   // The SRS drawers carry their own payloads (an assessment, a requirement), so they have
@@ -92,7 +92,6 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   const meta = clientStatusMeta[client.status];
   const source = evidence.latest.source;
   const fy = source ? fyLabel(source.reportingYear) : null;
-  const yoy = evidence.yoy;
   const scopeLine = evidence.scopes.map((scope) => `S${scope.scope} ${scope.value === null ? "—" : scope.value.toLocaleString("en-GB", { maximumFractionDigits: 0 })}`).join(" · ");
   const context: Record<EvidenceKey, string> = {
     latest: fy ? `${fy} · all scopes, all in-boundary sites` : "No reviewed snapshot",
@@ -134,24 +133,64 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   const closeStrategyDrawer = () => setStrategyDrawer(null);
   const strategySaved = (text: string) => { setNotice(text); router.refresh(); };
   const srsSaved = (text: string) => { setNotice(text); router.refresh(); };
-  const selectArea = (next: string) => {
-    if (!isClientAreaId(next)) return;
-    setArea(next);
+  const selectTab = (next: string) => {
+    const target = tabForParam(next);
+    setTab(target);
     setNotice(null);
-    // The area is in the URL, so a client screen can be linked to and reloaded where it was.
-    window.history.replaceState(null, "", next === "overview" ? `/clients/${encodeURIComponent(client.id)}` : `/clients/${encodeURIComponent(client.id)}?area=${next}`);
+    // The tab is in the URL, so a client screen can be linked to and reloaded where it was.
+    window.history.replaceState(null, "", target === "overview" ? `/clients/${encodeURIComponent(client.id)}` : `/clients/${encodeURIComponent(client.id)}?area=${target}`);
   };
 
-  const latestNote = evidence.state === "empty" ? "Not reported" : yoy.value !== null ? `${formatFigure(yoy)} vs prior reviewed year` : "No earlier reviewed year";
+  // What each tab hosts. The sections are the components the client workspace has always rendered — only where they sit changed.
+  const openPortal = canManagePortal ? () => selectTab("manage") : undefined;
+  const tabBody = (id: ClientTabId) => {
+    switch (id) {
+      case "overview":
+        return <OverviewArea workspace={workspace} jobs={jobs} today={today} onEvidence={() => setEvidenceKey("latest")} onOpenTab={selectTab} />;
+      case "carbon":
+        return <>
+          <EmissionsHistoryCard history={workspace.history} />
+          <BaselineTargetsCard workspace={workspace} access={access.target} onDrawer={openDrawer} />
+          <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} access={access.client} onDrawer={openDrawer} />
+          <ReductionStrategiesArea workspace={workspace} today={today} access={access.actions} onDrawer={openStrategyDrawer} />
+        </>;
+      case "data-entry":
+        // Phase 1c — what the client reports, year to year, held on the Client rather than rebuilt on every job.
+        return <ReportingTemplateCard template={workspace.reportingTemplate ?? { current: null, latestVersion: 0, categories: [], masters: [] }} access={access.client}
+          onEdit={() => openDrawer({ kind: "reporting-template" })} onInitialise={() => openDrawer({ kind: "reporting-template-initialise" })}
+          onInitialiseFromMaster={() => openDrawer({ kind: "reporting-template-from-master" })} />;
+      case "reporting":
+        return <>
+          <ReportingArea workspace={workspace} />
+          {/* F-1b (R-D1) — the order this client's reports start in, and a line for the cover. */}
+          <ReportProfileCard profile={workspace.reportProfile ?? { current: null, latestVersion: 0 }} access={access.client} onEdit={() => openDrawer({ kind: "report-profile" })} />
+          <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} onSaved={srsSaved} />
+        </>;
+      case "record":
+        return <>
+          <RecordTab workspace={workspace} today={today} access={access} onDrawer={openDrawer} onOpenPortal={openPortal} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
+          <FinancialsHeldArea />
+          <AiProfileArea workspace={workspace} />
+        </>;
+      case "manage":
+        return <>
+          <UnavailableArea area="tasks" clientId={client.id} />
+          <UnavailableArea area="notes" clientId={client.id} />
+          <FilesArea workspace={workspace} />
+          <CommsArea workspace={workspace} />
+          {canManagePortal
+            ? <PortalManagementArea clientId={client.id} clientOwnerUserId={client.ownerUserId ?? null} writeEnabled={writeEnabled} />
+            : <section className="nz-panel" aria-labelledby="area-portal"><div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="area-portal">Portal Management</h2></div><div className="nz-card-b"><p className="sub" role="status">Portal Management is not available here: it is not switched on yet, or your role does not include portal administration for this client.</p></div></section>}
+          {canReadHistory ? <HistoryArea result={auditHistory} /> : null}
+          <ActivityCard jobs={jobs} />
+        </>;
+    }
+  };
 
   return <AppShell
     rail={<StaffRail activeId="clients" />}
-    areas={<ClientWorkspaceNav groups={clientAreaGroups({
-      analytics: history.length || null, reporting: workspace.reports.length || null,
-      comms: workspace.messages.length || null, files: workspace.files.length || null,
-    }, canReadHistory, canManagePortal)} activeId={area} onSelect={selectArea} />}
     drawer={evidenceDrawer}>
-    {/* The area is the left sub-nav's job, not the trail's — the trail carries hierarchy. */}
+    {/* The sections are the tab bar's job, not the trail's — the trail carries hierarchy. */}
     <TopBar crumbs={crumbTrail(clientCrumbs(client))} />
     <div className="nz-head"><div className="nz-client-head">
       <ClientLogoBadge client={client} onOpen={() => openDrawer({ kind: "identity" })} />
@@ -162,48 +201,20 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       <div className="nz-head-actions">
         {/* No "Edit client" here: the record is edited one thing at a time, in its own
             drawer, from the surface that shows it (v10). */}
-        {canManagePortal ? <button type="button" className="nz-btn" onClick={() => selectArea("portal")}>Portal access</button> : null}
+        {canManagePortal ? <button type="button" className="nz-btn" onClick={() => selectTab("manage")}>Portal access</button> : null}
         {/* Read-only preview of what this client sees. Gated on the capability the matrix has
             always described as "enter a client's portal context" — see NZC-087. */}
         {canPreviewPortal ? <Link className="nz-btn" href={`/clients/${encodeURIComponent(client.id)}/portal-preview`}>Go to portal</Link> : null}
         <Link className="nz-btn pri" href={clientJobsHref(client.id)}>Create job</Link>
       </div>
-    </div></div>
+    </div>
+    {/* The tab bar sits on the client header: one place to move between the client's six sections. */}
+    <div style={{ marginTop: 14 }}><Tabs className="nz-tabs" items={CLIENT_TABS} value={tab} onChange={selectTab} ariaLabel="Client sections" idBase="client" /></div>
+    </div>
 
     <div className="nz-body" style={{ paddingTop: 16 }}>
-      {area === "overview" ? <div className="nz-metrics">
-        <Metric label="Open jobs" value={String(jobs.filter((job) => ["draft", "open", "on-hold"].includes(job.header.status)).length)} note={`${jobs.length} total jobs`} />
-        <MetricEvidence label={`Latest emissions${fy ? ` · ${fy}` : ""}`} note={latestNote} tone={yoy.value !== null ? (yoy.value <= 0 ? "ok" : "up") : undefined} onEvidence={() => setEvidenceKey("latest")}>
-          {evidence.latest.value === null ? "Not reported" : <>{evidence.latest.value.toLocaleString("en-GB", { maximumFractionDigits: 0 })}<small> tCO₂e</small></>}
-        </MetricEvidence>
-        <Metric label="Data completeness" value={`${client.completeness}%`} note="across jobs" />
-        <Metric label="Sites in service" value={String(sites.filter((site) => siteLifecycleStatus(site, today).kind === "in-service").length)} note={`${sites.length} recorded · effective-dated`} />
-      </div> : null}
-
       {notice ? <div className="nz-banner ok" role="status">{notice}</div> : null}
-
-      {area === "overview"
-        ? <div className="nz-client-grid">
-          <div className="nz-client-main">
-            <OverviewArea workspace={workspace} jobs={jobs} today={today} access={access} onEvidence={() => setEvidenceKey("latest")} onDrawer={openDrawer} />
-          </div>
-          <aside className="nz-client-aside">
-            <OverviewAside workspace={workspace} today={today} access={access} onDrawer={openDrawer} onOpenPortal={canManagePortal ? () => selectArea("portal") : undefined} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
-          </aside>
-        </div>
-        : area === "analytics" ? <AnalyticsArea workspace={workspace} onEvidence={setEvidenceKey} access={access.client} onDrawer={openDrawer} />
-        : area === "reporting" ? <ReportingArea workspace={workspace} />
-        : area === "strategies" ? <ReductionStrategiesArea workspace={workspace} today={today} access={access.actions} onDrawer={openStrategyDrawer} />
-        : area === "srs" ? <SrsArea workspace={workspace} access={access.srs} onDrawer={openSrsDrawer} onSaved={srsSaved} />
-        : area === "profile" ? <ProfileArea workspace={workspace} access={access} onDrawer={openDrawer} onOpenPortal={canManagePortal ? () => selectArea("portal") : undefined} factorsEnabled={factorsEnabled} geocodingEnabled={geocodingEnabled} />
-        : area === "comms" ? <CommsArea workspace={workspace} />
-        : area === "files" ? <FilesArea workspace={workspace} />
-        : area === "ai" ? <AiProfileArea workspace={workspace} />
-        : area === "financials" ? <FinancialsHeldArea />
-        : area === "history" ? <HistoryArea result={auditHistory} />
-        : area === "portal" && canManagePortal ? <PortalManagementArea clientId={client.id} clientOwnerUserId={client.ownerUserId ?? null} writeEnabled={writeEnabled} />
-        : area === "portal" ? <section className="nz-panel" aria-labelledby="area-portal"><div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="area-portal">Portal Management</h2></div><div className="nz-card-b"><p className="sub" role="status">Portal Management is not available here: it is not switched on yet, or your role does not include portal administration for this client.</p></div></section>
-        : <UnavailableArea area={area} clientId={client.id} />}
+      {CLIENT_TABS.map(({ id }) => <TabPanel key={id} id={id} idBase="client" active={tab === id}>{tab === id ? tabBody(id) : null}</TabPanel>)}
     </div>
 
     <Drawer open={drawer !== null} onClose={closeDrawer} ariaLabel={drawer ? drawerLabel(drawer) : "Client drawer"} className="nz-site-drawer" dismissOnOutsideClick>

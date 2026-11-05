@@ -99,9 +99,8 @@ describe("the section-plan editors (F-1b)", () => {
   });
 
   it("the client workspace shows the report profile and edits it in a drawer, with the latest version the save expects", () => {
-    const overview = read("apps/console/app/clients/[clientId]/OverviewArea.tsx");
-    assert.match(overview, /<ReportProfileCard profile=\{workspace\.reportProfile/);
     const view = read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");
+    assert.match(view, /case "reporting":[\s\S]*?<ReportProfileCard profile=\{workspace\.reportProfile/);
     assert.match(view, /drawer\?\.kind === "report-profile" \? <ReportProfileForm key=\{`profile-\$\{workspace\.reportProfile\.latestVersion\}`\}/);
     const form = read("apps/console/app/clients/[clientId]/ClientReportProfile.tsx");
     assert.match(form, /\{ expectedVersion: profile\.latestVersion, sectionPlan: plan, issuerLine: line \}/);

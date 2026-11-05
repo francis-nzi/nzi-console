@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import {
   PORTAL_PROFILE_DEFAULT, PORTAL_PROFILE_KEYS, PORTAL_PROFILE_LABELS, PORTAL_PROFILE_VALUES, PORTAL_SCOPE_LABELS, PORTAL_SCOPES, type PortalProfileStaffView,
 } from "@nzi/contracts";
-import { clientAreaGroups, CLIENT_AREA_LABELS } from "../app/clients/[clientId]/clientAreas";
+import { AREA_TAB, BUILT_AREAS, CLIENT_AREA_LABELS } from "../app/clients/[clientId]/clientAreas";
 import type * as AreaModule from "../app/clients/[clientId]/PortalManagementArea";
 type PortalManagementTab = AreaModule.PortalManagementTab;
 import type { EditAccess } from "../app/lib/useEditAccess";
@@ -52,16 +52,13 @@ const body = (over: Partial<Parameters<typeof AreaModule.PortalManagementBody>[0
 const panel = (html: string, id: string) => html.match(new RegExp(`id="pm-panel-${id}"[^>]*>([\\s\\S]*?)</div>(?=<div role="tabpanel"|</div></section>)`))?.[0] ?? "";
 
 describe("Portal Management (portal data-entry phase 1)", () => {
-  it("is offered in Manage only when the workspace says so — behind portal-management, to a portal.admin holder on this client", () => {
-    const manage = (showPortal: boolean) => clientAreaGroups({}, false, showPortal).find((group) => group.id === "manage")!.items.map((item) => item.id);
-    assert.deepEqual(manage(false), ["tasks", "notes", "files", "comms"]);
-    assert.deepEqual(manage(true), ["tasks", "notes", "files", "comms", "portal"]);
+  it("is offered under the Manage tab only when the workspace says so — behind portal-management, to a portal.admin holder on this client", () => {
+    assert.equal(AREA_TAB.portal, "manage");
     assert.equal(CLIENT_AREA_LABELS.portal, "Portal Management");
-    assert.equal(clientAreaGroups({}, false, true).find((group) => group.id === "manage")!.items.find((item) => item.id === "portal")!.unavailable, false);
+    assert.ok(BUILT_AREAS.has("portal"));
     const view = read("apps/console/app/clients/[clientId]/ClientWorkspaceView.tsx");
     assert.match(view, /const canManagePortal = useHasCapability\("portal\.admin", client\.ownerUserId\) && portalFeatureEnabled\("portal-management"\);/);
-    assert.match(view, /clientAreaGroups\(\{[\s\S]*?\}, canReadHistory, canManagePortal\)/);
-    assert.match(view, /area === "portal" && canManagePortal \? <PortalManagementArea/);
+    assert.match(view, /case "manage":[\s\S]*?\{canManagePortal\s*\? <PortalManagementArea/);
   });
 
   it("is gated on its own token, which is declared — and, switched on, carried by staging's flag value", () => {

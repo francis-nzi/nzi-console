@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { GatedButton } from "@nzi/ui";
 import type { EditAccess } from "../../lib/useEditAccess";
@@ -17,9 +18,11 @@ import type { DrawerRequest } from "./clientDrawers";
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const monthName = (month: number | null | undefined) => month && month >= 1 && month <= 12 ? MONTHS[month - 1]! : null;
 
-export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factorsEnabled, geocodingEnabled = false }: {
+export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factorsEnabled, geocodingEnabled = false, contactsCard }: {
   /** Opens Portal Management → Access; absent when the viewer cannot manage this client's portal. */
   onOpenPortal?: () => void;
+  /** The full contacts card (with consent), where the host has it; stands in for the plain list below so contacts show once. */
+  contactsCard?: ReactNode;
   geocodingEnabled?: boolean;
   workspace: ClientWorkspaceReadModel;
   access: { client: EditAccess; contact: EditAccess };
@@ -90,7 +93,7 @@ export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factors
           </div>
         </section>
 
-        <section className="nz-panel">
+        {contactsCard ?? <section className="nz-panel">
           <CardHead eyebrow="Relationship" title="Contacts" right={<button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "contact", contact: null })}>Add</button>} />
           <div style={{ padding: "6px 16px 12px" }}>
             {contacts.length === 0
@@ -100,7 +103,7 @@ export function ProfileArea({ workspace, access, onDrawer, onOpenPortal, factors
                 <span className="v"><button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "contact", contact })}>{contact.jobTitle || "Edit"}</button></span>
               </div>)}
           </div>
-        </section>
+        </section>}
 
         <section className="nz-panel">
           <CardHead eyebrow="Reference data" title="Client factors" />
