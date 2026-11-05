@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
+import { InfoTip } from "@nzi/ui";
 import { formatDate } from "../../lib/formatDate";
 import { CardHead, Empty } from "./OverviewArea";
 
@@ -24,13 +25,13 @@ export function ReportingArea({ workspace }: { workspace: ClientWorkspaceReadMod
   const inProgress = reports.filter((report) => report.status === "draft" || report.status === "validated");
 
   return <>
-    <div className="nz-cw-vhead"><div><div className="eyebrow">Deliverables</div><h2>Reporting</h2></div><span style={{ flex: 1 }} />
+    <div className="nz-cw-vhead"><div><h2>Reporting</h2></div><span style={{ flex: 1 }} />
       <span className="sub">{reports.length === 0 ? "No report versions" : `${published.length} published · ${inProgress.length} in progress`}</span>
     </div>
     <p className="nz-cw-vsub">Published reports and in-progress versions for this client. Each report opens on the reviewed snapshot it was issued from — the figures are the frozen ones, not re-resolved.</p>
 
     <section className="nz-panel">
-      <CardHead eyebrow="Versions" title="Report versions" />
+      <CardHead title="Report versions" right={<InfoTip label="report versions">A published report and its PDF stay retrievable whatever its provenance stamp says (NZC-066) — the stamp is context, never a gate. Validation and publishing happen on the job, under separation of duties.</InfoTip>} />
       {reports.length === 0
         ? <Empty text="No report version has been created for this client yet. A version appears here once a CRP job validates its reviewed snapshot for release." />
         : <table className="nz-tbl">
@@ -54,9 +55,6 @@ export function ReportingArea({ workspace }: { workspace: ClientWorkspaceReadMod
             })}
           </tbody>
         </table>}
-      <div className="nz-card-b">
-        <p className="nz-maps">A published report and its PDF stay retrievable whatever its provenance stamp says (NZC-066) — the stamp is context, never a gate. Validation and publishing happen on the job, under separation of duties.</p>
-      </div>
     </section>
   </>;
 }

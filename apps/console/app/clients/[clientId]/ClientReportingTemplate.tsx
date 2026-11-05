@@ -4,7 +4,7 @@
 // Client. Scopes → categories → lines; a line with no category is "to categorise" (data-entry R7; it came from v7's
 // history, which carries none) and is never guessed. A version is the whole template — every save, initialise or withdraw writes the next one.
 import { useRef, useState } from "react";
-import { Collapsible, GatedButton } from "@nzi/ui";
+import { Collapsible, GatedButton, InfoTip } from "@nzi/ui";
 import { postBrowserCommand, postBrowserCommandWithReason, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { groupReportingTemplateLines, masterTemplateTitle, type ReportingTemplateLineInput, type ReportingTemplateScope } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
@@ -28,12 +28,12 @@ export function ReportingTemplateCard({ template, access, onEdit, onInitialise, 
   const toFile = current?.lines.filter((line) => line.categoryCode === null).length ?? 0;
   const canEdit = access.state === "allowed";
   return <Collapsible className="nz-panel nz-collapsible-card nz-reporting-template" headingClassName="nz-card-h"
-    title={<><span className="eyebrow">Data entry</span><h2>Data entry template</h2></>}
+    title={<h2>Data entry template</h2>}
     count={current ? `${current.lines.length} line${current.lines.length === 1 ? "" : "s"}${toFile ? ` · ${toFile} to categorise` : ""}` : "None set"}>
     <div className="nz-card-b">
       {current
-        ? <p className="sub">Version {current.version} · {originText(current)} · {current.setBy}, {formatDate(current.setAt)}. Each year&rsquo;s job captures these lines; quantities stay on the job.</p>
-        : <p className="sub">No data entry template yet. It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page. Start it from a master template, from a job, or by hand.</p>}
+        ? <p className="sub">Version {current.version} · {originText(current)} · {current.setBy}, {formatDate(current.setAt)}.<InfoTip label="the data entry template">Each year&rsquo;s job captures these lines; quantities stay on the job.</InfoTip></p>
+        : <p className="sub">No data entry template yet.<InfoTip label="the data entry template">It holds the rows this client collects each year — scopes, categories and the lines under them — so a new job starts from them rather than a blank page. Start it from a master template, from a job, or by hand.</InfoTip></p>}
       {canEdit ? <div style={{ display: "flex", gap: 12, marginTop: 6 }}>
         <button type="button" className="nz-editlink" onClick={onInitialiseFromMaster}>Initialise from a master template…</button>
         <button type="button" className="nz-editlink" onClick={onInitialise}>Initialise from a job…</button>

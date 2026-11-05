@@ -48,7 +48,7 @@ export function OverviewArea({ workspace, jobs, today, onEvidence, onOpenTab }: 
     <SetupProgress workspace={workspace} jobs={jobs} />
 
     <section className="nz-panel">
-      <CardHead eyebrow="Verification" title="Latest verified emissions" right={<button type="button" className="nz-editlink" onClick={() => onOpenTab("carbon")}>Carbon →</button>} />
+      <CardHead title="Latest verified emissions" right={<button type="button" className="nz-editlink" onClick={() => onOpenTab("carbon")}>Carbon →</button>} />
       {evidence.latest.value === null
         ? <Empty text="No reviewed snapshot has been issued for this client, so there is no verified headline yet." />
         : <div className="nz-card-b">
@@ -60,7 +60,7 @@ export function OverviewArea({ workspace, jobs, today, onEvidence, onOpenTab }: 
     {/* Every Overview card is collapsible and only this one opens by default
         (DESIGN_CONVENTIONS §3.2): what is being delivered now is what you came to see. */}
     <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" defaultOpen
-      title={<><span className="eyebrow">Delivery</span><h2>Active jobs &amp; milestone progress</h2></>}
+      title={<><h2>Active jobs &amp; milestone progress</h2></>}
       count={openJobs.length ? `${openJobs.length} open` : jobs.length ? "None open" : null}>
       <div className="nz-card-b" style={{ paddingBottom: 0, display: "flex", justifyContent: "flex-end" }}>
         <Link className="nz-editlink" href={clientJobsHref(client.id)}>New job →</Link>
@@ -85,7 +85,7 @@ export function OverviewArea({ workspace, jobs, today, onEvidence, onOpenTab }: 
     </Collapsible>
 
     <section className="nz-panel">
-      <CardHead eyebrow="Relationship" title="Key contacts" right={<button type="button" className="nz-editlink" onClick={() => onOpenTab("record")}>All contacts →</button>} />
+      <CardHead title="Key contacts" right={<button type="button" className="nz-editlink" onClick={() => onOpenTab("record")}>All contacts →</button>} />
       {keyContacts.length === 0
         ? <Empty text="No contact is recorded for this client." />
         : <div style={{ padding: "6px 16px 12px" }}>{keyContacts.map((contact) => <div className="nz-kv" key={contact.id}>
@@ -110,15 +110,15 @@ function SetupProgress({ workspace, jobs }: { workspace: ClientWorkspaceReadMode
   ];
   const done = steps.filter((step) => step.done).length;
   return <section className="nz-panel nz-setup">
-    <CardHead eyebrow="Setup" title="Client setup progress" right={<span className="sub">{done} of {steps.length} complete</span>} />
+    <CardHead title="Client setup progress" right={<span className="sub">{done} of {steps.length} complete</span>} />
     <div className="nz-card-b"><ol className="nz-steps">
       {steps.map((step) => <li key={step.label} className={step.done ? "done" : undefined}><span className="m" aria-hidden="true">{step.done ? "✓" : "○"}</span>{step.label}</li>)}
     </ol></div>
   </section>;
 }
 
-export function CardHead({ eyebrow, title, right }: { eyebrow: string; title: string; right?: ReactNode }) {
-  return <div className="nz-card-h"><span className="eyebrow">{eyebrow}</span><h2>{title}</h2><span className="sp" />{right}</div>;
+export function CardHead({ eyebrow, title, right }: { eyebrow?: string; title: string; right?: ReactNode }) {
+  return <div className="nz-card-h">{eyebrow ? <span className="eyebrow">{eyebrow}</span> : null}<h2>{title}</h2><span className="sp" />{right}</div>;
 }
 export function Metric({ label, value, note }: { label: string; value: string; note: string }) {
   return <div className="nz-metric"><div className="l">{label}</div><div className="v num">{value}</div><div className="sub">{note}</div></div>;

@@ -57,7 +57,7 @@ export function HistoryArea({ result }: { result: ScreenResult<HistoryPayload> }
   const limit = result.state === "success" || result.state === "degraded" ? result.data.limit : 0;
 
   return <section className="nz-panel" aria-labelledby="area-history">
-    <div className="nz-card-h"><span className="eyebrow">Record</span><h2 id="area-history">History</h2></div>
+    <div className="nz-card-h"><h2 id="area-history">History</h2></div>
     <div className="nz-card-b">
       {result.state === "loading" ? <p className="sub" role="status">Loading the client&apos;s history…</p> : null}
       {denied ? <p className="sub" role="status">Your role does not include reading this client&apos;s history — it needs the audit.view permission, and for a Consultant or Finance user, to be the client&apos;s owner.</p> : null}

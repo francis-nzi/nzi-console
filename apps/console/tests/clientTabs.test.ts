@@ -139,3 +139,50 @@ describe("the data entry template picker", () => {
     assert.doesNotMatch(sql, /rows_version\s*>\s*0/, "an empty master is no longer filtered out");
   });
 });
+
+describe("one title per section", () => {
+  const SECTION_FILES = ["ClientReportingTemplate.tsx", "ClientReportProfile.tsx", "ClientTabCards.tsx", "ClientTargets.tsx", "ProfileArea.tsx", "ClientContacts.tsx", "ClientSites.tsx",
+    "ClientIdentity.tsx", "AiProfileArea.tsx", "AnalyticsArea.tsx", "ReportingArea.tsx", "SrsArea.tsx", "CommsFilesAreas.tsx", "HistoryArea.tsx", "PortalManagementArea.tsx", "OverviewArea.tsx", "VehicleRegistrationsCard.tsx", "ClientPathway.tsx"];
+
+  it("never sets a group eyebrow in front of a section heading — the tab already names the group", () => {
+    for (const file of SECTION_FILES) {
+      assert.doesNotMatch(client(file), /className="eyebrow">[^<]*<\/(?:div|span)><h2/, `${file}: an eyebrow directly above an <h2>`);
+    }
+  });
+
+  it("collapses the named doubles to one plain heading", () => {
+    const rendered = client("ClientReportingTemplate.tsx") + client("ClientTabCards.tsx") + client("ProfileArea.tsx");
+    assert.match(rendered, /<h2>Data entry template<\/h2>/);
+    assert.match(rendered, /<h2>Baseline &amp; targets<\/h2>/);
+    assert.match(rendered, /<h2>Company profile<\/h2>/);
+    for (const doubled of ["Data entry</span><h2>Data entry template", "Record</div><h2>Company profile", "Commitment</span><h2>Baseline"]) assert.ok(!rendered.includes(doubled), doubled);
+  });
+
+  it("an eyebrow that is a CardHead prop is optional and renders nothing when absent", async () => {
+    const { CardHead } = await import("../app/clients/[clientId]/OverviewArea");
+    assert.doesNotMatch(renderToStaticMarkup(createElement(CardHead, { title: "Key contacts" })), /eyebrow/);
+    assert.match(renderToStaticMarkup(createElement(CardHead, { eyebrow: "FY25", title: "Scope split" })), /class="eyebrow">FY25</);
+  });
+});
+
+describe("helper prose sits behind an i-pill", () => {
+  it("the data entry template's description is in the InfoTip, not inline", async () => {
+    const { ReportingTemplateCard } = await import("../app/clients/[clientId]/ClientReportingTemplate");
+    const html = renderToStaticMarkup(createElement(ReportingTemplateCard, { template: { current: null, latestVersion: 0, categories: [], masters: [] } as never, access: { state: "allowed" } as never, onEdit: () => undefined, onInitialise: () => undefined, onInitialiseFromMaster: () => undefined }));
+    // Collapsed by default, so the head renders; the explanatory sentence must not be a bare paragraph.
+    assert.doesNotMatch(html, /<p class="sub">No data entry template yet\. It holds/);
+    const source = client("ClientReportingTemplate.tsx");
+    assert.match(source, /<InfoTip label="the data entry template">It holds the rows/);
+  });
+
+  it("targets, report profile, baseline record, client factors, portal access and report versions explain themselves in an InfoTip", () => {
+    assert.match(client("ClientTargets.tsx"), /<InfoTip label="targets">Targets are reductions against the baseline/);
+    assert.match(client("ClientReportProfile.tsx"), /<InfoTip label="the report profile">/);
+    assert.match(client("ClientTabCards.tsx"), /<InfoTip label="the baseline record">/);
+    assert.match(client("ProfileArea.tsx"), /<InfoTip label="client factors">/);
+    assert.match(client("ProfileArea.tsx"), /<InfoTip label="portal access">/);
+    assert.match(client("ReportingArea.tsx"), /<InfoTip label="report versions">/);
+    assert.doesNotMatch(client("ClientTargets.tsx"), /<p className="nz-maps">Targets are reductions/);
+    assert.doesNotMatch(client("ReportingArea.tsx"), /<p className="nz-maps">A published report/);
+  });
+});

@@ -32,7 +32,7 @@ export function AiProfileArea({ workspace }: { workspace: ClientWorkspaceReadMod
   const present = grounding.filter((item) => item.value.trim()).length;
 
   return <>
-    <div className="nz-cw-vhead"><div><div className="eyebrow">Advisory</div><h2>AI profile</h2></div><span style={{ flex: 1 }} />
+    <div className="nz-cw-vhead"><div><h2>AI profile</h2></div><span style={{ flex: 1 }} />
       <span className="sub">{present} of {grounding.length} grounding inputs on record</span></div>
     <p className="nz-cw-vsub">Grounded advisory context for this client. No advisory content is generated yet — this shows what any such context would have to be built from, and what is missing.</p>
 

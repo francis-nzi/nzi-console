@@ -58,7 +58,7 @@ export function AnalyticsArea({ workspace, onEvidence, access, onDrawer }: {
 
   if (history.length === 0) {
     return <section className="nz-panel">
-      <CardHead eyebrow="Carbon" title="Carbon analytics" />
+      <CardHead title="Carbon analytics" />
       <Empty text="No reviewed snapshot has been issued for this client, so there is nothing to analyse yet. Figures appear here once a CRP job issues its first verified year." />
     </section>;
   }
@@ -72,7 +72,7 @@ export function AnalyticsArea({ workspace, onEvidence, access, onDrawer }: {
     onClick={() => onDrawer({ kind: "intensity-metrics" })}>⚙ Manage metrics</GatedButton>;
 
   return <>
-    <div className="nz-cw-vhead"><div><div className="eyebrow">Carbon</div><h2>Carbon analytics</h2></div><span style={{ flex: 1 }} />
+    <div className="nz-cw-vhead"><div><h2>Carbon analytics</h2></div><span style={{ flex: 1 }} />
       <label className="nz-fl nz-cw-yearpick"><span>Reporting year</span>
         <select className="nz-sel" value={selected?.year ?? ""} onChange={(event) => setPickedYear(Number(event.target.value))} aria-label="Reporting year">
           {history.map((year) => <option key={year.snapshotId} value={year.year}>{fyLabel(year.year)} · {year.jobNumber}</option>)}

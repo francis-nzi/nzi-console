@@ -53,7 +53,7 @@ export function ClientProfileCard({ client, onEdit }: { client: ClientScreenRead
   const profile = client.profile;
   const fye = monthName(profile.financialYearEndMonth);
   return <section className="nz-panel">
-    <div className="nz-card-h"><span className="eyebrow">Company</span><h2>Identity &amp; profile</h2><span className="sp" /><button type="button" className="nz-editlink" onClick={onEdit}>Edit</button></div>
+    <div className="nz-card-h"><h2>Identity &amp; profile</h2><span className="sp" /><button type="button" className="nz-editlink" onClick={onEdit}>Edit</button></div>
     <div style={{ padding: "6px 16px 12px" }}>
       <Kv label="Industry" value={client.sector || "—"} />
       <Kv label="SIC" value={profile.industrySic || "—"} />

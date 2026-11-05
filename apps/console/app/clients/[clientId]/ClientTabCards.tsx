@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Collapsible } from "@nzi/ui";
+import { Collapsible, InfoTip } from "@nzi/ui";
 import type { ClientWorkspaceReadModel, JobScreenReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
@@ -23,7 +23,7 @@ import type { DrawerRequest } from "./clientDrawers";
 
 /** Carbon: the verified years, newest first. */
 export function EmissionsHistoryCard({ history }: { history: ClientWorkspaceReadModel["history"] }) {
-  return <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<><span className="eyebrow">Verification</span><h2>Emissions history</h2></>} count={history.length ? `${history.length} verified year${history.length === 1 ? "" : "s"}` : "None yet"}>
+  return <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h" title={<h2>Emissions history</h2>} count={history.length ? `${history.length} verified year${history.length === 1 ? "" : "s"}` : "None yet"}>
     {history.length === 0
       ? <Empty text="No reviewed snapshot has been issued for this client, so there is no verified history yet." />
       : <table className="nz-tbl"><thead><tr><th>Year</th><th>Job</th><th className="num">Total</th><th>Scope split</th><th>Issued</th></tr></thead><tbody>
@@ -44,14 +44,14 @@ export function BaselineTargetsCard({ workspace, access, onDrawer }: {
 }) {
   const { targets } = workspace;
   return <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h"
-    title={<><span className="eyebrow">Commitment</span><h2>Baseline &amp; targets</h2></>}
+    title={<h2>Baseline &amp; targets</h2>}
     count={targets.model ? "Targets set" : targets.benchmarkInForce ? "No targets set" : "No baseline"}>
     <ClientTargets targets={targets} access={access} onEdit={() => onDrawer({ kind: "targets" })} hideHead />
     {/* Phase 1b — the intensity targets live beside net zero; the job keeps only the year's Value. */}
     <ClientIntensityTargets metrics={workspace.intensityMetrics ?? []} targets={workspace.intensityTargets ?? []} access={access} onEdit={(metricKey) => onDrawer({ kind: "intensity-target", metricKey })} />
     <div className="nz-card-b" style={{ paddingTop: 0 }}>
       <button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "rebaseline" })}>⇄ Re-baseline / recalculate</button>
-      <p className="nz-maps">The dated baseline record and its history timeline arrive with <code>client_baselines</code>; the baseline in force is shown above.</p>
+      <InfoTip label="the baseline record">The dated baseline record and its history timeline arrive with <code>client_baselines</code>; the baseline in force is shown above.</InfoTip>
     </div>
   </Collapsible>;
 }
@@ -61,7 +61,7 @@ export function ActivityCard({ jobs }: { jobs: JobScreenReadModel[] }) {
   const activity = jobs.flatMap((job) => job.stageHistory.map((event) => ({ ...event, jobId: job.header.id, jobNumber: job.header.number })))
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, 6);
   return <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h"
-    title={<><span className="eyebrow">Relationship</span><h2>Activity</h2></>}
+    title={<h2>Activity</h2>}
     count={activity.length ? String(activity.length) : "None yet"}>
     {activity.length === 0
       ? <Empty text="No workflow changes have been recorded for this client." />

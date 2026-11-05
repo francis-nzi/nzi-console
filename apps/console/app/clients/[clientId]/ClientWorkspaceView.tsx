@@ -180,7 +180,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           <CommsArea workspace={workspace} />
           {canManagePortal
             ? <PortalManagementArea clientId={client.id} clientOwnerUserId={client.ownerUserId ?? null} writeEnabled={writeEnabled} />
-            : <section className="nz-panel" aria-labelledby="area-portal"><div className="nz-card-h"><span className="eyebrow">Manage</span><h2 id="area-portal">Portal Management</h2></div><div className="nz-card-b"><p className="sub" role="status">Portal Management is not available here: it is not switched on yet, or your role does not include portal administration for this client.</p></div></section>}
+            : <section className="nz-panel" aria-labelledby="area-portal"><div className="nz-card-h"><h2 id="area-portal">Portal Management</h2></div><div className="nz-card-b"><p className="sub" role="status">Portal Management is not available here: it is not switched on yet, or your role does not include portal administration for this client.</p></div></section>}
           {canReadHistory ? <HistoryArea result={auditHistory} /> : null}
           <ActivityCard jobs={jobs} />
         </>;
