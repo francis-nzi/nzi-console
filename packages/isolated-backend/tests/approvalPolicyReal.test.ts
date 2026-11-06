@@ -149,10 +149,11 @@ describe("the organisation approval policy, against a real database (0215)", { s
     assert.equal(audit.after_json.releasedByPreparer, true, "still audited as a self-release");
   }));
 
-  it("OFF still gives nothing to a preparer without the release capability (the CRM gap), and the same value twice is NO_CHANGE", () => withFlag(undefined, async () => {
-    const id = await snapshot("crm");
-    await assert.rejects(approveReviewedCrpSnapshot(database.pool, { reviewedSnapshotId: id }, context("crm", "consultant")), (error: unknown) => error instanceof AuthorizationError);
-    assert.deepEqual(await snapshotRow(id), { created_by: "crm", approved_by: null, self_approved: false });
+  it("OFF still gives nothing to a preparer without the release capability (finance), and the same value twice is NO_CHANGE", () => withFlag(undefined, async () => {
+    // Finance, not the consultant: since matrix v12 the consultant holds snapshot.review, so the setting - not the capability - decides for them.
+    const id = await snapshot("fin");
+    await assert.rejects(approveReviewedCrpSnapshot(database.pool, { reviewedSnapshotId: id }, context("fin", "finance")), (error: unknown) => error instanceof AuthorizationError);
+    assert.deepEqual(await snapshotRow(id), { created_by: "fin", approved_by: null, self_approved: false });
     await assert.rejects(setPolicy(false, 1), isIssue("NO_CHANGE"));
   }));
 
@@ -233,7 +234,7 @@ describe("the organisation approval policy, against a real database (0215)", { s
       assert.equal("releasedByPreparer" in done.data, false);
     }));
 
-    it("OFF: the same preparer may give the final approval - audited as a self-release - but a role without the release capability still may not", () => withFlag(undefined, async () => {
+    it("OFF: the same preparer may give the final approval - audited as a self-release - but a role without the release capability (finance) still may not", () => withFlag(undefined, async () => {
       await ensure(false, "One CRM prepares and finally approves");
       const round = await clientApprovedRound();
       const done = await round.finalApprove("francis", "admin");
@@ -241,7 +242,7 @@ describe("the organisation approval policy, against a real database (0215)", { s
       const audit = (await q(`SELECT after_json FROM nzi_console.audit_events WHERE action = 'report_final_approved' AND entity_id = $1`, [round.reportVersionId]))[0];
       assert.equal(audit.after_json.releasedByPreparer, true, "still audited");
       const second = await clientApprovedRound();
-      await assert.rejects(second.finalApprove("crm", "consultant"), AuthorizationError, "the CRM role holds no report.publish: the capability check stays");
+      await assert.rejects(second.finalApprove("fin", "finance"), AuthorizationError, "finance holds no report.publish: the capability check stays");
     }));
 
     it("fail-closed at the final approval: an unreadable setting refuses it even when the server variable says false", async () => {
