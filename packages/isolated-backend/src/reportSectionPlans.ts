@@ -8,7 +8,7 @@
 // publish's expectedVersion stays honest. Payloads carry section keys, an origin and a yes/no for the issuer line — never the
 // line's words, money or a person (NZC-120).
 import {
-  defaultReportSectionPlan, reportSectionPlanIssues, reportSectionPlanOrigin,
+  defaultReportSectionPlan, reportEditRefusal, reportSectionPlanIssues, reportSectionPlanOrigin, staffMayEditPlan,
   type CommandContext, type CommandInputMap, type ReportSectionPlan, type ReportSectionPlanOrigin,
 } from "@nzi/contracts";
 import { VersionConflictError } from "./errors";
@@ -98,7 +98,8 @@ export function updateReportSectionPlan(pool: PoolLike, input: CommandInputMap["
         FOR UPDATE OF r`, [context.organisationId, input.reportVersionId])).rows[0];
     if (!row) throw new CommandValidationError([{ field: "reportVersionId", code: "NOT_FOUND", message: "Report version was not found." }]);
     if (row.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, row.version);
-    if (row.status !== "validated") throw new CommandValidationError([{ field: "reportVersionId", code: "PRECONDITION", message: "Only a validated report's sections can be reordered — a published report is fixed as it was issued." }]);
+    // S1: an allow-list — the order is set before a version goes to the client; once it has, or once published, it is a reopen.
+    if (!staffMayEditPlan(row.status)) throw new CommandValidationError([{ field: "reportVersionId", code: "PRECONDITION", message: row.status === "validated" ? "This change is not available at this stage." : `Only a validated report's sections can be reordered. ${reportEditRefusal(row.status)}` }]);
     const source = (await db.query<{ created_by: string; approved_by: string | null } & CrpSnapshotForManifest>(
       `SELECT created_by, approved_by, job_id, data_hash, created_at, payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND snapshot_id = $2`,
       [context.organisationId, row.reviewed_snapshot_id])).rows[0];

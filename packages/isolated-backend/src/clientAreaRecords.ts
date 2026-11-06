@@ -1,3 +1,4 @@
+import type { ReportVersionStatus } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
 
 /**
@@ -19,7 +20,7 @@ export type ClientReportReadModel = {
   jobNumber: string;
   title: string;
   reportingYear: number | null;
-  status: "draft" | "validated" | "published" | "superseded";
+  status: ReportVersionStatus;
   manifestVersion: number;
   snapshotId: string;
   createdAt: string;

@@ -22,6 +22,7 @@ import { plainInternalNames, plainInternalNamesDeep } from "@nzi/contracts";
 import { DATASET_EDITION_SUFFIX, datasetDisplayLabel, datasetPreferenceRank, isPreferredDataset, resolveReportLabel, reportScopeLabel, type ReportScope } from "@nzi/contracts";
 import { todayInLondon } from "@nzi/contracts";
 import { spendCarryKey } from "@nzi/contracts";
+import type { ReportVersionStatus } from "@nzi/contracts";
 import { storedCarryForwardBasis } from "./carryForwardBasis";
 import { VEHICLE_CATEGORY_CODE, vehicleIdentityKey, vehicleRegistrationReader } from "./vehicleRegistrations";
 import { listClientSites, resolveJobSiteBoundary, rowIsInBoundary } from "./siteBoundary";
@@ -29,7 +30,7 @@ import { resolveJobReportedIntensity } from "./jobReportedIntensity";
 
 export type ClientStatus = "active" | "onboarding" | "at-risk" | "prospect";
 export type AuditEventReadModel={id:string;at:string;actor:string;principal:"staff"|"portal"|"system";organisation:string;action:string;entity:string;entityId:string;result:"allowed";severity:"info"|"warning";correlationId:string;before?:string;after?:string;reason?:string};
-export type ReportVersionRegisterItem={reportVersionId:string;jobId:string;jobNumber:string;client:string;reportingYear:number|null;status:"draft"|"validated"|"published"|"superseded";manifestVersion:number;snapshotId:string;dataHash:string;createdAt:string;publishedAt:string|null;approvalCount:number;commentCount:number;/** S-1 (0163): the view the version issues. */scope:ReportScope;scopeLabel:string;/** F-1b: the row's version, which report.publish pins (a section-plan change moves it). */version:number};
+export type ReportVersionRegisterItem={reportVersionId:string;jobId:string;jobNumber:string;client:string;reportingYear:number|null;status:ReportVersionStatus;manifestVersion:number;snapshotId:string;dataHash:string;createdAt:string;publishedAt:string|null;approvalCount:number;commentCount:number;/** S-1 (0163): the view the version issues. */scope:ReportScope;scopeLabel:string;/** F-1b: the row's version, which report.publish pins (a section-plan change moves it). */version:number};
 export type DatasetRegistryItem={id:string;name:string;/** DATASET-CURRENCY §2: derived "DESNZ GB 2025"; `name` is as imported. */label:string;version:string;validFrom:string;validTo:string;country:string;scopes:Array<"1"|"2"|"3">;method:"activity"|"spend"|"mixed";source:string;analysisType:"published-source";year:number;licence:string;status:"active"|"superseded"|"draft";factorCount:number;usedByJobs:number;synthetic:boolean};
 export type DatasetRegistryIssue={id:string;severity:"warning"|"error";datasetId:string;jobNumber:string;message:string;state:"open"|"resolved"};
 /** One role of the current permission matrix (NZC-022): what it holds (`own` = own clients only) and what it does not. */

@@ -78,6 +78,12 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "report.validate": (input) => ({ kind: "snapshot", id: input.reviewedSnapshotId }),
   "report.sectionPlan.update": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "report.narrative.update": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
+  // Client-review loop S1: every transition concerns one report version, resolved to its client like publish. The client's own
+  // approval is held to the portal user's live grant on the version's job (`authorizePortalReportCommand`).
+  "report.sendToClientReview": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
+  "report.clientApprove": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
+  "report.finalApprove": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
+  "report.reopen": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "client.reportProfile.set": client,
   "client.reportProfile.deactivate": client,
   "report.snapshot.create": job,
@@ -414,6 +420,7 @@ async function authorizePortalCommand<K extends CommandKey>(db: Queryable, key: 
   if (context.portal.portalUserId !== context.actorId) throw new AuthorizationError("tenant", "The command's portal identity belongs to a different user.");
   const subject = subjectOf[key](input);
   if ((commandDefinitions[key] as { permission: string }).permission === "portal.plan") return authorizePortalPlanCommand(db, subject, context);
+  if ((commandDefinitions[key] as { permission: string }).permission === "portal.review") return authorizePortalReportCommand(db, subject, context);
   // Portal files: the client's own, by an active user — the same session rule as the plan; the file's job grant is the handler's.
   if (key === "portal.file.upload" || key === "portal.file.download" || key === "portal.thread.start" || key === "portal.message.post" || key === "portal.thread.read" || key === "portal.notices.seen") return authorizePortalPlanCommand(db, subject, context);
   if (subject.kind !== "job") throw new AuthorizationError("tenant", TENANT_REFUSED);
@@ -446,6 +453,27 @@ async function authorizePortalPlanCommand(db: Queryable, subject: Subject, conte
     `SELECT status FROM nzi_console.portal_users WHERE organisation_id = $1 AND portal_user_id = $2 AND client_id = $3`,
     [context.organisationId, portal.portalUserId, portal.clientId])).rows[0];
   if (user?.status !== "active") throw new AuthorizationError("tenant", "Your portal account is not active.");
+  return { ...access, ownedByActor: false };
+}
+
+/**
+ * Client-review loop S1: a client's act on a report round. The report must belong to the portal user's own client, the user must be
+ * **active**, and hold a **live access grant on the report's job** (the join `requireGrantedCurrentReport` uses, retargeted from
+ * published reports to the review rounds). No data-entry window applies. What the report's status then allows is the handler's.
+ */
+async function authorizePortalReportCommand(db: Queryable, subject: Subject, context: CommandContext): Promise<ClientAccess> {
+  const portal = context.portal!;
+  if (subject.kind !== "reportVersion") throw new AuthorizationError("tenant", TENANT_REFUSED);
+  const access = await resolveAccess(db, context.organisationId, context.actorId, "reportVersion", subject.id);
+  if (access.clientId !== portal.clientId) throw new AuthorizationError("tenant", "That report is not available to your account.");
+  const granted = (await db.query(
+    `SELECT 1 FROM nzi_console.report_versions r
+       JOIN nzi_console.portal_access_grants g ON (g.organisation_id, g.job_id) = (r.organisation_id, r.job_id)
+       JOIN nzi_console.portal_users u ON (u.organisation_id, u.portal_user_id, u.client_id) = (g.organisation_id, g.portal_user_id, g.client_id)
+      WHERE r.organisation_id = $1 AND r.report_version_id = $2 AND g.portal_user_id = $3 AND g.client_id = $4
+        AND g.revoked_at IS NULL AND u.status = 'active'`,
+    [context.organisationId, subject.id, portal.portalUserId, portal.clientId])).rows[0];
+  if (!granted) throw new AuthorizationError("tenant", "That report is not available to your account.");
   return { ...access, ownedByActor: false };
 }
 
