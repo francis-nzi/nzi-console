@@ -24,7 +24,7 @@ code.** It closes the ad-hoc `finance.manage` / `financials.edit` naming the rev
 | Role | Who | Shape |
 |---|---|---|
 | **Admin** | Org owner / platform admin | Everything, incl. the Admin Centre |
-| **Consultant** | Account owner / CRM owner (the main staff role) | Owns clients & jobs; prepares, but does not self-approve assurance |
+| **Consultant** | Account owner / CRM owner (the main staff role) | Owns clients & jobs; prepares, approves the snapshot and releases the report (v12). Independent approval still bars doing so to their own work unless the organisation setting is off |
 | **Reviewer** | Assurance / QA | Approves snapshots and publishes; does not prepare |
 | **Finance** | Commercial / billing | The commercial ledger; read-only on the client record |
 | **Viewer** | Read-only staff | Sees, changes nothing |
@@ -47,9 +47,9 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `baseline.rebaseline` ⚑ | ✓ | ✓ | — | — | — |
 | `job.manage` (create/edit) | ✓ | ✓ | — | — | — |
 | `scoperow.edit` | ✓ | ✓ | — | — | — |
-| `snapshot.review` (approve) ⚑ | ✓ | — | ✓ | — | — |
+| `snapshot.review` (approve) ⚑ | ✓ | ✓ | ✓ | — | — |
 | `report.edit` | ✓ | ✓ | — | — | — |
-| `report.publish` ⚑ | ✓ | — | ✓ | — | — |
+| `report.publish` ⚑ | ✓ | ✓ | ✓ | — | — |
 | `report.view` | ✓ | ✓ | R | R | R |
 | `strategy.manage` | ✓ | ✓ | — | — | — |
 | `srs.manage` | ✓ | ✓ | — | — | — |
@@ -155,3 +155,13 @@ reconciled to a row here or added as one.
 - Role→capability mapping lives in migration-owned config (no request-time DDL), and is
   versioned like other calc-adjacent config.
 - Mark **NZC-022 = Resolved** in `DECISIONS.md`, pointing to this file.
+
+- **Consultant release (matrix v12, 0216; RULING-consultant-report-capabilities).** The Consultant gains `snapshot.review` and
+  `report.publish` (both `all`), so a consultant CRM who runs a whole job can approve its snapshot and release the report
+  themselves: create snapshot → approve → validate → send to client review → final-approve → publish → reopen. **This is the
+  capability, not an exemption:** with the organisation's independent-approval setting ON (every organisation's default) they
+  still cannot approve or release their *own* work; with it OFF (NZI) they can, recorded as a self-release. The accepted blast
+  radius is everything those two capabilities gate: `snapshot.review` — `report.snapshot.approve`, `scope.review.approve` /
+  `.reject` / `.attest_reingest`, `training.run.review`, `assurance.gap.resolve`, `lca.assessment.review.approve` / `.reject`;
+  `report.publish` — `report.publish`, `report.validate`, `report.sendToClientReview`, `report.finalApprove`, `report.reopen`,
+  `report.sectionPlan.update`, and the self-approval path (`SELF_APPROVAL_CAPABILITY`). A test pins that list.

@@ -1,0 +1,107 @@
+BEGIN;
+
+-- Permission matrix version 12.
+--
+-- Generated from ROLE_CAPABILITY_MATRIX by scripts/generate-matrix.ts, so the migration and
+-- the code copy cannot disagree by transcription. A test holds them equal.
+--
+-- The matrix is migration-owned and versioned, so this is a NEW version rather than an edit
+-- of the last one: a principal resolved against an earlier version keeps meaning what it
+-- meant when it was resolved.
+--
+-- v12 — consultant gains snapshot.review and report.publish (RULING-consultant-report-capabilities): a consultant CRM approves the snapshot and releases the report; independent approval (NZC-022) still bars approving or releasing their own work unless the organisation setting is off. Nothing else changes.
+
+INSERT INTO nzi_console.staff_capability_matrix_versions (matrix_version, source, note)
+VALUES (12, 'docs/PERMISSION_MATRIX.md', 'v12 — consultant gains snapshot.review and report.publish (RULING-consultant-report-capabilities): a consultant CRM approves the snapshot and releases the report; independent approval (NZC-022) still bars approving or releasing their own work unless the organisation setting is off. Nothing else changes.');
+
+INSERT INTO nzi_console.staff_role_capabilities (matrix_version, role_id, capability, scope) VALUES
+  (12, 'admin', 'client.view', 'all'),
+  (12, 'admin', 'client.create', 'all'),
+  (12, 'admin', 'client.edit', 'all'),
+  (12, 'admin', 'client.deactivate', 'all'),
+  (12, 'admin', 'contact.manage', 'all'),
+  (12, 'admin', 'site.manage', 'all'),
+  (12, 'admin', 'target.edit', 'all'),
+  (12, 'admin', 'baseline.rebaseline', 'all'),
+  (12, 'admin', 'job.manage', 'all'),
+  (12, 'admin', 'scoperow.edit', 'all'),
+  (12, 'admin', 'snapshot.review', 'all'),
+  (12, 'admin', 'report.edit', 'all'),
+  (12, 'admin', 'report.publish', 'all'),
+  (12, 'admin', 'report.view', 'all'),
+  (12, 'admin', 'strategy.manage', 'all'),
+  (12, 'admin', 'srs.manage', 'all'),
+  (12, 'admin', 'training.manage', 'all'),
+  (12, 'admin', 'training.entitlement.manage', 'all'),
+  (12, 'admin', 'finance.view', 'all'),
+  (12, 'admin', 'finance.manage', 'all'),
+  (12, 'admin', 'portal.admin', 'all'),
+  (12, 'admin', 'category.visibility', 'all'),
+  (12, 'admin', 'subject.review', 'all'),
+  (12, 'admin', 'subject.export', 'all'),
+  (12, 'admin', 'subject.erase', 'all'),
+  (12, 'admin', 'clientfactor.manage', 'all'),
+  (12, 'admin', 'dataset.manage', 'all'),
+  (12, 'admin', 'factor.manage', 'all'),
+  (12, 'admin', 'admin.users', 'all'),
+  (12, 'admin', 'staff.invite', 'all'),
+  (12, 'admin', 'staff.credential.reset', 'all'),
+  (12, 'admin', 'admin.lookups', 'all'),
+  (12, 'admin', 'admin.templates', 'all'),
+  (12, 'admin', 'admin.settings', 'all'),
+  (12, 'admin', 'audit.view', 'all'),
+  (12, 'admin', 'support.portal_impersonate', 'all'),
+  (12, 'admin', 'knowledge.capture', 'all'),
+  (12, 'admin', 'knowledge.approve', 'all'),
+  (12, 'admin', 'knowledge.publish', 'all'),
+  (12, 'admin', 'time.log', 'all'),
+  (12, 'admin', 'time.view', 'all'),
+  (12, 'consultant', 'client.view', 'all'),
+  (12, 'consultant', 'client.create', 'all'),
+  (12, 'consultant', 'client.edit', 'all'),
+  (12, 'consultant', 'contact.manage', 'all'),
+  (12, 'consultant', 'site.manage', 'all'),
+  (12, 'consultant', 'target.edit', 'all'),
+  (12, 'consultant', 'job.manage', 'all'),
+  (12, 'consultant', 'scoperow.edit', 'all'),
+  (12, 'consultant', 'report.edit', 'all'),
+  (12, 'consultant', 'report.view', 'all'),
+  (12, 'consultant', 'strategy.manage', 'all'),
+  (12, 'consultant', 'srs.manage', 'all'),
+  (12, 'consultant', 'training.manage', 'all'),
+  (12, 'consultant', 'training.entitlement.manage', 'all'),
+  (12, 'consultant', 'finance.view', 'all'),
+  (12, 'consultant', 'clientfactor.manage', 'all'),
+  (12, 'consultant', 'support.portal_impersonate', 'all'),
+  (12, 'consultant', 'snapshot.review', 'all'),
+  (12, 'consultant', 'report.publish', 'all'),
+  (12, 'consultant', 'knowledge.capture', 'all'),
+  (12, 'consultant', 'knowledge.approve', 'all'),
+  (12, 'consultant', 'baseline.rebaseline', 'own_clients'),
+  (12, 'consultant', 'portal.admin', 'own_clients'),
+  (12, 'consultant', 'category.visibility', 'own_clients'),
+  (12, 'consultant', 'audit.view', 'own_clients'),
+  (12, 'consultant', 'time.log', 'own_clients'),
+  (12, 'consultant', 'time.view', 'own_clients'),
+  (12, 'reviewer', 'client.view', 'all'),
+  (12, 'reviewer', 'snapshot.review', 'all'),
+  (12, 'reviewer', 'report.publish', 'all'),
+  (12, 'reviewer', 'report.view', 'all'),
+  (12, 'reviewer', 'audit.view', 'all'),
+  (12, 'reviewer', 'knowledge.capture', 'all'),
+  (12, 'reviewer', 'time.log', 'all'),
+  (12, 'reviewer', 'time.view', 'all'),
+  (12, 'finance', 'client.view', 'all'),
+  (12, 'finance', 'report.view', 'all'),
+  (12, 'finance', 'finance.view', 'all'),
+  (12, 'finance', 'finance.manage', 'all'),
+  (12, 'finance', 'knowledge.capture', 'all'),
+  (12, 'finance', 'time.log', 'all'),
+  (12, 'finance', 'time.view', 'all'),
+  (12, 'finance', 'audit.view', 'own_clients'),
+  (12, 'viewer', 'client.view', 'all'),
+  (12, 'viewer', 'report.view', 'all'),
+  (12, 'viewer', 'knowledge.capture', 'all'),
+  (12, 'viewer', 'time.log', 'all');
+
+COMMIT;

@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { capabilities, commandDefinitions, commandGrantForRole, isCapability, PERMISSION_MATRIX_VERSION, ROLE_CAPABILITY_MATRIX, roleCapabilityGrants, staffRoles, type CommandInputMap, type StaffRole } from "@nzi/contracts";
+import { capabilities, commandDefinitions, commandGrantForRole, isCapability, PERMISSION_MATRIX_VERSION, ROLE_CAPABILITY_MATRIX, roleCapabilityGrants, SELF_APPROVAL_CAPABILITY, separationOfDutiesCapabilities, staffRoles, type CommandInputMap, type StaffRole } from "@nzi/contracts";
 import {
   approveScopeRow, auditEventsFor, AuthorizationError, capabilitiesFromRows, CommandValidationError, listAuditEvents, listPortalAccess, resolveStaffPrincipal,
   setPortalJobAccess, updateClient, upsertEmissionsTarget, type StaffPrincipal,
@@ -34,6 +34,8 @@ const matrixMigrationV9 = readFileSync(resolve(here, "../migrations/0156_permiss
 const matrixMigrationV10 = readFileSync(resolve(here, "../migrations/0157_permission_matrix_v10.sql"), "utf8");
 // v11 — Admin gains staff.credential.reset: resetting an enrolled member's sign-in (0204).
 const matrixMigrationV11 = readFileSync(resolve(here, "../migrations/0204_permission_matrix_v11.sql"), "utf8");
+// v12 — Consultant gains snapshot.review and report.publish: a consultant CRM approves the snapshot and releases the report (0216).
+const matrixMigrationV12 = readFileSync(resolve(here, "../migrations/0216_permission_matrix_v12.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -44,7 +46,8 @@ const matrixMigrationV11 = readFileSync(resolve(here, "../migrations/0204_permis
 // version in force, so adding a version means adding its file here and nothing else —
 // earlier versions stay readable, which is the point of versioning the matrix at all.
 const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}\n${matrixMigrationV4}\n${matrixMigrationV5}\n${matrixMigrationV6}\n${matrixMigrationV7}\n${matrixMigrationV8}\n${matrixMigrationV9}\n${matrixMigrationV10}
-${matrixMigrationV11}`;
+${matrixMigrationV11}
+${matrixMigrationV12}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 
@@ -101,8 +104,8 @@ describe("the permission matrix (NZC-022)", () => {
     assert.equal(has("consultant", "portal.admin"), "own_clients");
     assert.equal(has("consultant", "audit.view"), "own_clients");
     assert.equal(has("finance", "audit.view"), "own_clients");
-    assert.equal(has("consultant", "snapshot.review"), undefined);
-    assert.equal(has("consultant", "report.publish"), undefined);
+    assert.equal(has("consultant", "snapshot.review"), "all", "v12: a consultant CRM approves the snapshot");
+    assert.equal(has("consultant", "report.publish"), "all", "v12: and releases the report");
     assert.equal(has("reviewer", "report.edit"), undefined);
     assert.equal(has("reviewer", "scoperow.edit"), undefined);
     assert.equal(has("finance", "client.edit"), undefined);
@@ -299,5 +302,40 @@ describe("non-command checks use the same rule", () => {
       else assert.deepEqual(queried[0], [100, scope === "own_clients" ? `${role}-a` : null], role);
     }
     assert.ok(staffRoles.some((role) => !roleCapabilityGrants(role).some((grant) => grant.capability === "audit.view")), "some role lacks audit.view");
+  });
+});
+
+// v12 (RULING-consultant-report-capabilities): the consultant holds snapshot.review and report.publish. What those two capabilities
+// unlock is pinned as an explicit list - the accepted blast radius - so any command added to either, or either capability widened to
+// another role, trips a test and is a decision rather than a drift.
+describe("the consultant's release capabilities (matrix v12)", () => {
+  const unlockedBy = (capability: string) => Object.values(commandDefinitions).filter((definition) => (definition as { permission: string }).permission === capability).map((definition) => definition.key).sort();
+  const holders = (capability: string) => staffRoles.filter((role) => capability in ROLE_CAPABILITY_MATRIX[role]);
+
+  it("snapshot.review unlocks exactly these commands - the accepted blast radius", () => {
+    assert.deepEqual(unlockedBy("snapshot.review"), [
+      "assurance.gap.resolve", "lca.assessment.review.approve", "lca.assessment.review.reject", "report.snapshot.approve",
+      "scope.review.approve", "scope.review.attest_reingest", "scope.review.reject", "training.run.review"]);
+  });
+  it("report.publish unlocks exactly these commands - the accepted blast radius", () => {
+    assert.deepEqual(unlockedBy("report.publish"), ["report.finalApprove", "report.publish", "report.reopen", "report.sectionPlan.update", "report.sendToClientReview", "report.validate"]);
+  });
+  it("is held by admin, consultant and reviewer - and by no other role", () => {
+    assert.deepEqual(holders("snapshot.review"), ["admin", "consultant", "reviewer"]);
+    assert.deepEqual(holders("report.publish"), ["admin", "consultant", "reviewer"]);
+    for (const role of ["finance", "viewer"] as const) for (const capability of ["snapshot.review", "report.publish"]) assert.equal(ROLE_CAPABILITY_MATRIX[role][capability as never], undefined, `${role} ${capability}`);
+  });
+  it("gives the consultant both at scope 'all' and the same self-approval capability the gate checks", () => {
+    assert.equal(ROLE_CAPABILITY_MATRIX.consultant["snapshot.review"], "all");
+    assert.equal(ROLE_CAPABILITY_MATRIX.consultant["report.publish"], "all");
+    assert.equal(SELF_APPROVAL_CAPABILITY, "report.publish");
+    assert.deepEqual([...separationOfDutiesCapabilities], ["snapshot.review", "report.publish"], "both are separation-of-duties capabilities: holding them is not an exemption");
+  });
+  it("the version is 12 and the consultant's full capability set is pinned", () => {
+    assert.equal(PERMISSION_MATRIX_VERSION, 12);
+    assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.consultant).sort(), [
+      "audit.view", "baseline.rebaseline", "category.visibility", "clientfactor.manage", "client.create", "client.edit", "client.view", "contact.manage", "finance.view",
+      "job.manage", "knowledge.approve", "knowledge.capture", "portal.admin", "report.edit", "report.publish", "report.view", "scoperow.edit", "site.manage", "snapshot.review",
+      "srs.manage", "strategy.manage", "support.portal_impersonate", "target.edit", "time.log", "time.view", "training.entitlement.manage", "training.manage"].sort());
   });
 });

@@ -24,15 +24,20 @@ describe("snapshot approval access on the job", () => {
   });
 
   it("flag false: a preparer without the self-approval capability is still refused", () => {
-    const consultant = me("consultant");
-    assert.equal(snapshotActAccess(consultant, frozenBy("francis"), "snapshot.review", false).state, "denied");
+    const finance = me("finance");
+    assert.equal(snapshotActAccess(finance, frozenBy("francis"), "snapshot.review", false).state, "denied");
+    // v12: a consultant holds both capabilities, so the setting decides: relaxed lets them release their own work, required does not.
+    assert.equal(snapshotActAccess(me("consultant"), frozenBy("francis"), "snapshot.review", false).state, "allowed");
+    assert.equal(snapshotActAccess(me("consultant"), frozenBy("francis"), "report.publish", false).state, "allowed");
+    assert.equal(snapshotActAccess(me("consultant"), frozenBy("francis"), "snapshot.review", true).state, "denied");
+    assert.equal(snapshotActAccess(me("consultant"), frozenBy("francis"), "report.publish", true).state, "denied");
     // Holding the approve capability is not enough — self-approval rides report.publish.
     const approverOnly: StaffMe = { ...me("reviewer"), capabilities: [{ capability: "snapshot.review", scope: "all" }] };
     assert.deepEqual(snapshotActAccess(approverOnly, frozenBy("francis"), "snapshot.review", false), { state: "denied", reason: "You prepared this snapshot, so another person must approve it." });
   });
 
   it("a role without the command's own capability is refused whatever the flag", () => {
-    assert.equal(snapshotActAccess(me("consultant", "carol"), frozenBy("francis"), "snapshot.review", false).state, "denied");
+    assert.equal(snapshotActAccess(me("finance", "carol"), frozenBy("francis"), "snapshot.review", false).state, "denied");
     assert.equal(snapshotActAccess(me("viewer", "vic"), frozenBy("francis"), "report.publish", false).state, "denied");
   });
 

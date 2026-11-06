@@ -26,6 +26,7 @@ const messageNotifications = readFileSync(resolve(here, "../migrations/0206_port
 const firstName = readFileSync(resolve(here, "../migrations/0207_first_name.sql"), "utf8").replace(/\r\n/g, "\n");
 const verificationWording = readFileSync(resolve(here, "../migrations/0208_verification_wording.sql"), "utf8").replace(/\r\n/g, "\n");
 const matrixV11 = readFileSync(resolve(here, "../migrations/0204_permission_matrix_v11.sql"), "utf8");
+const matrixV12 = readFileSync(resolve(here, "../migrations/0216_permission_matrix_v12.sql"), "utf8");
 const clientTargetsMigration = readFileSync(resolve(here, "../migrations/0069_client_targets.sql"), "utf8");
 const clientIntensityTargetsMigration = readFileSync(resolve(here, "../migrations/0158_client_intensity_targets.sql"), "utf8");
 const clientReportingTemplatesMigration = readFileSync(resolve(here, "../migrations/0159_client_reporting_templates.sql"), "utf8");
@@ -329,6 +330,13 @@ describe("isolated Postgres migrations", () => {
     assert.deepEqual([...v11].filter((row) => !v10.has(row)), ["admin staff.credential.reset all"], "the one added grant");
     assert.deepEqual([...v10].filter((row) => !v11.has(row)), [], "nothing removed or narrowed");
     assert.doesNotMatch(matrixV11, /GRANT|ALTER TABLE|UPDATE nzi_console/, "a matrix version changes rows, not schema or grants");
+  });
+  it("versions the matrix to 12, adding snapshot.review and report.publish for the consultant and changing nothing else (0216)", () => {
+    const rows = (sql: string, version: number) => new Set([...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`));
+    const v11 = rows(matrixV11, 11), v12 = rows(matrixV12, 12);
+    assert.deepEqual([...v12].filter((row) => !v11.has(row)).sort(), ["consultant report.publish all", "consultant snapshot.review all"], "the two added grants");
+    assert.deepEqual([...v11].filter((row) => !v12.has(row)), [], "nothing removed or narrowed");
+    assert.doesNotMatch(matrixV12, /GRANT|ALTER TABLE|UPDATE nzi_console/, "a matrix version changes rows, not schema or grants");
   });
   it("resets a staff sign-in only through a tenant-confined definer function the application role alone may run (0203)", () => {
     for (const clause of [

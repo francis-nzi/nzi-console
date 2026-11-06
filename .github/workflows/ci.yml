@@ -998,6 +998,11 @@ jobs:
       # report.publish is refused; the per-row approve both ways. The commands run as nzi_console_app, so 0168's grant is tested too.
       - name: Migration 0168 lets a reviewed snapshot carry an explicit self-approval, and the database still backstops every other write
         run: npx tsx --test packages/isolated-backend/tests/selfApprovalReal.test.ts
+      # Matrix v12 (0216; RULING-consultant-report-capabilities): the consultant holds snapshot.review and report.publish. Independent
+      # approval ON, a consultant still cannot approve or release their own work (a second consultant can); OFF, they approve, validate and
+      # finally approve their own, each audited as a self-release; finance and viewer are refused at every step either way.
+      - name: A consultant CRM approves and releases a report, under the independent-approval setting
+        run: npx tsx --test packages/isolated-backend/tests/consultantSelfServeReal.test.ts
       # Migration 0215 (BRIEF-independent-approval-toggle): the organisation's approval policy against real Postgres — no row means required;
       # only admin.settings sets it (a consultant and a reviewer are refused); old → new and the reason are audited; OFF lets a release-capable
       # preparer approve, validate and publish their own work and ON stops it at once, overriding the server variable; a policy that cannot be

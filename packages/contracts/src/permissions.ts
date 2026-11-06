@@ -103,7 +103,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 11;
+export const PERMISSION_MATRIX_VERSION = 12;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -117,6 +117,10 @@ export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability
     ...all("client.view", "client.create", "client.edit", "contact.manage", "site.manage", "target.edit", "job.manage",
       "scoperow.edit", "report.edit", "report.view", "strategy.manage", "srs.manage", "training.manage", "training.entitlement.manage", "finance.view", "clientfactor.manage",
       "support.portal_impersonate",
+      // v12 (RULING-consultant-report-capabilities): a consultant CRM runs the whole job, so they approve the measurement snapshot and
+      // release the report themselves. This is the capability, not an exemption: NZC-022's independent-approval setting still decides
+      // whether they may do either to their OWN work (separationOfDutiesCapabilities, maySelfApprove).
+      "snapshot.review", "report.publish",
       // Writes most of the knowledge and approves it to internal; publication to the
       // client-facing tier stays with Admin, which is what gives the two tiers teeth.
       "knowledge.capture", "knowledge.approve"),
