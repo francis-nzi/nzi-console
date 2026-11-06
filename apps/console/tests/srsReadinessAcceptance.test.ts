@@ -161,7 +161,9 @@ describe("the portal readiness statement", () => {
 
   it("states an absent assessment rather than rendering it as zero", () => {
     assert.match(portal, /model\.state==="none"/);
-    assert.match(portal, /Your readiness assessment is in progress/);
+    // The heading follows the read model's phase, not the reason's wording: not started must not read as in progress.
+    assert.match(portal, /model\.phase==="not-started"\?"Your readiness assessment hasn't started yet":"Your readiness assessment is in progress"/);
+    assert.match(portal, /model\.phase==="not-started"\|\|model\.phase==="in-progress"/);
     // A 0% would read as a score the client had been given.
     assert.doesNotMatch(model, /overallPct: 0\b/);
   });

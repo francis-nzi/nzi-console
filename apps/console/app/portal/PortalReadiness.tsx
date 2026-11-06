@@ -35,7 +35,7 @@ import {portalFeatureEnabled} from "../lib/portalFlags";
 const valid=(value:unknown):value is PortalReadinessReadModel=>{
   if(!value||typeof value!=="object")return false;
   const model=value as PortalReadinessReadModel;
-  return model.state==="none"?typeof model.reason==="string"
+  return model.state==="none"?typeof model.reason==="string"&&(model.phase==="not-started"||model.phase==="in-progress")
     :model.state==="assessed"&&Array.isArray(model.roadmap?.pillars)&&typeof model.dashboard?.overall?.level==="number"
       &&Array.isArray(model.dashboard.pillars)&&Array.isArray(model.dashboard.requirements)&&Array.isArray(model.dashboard.ladder);
 };
@@ -74,7 +74,7 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
   // Not assessed is not zero. A 0 here would read as a score the client had been given.
   if(model.state==="none")return <section className="nz-panel"><div className="nz-card-b">
     <span className="nz-eyebrow">UK SRS readiness</span>
-    <h2 style={{margin:"2px 0 8px",fontSize:16}}>Your readiness assessment is in progress</h2>
+    <h2 style={{margin:"2px 0 8px",fontSize:16}}>{model.phase==="not-started"?"Your readiness assessment hasn't started yet":"Your readiness assessment is in progress"}</h2>
     <p className="sub" style={{marginTop:0}}>{model.reason}</p>
   </div></section>;
 
