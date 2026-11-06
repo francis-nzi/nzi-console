@@ -34,7 +34,8 @@ describe("the composed report", () => {
   });
 
   it("says an unissued version is unissued rather than rendering a blank document", () => {
-    assert.match(page, /This report version has not been issued/);
+    assert.match(page, /NoCompositionNotice/);
+    assert.match(read("apps/console/app/reports/[versionId]/NoCompositionNotice.tsx"), /This report version has not been issued/);
     assert.match(read("packages/contracts/src/index.ts"), /reportComposition: \{ key: "reportComposition"[^}]*isEmpty: \(\) => false/);
   });
 
