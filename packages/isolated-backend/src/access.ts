@@ -82,6 +82,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   // approval is held to the portal user's live grant on the version's job (`authorizePortalReportCommand`).
   "report.sendToClientReview": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "report.clientApprove": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
+  "portal.report.update": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "report.finalApprove": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "report.reopen": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "client.reportProfile.set": client,

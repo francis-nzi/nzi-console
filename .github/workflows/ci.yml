@@ -1021,6 +1021,12 @@ jobs:
       # version's edits in order. The mock pool enforces none of the grants or constraints, so this runs as nzi_console_app.
       - name: Migration 0217 records every narrative amend in an append-only history keyed by the report version
         run: npx tsx --test packages/isolated-backend/tests/reportVersionEditsReal.test.ts
+      # Client-review loop S4: the client's Update (portal.report.update) on a round open for review - each changed section re-frozen, one version
+      # bump for the batch, a portal edit row per section in one batch (unchanged writes none); refused outside in_client_review, on a stale
+      # version, for a typed figure, money or an unknown token, for a section the version does not draw, and for no grant, a revoked grant,
+      # another client's user or a staff principal; the portal read of the live round. The mock pool enforces none of it, so this runs as nzi_console_app.
+      - name: The client edits a report open for review with one Update, recorded in the version's history
+        run: npx tsx --test packages/isolated-backend/tests/portalReportUpdateReal.test.ts
       # Client-review loop S1 (RULING-reporting-client-review-state-model; migration 0214): the widened status CHECK and the two
       # open-round indexes; validated → in_client_review → client_approved → published (final), each only from its prior state, by
       # the right principal, pinned to the version the caller saw; the CRM's amend refused once the client has approved; the document
