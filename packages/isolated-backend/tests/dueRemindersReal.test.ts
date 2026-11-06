@@ -26,6 +26,11 @@ import { runWorkerTick } from "../src/strategyReminderWorker";
  * - the scan and the send are separate transactions: a failing scan sends nothing and leaves the drain unharmed.
  */
 
+const MONEY = /amount|£|price|fee|cost/i;
+/** Money in a reminder's audit: a field named for it, or money in a field that is not an id. Ids (generated, so any hex run) are not scanned. */
+const carriesMoney = (after: Record<string, unknown>): boolean =>
+  Object.keys(after).some((key) => MONEY.test(key)) || ["templateCode", "dueDate", "leadDays"].some((key) => MONEY.test(String(after[key] ?? "")));
+
 const ORG = "a3-org";
 const CLIENT = "client-a3";
 const TODAY = "2026-11-02";
@@ -164,8 +169,19 @@ describe("Actions A3 — due-date reminders through the email pipe (0190), again
       assert.equal(row.after_json.templateCode, "strategy.reminder.approaching");
       assert.match(String(row.after_json.recipientContactId), /^c-/);
       assert.ok(!JSON.stringify(row.after_json).includes("@"), "no address in the audit trail");
-      assert.ok(!/amount|£|price|fee/i.test(JSON.stringify(row.after_json)), "no money");
+      assert.deepEqual(Object.keys(row.after_json).sort(), ["attributedTo", "dueDate", "emailMessageId", "leadDays", "recipientContactId", "templateCode"], "only the fields that should be there");
+      assert.ok(!carriesMoney(row.after_json), "no money");
     }
+  });
+
+  // The money check reads the fields that could carry money, not the whole blob: it also holds generated ids, and a hex id
+  // containing "fee" (or "add", "bad"...) tripped the old whole-JSON scan intermittently.
+  it("the money check ignores ids that happen to spell 'fee', and still catches a reminder that carries money", () => {
+    const reminder = { templateCode: "strategy.reminder.approaching", recipientContactId: "c-1feed", emailMessageId: "fee-0f1ee", attributedTo: "u-fee", dueDate: "2026-12-01", leadDays: 7 };
+    assert.equal(carriesMoney(reminder), false);
+    assert.equal(carriesMoney({ ...reminder, amount: 1200 }), true, "a money-named field");
+    assert.equal(carriesMoney({ ...reminder, templateCode: "strategy.reminder.fee" }), true, "money in the template code");
+    assert.equal(carriesMoney({ ...reminder, dueDate: "£500" }), true, "a currency symbol in a value field");
   });
 
   it("the existing drain sends them on the next tick, in the house frame signed by the adviser; the isolation gate stubs the client's owner", async () => {

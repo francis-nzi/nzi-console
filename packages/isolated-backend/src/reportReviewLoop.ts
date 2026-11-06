@@ -122,7 +122,7 @@ export async function finalApproveReport(pool: PoolLike, input: CommandInputMap[
     const source = (await db.query<{ created_by: string; approved_by: string | null }>(
       `SELECT created_by, approved_by FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND snapshot_id = $2`, [context.organisationId, report.reviewed_snapshot_id])).rows[0];
     if (!source) throw refuse("reviewedSnapshotId", "NOT_FOUND", "Reviewed snapshot was not found.");
-    const releasedByPreparer = requireReleasableSnapshot(context, source, access);
+    const releasedByPreparer = await requireReleasableSnapshot(context, source, access, db);
     const { publishedAt, frozen } = await issueReportVersion(db, context, { reportVersionId: input.reportVersionId, jobId: report.job_id, scopeKey: report.scope_key }, "client_approved");
     return {
       data: { reportVersionId: input.reportVersionId, jobId: report.job_id, reviewedSnapshotId: report.reviewed_snapshot_id, manifestVersion: report.manifest_version, status: "published" as const, final: true as const,
