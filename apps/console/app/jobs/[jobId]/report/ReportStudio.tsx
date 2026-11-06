@@ -13,6 +13,7 @@ import { jobCrumbs, workspaceCrumbs } from "../../../lib/crumbs";
 import { formatDate, formatDateTime } from "../../../lib/formatDate";
 import { accessFor, useStaffMe, type EditAccess } from "../../../lib/useEditAccess";
 import { IndependentApprovalMarker, useApprovalPolicy } from "../../../lib/IndependentApprovalMarker";
+import { ReportEditHistory } from "./ReportEditHistory";
 import { useJobReportRow } from "../../../lib/useJobReportRow";
 import { useReportSignees } from "../../../lib/useReportSignees";
 import { PrepareFrame } from "../../../report-preview/PrepareFrame";
@@ -219,6 +220,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
 
   return <ReportStudioFrame jobId={jobId} page="printing">
     <IndependentApprovalMarker policy={approvalPolicy} />
+    {version && !draft ? <ReportEditHistory reportVersionId={version.reportVersionId} refresh={version.version} /> : null}
     <div className="nzs-toolbar" role="toolbar" aria-label="Report view">
       {kind === "draft" && draft
         ? <div className="nzs-ctl nzs-scope-live"><ReportScopeSelector choices={draft.scopeChoices} scope={scope} onChange={changeScope} disabled={pending !== null} /></div>
