@@ -177,7 +177,7 @@ describe("S1: the client-review loop lifecycle, against a real database", { skip
 
   it("who may do what: the client approval is a portal act under a live grant; the rest need report.publish", async () => {
     const v = await validated();
-    await assert.rejects(send(v.id, "con", "consultant"), AuthorizationError, "a consultant does not hold report.publish");
+    await assert.rejects(send(v.id, "fin", "finance"), AuthorizationError, "finance does not hold report.publish (the consultant does, since matrix v12)");
     await send(v.id);
     await assert.rejects(approveReportAsClient(database.pool, { reportVersionId: v.id, expectedVersion: await version(v.id) }, staff("rev", "reviewer")), AuthorizationError, "staff cannot give the client's approval");
     for (const user of ["pu-nogrant", "pu-revoked"]) await assert.rejects(approve(v.id, user), AuthorizationError, `${user}: no live grant on the job`);
@@ -185,8 +185,8 @@ describe("S1: the client-review loop lifecycle, against a real database", { skip
     assert.equal((await row(v.id)).status, "in_client_review", "none of those changed anything");
     await approve(v.id, "pu-2");
     assert.equal((await row(v.id)).client_approved_by, "pu-2", "D1: one granted user's approval is enough");
-    await assert.rejects(finalApprove(v.id, v.snapshotId, "con", "consultant"), AuthorizationError);
-    await assert.rejects(reopenReport(database.pool, { reportVersionId: v.id, expectedStatus: "client_approved", expectedVersion: await version(v.id) }, withReason(staff("con", "consultant"))), AuthorizationError);
+    await assert.rejects(finalApprove(v.id, v.snapshotId, "fin", "finance"), AuthorizationError);
+    await assert.rejects(reopenReport(database.pool, { reportVersionId: v.id, expectedStatus: "client_approved", expectedVersion: await version(v.id) }, withReason(staff("fin", "finance"))), AuthorizationError);
   });
 
   it("the independent-approval gate holds at the final approval: the snapshot's preparer cannot give it", async () => {
