@@ -1010,6 +1010,12 @@ jobs:
       # is refused at validate and shown on the draft; validate still refuses the snapshot's preparer.
       - name: Migration 0169 freezes a version's narrative at validate, and the report draws exactly what was frozen
         run: npx tsx --test packages/isolated-backend/tests/reportNarrativeReal.test.ts
+      # Client-review loop S3 (migration 0217): the per-report-version edit history is append-only (the app role has SELECT and INSERT,
+      # never UPDATE or DELETE), forced-RLS and tenant-isolated; a staff narrative amend writes exactly one row in its own transaction
+      # (a refused amend writes none); a batch, a portal principal and a restore are admitted for S4 and S7; the read model lists a
+      # version's edits in order. The mock pool enforces none of the grants or constraints, so this runs as nzi_console_app.
+      - name: Migration 0217 records every narrative amend in an append-only history keyed by the report version
+        run: npx tsx --test packages/isolated-backend/tests/reportVersionEditsReal.test.ts
       # Client-review loop S1 (RULING-reporting-client-review-state-model; migration 0214): the widened status CHECK and the two
       # open-round indexes; validated → in_client_review → client_approved → published (final), each only from its prior state, by
       # the right principal, pinned to the version the caller saw; the CRM's amend refused once the client has approved; the document

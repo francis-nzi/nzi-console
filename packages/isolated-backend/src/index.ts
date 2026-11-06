@@ -150,6 +150,7 @@ export * from "./clientReportingTemplates";
 export * from "./masterTemplates";
 export * from "./reportSectionPlans";
 export * from "./reportReviewLoop";
+export * from "./reportVersionEdits";
 export * from "./jobSiteInclusions";
 export { seedJobFromTemplate, getJobTemplateSeeding } from "./jobTemplateSeeding";
 export * from "./emissionsAggregation";

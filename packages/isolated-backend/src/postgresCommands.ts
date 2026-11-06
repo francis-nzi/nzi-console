@@ -42,6 +42,7 @@ import { SPEND_IMPORT_TEMPLATE_VERSION, verifySpendImportToken } from "./spendIm
 import { isCheckViolation, isUniqueViolation, ScopeConflictError, VersionConflictError } from "./errors";
 import { normaliseReportScope, reportScopeKey, reportSectionPlanIssues, resolveReportSectionPlan, selectableScopeSites, type ReportScope, type ReportSectionPlanOrigin } from "@nzi/contracts";
 import { defaultReportSectionPlan, normaliseReportPlanKeys, type ReportNarrativeElement } from "@nzi/contracts";
+import { appendReportVersionEdit } from "./reportVersionEdits";
 import { carryNarrativeForward, IN_FLIGHT_STATUSES, reportEditRefusal, STAFF_NARRATIVE_EDITABLE_STATUSES, staffMayEditNarrative } from "@nzi/contracts";
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
 import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
@@ -3190,6 +3191,12 @@ export async function updateReportNarrative(
         WHERE organisation_id = $1 AND report_version_id = $2 AND status = ANY($5::text[]) AND version = $4 RETURNING version`,
       [context.organisationId, input.reportVersionId, JSON.stringify(narrative), input.expectedVersion, [...STAFF_NARRATIVE_EDITABLE_STATUSES]]);
     if (!updated.rows[0]) throw new VersionConflictError(input.expectedVersion, row.version);
+    // S3 (0217): the same transaction records the edit in this version's own history - the section's frozen body before and after - so
+    // an amend can never land without its row, nor a row without its amend. The version row is locked above, which serialises `seq`.
+    await appendReportVersionEdit(db, {
+      organisationId: context.organisationId, reportVersionId: input.reportVersionId, actorId: context.actorId, principal: "staff", sectionKey: input.sectionKey,
+      action: "amend", beforeHtml: frozen.bodyHtml, afterHtml: refrozen.bodyHtml,
+    });
     return {
       data: { reportVersionId: input.reportVersionId, version: updated.rows[0].version, sectionKey: input.sectionKey, contentSource: refrozen.contentSource, sectionVersion: refrozen.sectionVersion, bodyHtml: refrozen.bodyHtml },
       before: { version: row.version, ...summary(frozen) },
