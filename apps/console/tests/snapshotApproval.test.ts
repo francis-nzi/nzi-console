@@ -60,8 +60,8 @@ describe("the job's Data checks carries the Approve reviewed snapshot control", 
     assert.match(stage, /access\.state === "allowed"\s*\? <div[\s\S]*?Approve reviewed snapshot/);
     assert.match(stage, /isSelfApproved\(snapshot\) \? " · self-approved"/);
   });
-  it("reads the server's setting with the snapshots", () => {
+  it("reads the organisation's policy (its own setting, else the server's; required when unreadable) with the snapshots", () => {
     const route = readFileSync(new URL("../app/api/isolated/jobs/[jobId]/reviewed-snapshots/route.ts", import.meta.url), "utf8");
-    assert.match(route, /independentApprovalRequired:independentApprovalRequired\(\)/);
+    assert.match(route, /independentApprovalRequired:\(await readApprovalPolicySafely\(db,organisationId\)\)\.required/);
   });
 });

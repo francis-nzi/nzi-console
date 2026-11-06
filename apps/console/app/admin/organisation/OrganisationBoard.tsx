@@ -7,10 +7,11 @@ import {
   CLIENT_LOGO_MAX_BYTES, organisationLogoContentTypes, intensityDividers, intensityIconKeys, intensityUnit, normaliseProfile, organisationFooter, ORGANISATION_PROFILE_FIELDS, emailBrandFor,
   type OrganisationLogoContentType, type IntensityDivider, type OrganisationProfileFields,
 } from "@nzi/contracts";
-import type { IntensityDefault, OrganisationBankView, OrganisationHistoryEntry, OrganisationProfileView } from "@nzi/isolated-backend";
+import type { ApprovalPolicy, IntensityDefault, OrganisationBankView, OrganisationHistoryEntry, OrganisationProfileView } from "@nzi/isolated-backend";
 import { AuditLine, CapabilityChip, FieldRow, SelectField, TextAreaField, TextField } from "@nzi/ui";
 import { formatDateTime } from "../../lib/formatDate";
 import { fieldIssues, statusOf, type ActionStatus } from "./actionStatus";
+import { ApprovalPolicyCard } from "./ApprovalPolicyCard";
 
 /**
  * The Organisation screen (admin Phase D, D1): the company profile as one form; the logo, the bank details and the
@@ -24,7 +25,7 @@ import { fieldIssues, statusOf, type ActionStatus } from "./actionStatus";
  */
 type Editing = { allowed: true } | { allowed: false; reason: string };
 type Draft = Record<keyof OrganisationProfileFields, string>;
-type Card = "profile" | "logo" | "bank" | "defaults";
+type Card = "profile" | "logo" | "bank" | "defaults" | "approval";
 type Report = (card: Card, status: ActionStatus | null) => void;
 
 const count = new Intl.NumberFormat("en-GB");
@@ -60,8 +61,8 @@ function useInFlight() {
   };
 }
 
-export function OrganisationBoard({ profile, bank, defaults, clientsWithout, roster, editing }: {
-  profile: OrganisationProfileView; bank: OrganisationBankView; defaults: IntensityDefault[]; clientsWithout: number;
+export function OrganisationBoard({ profile, bank, policy, defaults, clientsWithout, roster, editing }: {
+  profile: OrganisationProfileView; bank: OrganisationBankView; policy: ApprovalPolicy; defaults: IntensityDefault[]; clientsWithout: number;
   roster: Array<{ userId: string; displayName: string }>; editing: Editing;
 }) {
   const router = useRouter();
@@ -85,6 +86,7 @@ export function OrganisationBoard({ profile, bank, defaults, clientsWithout, ros
     <ProfileForm key={profile.version} profile={profile} roster={roster} editing={editing} status={statuses.profile} report={report} saved={saved} />
     <LogoCard profile={profile} editing={editing} status={statuses.logo} report={report} saved={saved} />
     <BankCard key={bank.version} bank={bank} editing={editing} status={statuses.bank} report={report} saved={saved} />
+    <ApprovalPolicyCard key={policy.version} policy={policy} editing={editing} status={statuses.approval} report={report} saved={saved} />
     <DefaultsCard defaults={defaults} clientsWithout={clientsWithout} editing={editing} status={statuses.defaults} report={report} saved={saved} />
     <HistoryCard refresh={saves} />
   </>;

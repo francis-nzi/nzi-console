@@ -12,6 +12,7 @@ import type { ReportDraftComposition } from "@nzi/isolated-backend";
 import { jobCrumbs, workspaceCrumbs } from "../../../lib/crumbs";
 import { formatDate, formatDateTime } from "../../../lib/formatDate";
 import { accessFor, useStaffMe, type EditAccess } from "../../../lib/useEditAccess";
+import { IndependentApprovalMarker, useApprovalPolicy } from "../../../lib/IndependentApprovalMarker";
 import { useJobReportRow } from "../../../lib/useJobReportRow";
 import { useReportSignees } from "../../../lib/useReportSignees";
 import { PrepareFrame } from "../../../report-preview/PrepareFrame";
@@ -114,6 +115,8 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
   // Publishing (report.publish) on a validated version: shown with its access reason up front; the server stays authoritative
   // (it refuses the snapshot's preparer — NZC-022 — and a version that moved since this screen opened).
   const me = useStaffMe(kind !== "published");
+  // 0215: when the organisation has independent approval off, say so beside the controls that release the report.
+  const approvalPolicy = useApprovalPolicy(kind !== "published");
   const publishAccess: EditAccess = me === undefined ? { state: "checking", reason: "Checking your permissions…" }
     : me === "signed-out" ? { state: "denied", reason: "Sign in as staff to publish." }
     : me === null ? { state: "unavailable", reason: "Your permissions could not be checked, so publishing is unavailable." }
@@ -215,6 +218,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
     : `Published ${version?.publishedAt ? formatDate(version.publishedAt.slice(0, 10)) : ""}`.trim();
 
   return <ReportStudioFrame jobId={jobId} page="printing">
+    <IndependentApprovalMarker policy={approvalPolicy} />
     <div className="nzs-toolbar" role="toolbar" aria-label="Report view">
       {kind === "draft" && draft
         ? <div className="nzs-ctl nzs-scope-live"><ReportScopeSelector choices={draft.scopeChoices} scope={scope} onChange={changeScope} disabled={pending !== null} /></div>
