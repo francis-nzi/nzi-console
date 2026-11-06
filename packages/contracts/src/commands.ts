@@ -213,6 +213,7 @@ export type CommandKey =
   | "organisation.logo.set"
   | "organisation.logo.remove"
   | "organisation.bank.set"
+  | "organisation.approvalPolicy.set"
   | "organisation.intensityDefault.set"
   | "organisation.intensityDefault.deactivate"
   | "organisation.intensityDefaults.apply"
@@ -1067,6 +1068,8 @@ export type CommandInputMap = {
   "organisation.logo.set": { fileName: string; contentType: OrganisationLogoContentType; dataBase64: string };
   "organisation.logo.remove": Record<string, never>;
   "organisation.bank.set": OrganisationBankFields & { expectedVersion: number };
+  // 0213: the in-app switch for NZC-022's separation of duties. expectedVersion 0 = no policy set yet (first write); always with a reason.
+  "organisation.approvalPolicy.set": { requireIndependentApproval: boolean; expectedVersion: number };
   "organisation.intensityDefault.set": { metricKey: string; label: string; unitWording: string; divider: number; iconKey: string; ordering?: number; expectedVersion: number; unitKind?: IntensityUnitKind };
   "organisation.intensityDefault.deactivate": { metricKey: string; expectedVersion: number };
   /** Q5: the defaults onto every client that has no intensity metric — the count the admin confirmed, or refused. */
@@ -3076,6 +3079,12 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     return issues;
   } },
   "organisation.logo.remove": { key: "organisation.logo.remove", label: "Remove the organisation logo", permission: "admin.settings", reasonRequired: false, transaction: "profile pointer cleared (asset retained) + audit + outbox + idempotency", auditAction: "organisation.logo.removed", validate: (_input, context) => baseIssues(context, false) },
+  "organisation.approvalPolicy.set": { key: "organisation.approvalPolicy.set", label: "Set whether reports need independent approval", permission: "admin.settings", reasonRequired: true, transaction: "versioned approval policy + audit (old→new, reason) + outbox + idempotency", auditAction: "organisation.approvalPolicy.set", validate: (input, context) => {
+    const issues = baseIssues(context, true);
+    if (typeof input.requireIndependentApproval !== "boolean") issues.push({ field: "requireIndependentApproval", code: "INVALID", message: "Say whether independent approval is required." });
+    if (typeof input.expectedVersion !== "number" || !Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be 0 (not yet set) or positive." });
+    return issues;
+  } },
   "organisation.bank.set": { key: "organisation.bank.set", label: "Set the organisation's bank details", permission: "admin.settings", reasonRequired: true, transaction: "versioned bank details + audit (no values) + outbox + idempotency", auditAction: "organisation.bank.set", validate: (input, context) => {
     const issues = baseIssues(context, true);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });

@@ -1,6 +1,6 @@
 import {
-  countClientsWithoutMetrics, listIntensityDefaults, listTeamMembers, readOrganisationBank, readOrganisationProfile, withTenantRead,
-  type IntensityDefault, type OrganisationBankView, type OrganisationProfileView,
+  countClientsWithoutMetrics, listIntensityDefaults, listTeamMembers, readApprovalPolicy, readOrganisationBank, readOrganisationProfile, withTenantRead,
+  type ApprovalPolicy, type IntensityDefault, type OrganisationBankView, type OrganisationProfileView,
 } from "@nzi/isolated-backend";
 import { serviceEnvironment } from "../../lib/environment";
 import { isolatedPool } from "../../lib/isolatedDatabase";
@@ -23,7 +23,7 @@ export default async function OrganisationPage() {
     return <section className="nz-a-state" role="alert"><h1>Organisation needs admin.settings</h1><p>Your role can open administration, but the company profile and its bank details are shown only to those who can govern them. Nothing has been read.</p></section>;
   }
 
-  let data: { profile: OrganisationProfileView; bank: OrganisationBankView; defaults: IntensityDefault[]; clientsWithout: number; roster: Array<{ userId: string; displayName: string }> } | null = null;
+  let data: { profile: OrganisationProfileView; bank: OrganisationBankView; policy: ApprovalPolicy; defaults: IntensityDefault[]; clientsWithout: number; roster: Array<{ userId: string; displayName: string }> } | null = null;
   try {
     data = await withTenantRead(isolatedPool(), access.organisationId, async (db) => {
       const profile = await readOrganisationProfile(db, access.organisationId);
@@ -31,6 +31,7 @@ export default async function OrganisationPage() {
       return {
         profile,
         bank: await readOrganisationBank(db, access, access.organisationId, { reveal: false }),
+        policy: await readApprovalPolicy(db, access.organisationId),
         defaults: await listIntensityDefaults(db, access.organisationId),
         clientsWithout: await countClientsWithoutMetrics(db, access.organisationId),
         roster: (await listTeamMembers(db)).map(({ userId, displayName }) => ({ userId, displayName })),

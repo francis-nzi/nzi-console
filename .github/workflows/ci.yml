@@ -998,6 +998,12 @@ jobs:
       # report.publish is refused; the per-row approve both ways. The commands run as nzi_console_app, so 0168's grant is tested too.
       - name: Migration 0168 lets a reviewed snapshot carry an explicit self-approval, and the database still backstops every other write
         run: npx tsx --test packages/isolated-backend/tests/selfApprovalReal.test.ts
+      # Migration 0213 (BRIEF-independent-approval-toggle): the organisation's approval policy against real Postgres — no row means required;
+      # only admin.settings sets it (a consultant and a reviewer are refused); old → new and the reason are audited; OFF lets a release-capable
+      # preparer approve, validate and publish their own work and ON stops it at once, overriding the server variable; a policy that cannot be
+      # read is never read as relaxed. Forced RLS, and the app role can never delete a policy.
+      - name: Migration 0213 makes independent approval an audited organisation setting that defaults to required and fails closed
+        run: npx tsx --test packages/isolated-backend/tests/approvalPolicyReal.test.ts
       # B2-4 (RULING-report-studio-B2-4; migration 0169): the draft carries the working narrative (composed@6); validate freezes it —
       # token keys, never numerals, for the narrative the plan draws; the preview and publish draw the frozen copy; a version
       # validated before B2-4 stays composed@5 (composed@6 is unreachable without a narrative); a typed figure edited before the rule

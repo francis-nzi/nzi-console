@@ -161,7 +161,7 @@ describe("publishing freezes the composition", () => {
 
   it("keeps separation of duties at publish, not only at validation", () => {
     const publish = /export async function publishCrpReport[\s\S]*?^\}\);\}/m.exec(handler)?.[0] ?? "";
-    assert.match(publish, /requireReleasableSnapshot\(context,source,access\)/);
+    assert.match(publish, /await requireReleasableSnapshot\(context,source,access,db\)/);
     assert.match(handler, /You prepared this snapshot, so someone else must validate and publish it/);
   });
 

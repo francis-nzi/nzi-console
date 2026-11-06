@@ -58,6 +58,15 @@ describe("command contracts", () => {
   });
   it("registers each material mutation with permission, transaction and audit action", () => { for (const definition of Object.values(commandDefinitions)) { assert.ok(definition.permission); assert.ok(definition.transaction); assert.ok(definition.auditAction); } });
   it("blocks report publication without the validated precondition", () => assert.ok(validateCommand("report.publish", { reportVersionId: "r1", expectedStatus: "draft" as "validated", expectedVersion: 1, manifestVersion: 1, reviewedSnapshotId: "s1" }, context).some((issue) => issue.code === "PRECONDITION")));
+  it("0213: the approval policy is an admin.settings command that always carries a reason and a boolean", () => {
+    assert.equal(commandDefinitions["organisation.approvalPolicy.set"].permission, "admin.settings");
+    const input = { requireIndependentApproval: false, expectedVersion: 0 };
+    const withReason = { ...context, reason: "Two-person team for now" };
+    assert.equal(validateCommand("organisation.approvalPolicy.set", input, withReason).length, 0);
+    assert.ok(validateCommand("organisation.approvalPolicy.set", input, context).some((issue) => issue.field === "reason"));
+    assert.ok(validateCommand("organisation.approvalPolicy.set", { ...input, requireIndependentApproval: "no" as unknown as boolean }, withReason).some((issue) => issue.field === "requireIndependentApproval"));
+    assert.ok(validateCommand("organisation.approvalPolicy.set", { ...input, expectedVersion: -1 }, withReason).some((issue) => issue.field === "expectedVersion"));
+  });
   it("requires a reviewed snapshot and manifest version for validation",()=>assert.ok(validateCommand("report.validate",{reviewedSnapshotId:"",manifestVersion:0},context).length===2));
   it("requires a reason for manual dataset overrides", () => assert.ok(validateCommand("dataset.override.add", { jobId: "712", scope: "3", datasetId: "d1", reportingFrom: "2024-01-01", reportingTo: "2024-12-31" }, context).some((issue) => issue.field === "reason")));
   it("requires optimistic versioning for scope-row calculation", () => assert.ok(validateCommand("scope.row.calculate", { jobId: "712", rowId: "row-a", expectedVersion: 0 }, context).some((issue) => issue.field === "expectedVersion")));

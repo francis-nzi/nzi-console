@@ -103,7 +103,7 @@ export function updateReportSectionPlan(pool: PoolLike, input: CommandInputMap["
       `SELECT created_by, approved_by, job_id, data_hash, created_at, payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND snapshot_id = $2`,
       [context.organisationId, row.reviewed_snapshot_id])).rows[0];
     if (!source) throw new CommandValidationError([{ field: "reportVersionId", code: "NOT_FOUND", message: "Reviewed snapshot was not found." }]);
-    const releasedByPreparer = requireReleasableSnapshot(context, source, access);
+    const releasedByPreparer = await requireReleasableSnapshot(context, source, access, db);
     const plan = normaliseReportSectionPlan(input.sectionPlan);
     requireValidSectionPlan(plan);
     // R4: a section cannot be put back into a report whose snapshot cannot fill its charts — the same check validate makes.

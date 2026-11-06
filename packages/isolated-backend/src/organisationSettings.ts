@@ -7,6 +7,7 @@ import { capabilityScope } from "./access";
 import { AuthorizationError } from "./auth";
 import { inspectClientLogo, type ClientLogoAsset } from "./clientLogo";
 import { VersionConflictError } from "./errors";
+import { independentApprovalRequired } from "./independentApproval";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 import type { PoolLike, Queryable } from "./postgres";
 
@@ -368,5 +369,38 @@ export function applyIntensityDefaults(pool: PoolLike, input: CommandInputMap["o
       data: { organisationId: org, version: 0, changed: active.map((entry) => entry.metricKey), clients: targets.length, metrics },
       entityType: "organisation", entityId: org, topic: "organisation.intensity_defaults.applied",
     };
+  });
+}
+
+/**
+ * `organisation.approvalPolicy.set` (0213) — an Admin (`admin.settings`) says whether the organisation requires independent
+ * approval of reports, with the reason. The first write is `expectedVersion: 0` and creates the row; after that it is pinned to
+ * the row's version. The audit event carries the old and new answer (`before` is the *effective* old answer — the server
+ * variable's, when no policy had been set) and the reason; the organisation history lists it. Turning it off does not by itself
+ * let anyone approve their own work: only a holder of the self-approval capability still may (0168), as before.
+ */
+export function setOrganisationApprovalPolicy(pool: PoolLike, input: CommandInputMap["organisation.approvalPolicy.set"], context: CommandContext): Promise<StoredOutcome<OrganisationResult & { requireIndependentApproval: boolean }>> {
+  return runPostgresCommand(pool, "organisation.approvalPolicy.set", input, context, async (db) => {
+    const org = context.organisationId;
+    const { rows: [row] } = await db.query<{ require_independent_approval: boolean; version: number }>(
+      `SELECT require_independent_approval, version FROM nzi_console.organisation_approval_policy WHERE organisation_id = $1 FOR UPDATE`, [org]);
+    const currentVersion = row?.version ?? 0;
+    if (currentVersion !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, currentVersion);
+    const before = row ? row.require_independent_approval : independentApprovalRequired();
+    if (row && before === input.requireIndependentApproval) throw new CommandValidationError([{ field: "requireIndependentApproval", code: "NO_CHANGE", message: "The policy already says that." }]);
+    let version: number;
+    if (row) {
+      version = (await db.query<{ version: number }>(
+        `UPDATE nzi_console.organisation_approval_policy SET require_independent_approval = $2, version = version + 1, updated_at = now(), updated_by = $3
+          WHERE organisation_id = $1 RETURNING version`, [org, input.requireIndependentApproval, context.actorId])).rows[0]!.version;
+    } else {
+      const inserted = await db.query<{ version: number }>(
+        `INSERT INTO nzi_console.organisation_approval_policy (organisation_id, require_independent_approval, updated_by) VALUES ($1, $2, $3)
+         ON CONFLICT (organisation_id) DO NOTHING RETURNING version`, [org, input.requireIndependentApproval, context.actorId]);
+      if (!inserted.rows[0]) throw new VersionConflictError(input.expectedVersion, 1);
+      version = inserted.rows[0].version;
+    }
+    return { data: { organisationId: org, version, changed: ["approvalPolicy"], requireIndependentApproval: input.requireIndependentApproval },
+      entityType: "organisation", entityId: org, topic: "organisation.approvalPolicy.set", before: { requireIndependentApproval: before } };
   });
 }

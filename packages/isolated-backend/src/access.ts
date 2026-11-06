@@ -211,6 +211,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "organisation.logo.set": organisation,
   "organisation.logo.remove": organisation,
   "organisation.bank.set": organisation,
+  "organisation.approvalPolicy.set": organisation,
   "organisation.intensityDefault.set": organisation,
   "organisation.intensityDefault.deactivate": organisation,
   "organisation.intensityDefaults.apply": organisation,
