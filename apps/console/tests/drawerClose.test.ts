@@ -103,7 +103,7 @@ describe("every drawer in the app", () => {
   });
 
   it("has a scrim to click: its class draws one, or it adds its own", () => {
-    const ownScrim = /\b(nz-site-drawer|nz-import-modal|nz-a-scrim)\b/;
+    const ownScrim = /\b(nz-site-drawer|nz-import-modal|nz-a-scrim|nz-srs-wizard)\b/;
     // Inline (not an overlay) when the portal shell flag is off: no scrim exists to click, and it never had one.
     const inline = new Set(["apps/console/app/portal/files/PortalFilesView.tsx", "apps/console/app/portal/jobs/[jobId]/data/PortalDataView.tsx"]);
     const without = calls.filter((call) => !/dismissible=\{false\}/.test(call.tag) && !ownScrim.test(call.tag) && !/\baddScrim\b/.test(call.tag)).map((call) => call.file);

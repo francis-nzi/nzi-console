@@ -23,10 +23,8 @@ import { SrsArea } from "./SrsArea";
 import { ReductionStrategiesArea } from "./ReductionStrategiesArea";
 import { StrategyBespokeForm, StrategyEditForm, StrategyLibraryForm, StrategyProposalForm } from "./StrategyForms";
 import { strategyDrawerLabel, type StrategyDrawerRequest } from "./strategyDrawers";
-import { SrsItemForm } from "./SrsAssessmentForms";
 import { SrsBridgeForm } from "./SrsBridgeForm";
 import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
-import { orderedRequirements, type SrsRequirement } from "@nzi/contracts";
 import { FinancialsHeldArea, UnavailableArea } from "./ClientAreaStates";
 import { HistoryArea } from "./HistoryArea";
 import { PortalManagementArea } from "./PortalManagementArea";
@@ -115,19 +113,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
   const closeDrawer = () => setDrawer(null);
   const saved = (text: string) => { setDrawer(null); setNotice(text); router.refresh(); };
 
-  // "Continue assessment" lands on the first requirement still unanswered — the guided path.
-  const openSrsDrawer = (request: SrsDrawerRequest) => {
-    setNotice(null);
-    setDrawer(null);
-    if (request.kind !== "srs-assess") { setSrsDrawer(request); return; }
-    const framework = workspace.srs.framework;
-    if (!framework) return;
-    const answered = new Set(request.assessment.items.filter((item) => item.maturity !== null).map((item) => item.requirementId));
-    const ordered = orderedRequirements(framework);
-    const requirement = ordered.find((entry) => !answered.has(entry.id)) ?? ordered[0];
-    if (!requirement) return;
-    setSrsDrawer({ kind: "srs-item", assessment: request.assessment, requirement, item: request.assessment.items.find((item) => item.requirementId === requirement.id) ?? null });
-  };
+  const openSrsDrawer = (request: SrsDrawerRequest) => { setNotice(null); setDrawer(null); setSrsDrawer(request); };
   const closeSrsDrawer = () => setSrsDrawer(null);
   const openStrategyDrawer = (request: StrategyDrawerRequest) => { setNotice(null); setDrawer(null); setSrsDrawer(null); setStrategyDrawer(request); };
   const closeStrategyDrawer = () => setStrategyDrawer(null);
@@ -241,10 +227,6 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       {srsDrawer?.kind === "srs-bridge"
         ? <SrsBridgeForm key={`${srsDrawer.assessment.assessmentId}-${srsDrawer.requirementId}`} workspace={workspace} assessment={srsDrawer.assessment}
           requirementId={srsDrawer.requirementId} access={access.srs} onClose={closeSrsDrawer} onSaved={(text: string) => { closeSrsDrawer(); srsSaved(text); }} /> : null}
-      {srsDrawer?.kind === "srs-item" && workspace.srs.framework
-        ? <SrsItemForm key={srsDrawer.requirement.id} framework={workspace.srs.framework} assessment={srsDrawer.assessment}
-          requirement={srsDrawer.requirement} item={srsDrawer.item} access={access.srs} onClose={closeSrsDrawer} onSaved={srsSaved}
-          onNext={(requirement: SrsRequirement) => setSrsDrawer({ kind: "srs-item", assessment: srsDrawer.assessment, requirement, item: srsDrawer.assessment.items.find((item) => item.requirementId === requirement.id) ?? null })} /> : null}
     </Drawer>
     <Drawer open={strategyDrawer !== null} onClose={closeStrategyDrawer} ariaLabel={strategyDrawer ? strategyDrawerLabel(strategyDrawer) : "Actions drawer"} className="nz-site-drawer" dismissOnOutsideClick>
       {strategyDrawer?.kind === "strategy-library"

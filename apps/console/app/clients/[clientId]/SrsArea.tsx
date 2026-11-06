@@ -1,18 +1,20 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { postBrowserCommand } from "@nzi/api-client";
-import { SrsDial, SrsHeatmap, SrsMeter, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
-import { GatedButton, InfoTip } from "@nzi/ui";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { patchBrowserCommand, postBrowserCommand } from "@nzi/api-client";
+import { SrsDial, SrsMeter, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
+import { Collapsible, Drawer, GatedButton, InfoTip } from "@nzi/ui";
 import {
-  gaps as resolveGaps, srsBridgedBy, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
-  type ClientStrategy, type SrsAssessment, type SrsDashboardModel, type SrsDashboardRequirement, type SrsFramework, type SrsGapSuggestion,
+  comparePriority, gaps as resolveGaps, priorityLabels, srsBridgedBy, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
+  type ClientStrategy, type SrsAssessment, type SrsDashboardModel, type SrsFramework, type SrsGapSuggestion,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead, Empty } from "./OverviewArea";
+import { SrsWizard } from "./SrsAssessmentForms";
 import type { SrsDrawerRequest } from "./srsDrawers";
+import { gapsByPriority, pillarSummary } from "./srsWizard";
 
 /**
  * UK SRS Readiness — the CRM readiness dashboard (SRS S2), on S1's model.
@@ -39,18 +41,41 @@ export function SrsArea({ workspace, access, onDrawer, onSaved }: {
   // The one being worked on, else the most recent record.
   const current = assessments.find((assessment) => assessment.status === "draft") ?? assessments[0] ?? null;
 
+  // The guided assessment. Conducting is a modal over this page; the page itself only reviews (and spot-edits through it).
+  const [wizard, setWizard] = useState<{ assessmentId: string; startAt: string | null; nonce: number } | null>(null);
+  const closeWizard = useRef<(() => void) | null>(null);
+  const openWizard = (assessmentId: string, startAt: string | null = null) => setWizard({ assessmentId, startAt, nonce: Date.now() });
+  // Starting an assessment lands in the wizard: open it as soon as the new draft arrives with the refreshed workspace.
+  const [openOnArrival, setOpenOnArrival] = useState(false);
+  useEffect(() => {
+    if (openOnArrival && current?.status === "draft") { setOpenOnArrival(false); openWizard(current.assessmentId); }
+  }, [openOnArrival, current]);
+  const wizardAssessment = wizard ? assessments.find((entry) => entry.assessmentId === wizard.assessmentId) ?? null : null;
+  const wizardDrawer = wizard && wizardAssessment && framework
+    ? <Drawer open onClose={() => closeWizard.current?.()} ariaLabel="Guided SRS readiness assessment" className="nz-srs-wizard">
+      <SrsWizard key={wizard.nonce} framework={framework} assessment={wizardAssessment} startAt={wizard.startAt} access={access} plan={workspace.strategies.plan}
+        closeRef={closeWizard}
+        onClose={(changed) => { setWizard(null); if (changed) onSaved("Assessment progress saved."); }}
+        onBridge={(requirementId) => onDrawer({ kind: "srs-bridge", assessment: wizardAssessment, requirementId })}
+        onCompleted={(assessedOn) => { setWizard(null); onSaved(`Assessment complete — assessed ${formatDate(assessedOn)}.`); }} />
+    </Drawer> : null;
+
   if (!framework) {
     return <section className="nz-panel">
       <div className="nz-cw-vhead"><h2>UK SRS Readiness</h2></div>
       <Empty text="No SRS framework is published for this organisation, so there is nothing to assess against. An administrator publishes the framework — standards, pillars, requirements, weights and the maturity ladder — and it is versioned from then on." />
     </section>;
   }
-  if (!current) return <SrsEmpty framework={framework} clientId={workspace.client.id} access={access} onSaved={onSaved} />;
+  if (!current) return <SrsEmpty framework={framework} clientId={workspace.client.id} access={access} onSaved={onSaved} onStarted={() => setOpenOnArrival(true)} />;
 
-  return <SrsDashboard workspace={workspace} framework={framework} current={current} assessments={assessments} access={access} onDrawer={onDrawer} onSaved={onSaved} />;
+  return <>
+    <SrsDashboard workspace={workspace} framework={framework} current={current} assessments={assessments} access={access} onDrawer={onDrawer} onSaved={onSaved}
+      onWizard={openWizard} onStarted={() => setOpenOnArrival(true)} />
+    {wizardDrawer}
+  </>;
 }
 
-function SrsEmpty({ framework, clientId, access, onSaved }: { framework: SrsFramework; clientId: string; access: EditAccess; onSaved: (text: string) => void }) {
+function SrsEmpty({ framework, clientId, access, onSaved, onStarted }: { framework: SrsFramework; clientId: string; access: EditAccess; onSaved: (text: string) => void; onStarted: () => void }) {
   const climate = framework.standards.find((standard) => standard.climateLed);
   const fromNzi = framework.requirements.filter((requirement) => requirement.active && requirement.source === "nzi-data").length;
   return <>
@@ -60,7 +85,7 @@ function SrsEmpty({ framework, clientId, access, onSaved }: { framework: SrsFram
         <p>The assessment is stamped with {framework.label} version {framework.version}, so a later framework change never restates what was assessed today. It is opened today and saved as you go, and is dated as assessed only when every requirement has been addressed and you complete it — until then it reads as in progress.</p>
         <p>Assessing is gated on <b>srs.manage</b> and every answer is audited. The framework itself is Admin-managed and versioned.</p>
       </InfoTip><span style={{ flex: 1 }} />
-      <StartButton clientId={clientId} access={access} onSaved={onSaved} label="Start assessment" /></div>
+      <StartButton clientId={clientId} access={access} onSaved={onSaved} onStarted={onStarted} label="Start assessment" /></div>
     <p className="nz-cw-vsub">How ready this client is against the UK Sustainability Reporting Standards, and what the path looks like.</p>
     <section className="nz-panel">
       <CardHead eyebrow="Not assessed yet" title="No readiness assessment" />
@@ -76,8 +101,8 @@ function SrsEmpty({ framework, clientId, access, onSaved }: { framework: SrsFram
  * client's-record pre-fill on (`prefillFromNziData: true`): the requirements its verified record answers arrive resolved
  * from NZI data, carrying that record as evidence, and are overridden per answer inside the assessment.
  */
-function StartButton({ clientId, access, onSaved, label, primary = true }: {
-  clientId: string; access: EditAccess; onSaved: (text: string) => void; label: string; primary?: boolean;
+function StartButton({ clientId, access, onSaved, onStarted, label, primary = true }: {
+  clientId: string; access: EditAccess; onSaved: (text: string) => void; onStarted: () => void; label: string; primary?: boolean;
 }) {
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -95,6 +120,7 @@ function StartButton({ clientId, access, onSaved, label, primary = true }: {
       return;
     }
     key.current = null;
+    onStarted();
     onSaved(result.data.prefilled > 0
       ? `Assessment started — ${result.data.prefilled} requirements answered from this client's own record.`
       : "Assessment started.");
@@ -110,7 +136,7 @@ function StartButton({ clientId, access, onSaved, label, primary = true }: {
 const signed = (delta: number | null) => delta === null ? null : delta === 0 ? "no change" : `${delta > 0 ? "▲ +" : "▼ −"}${Math.abs(delta).toFixed(1)}`;
 const shortPillar = (label: string) => label.length <= 11 ? label : label.replace(/\bmanagement\b/i, "mgmt").replace(/\s*&\s*targets$/i, "").slice(0, 12).trim();
 
-function SrsDashboard({ workspace, framework, current, assessments, access, onDrawer, onSaved }: {
+function SrsDashboard({ workspace, framework, current, assessments, access, onDrawer, onSaved, onWizard, onStarted }: {
   workspace: ClientWorkspaceReadModel;
   framework: SrsFramework;
   current: SrsAssessment;
@@ -118,6 +144,9 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   access: EditAccess;
   onDrawer: (request: SrsDrawerRequest) => void;
   onSaved: (text: string) => void;
+  /** Open the guided assessment on an assessment, at a requirement (a row's Edit) or at the first still to address. */
+  onWizard: (assessmentId: string, startAt?: string | null) => void;
+  onStarted: () => void;
 }) {
   const { client } = workspace;
   // The filter row (R10): which standard, which assessment. The one in progress (or the latest) leads.
@@ -134,20 +163,23 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   const model = useMemo(() => srsDashboard(framework, assessment, assessments, { standardKey, frameworks }), [framework, assessment, assessments, standardKey, frameworks]);
   const provisional = model.assessment.provisional;
   const strategiesByRequirement = useMemo(() => strategiesBySrsRequirement(workspace.strategies.plan), [workspace.strategies.plan]);
-  const gaps = useMemo(() => resolveGaps(framework, assessment.items).filter((gap) => !standardKey || gap.requirement.standardKey === standardKey), [framework, assessment, standardKey]);
+  const gaps = useMemo(() => gapsByPriority(resolveGaps(framework, assessment.items), assessment.items).filter((gap) => !standardKey || gap.requirement.standardKey === standardKey), [framework, assessment, standardKey]);
 
-  const [completing, setCompleting] = useState(false);
-  const [completeError, setCompleteError] = useState<string | null>(null);
-  async function complete() {
-    setCompleting(true); setCompleteError(null);
-    const result = await postBrowserCommand<{ assessedOn: string }>(`/api/isolated/srs-assessments/${encodeURIComponent(current.assessmentId)}`,
-      { expectedVersion: current.version }, crypto.randomUUID());
-    setCompleting(false);
-    if (result.state !== "success") { setCompleteError(result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.message); return; }
-    onSaved(`Assessment complete — assessed ${formatDate(result.data.assessedOn)}.`);
+  const gapPriority = useMemo(() => new Map(assessment.items.map((item) => [item.requirementId, item.priority])), [assessment]);
+
+  // Reopen to correct: the same assessment goes back to a draft (no new round, no new trend point), through the gated command.
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
+  const inProgress = assessments.find((entry) => entry.status === "draft") ?? null;
+  async function reopen() {
+    setReopening(true); setReopenError(null);
+    const result = await patchBrowserCommand(`/api/isolated/srs-assessments/${encodeURIComponent(assessment.assessmentId)}`,
+      { expectedVersion: assessment.version }, crypto.randomUUID());
+    setReopening(false);
+    if (result.state !== "success") { setReopenError(result.state === "validation_failed" ? (result.issues[0]?.message ?? result.message) : result.message); return; }
+    onSaved("Assessment reopened. It is a draft again, so the portal and reports show the previous completed assessment (or none) until you complete it.");
   }
   const currentCompletion = useMemo(() => srsDashboard(framework, current, assessments).assessment, [framework, current, assessments]);
-  const completionReady = currentCompletion.addressed === currentCompletion.total && currentCompletion.total > 0;
   const tableRows = model.pillars.map((pillar) => ({ label: pillar.label, level: pillar.level, stepName: pillar.stepName, target: pillar.targetLevel, delta: pillar.delta }));
   const standardLabel = standardKey ? model.standards.find((standard) => standard.key === standardKey)?.label ?? standardKey : "S1 and S2";
 
@@ -160,25 +192,26 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       </InfoTip><span style={{ flex: 1 }} />
       <span className={current.status === "draft" ? "nz-st need" : "nz-st done"}>{current.status === "draft" ? `In progress · ${currentCompletion.addressed} of ${currentCompletion.total} addressed` : "Assessed"}</span>
       {current.status === "draft"
-        ? <>
-          <GatedButton className="nz-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
-            reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-assess", assessment: current })}>Continue assessment</GatedButton>
-          {/* Dated on completion (S1, R3): it can be completed only once every requirement is addressed. */}
-          <GatedButton className="nz-btn pri" blocked={access.state !== "allowed" || !completionReady || completing}
-            blockedReason={access.state !== "allowed" ? access.reason
-              : !completionReady ? `${currentCompletion.total - currentCompletion.addressed} of ${currentCompletion.total} requirements still to address — an assessment is complete when every one has a maturity.` : undefined}
-            reasonClassName="hint nz-gated-reason" onClick={() => void complete()}>{completing ? "Completing…" : "Complete assessment"}</GatedButton>
-        </>
+        // Conducting the assessment is the guided wizard; it is completed on its last screen (dated on completion, S1 R3).
+        ? <GatedButton className="nz-btn pri" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
+          reasonClassName="hint nz-gated-reason" onClick={() => onWizard(current.assessmentId)}>Continue assessment</GatedButton>
         // A completed assessment is a record; reassessing starts a new one, which is what gives readiness a trend.
-        : <StartButton clientId={client.id} access={access} onSaved={onSaved} label="Reassess" primary={false} />}
+        : <>
+          {/* Only the latest assessment can be reopened (the command refuses an older one, NOT_LATEST): an earlier one may have a report issued against it. */}
+          {assessment.status === "complete" && assessment.assessmentId === current.assessmentId
+            ? <GatedButton className="nz-btn" blocked={access.state !== "allowed" || reopening || inProgress !== null}
+              blockedReason={access.state !== "allowed" ? access.reason : inProgress ? "Another assessment is in progress for this client — complete it first." : reopening ? "Reopening…" : undefined}
+              reasonClassName="hint nz-gated-reason" onClick={() => void reopen()}>{reopening ? "Reopening…" : "Reopen to correct"}</GatedButton> : null}
+          <StartButton clientId={client.id} access={access} onSaved={onSaved} onStarted={onStarted} label="Reassess" primary={false} />
+        </>}
       {/* S3, R5: the report — from the latest completed assessment, as the UK SRS template draws it. */}
       {assessments.some((entry) => entry.status === "complete")
         ? <a className="nz-btn" href={`/clients/${encodeURIComponent(client.id)}/srs-report?template=uk-srs${model.assessment.assessedOn ? `&assessment=${encodeURIComponent(model.assessment.id)}` : ""}`}>Readiness report (PDF)</a>
         : null}
     </div>
-    {completeError ? <div className="nz-banner warn" role="alert">{completeError}</div> : null}
+    {reopenError ? <div className="nz-banner warn" role="alert">{reopenError}</div> : null}
     <p className="nz-cw-vsub">{client.name} · {model.assessment.assessedOn
-      ? <>assessed {formatDate(model.assessment.assessedOn)}</>
+      ? <>assessed {formatDate(model.assessment.assessedOn)} · scores locked · overall {model.overall.stepName} ({model.overall.level.toFixed(1)} of 4)</>
       : <>started {formatDate(model.assessment.startedOn)} · not yet assessed</>} · consultant-led by {assessment.assessedBy}.</p>
 
     {/* The filter row (R10): which standard, which assessment — one row, above every graphic. */}
@@ -273,19 +306,6 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       </div>
     </div>
 
-    {/* R4: the heatmap — every requirement on the ramp, with its number; the register below is its table view. */}
-    <section className="nz-panel">
-      <CardHead title="Every requirement, by pillar" right={<span className="hint">{standardLabel} · the register below lists the same scores</span>} />
-      <div className="nz-card-b">
-        <SrsHeatmap provisional={provisional} columns={groupByPillar(model).map(({ label, requirements }) => ({
-          label, cells: requirements.map((requirement) => ({
-            code: requirement.code, title: requirement.title, maturity: requirement.maturity, stepName: requirement.stepName, target: requirement.target,
-            detail: [evidenceLine(requirement), ...(requirement.owner ? [`Owner: ${requirement.owner}`] : []), ...(requirement.dueDate ? [`Due ${formatDate(requirement.dueDate)}`] : [])],
-          })),
-        }))} />
-        <p className="nz-maps">A dark corner notch marks a requirement below its own target; a dashed empty cell is not yet answered — not a zero.</p>
-      </div>
-    </section>
 
     <div className="nz-cw-grid">
       <div className="nz-cw-col">
@@ -304,7 +324,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       </div>
       <div className="nz-cw-col">
         <section className="nz-panel">
-          <CardHead title="Path to SRS-ready" right={<span className="hint">gaps → actions</span>} />
+          <CardHead title="Path to SRS-ready" right={<span className="hint">by priority · gaps → actions</span>} />
           <div style={{ padding: "6px 16px 12px" }}>
             {gaps.length === 0
               ? <p className="sub" style={{ margin: "6px 0" }}>No requirement sits below its target. Reassess as the framework moves.</p>
@@ -313,7 +333,8 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
                 <div>
                   <div className="nm">{gap.requirement.title}</div>
                   <div className="sub">{framework.pillars.find((pillar) => pillar.key === gap.requirement.pillarKey)?.label} · {gap.requirement.standardKey}
-                    {gap.owner ? ` · owner ${gap.owner}` : ""}</div>
+                    {gap.owner ? ` · owner ${gap.owner}` : ""}
+                    {gapPriority.get(gap.requirement.id) ? ` · ${priorityLabels[gapPriority.get(gap.requirement.id)!]} priority` : ""}</div>
                   <AlignedStrategies strategies={strategiesByRequirement.get(gap.requirement.id) ?? []} />
                 </div>
                 <span className="d">{gap.dueDate ? formatDate(gap.dueDate) : "No date"}</span>
@@ -324,25 +345,11 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       </div>
     </div>
 
-    <SrsRegister model={model} assessment={assessment} framework={framework} access={access} onDrawer={onDrawer} strategiesByRequirement={strategiesByRequirement}
+    <SrsRegister model={model} assessment={assessment} framework={framework} access={access} onDrawer={onDrawer} onWizard={onWizard} standardKey={standardKey} strategiesByRequirement={strategiesByRequirement}
       plan={workspace.strategies.plan} suggestions={workspace.srs.suggestions} />
   </>;
 }
 
-const evidenceLine = (requirement: SrsDashboardRequirement) => requirement.evidence
-  ? `Evidence (${requirement.evidence.kind}): ${(requirement.evidence.ref ?? requirement.evidence.note).slice(0, 60)}`
-  : "No evidence recorded";
-
-/** The model's requirements, by pillar in the framework's order — the heatmap's columns. */
-function groupByPillar(model: SrsDashboardModel) {
-  const groups: Array<{ key: string; label: string; requirements: SrsDashboardRequirement[] }> = [];
-  for (const requirement of model.requirements) {
-    let group = groups.find((entry) => entry.key === requirement.pillarKey);
-    if (!group) { group = { key: requirement.pillarKey, label: requirement.pillarLabel, requirements: [] }; groups.push(group); }
-    group.requirements.push(requirement);
-  }
-  return groups;
-}
 
 /**
  * R7: Metrics & targets as the client's assured NZI record answered it — read through with its provenance (the evidence
@@ -374,17 +381,21 @@ function AlignedStrategies({ strategies }: { strategies: readonly ClientStrategy
   </div>;
 }
 
-type SortKey = "order" | "code" | "maturity" | "gap" | "due";
+type SortKey = "order" | "code" | "maturity" | "gap" | "priority" | "due";
 
 /**
- * R6: the register — every requirement with its score, evidence, owner and due, sortable: the always-available non-chart
- * view, and the heatmap's table. Its last column is the **gap→action hook** (S3, R1): what bridges the gap — an action
- * written from it (`srs_gap`, naming the requirement) or the one the assessment links — else the strategies that advance
- * it; and on an unbridged gap, **Bridge this gap**: the library's aligned actions first, AI ideas second, or your own.
+ * R6: the register — every requirement with its score, evidence, owner, due and priority, sortable: the always-available
+ * non-chart view, and the one per-requirement surface on this page. It is cut into collapsible pillar sections, collapsed
+ * by default, each header carrying that pillar's rollup. Nothing is scored here: **Edit** opens the guided assessment at
+ * that question (**View**, read-only, once the assessment is complete). Its last column is the **gap→action hook** (S3, R1):
+ * what bridges the gap — an action written from it (`srs_gap`, naming the requirement) or the one the assessment links —
+ * else the strategies that advance it; and on an unbridged gap, **Bridge this gap**: the library's aligned actions first, AI
+ * ideas second, or your own.
  */
-function SrsRegister({ model, assessment, framework, access, onDrawer, strategiesByRequirement, plan, suggestions }: {
+function SrsRegister({ model, assessment, framework, access, onDrawer, onWizard, strategiesByRequirement, plan, suggestions, standardKey }: {
   model: SrsDashboardModel; assessment: SrsAssessment; framework: SrsFramework; access: EditAccess; onDrawer: (request: SrsDrawerRequest) => void;
-  strategiesByRequirement: Map<string, ClientStrategy[]>; plan: readonly ClientStrategy[]; suggestions: readonly SrsGapSuggestion[];
+  onWizard: (assessmentId: string, startAt?: string | null) => void;
+  strategiesByRequirement: Map<string, ClientStrategy[]>; plan: readonly ClientStrategy[]; suggestions: readonly SrsGapSuggestion[]; standardKey: string | null;
 }) {
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "order", dir: 1 });
   const order = new Map(model.requirements.map((requirement, index) => [requirement.id, index]));
@@ -394,6 +405,7 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, strategie
       code: a.code.localeCompare(b.code),
       maturity: (a.maturity ?? -1) - (b.maturity ?? -1),
       gap: Number(b.gap) - Number(a.gap) || ((a.maturity ?? -1) - a.target) - ((b.maturity ?? -1) - b.target),
+      priority: comparePriority(a.priority, b.priority),
       due: (a.dueDate ?? "9999").localeCompare(b.dueDate ?? "9999"),
     };
     return (by[sort.key] || order.get(a.id)! - order.get(b.id)!) * sort.dir;
@@ -402,47 +414,52 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, strategie
     <button type="button" className="nz-srs-sort" onClick={() => setSort((now) => ({ key, dir: now.key === key ? (now.dir === 1 ? -1 : 1) : 1 }))}>{label}{sort.key === key ? (sort.dir === 1 ? " ↑" : " ↓") : ""}</button>
   </th>;
   const editable = assessment.status === "draft";
+  const pillars = [...framework.pillars].sort((a, b) => a.ordering - b.ordering)
+    .map((pillar) => ({ pillar, rows: sorted.filter((requirement) => requirement.pillarKey === pillar.key) })).filter((group) => group.rows.length > 0);
 
   return <section className="nz-panel" style={{ marginTop: 16 }}>
-    <CardHead title="Requirement register" right={<span className="hint">{model.requirements.length} requirements · sortable · the heatmap&apos;s table</span>} />
-    <div className="nz-srs-tablewrap">
-      <table className="nz-tbl nz-srs-register">
-        <thead><tr>{header("code", "Requirement")}<th scope="col">Pillar</th>{header("maturity", "Maturity")}<th scope="col">Target</th><th scope="col">Evidence</th><th scope="col">Owner</th>{header("due", "Due")}{header("gap", "Gap → action")}<th /></tr></thead>
-        <tbody>
-          {sorted.map((requirement) => {
-            const bridged = srsBridgedBy(requirement.id, plan, requirement.linkedActionId ?? null);
-            const aligned = (strategiesByRequirement.get(requirement.id) ?? []).filter((strategy) => !bridged.some((action) => action.id === strategy.id));
-            const ideas = suggestions.filter((idea) => idea.assessmentId === assessment.assessmentId && idea.requirementId === requirement.id).length;
-            const frameworkRequirement = framework.requirements.find((entry) => entry.id === requirement.id) ?? null;
-            const item = assessment.items.find((entry) => entry.requirementId === requirement.id) ?? null;
-            return <tr key={requirement.id}>
-              <td><b>{requirement.title}</b>{requirement.helpText ? <InfoTip label={`About ${requirement.code}`}>{requirement.helpText}</InfoTip> : null}
-                <div className="muted">{requirement.code} · {requirement.standardKey}{requirement.source === "auto" ? " · from NZI data" : ""}</div></td>
-              <td>{requirement.pillarLabel}</td>
-              <td>{requirement.maturity === null ? <span className="muted">Not answered</span>
-                : <><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}{model.assessment.provisional ? <span className="muted"> · provisional</span> : null}</>}</td>
-              <td className="num">{requirement.target}</td>
-              <td>{requirement.evidence ? <span title={requirement.evidence.note}>{requirement.evidence.kind} · {(requirement.evidence.ref ?? requirement.evidence.note).slice(0, 40)}</span> : <span className="up">none</span>}</td>
-              <td>{requirement.owner || <span className="muted">—</span>}</td>
-              <td>{requirement.dueDate ? formatDate(requirement.dueDate) : <span className="muted">—</span>}</td>
-              <td>
-                {bridged.map((action) => <a key={action.id} className="nz-srs-hook" href="?area=strategies">Bridged by <b>{action.title}</b> <span className="muted">{strategyStatusLabels[action.status]}</span></a>)}
-                {aligned.length > 0 ? <AlignedStrategies strategies={aligned} /> : null}
-                {requirement.gap && bridged.length === 0
-                  ? <GatedButton className="nz-btn sm nz-srs-bridge-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
-                    reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-bridge", assessment, requirementId: requirement.id })}>
-                    Bridge this gap{ideas > 0 ? ` · ${ideas} AI idea${ideas === 1 ? "" : "s"}` : ""}</GatedButton>
-                  : bridged.length === 0 && aligned.length === 0 ? <span className="muted">—</span> : null}
-              </td>
-              <td style={{ textAlign: "right" }}>
-                {frameworkRequirement ? <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || !editable}
-                  blockedReason={access.state !== "allowed" ? access.reason : !editable ? "This assessment is complete — start a reassessment to change it." : undefined}
-                  reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-item", assessment, requirement: frameworkRequirement, item })}>Assess</GatedButton> : null}
-              </td>
-            </tr>;
-          })}
-        </tbody>
-      </table>
+    <CardHead title="Requirement register" right={<span className="hint">{model.requirements.length} requirements · sortable</span>} />
+    <div className="nz-card-b">
+      {pillars.map(({ pillar, rows }) => <Collapsible key={pillar.key} title={pillar.label} count={pillarSummary(framework, pillar.key, assessment.items, standardKey).text}>
+        <div className="nz-srs-tablewrap">
+          <table className="nz-tbl nz-srs-register">
+            <thead><tr>{header("code", "Requirement")}{header("maturity", "Maturity")}<th scope="col">Target</th><th scope="col">Evidence</th>{header("priority", "Priority")}<th scope="col">Owner</th>{header("due", "Due")}{header("gap", "Gap → action")}<th /></tr></thead>
+            <tbody>
+              {rows.map((requirement) => {
+                const bridged = srsBridgedBy(requirement.id, plan, requirement.linkedActionId ?? null);
+                const aligned = (strategiesByRequirement.get(requirement.id) ?? []).filter((strategy) => !bridged.some((action) => action.id === strategy.id));
+                const ideas = suggestions.filter((idea) => idea.assessmentId === assessment.assessmentId && idea.requirementId === requirement.id).length;
+                return <tr key={requirement.id}>
+                  <td><b>{requirement.title}</b>{requirement.helpText ? <InfoTip label={`About ${requirement.code}`}>{requirement.helpText}</InfoTip> : null}
+                    <div className="muted">{requirement.code} · {requirement.standardKey}{requirement.source === "auto" ? " · from NZI data" : ""}</div></td>
+                  <td>{requirement.maturity === null ? <span className="muted">Not answered</span>
+                    : <><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}{model.assessment.provisional ? <span className="muted"> · provisional</span> : null}</>}</td>
+                  <td className="num">{requirement.target}</td>
+                  <td>{requirement.evidence ? <span title={requirement.evidence.note}>{requirement.evidence.kind} · {(requirement.evidence.ref ?? requirement.evidence.note).slice(0, 40)}</span> : <span className="up">none</span>}</td>
+                  <td>{requirement.priority ? priorityLabels[requirement.priority] : <span className="muted">—</span>}</td>
+                  <td>{requirement.owner || <span className="muted">—</span>}</td>
+                  <td>{requirement.dueDate ? formatDate(requirement.dueDate) : <span className="muted">—</span>}</td>
+                  <td>
+                    {bridged.map((action) => <a key={action.id} className="nz-srs-hook" href="?area=strategies">Bridged by <b>{action.title}</b> <span className="muted">{strategyStatusLabels[action.status]}</span></a>)}
+                    {aligned.length > 0 ? <AlignedStrategies strategies={aligned} /> : null}
+                    {requirement.gap && bridged.length === 0
+                      ? <GatedButton className="nz-btn sm nz-srs-bridge-btn" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
+                        reasonClassName="hint nz-gated-reason" onClick={() => onDrawer({ kind: "srs-bridge", assessment, requirementId: requirement.id })}>
+                        Bridge this gap{ideas > 0 ? ` · ${ideas} AI idea${ideas === 1 ? "" : "s"}` : ""}</GatedButton>
+                      : bridged.length === 0 && aligned.length === 0 ? <span className="muted">—</span> : null}
+                  </td>
+                  <td style={{ textAlign: "right" }}>
+                    {editable
+                      ? <GatedButton className="nz-editlink" blocked={access.state !== "allowed"} blockedReason={access.state === "allowed" ? undefined : access.reason}
+                        reasonClassName="hint nz-gated-reason" onClick={() => onWizard(assessment.assessmentId, requirement.id)}>Edit</GatedButton>
+                      : <button type="button" className="nz-editlink" onClick={() => onWizard(assessment.assessmentId, requirement.id)}>View</button>}
+                  </td>
+                </tr>;
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Collapsible>)}
     </div>
   </section>;
 }

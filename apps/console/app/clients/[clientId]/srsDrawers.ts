@@ -1,16 +1,11 @@
-import type { SrsAssessment, SrsAssessmentItem, SrsRequirement } from "@nzi/contracts";
+import type { SrsAssessment } from "@nzi/contracts";
 
-/** Which SRS drawer the workspace has open. Hosted by the shell, like every other drawer. */
+/**
+ * Which SRS drawer the workspace has open. Hosted by the shell, like every other drawer. Conducting an assessment is not a
+ * drawer: it is the guided wizard, a modal owned by the SRS area itself.
+ */
 export type SrsDrawerRequest =
-  | { kind: "srs-assess"; assessment: SrsAssessment }
-  | { kind: "srs-item"; assessment: SrsAssessment; requirement: SrsRequirement; item: SrsAssessmentItem | null }
   /** SRS S3: bridge one gap — the library first, AI ideas second, or the consultant's own action. */
-  | { kind: "srs-bridge"; assessment: SrsAssessment; requirementId: string };
+  { kind: "srs-bridge"; assessment: SrsAssessment; requirementId: string };
 
-export const srsDrawerLabel = (request: SrsDrawerRequest): string => {
-  switch (request.kind) {
-    case "srs-assess": return "Continue the SRS readiness assessment";
-    case "srs-item": return `Assess ${request.requirement.code}`;
-    case "srs-bridge": return "Bridge a readiness gap";
-  }
-};
+export const srsDrawerLabel = (_request: SrsDrawerRequest): string => "Bridge a readiness gap";
