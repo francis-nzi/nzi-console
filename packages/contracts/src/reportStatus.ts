@@ -38,7 +38,13 @@ export type ReportStatusFacts = {
   v7Record: boolean;
 };
 
-export type PublishedScopeFacts = { scopeLabel: string; approvalCount: number; lastCommentFrom: "portal" | "staff" | null };
+/**
+ * One scope's report as the client holds it. `status` is the version's STORED status and is read first: a round `in_client_review`
+ * is awaiting the client (or has changes requested), `client_approved` is client-approved, whatever the approval and comment counts
+ * say. Absent, it is `published` — derived from the client's response as before. `scopeKey` pairs a reopened round with the
+ * published version it will replace.
+ */
+export type PublishedScopeFacts = { scopeLabel: string; approvalCount: number; lastCommentFrom: "portal" | "staff" | null; status?: "published" | "in_client_review" | "client_approved"; scopeKey?: string };
 type ClientStage = "awaiting-client" | "changes-requested" | "client-approved";
 
 export type DerivedReportStatus = {
@@ -50,8 +56,19 @@ export type DerivedReportStatus = {
 };
 
 /** One published report's client stage. Approval outranks an open thread — the client's own act of approving is the stronger signal. */
-const clientStage = (published: PublishedScopeFacts): ClientStage =>
-  published.approvalCount > 0 ? "client-approved" : published.lastCommentFrom === "portal" ? "changes-requested" : "awaiting-client";
+const clientStage = (published: PublishedScopeFacts): ClientStage => {
+  // The stored status first (client-review loop S1): the register and the version can never disagree about a round in the loop.
+  if (published.status === "client_approved") return "client-approved";
+  if (published.status === "in_client_review") return published.lastCommentFrom === "portal" ? "changes-requested" : "awaiting-client";
+  return published.approvalCount > 0 ? "client-approved" : published.lastCommentFrom === "portal" ? "changes-requested" : "awaiting-client";
+};
+
+const isOpenRound = (entry: PublishedScopeFacts) => entry.status === "in_client_review" || entry.status === "client_approved";
+/** A scope with an open round is judged by that round: the published version it will replace is still live, but it is not where the work is. */
+function currentPerScope(entries: ReadonlyArray<PublishedScopeFacts>): PublishedScopeFacts[] {
+  const reopened = new Set(entries.filter(isOpenRound).map((entry) => entry.scopeKey ?? entry.scopeLabel));
+  return entries.filter((entry) => isOpenRound(entry) || !reopened.has(entry.scopeKey ?? entry.scopeLabel));
+}
 
 /**
  * Across a job's published scopes the job shows the one that most needs attention (S-1, §1b): a change request first, then a
@@ -68,7 +85,7 @@ const ATTENTION: readonly ClientStage[] = ["changes-requested", "awaiting-client
  */
 export function deriveReportStatus(facts: ReportStatusFacts): DerivedReportStatus {
   if (facts.published.length > 0) {
-    const scopes = facts.published.map((published) => ({ scopeLabel: published.scopeLabel, stage: clientStage(published) }));
+    const scopes = currentPerScope(facts.published).map((published) => ({ scopeLabel: published.scopeLabel, stage: clientStage(published) }));
     const stage = ATTENTION.find((candidate) => scopes.some((scope) => scope.stage === candidate))!;
     return { stage, reissueReady: facts.hasValidatedVersion, ...(scopes.length > 1 ? { scopes } : {}) };
   }

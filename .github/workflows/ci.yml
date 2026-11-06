@@ -1004,6 +1004,14 @@ jobs:
       # is refused at validate and shown on the draft; validate still refuses the snapshot's preparer.
       - name: Migration 0169 freezes a version's narrative at validate, and the report draws exactly what was frozen
         run: npx tsx --test packages/isolated-backend/tests/reportNarrativeReal.test.ts
+      # Client-review loop S1 (RULING-reporting-client-review-state-model; migration 0214): the widened status CHECK and the two
+      # open-round indexes; validated → in_client_review → client_approved → published (final), each only from its prior state, by
+      # the right principal, pinned to the version the caller saw; the CRM's amend refused once the client has approved; the document
+      # composed live in review and frozen only at the final approval; reopen as a new row with the narrative carried; a job-data
+      # unlock carrying the open round's words into the new validated version; the register reading the stored status. The mock
+      # pool enforces none of the CHECKs or indexes, so this runs the commands as nzi_console_app.
+      - name: The client-review loop takes a report validated → in review → client-approved → final, and reopens it as a new round
+        run: npx tsx --test packages/isolated-backend/tests/reportReviewLoopReal.test.ts
       # BUILD-dataset-factor-dedup slice 1 (migration 0170): a variant carries its base's value — refused for every identity, the
       # owner included, and serialised across two writers; the freight -d defect corrected to each base, one audit event a value,
       # and 0170 refusing any divergence it was not ruled for; applicability backfilled (J000663's set) and held once per factor

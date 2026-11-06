@@ -147,8 +147,12 @@ describe("publishing freezes the composition", () => {
     // freeze cannot be a follow-up step that might not run.
     const publish = /export async function publishCrpReport[\s\S]*?^\}\);\}/m.exec(handler)?.[0] ?? "";
     assert.ok(publish.length > 0, "the publish handler is found");
-    assert.match(publish, /composeForReportVersion\(db\s*,\s*\{/);
-    assert.match(publish, /freezeReportComposition\(db\s*,\s*\{/);
+    // S1: the supersede, compose and freeze live in `issueReportVersion`, which `report.publish` and `report.finalApprove` share.
+    const issue = /export async function issueReportVersion[\s\S]*?^\}/m.exec(handler)?.[0] ?? "";
+    assert.ok(issue.length > 0, "the shared issue helper is found");
+    assert.match(publish, /issueReportVersion\(db,context,/);
+    assert.match(issue, /composeForReportVersion\(db\s*,\s*\{/);
+    assert.match(issue, /freezeReportComposition\(db\s*,\s*\{/);
     assert.match(publish, /compositionId:\s*frozen\.compositionId/);
   });
 
@@ -168,8 +172,9 @@ describe("publishing freezes the composition", () => {
   it("supersedes the previous published version rather than editing it", () => {
     // Re-publishing is a new version; the one the client already has stays as it was.
     const publish = /export async function publishCrpReport[\s\S]*?^\}\);\}/m.exec(handler)?.[0] ?? "";
-    assert.match(publish, /SET status='superseded'/);
-    assert.doesNotMatch(publish, /UPDATE nzi_console\.report_compositions/);
+    const issue = /export async function issueReportVersion[\s\S]*?^\}/m.exec(handler)?.[0] ?? "";
+    assert.match(issue, /SET status='superseded'/);
+    assert.doesNotMatch(publish + issue, /UPDATE nzi_console\.report_compositions/);
   });
 });
 

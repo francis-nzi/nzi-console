@@ -37,7 +37,7 @@ export type ReportStatusRow = {
   v7Report: { version: number; status: string; finalisedAt: string | null; dataHash: string | null } | null;
 };
 
-type PublishedEntry = { reportVersionId: string; scopeKind: "whole" | "sites"; siteIds: string[] | null; approvals: number; lastFrom: "portal" | "staff" | null };
+type PublishedEntry = { reportVersionId: string; scopeKind: "whole" | "sites"; siteIds: string[] | null; status: "published" | "in_client_review" | "client_approved"; scopeKey: string; approvals: number; lastFrom: "portal" | "staff" | null };
 
 /**
  * Track A: the one read model the Reports page and the preparation picker share (and the job page reads its own row of) —
@@ -64,12 +64,13 @@ export async function listReportStatusRegister(db: Queryable, options: { jobId?:
               WHERE (s.organisation_id, s.job_id) = (j.organisation_id, j.job_id) ORDER BY s.snapshot_version DESC LIMIT 1) AS latest_approved,
             EXISTS (SELECT 1 FROM nzi_console.report_versions v WHERE (v.organisation_id, v.job_id) = (j.organisation_id, j.job_id) AND v.status = 'validated') AS has_validated,
             coalesce((SELECT jsonb_agg(jsonb_build_object(
-                       'reportVersionId', p.report_version_id, 'scopeKind', p.scope_kind, 'siteIds', p.scope_site_ids,
+                       'reportVersionId', p.report_version_id, 'scopeKind', p.scope_kind, 'siteIds', p.scope_site_ids, 'status', p.status, 'scopeKey', p.scope_key,
                        'approvals', (SELECT count(*) FROM nzi_console.portal_report_approvals a WHERE (a.organisation_id, a.report_version_id) = (p.organisation_id, p.report_version_id)),
                        'lastFrom', (SELECT m.author_principal FROM nzi_console.portal_report_comments m WHERE (m.organisation_id, m.report_version_id) = (p.organisation_id, p.report_version_id)
                                      ORDER BY m.created_at DESC, m.comment_id DESC LIMIT 1))
-                     ORDER BY (p.scope_kind = 'whole') DESC, p.published_at DESC, p.report_version_id)
-                FROM nzi_console.report_versions p WHERE (p.organisation_id, p.job_id) = (j.organisation_id, j.job_id) AND p.status = 'published'), '[]'::jsonb) AS published,
+                     ORDER BY (p.scope_kind = 'whole') DESC, coalesce(p.published_at, p.sent_to_review_at) DESC, p.report_version_id)
+                -- S1: the versions the client holds — published, and the rounds open with them (the stored status is read, not guessed).
+                FROM nzi_console.report_versions p WHERE (p.organisation_id, p.job_id) = (j.organisation_id, j.job_id) AND p.status IN ('published', 'in_client_review', 'client_approved')), '[]'::jsonb) AS published,
             (EXISTS (SELECT 1 FROM nzi_console.legacy_report_versions l WHERE (l.organisation_id, l.job_id) = (j.organisation_id, j.job_id) AND l.kind = 'report')
               OR EXISTS (SELECT 1 FROM nzi_console.job_scope_rows r WHERE (r.organisation_id, r.job_id) = (j.organisation_id, j.job_id) AND r.origin = 'migrated')) AS v7_record
        FROM nzi_console.jobs j
@@ -87,14 +88,14 @@ export async function listReportStatusRegister(db: Queryable, options: { jobId?:
       hasValidatedVersion: row.has_validated,
       published: row.published.map((entry) => {
         const scope: ReportScope = entry.scopeKind === "sites" && entry.siteIds ? { kind: "sites", siteIds: entry.siteIds } : { kind: "whole" };
-        return { scopeLabel: reportScopeLabel(scope, names), approvalCount: Number(entry.approvals), lastCommentFrom: entry.lastFrom };
+        return { scopeLabel: reportScopeLabel(scope, names), approvalCount: Number(entry.approvals), lastCommentFrom: entry.lastFrom, status: entry.status, scopeKey: entry.scopeKey };
       }),
       v7Record: row.v7_record,
     });
     return {
       jobId: row.job_id, jobNumber: row.job_number, clientId: row.client_id, client: row.client_name, ownerUserId: row.owner_user_id,
       reportingYear: row.reporting_year, jobStatus: row.status, stage: derived.stage, reissueReady: derived.reissueReady,
-      publishedVersionId: row.published[0]?.reportVersionId ?? null,
+      publishedVersionId: row.published.find((entry) => entry.status === "published")?.reportVersionId ?? null,
       ...(derived.scopes ? { scopes: derived.scopes } : {}),
       title: row.title, legacyJobNumber: row.legacy_job_number, leadConsultant: row.lead_consultant,
       hasSnapshot: row.has_snapshot, v7Record: row.v7_record, v7Report: row.v7_report,

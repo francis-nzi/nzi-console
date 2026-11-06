@@ -162,6 +162,7 @@ export * from "./currencyDirectory";
 export * from "./adminStaff";
 export * from "./adminOrganisation";
 export * from "./jobSchedule";
+export * from "./reportLifecycle";
 export * from "./reportStatus";
 export * from "./reportNavigation";
 export * from "./reportScope";
