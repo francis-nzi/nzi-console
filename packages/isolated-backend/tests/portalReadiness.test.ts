@@ -111,6 +111,7 @@ describe("the portal readiness statement", () => {
     const model = await read(state);
     assert.equal(model.state, "none");
     if (model.state !== "none") return;
+    assert.equal(model.phase, "in-progress");
     assert.match(model.reason, /in progress/);
     assert.match(model.reason, /your Acme Carbon consultant/, "the reason names the organisation from its profile (D3b)");
   });
@@ -118,6 +119,7 @@ describe("the portal readiness statement", () => {
   it("says there is no assessment rather than showing nothing as zero", async () => {
     const model = await read(world({ assessments: [] }));
     assert.equal(model.state, "none");
+    assert.equal(model.state === "none" && model.phase, "not-started");
     // A 0% would read as a score the client had been given.
     assert.ok(!JSON.stringify(model).includes("overallPct"));
   });

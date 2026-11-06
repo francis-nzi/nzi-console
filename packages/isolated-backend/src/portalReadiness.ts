@@ -42,6 +42,8 @@ export type PortalReadinessPillar = {
 export type PortalReadinessReadModel =
   | {
     state: "none";
+    /** Which "nothing to show" this is — drives the portal's heading, so it never has to read the reason's words. */
+    phase: "not-started" | "in-progress";
     /** Why there is nothing to show, in the client's terms. Never a zero score. */
     reason: string;
   }
@@ -90,12 +92,14 @@ export async function getPortalClientReadiness(
   ]);
 
   if (!framework) {
-    return { state: "none", reason: "No readiness framework is published yet, so there is nothing to assess against." };
+    return { state: "none", phase: "not-started", reason: "No readiness framework is published yet, so there is nothing to assess against." };
   }
   const assessment = latestAssessed(assessments);
   if (!assessment) {
     return {
       state: "none",
+      // A draft exists (part-way through, never shown) -> in progress; no assessment at all -> not started.
+      phase: assessments.length > 0 ? "in-progress" : "not-started",
       reason: assessments.length > 0
         ? `Your readiness assessment is in progress. It appears here once your ${input.organisationShortName} consultant has completed it.`
         : `Your readiness assessment has not started yet. Your ${input.organisationShortName} consultant will work through it with you.`,
