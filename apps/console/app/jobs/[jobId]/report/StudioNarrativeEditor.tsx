@@ -18,7 +18,7 @@ import { narrativeForEditing, resolveComposedToken } from "../../../reports/[ver
 export type NarrativeEditTarget =
   /** The job's draft: the working sections, through `report.section.*`, pinned by the section version the draft was composed at. */
   | { kind: "draft"; jobId: string }
-  /** A validated version: `report.narrative.update`, pinned by the version this screen opened. */
+  /** A validated version, or (F1) a round open for client review: `report.narrative.update`, pinned by the version this screen opened. */
   | { kind: "validated"; reportVersionId: string; version: number };
 
 export function StudioNarrativeEditor({ target, composition, element, drawn, canEdit, blockedReason }: {
