@@ -86,6 +86,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "portal.report.message.post": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "report.finalApprove": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "report.reopen": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
+  "report.restoreVersion": (input) => ({ kind: "reportVersion", id: input.reportVersionId }),
   "client.reportProfile.set": client,
   "client.reportProfile.deactivate": client,
   "report.snapshot.create": job,

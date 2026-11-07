@@ -318,7 +318,7 @@ describe("the consultant's release capabilities (matrix v12)", () => {
       "scope.review.approve", "scope.review.attest_reingest", "scope.review.reject", "training.run.review"]);
   });
   it("report.publish unlocks exactly these commands - the accepted blast radius", () => {
-    assert.deepEqual(unlockedBy("report.publish"), ["report.finalApprove", "report.publish", "report.reopen", "report.sectionPlan.update", "report.sendToClientReview", "report.validate"]);
+    assert.deepEqual(unlockedBy("report.publish"), ["report.finalApprove", "report.publish", "report.reopen", "report.restoreVersion", "report.sectionPlan.update", "report.sendToClientReview", "report.validate"]);
   });
   it("is held by admin, consultant and reviewer - and by no other role", () => {
     assert.deepEqual(holders("snapshot.review"), ["admin", "consultant", "reviewer"]);
