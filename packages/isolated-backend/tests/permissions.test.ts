@@ -126,11 +126,11 @@ describe("the permission matrix (NZC-022)", () => {
     // Actions A2 adds the client's own plan (`portal.plan`): held to the session's client, never a job grant.
     for (const definition of Object.values(commandDefinitions)) {
       if (definition.principal === "portal") {
-        assert.equal(definition.permission, definition.key.startsWith("portal.strategy.") ? "portal.plan" : definition.key === "report.clientApprove" || definition.key === "portal.report.update" ? "portal.review" : "portal.dataentry", definition.key);
+        assert.equal(definition.permission, definition.key.startsWith("portal.strategy.") ? "portal.plan" : definition.key === "report.clientApprove" || definition.key === "portal.report.update" || definition.key === "portal.report.message.post" ? "portal.review" : "portal.dataentry", definition.key);
       } else assert.ok(isCapability(definition.permission), definition.key);
     }
     assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.principal === "portal").map((definition) => definition.key).sort(),
-      ["portal.file.download", "portal.file.upload", "portal.message.post", "portal.notices.seen", "portal.report.update", "portal.scope.row.create", "portal.scope.row.deactivate", "portal.scope.row.import", "portal.scope.row.reopen.request", "portal.scope.row.update", "portal.strategy.add", "portal.strategy.propose", "portal.strategy.update", "portal.thread.read", "portal.thread.start", "report.clientApprove"],
+      ["portal.file.download", "portal.file.upload", "portal.message.post", "portal.notices.seen", "portal.report.message.post", "portal.report.update", "portal.scope.row.create", "portal.scope.row.deactivate", "portal.scope.row.import", "portal.scope.row.reopen.request", "portal.scope.row.update", "portal.strategy.add", "portal.strategy.propose", "portal.strategy.update", "portal.thread.read", "portal.thread.start", "report.clientApprove"],
       "only the client's three data-entry writes, their request to reopen a reviewed entry (D3 R6), three plan writes, file upload/download and three conversation writes and the updates-seen marker are portal commands");
     // And the staff side of A2 names enum capabilities: the plan's, and the library's for promotion.
     assert.deepEqual(["client.strategy.proposal.approve", "client.strategy.proposal.decline", "strategy.library.promote"].map((key) => commandDefinitions[key as keyof typeof commandDefinitions].permission),

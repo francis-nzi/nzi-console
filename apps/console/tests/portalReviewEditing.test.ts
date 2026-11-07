@@ -45,3 +45,42 @@ describe("the portal review page (S4)", () => {
     assert.equal((view.match(/data-portal-review-update/g) ?? []).length, 1);
   });
 });
+
+// Client-review loop S5: the Approve button and the message panel on the same page, behind the same flag.
+import { APPROVE_NOTE, approveBlockedReason, messageToSend } from "../app/portal/jobs/[jobId]/review/reviewEditing";
+
+describe("the portal review page: messaging and Approve (S5)", () => {
+  it("Approve says what it does before it is sent, and waits for changes not yet sent (it is pinned to the version on screen)", () => {
+    assert.equal(APPROVE_NOTE, "This issues your sign-off to the team; the report is then locked for your edits.");
+    assert.equal(approveBlockedReason(0), null);
+    assert.match(approveBlockedReason(2)!, /Press Update/);
+  });
+  it("a message is trimmed and bounded the way the command bounds it", () => {
+    assert.equal(messageToSend("  hello  "), "hello");
+    assert.equal(messageToSend("   "), null);
+    assert.equal(messageToSend("x".repeat(4000)), "x".repeat(4000));
+    assert.equal(messageToSend("x".repeat(4001)), null);
+  });
+  it("the new routes are flag-gated, same-origin, portal-principal-only and run exactly the one command each", () => {
+    const routes: Array<[string, string]> = [["approve", "approveReportAsClient"], ["message", "postReportMessageAsClient"]];
+    for (const [name, fn] of routes) {
+      const route = read(`../app/api/portal/jobs/[jobId]/review-report/${name}/route.ts`);
+      assert.match(route, /portalFeatureEnabled\("portal-report-review"\)/, name);
+      assert.match(route, /requirePortalOrigin\(request\)/, name);
+      assert.ok(route.includes(`${fn}(isolatedPool(), body, portalCommandContext(request, user))`), name);
+      assert.doesNotMatch(route, /requireCommandPrincipal|currentStaff/, `${name}: never a staff principal`);
+      assert.doesNotMatch(route, /export async function (GET|PUT|PATCH|DELETE)/, name);
+    }
+  });
+  it("the page has one Approve (behind a confirm note) and a message box, and approving locks the editing controls", () => {
+    const view = read("../app/portal/jobs/[jobId]/review/PortalReviewReport.tsx");
+    assert.equal((view.match(/data-portal-review-approve-confirm/g) ?? []).length, 1);
+    assert.match(view, /APPROVE_NOTE/);
+    assert.match(view, /review-report\/approve/);
+    assert.match(view, /expectedVersion: round\.version/, "pinned to the version on screen");
+    assert.match(view, /disabled=\{busy \|\| pending\.length > 0 \|\| confirming\}/, "unsent changes block Approve");
+    assert.match(view, /open \? <div className="nzs-toolbar"/, "the toolbar (Update, Approve) only on an open round");
+    assert.match(view, /review-report\/message/);
+    assert.doesNotMatch(view, /dangerouslySetInnerHTML=\{\{ __html: entry\.body/, "a message is plain text, never HTML");
+  });
+});

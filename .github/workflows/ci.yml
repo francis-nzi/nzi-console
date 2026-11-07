@@ -1027,6 +1027,10 @@ jobs:
       # another client's user or a staff principal; the portal read of the live round. The mock pool enforces none of it, so this runs as nzi_console_app.
       - name: The client edits a report open for review with one Update, recorded in the version's history
         run: npx tsx --test packages/isolated-backend/tests/portalReportUpdateReal.test.ts
+      # Client-review loop S5: the client and the team write to each other on a round open for review (the report thread, 0201); each
+      # message queues one notify-only email in its own transaction (a link, never the words); the client's Approve is version-pinned and tells the team.
+      - name: Client and team message on a review round, the notify-only email, and the client approves
+        run: npx tsx --test packages/isolated-backend/tests/portalReportMessagingReal.test.ts
       # Client-review loop S1 (RULING-reporting-client-review-state-model; migration 0214): the widened status CHECK and the two
       # open-round indexes; validated → in_client_review → client_approved → published (final), each only from its prior state, by
       # the right principal, pinned to the version the caller saw; the CRM's amend refused once the client has approved; the document

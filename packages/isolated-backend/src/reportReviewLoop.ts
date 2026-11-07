@@ -12,6 +12,7 @@
 import { randomUUID } from "node:crypto";
 import { clientMayEdit, CLIENT_EDITABLE_STATUSES, reportNarrativeBodyIssues, type CommandContext, type CommandInputMap, type ReportNarrativeElement } from "@nzi/contracts";
 import { ScopeConflictError, VersionConflictError, isUniqueViolation } from "./errors";
+import { queueMessageNotification } from "./portalMessageNotifications";
 import type { PoolLike, Queryable } from "./postgres";
 import { appendReportVersionEdit } from "./reportVersionEdits";
 import { CommandValidationError, issueReportVersion, requireReleasableSnapshot, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
@@ -27,6 +28,32 @@ async function lockVersion(db: Queryable, organisationId: string, reportVersionI
       WHERE organisation_id = $1 AND report_version_id = $2 FOR UPDATE`, [organisationId, reportVersionId])).rows[0];
   if (!row) throw refuse("reportVersionId", "NOT_FOUND", "Report version was not found.");
   return row;
+}
+
+/** The statuses in which the client and the team talk about a round: open for review, and approved (locked, but not yet issued). */
+export const REPORT_THREAD_ROUND_STATUSES: readonly string[] = ["in_client_review", "client_approved"];
+/** What the thread records when the client approves: fixed wording, so the approval is an entry the team sees and is notified of. */
+export const CLIENT_APPROVAL_MESSAGE = "I have approved this report.";
+
+/**
+ * One message in the round's report thread (S5). The thread is the one the report page's comments already use (0201, `thr-rv-<version>`):
+ * the comment is written, the mirror puts it in the thread (creating it the first time) and keeps its state, and the other side's
+ * notify-only email is queued in this same transaction - one pending row per thread and audience, sent by the worker with consent checked
+ * then (portalMessageNotifications.ts). Nothing is sent from here, so a refused or stubbed email can never fail the message.
+ */
+async function appendRoundMessage(db: Queryable, context: CommandContext, round: { reportVersionId: string; jobId: string; clientId: string }, author: "portal" | "staff", body: string): Promise<{ commentId: string; threadId: string }> {
+  const name = author === "portal"
+    ? (await db.query<{ n: string | null }>(`SELECT display_name AS n FROM nzi_console.portal_users WHERE organisation_id = $1 AND portal_user_id = $2`, [context.organisationId, context.actorId])).rows[0]?.n
+    : (await db.query<{ n: string | null }>(`SELECT display_name AS n FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2`, [context.organisationId, context.actorId])).rows[0]?.n;
+  const commentId = randomUUID();
+  await db.query(
+    `INSERT INTO nzi_console.portal_report_comments (organisation_id, comment_id, report_version_id, job_id, client_id, author_principal, author_id, author_display_name, body)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [context.organisationId, commentId, round.reportVersionId, round.jobId, round.clientId, author, context.actorId, name ?? (author === "portal" ? "Client user" : "Adviser"), body]);
+  await db.query(`SELECT nzi_console.mirror_report_comment_to_thread($1,$2)`, [context.organisationId, commentId]);
+  const threadId = (await db.query<{ thread_id: string }>(`SELECT thread_id FROM nzi_console.portal_threads WHERE organisation_id = $1 AND report_version_id = $2`, [context.organisationId, round.reportVersionId])).rows[0]!.thread_id;
+  await queueMessageNotification(db, context.organisationId, { thread_id: threadId, client_id: round.clientId }, author);
+  return { commentId, threadId };
 }
 
 /** The version the caller saw is the version acted on: two actors racing on one round must not both proceed. */
@@ -99,10 +126,30 @@ export async function approveReportAsClient(pool: PoolLike, input: CommandInputM
       [context.organisationId, input.reportVersionId, context.actorId, input.expectedVersion]);
     if (!updated.rows[0]) throw new VersionConflictError(input.expectedVersion, report.version);
     const approvedAt = updated.rows[0].client_approved_at instanceof Date ? updated.rows[0].client_approved_at.toISOString() : String(updated.rows[0].client_approved_at);
+    // S5: the team is told - an entry in the round's thread (so it is in the inbox, awaiting the team) and the notify-only email, in this transaction.
+    await appendRoundMessage(db, context, { reportVersionId: input.reportVersionId, jobId: report.job_id, clientId }, "portal", CLIENT_APPROVAL_MESSAGE);
     return {
       data: { reportVersionId: input.reportVersionId, jobId: report.job_id, clientId, status: "client_approved" as const, version: updated.rows[0].version, approvedAt },
       before: { status: "in_client_review", version: report.version },
       entityType: "report_version", entityId: input.reportVersionId, topic: "report.clientApproved",
+    };
+  });
+}
+
+/**
+ * The client writes to the team about a round open for their review (S5). Allowed while the round is `in_client_review` or just
+ * `client_approved` - the client can still say "I need a change" after approving - and never on a draft, an issued or a superseded one.
+ * The text is the message and nowhere else: the audit holds ids only, and the email the team gets carries a link, never the words.
+ */
+export async function postReportMessageAsClient(pool: PoolLike, input: CommandInputMap["portal.report.message.post"], context: CommandContext) {
+  return runPostgresCommand(pool, "portal.report.message.post", input, context, async (db) => {
+    const report = await lockVersion(db, context.organisationId, input.reportVersionId);
+    if (!REPORT_THREAD_ROUND_STATUSES.includes(report.status)) throw refuse("reportVersionId", "PRECONDITION", "This report is not open for your review, so there is no conversation to add to here.");
+    const clientId = context.portal!.clientId;
+    const posted = await appendRoundMessage(db, context, { reportVersionId: input.reportVersionId, jobId: report.job_id, clientId }, "portal", input.body.trim());
+    return {
+      data: { reportVersionId: input.reportVersionId, jobId: report.job_id, clientId, threadId: posted.threadId, commentId: posted.commentId },
+      entityType: "report_version", entityId: input.reportVersionId, topic: "report.clientMessagePosted",
     };
   });
 }

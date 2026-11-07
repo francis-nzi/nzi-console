@@ -16,3 +16,17 @@ export function savedMessage(changedSections: readonly string[], titleOf: (key: 
   const names = changedSections.map(titleOf);
   return `Saved your changes to ${names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`}. The team can see what changed.`;
 }
+
+/** S5: shown before the client's Approve is sent - what the click does. */
+export const APPROVE_NOTE = "This issues your sign-off to the team; the report is then locked for your edits.";
+
+/** S5: Approve is pinned to the version on screen, so words changed but not yet sent (Update) would be left out of what is approved. */
+export function approveBlockedReason(unsentSections: number): string | null {
+  return unsentSections > 0 ? "Press Update to send your changes first, or discard them, then approve." : null;
+}
+
+/** S5: the message to the team - trimmed, 1 to 4,000 characters, the same bound the command holds. */
+export function messageToSend(text: string): string | null {
+  const body = text.trim();
+  return body && body.length <= 4000 ? body : null;
+}
