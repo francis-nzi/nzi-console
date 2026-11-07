@@ -110,7 +110,7 @@ export function studioDraftQuery(choice: { plan?: ReportSectionPlan | null; scop
  * approved). Earlier stages have no approved snapshot to compose from.
  */
 export const studioHasReport = (stage: ReportStage): boolean =>
-  stage === "ready-to-validate" || stage === "ready-to-publish" || stage === "awaiting-client" || stage === "changes-requested" || stage === "client-approved";
+  stage === "ready-to-validate" || stage === "ready-to-publish" || stage === "awaiting-client" || stage === "client-responded" || stage === "changes-requested" || stage === "awaiting-final-approval" || stage === "client-approved";
 
 /** The rail's legend, as the mockup states it. Every drawn data section's figures are locked to the frozen snapshot. */
 export const studioRailLegend = [

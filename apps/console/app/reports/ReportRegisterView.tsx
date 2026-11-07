@@ -24,7 +24,7 @@ function isRow(value: unknown): value is ReportStatusRow {
 /** The pill tone per stage: done when the client holds it approved, estimated while it moves, need where we owe work. */
 const tone: Record<ReportStage, string> = {
   "in-preparation": "need", "awaiting-review": "need", "ready-to-validate": "est", "ready-to-publish": "est",
-  "awaiting-client": "est", "changes-requested": "nof", "client-approved": "done", "v7-record": "",
+  "awaiting-client": "est", "client-responded": "nof", "changes-requested": "nof", "awaiting-final-approval": "need", "client-approved": "done", "v7-record": "",
 };
 
 /**
