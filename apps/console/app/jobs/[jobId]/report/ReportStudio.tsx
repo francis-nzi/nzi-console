@@ -17,6 +17,7 @@ import { ReportEditHistory } from "./ReportEditHistory";
 import { ReportVersionChain } from "./ReportVersionChain";
 import { useJobReportRow } from "../../../lib/useJobReportRow";
 import { useReportSignees } from "../../../lib/useReportSignees";
+import { SigneeEmptyHint } from "../../../lib/SigneeEmptyHint";
 import { PrepareFrame } from "../../../report-preview/PrepareFrame";
 import { ReportScopeSelector } from "../../../report-preview/ReportScopeSelector";
 import { ReportComposedView } from "../../../reports/[versionId]/ReportComposedView";
@@ -111,6 +112,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
   // The signee validate freezes onto the version — the client's report-signee contacts, offered as the job page's release
   // panel offers them (the first by default; "No signee" is a choice, never a guess).
   const signees = useReportSignees(jobId, kind === "draft");
+  const signeeRow = useJobReportRow(jobId);
   const [signeeId, setSigneeId] = useState("");
   useEffect(() => { if (signees?.length) setSigneeId((current) => current && signees.some((item) => item.id === current) ? current : signees[0]!.id); }, [signees]);
 
@@ -243,6 +245,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
           {signees?.map((contact) => <option key={contact.id} value={contact.id}>{contact.fullName}{contact.jobTitle ? ` — ${contact.jobTitle}` : ""}</option>)}
           {signees?.length ? <option value="">No signee on this report</option> : null}
         </select>
+        {Array.isArray(signees) && signees.length === 0 ? <SigneeEmptyHint clientId={signeeRow?.clientId ?? null} /> : null}
       </div> : null}
       {kind === "draft" ? <button type="button" className="nz-btn pri" data-studio-validate disabled={!draft || draft.blockers.length > 0 || pending !== null}
         title={draft && draft.blockers.length > 0 ? "Resolve what validation would refuse first" : undefined} onClick={validate}>{pending === "validate" ? "Validating…" : "Validate this report"}</button> : null}

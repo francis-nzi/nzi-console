@@ -576,7 +576,7 @@ export function CrpScopeWorkspace({
   // B2-4 (RULING-report-studio-B2-4): the Jobs §4 narrative editor is unmounted — the narrative is edited in the Report Studio,
   // where it is drawn and frozen at validate. Its component and API routes stay.
   const releaseControl = <>
-    <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting} importedPeriod={qa.migratedRows > 0}/>
+    <CrpReleaseControl jobId={job.header.id} readyForReporting={qa.readyForReporting} importedPeriod={qa.migratedRows > 0} clientId={job.header.clientId}/>
   </>;
   const reviewQueue = <PortalDataEntryReviewQueue jobId={job.header.id}/>;
   // D: under the job shell, with the Report Studio on, "Report & publish" is the report's state and "Open in Report Studio" —

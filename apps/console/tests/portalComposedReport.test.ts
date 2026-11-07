@@ -107,7 +107,7 @@ describe("the portal shows the issued report, and a left-out section is absent e
     // The page is shared with the staff preview (BUILD-staff-portal-preview-job-aware): `PortalReportPage`.
     const page = read("apps/console/app/portal/jobs/[jobId]/PortalReportPage.tsx");
     assert.match(page, /published-report\/composition\?reportVersionId=\$\{encodeURIComponent\(reportVersionId\)\}/);
-    assert.match(page, /<PortalWorkspace specs=\{specs\} report=\{body\.report\} approval=\{body\.approval\} view=\{view\} clientMode\/>/);
+    assert.match(page, /<PortalWorkspace specs=\{specs\} report=\{body\.report\} approval=\{body\.approval\} view=\{view\} clientMode issuedFinal=\{issuedFinalOf\(body,/);
     const preview = read("apps/console/app/portal-preview/page.tsx");
     assert.match(preview, /report=\{clientFacingPublishedReport\(data\.report\)\}/);
     assert.match(preview, /return \{state:"composed",composition:clientFacingComposition\(composition\)\}/);

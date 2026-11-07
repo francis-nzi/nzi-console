@@ -1,5 +1,6 @@
 "use client";
 
+import {SigneeEmptyHint} from "../lib/SigneeEmptyHint";
 import {useCallback,useEffect,useState} from "react";
 import {postBrowserCommand} from "@nzi/api-client";
 import {crpProfessionalManifest} from "@nzi/charts";
@@ -18,7 +19,7 @@ const message=(result:{state:string;message?:string;issues?:Array<{message:strin
  * their own, shown as a self-approval. The signee is one of the client's
  * report-signee contacts and is frozen onto the validated version.
  */
-export function CrpReleaseControl({jobId,readyForReporting,importedPeriod=false}:{jobId:string;readyForReporting:boolean;importedPeriod?:boolean}){
+export function CrpReleaseControl({jobId,readyForReporting,importedPeriod=false,clientId=null}:{jobId:string;readyForReporting:boolean;importedPeriod?:boolean;clientId?:string|null}){
   const [snapshots,setSnapshots]=useState<ReviewedCrpSnapshotReadModel[]>([]),[reports,setReports]=useState<ReportVersionRegisterItem[]>([]),[signees,setSignees]=useState<ClientContactReadModel[]|null>(null),[signeeId,setSigneeId]=useState(""),[loading,setLoading]=useState(true),[pending,setPending]=useState(false),[notice,setNotice]=useState<{ok:boolean;text:string}|null>(null),[independentRequired,setIndependentRequired]=useState(true);
   const me=useStaffMe();
   const load=useCallback(async()=>{setLoading(true);try{const [snapshotResponse,reportResponse,signeeResponse]=await Promise.all([fetch(`/api/isolated/jobs/${jobId}/reviewed-snapshots`,{cache:"no-store"}),fetch("/api/isolated/report-versions",{cache:"no-store"}),fetch(`/api/isolated/jobs/${jobId}/report-signees`,{cache:"no-store"})]),snapshotBody=await snapshotResponse.json(),reportBody=await reportResponse.json(),signeeBody=await signeeResponse.json().catch(()=>({}));if(!snapshotResponse.ok||!reportResponse.ok)throw new Error(snapshotBody.message??reportBody.message??"Publication evidence is unavailable.");setSnapshots(Array.isArray(snapshotBody.snapshots)?snapshotBody.snapshots:[]);setIndependentRequired(readIndependentApprovalRequired(snapshotBody));setReports(Array.isArray(reportBody.reports)?reportBody.reports.filter((report:ReportVersionRegisterItem)=>report.jobId===jobId):[]);const list:ClientContactReadModel[]=signeeResponse.ok&&Array.isArray(signeeBody.signees)?signeeBody.signees:[];setSignees(list);setSigneeId(current=>current&&list.some(item=>item.id===current)?current:list[0]?.id??"");}catch(error){setNotice({ok:false,text:error instanceof Error?error.message:"Publication evidence is unavailable."});}finally{setLoading(false);}},[jobId]);
@@ -44,6 +45,7 @@ export function CrpReleaseControl({jobId,readyForReporting,importedPeriod=false}
         {signees?.map(contact=><option key={contact.id} value={contact.id}>{contact.fullName}{contact.jobTitle?` — ${contact.jobTitle}`:""}</option>)}
         {signees?.length?<option value="">No signee on this report</option>:null}
       </select>
+      {Array.isArray(signees)&&signees.length===0?<SigneeEmptyHint clientId={clientId}/>:null}
       <span className="nz-hint">Only the client&apos;s contacts marked <b>Report signee</b> are offered. The signee is frozen onto the validated version and shown on the published report.</span>
     </label>:null}
     {notice&&<div className={`nz-banner ${notice.ok?"ok":"warn"}`} role={notice.ok?"status":"alert"}>{notice.text}</div>}

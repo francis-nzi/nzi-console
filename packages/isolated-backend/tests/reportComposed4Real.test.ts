@@ -7,6 +7,8 @@ import { publishCrpReport, validateCrpReport } from "../src/postgresCommands";
 import { getReportComposition, previewReportComposition } from "../src/reportCompositions";
 import { getReportVersionSectionPlan } from "../src/reportSectionPlanRecords";
 import { withTenantRead } from "../src/postgres";
+import { createClientContact, updateClientContact } from "../src/clientContacts";
+import { listJobReportSignees } from "../src/clientContactRecords";
 
 /**
  * B2-3 (`composed@4`, RULING-report-B2-3) against a real database: a report composed now is drawn `composed@4`, freezes its
@@ -112,6 +114,26 @@ describe("composed@4 freezes its period and signee, and reads stored plans compl
     assert.ok(["scope-analysis", "glossary", "audit", "appendix-sites"].every((key) => held.sectionPlan.some((entry) => entry.key === key && entry.included)));
     assert.equal(held.origin, "profile:1");
     await q(`DELETE FROM nzi_console.client_report_profiles WHERE organisation_id = $1 AND client_id = $2`, [ORG, CLIENT]);
+  });
+
+  it("S8: a contact marked Report signee from the contacts form is offered as a signee, frozen onto the report, and leaves the picker when the role is removed", async () => {
+    const none = await withTenantRead(database.pool, ORG, (db) => listJobReportSignees(db, "j-c4"));
+    assert.ok(!none.some((contact) => contact.fullName === "Robin Authored"), "not offered before it is marked");
+    const created = await createClientContact(database.pool, { clientId: CLIENT, fullName: "Robin Authored", jobTitle: "Finance director", email: null, phone: null, isPrimary: false, roles: ["report_signee"] }, context("ada", "admin"));
+    const contactId = created.data.contactId as string;
+    const offered = await withTenantRead(database.pool, ORG, (db) => listJobReportSignees(db, "j-c4"));
+    assert.ok(offered.some((contact) => contact.id === contactId && contact.jobTitle === "Finance director"), "the new report-signee contact is in the picker's read");
+
+    await snapshot("snap-c4-authored", 5, true);
+    const id = await validate("snap-c4-authored", { signeeContactId: contactId });
+    const [version] = await q(`SELECT signee_contact_id, signee_name, signee_job_title FROM nzi_console.report_versions WHERE report_version_id = $1`, [id]);
+    assert.deepEqual([version.signee_contact_id, version.signee_name, version.signee_job_title], [contactId, "Robin Authored", "Finance director"], "frozen as before");
+
+    // Taking the role off leaves the picker (the contact stays a contact); a contact without the role is refused as a signee.
+    await updateClientContact(database.pool, { contactId, expectedVersion: created.data.version as number, fullName: "Robin Authored", isPrimary: false, roles: [] }, context("ada", "admin"));
+    assert.ok(!(await withTenantRead(database.pool, ORG, (db) => listJobReportSignees(db, "j-c4"))).some((contact) => contact.id === contactId));
+    await snapshot("snap-c4-authored-2", 6, true);
+    await assert.rejects(validate("snap-c4-authored-2", { signeeContactId: contactId }));
   });
 
   it("the preview is still what publish freezes — the new fields included", async () => {
