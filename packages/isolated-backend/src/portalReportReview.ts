@@ -4,6 +4,7 @@
 // identity out (`clientFacingComposition`), as the published view does.
 import { clientFacingComposition, clientMayEdit, reportScopeLabel, type ReportComposition, type ReportScope } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
+import { assembleReportComments, type PortalReportComment } from "./portalReview";
 import { previewReportComposition } from "./reportCompositions";
 
 export type PortalReviewRound = {
@@ -11,6 +12,8 @@ export type PortalReviewRound = {
   /** The narrative sections the client may edit now: those the version draws, while the round is open. Never a figure, chart or table. */
   editableSections: string[];
   composition: ReportComposition;
+  /** The conversation on this round (S5): the client's messages and the team's replies, oldest first. Plain text. */
+  messages: PortalReportComment[];
 };
 
 export async function getGrantedPortalReviewRound(db: Queryable, input: { organisationId: string; portalUserId: string; clientId: string; jobId: string; reportVersionId?: string | null }): Promise<PortalReviewRound | null> {
@@ -39,5 +42,6 @@ export async function getGrantedPortalReviewRound(db: Queryable, input: { organi
     sentToReviewAt: row.sent_to_review_at ? (row.sent_to_review_at instanceof Date ? row.sent_to_review_at.toISOString() : String(row.sent_to_review_at)) : null,
     editableSections: clientMayEdit(row.status) ? (preview.composition.narrative ?? []).map((element) => element.key) : [],
     composition: clientFacingComposition(preview.composition),
+    messages: await assembleReportComments(db, { jobId: input.jobId, reportVersionId: row.report_version_id }),
   };
 }

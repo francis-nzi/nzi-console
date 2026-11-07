@@ -5,10 +5,11 @@ import { postBrowserCommand } from "@nzi/api-client";
 import { crpReportSectionTemplate, reportNarrativeBodyIssues, reportTokenCatalogue, serializeReportSectionBody, type ReportComposition, type ReportNarrativeElement } from "@nzi/contracts";
 import { ReportComposedView } from "../../../../reports/[versionId]/ReportComposedView";
 import { narrativeForEditing, resolveComposedToken } from "../../../../reports/[versionId]/composedNarrative";
-import { editsToSend, savedMessage } from "./reviewEditing";
+import { APPROVE_NOTE, approveBlockedReason, editsToSend, messageToSend, savedMessage } from "./reviewEditing";
 
 export type ReviewRound = {
   reportVersionId: string; status: "in_client_review" | "client_approved"; version: number; scopeLabel: string; editableSections: string[]; composition: ReportComposition;
+  messages: Array<{ commentId: string; authorPrincipal: "portal" | "staff"; authorDisplayName: string; body: string; createdAt: string }>;
 };
 
 const titleOf = (key: string) => crpReportSectionTemplate(key)?.title ?? key;
@@ -25,6 +26,8 @@ export function PortalReviewReport({ jobId, initial }: { jobId: string; initial:
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: "ok" | "problem"; text: string } | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [draftMessage, setDraftMessage] = useState("");
   const open = round.status === "in_client_review";
   const pending = editsToSend(drafts, round.composition.narrative ?? []);
 
@@ -51,6 +54,39 @@ export function PortalReviewReport({ jobId, initial }: { jobId: string; initial:
     setBusy(false);
   }
 
+  async function approve() {
+    if (busy) return;
+    setBusy(true); setMessage(null);
+    const result = await postBrowserCommand<{ status: string }>(`/api/portal/jobs/${encodeURIComponent(jobId)}/review-report/approve`,
+      { reportVersionId: round.reportVersionId, expectedVersion: round.version }, crypto.randomUUID());
+    if (result.state === "success") {
+      const fresh = await reread();
+      if (fresh) setRound(fresh);
+      setConfirming(false);
+      setMessage({ tone: "ok", text: "Thank you - your approval has been sent to the team. The report is now locked for your edits." });
+    } else {
+      setConfirming(false);
+      setMessage({ tone: "problem", text: result.state === "conflict" ? "This report changed since you opened it. Reload to see the latest, then approve again."
+        : result.message || "Your approval was not sent." });
+    }
+    setBusy(false);
+  }
+
+  async function send() {
+    const body = messageToSend(draftMessage);
+    if (busy || !body) return;
+    setBusy(true); setMessage(null);
+    const result = await postBrowserCommand<{ commentId: string }>(`/api/portal/jobs/${encodeURIComponent(jobId)}/review-report/message`,
+      { reportVersionId: round.reportVersionId, body }, crypto.randomUUID());
+    if (result.state === "success") {
+      const fresh = await reread();
+      if (fresh) setRound(fresh);
+      setDraftMessage("");
+      setMessage({ tone: "ok", text: "Your message has been sent to the team." });
+    } else setMessage({ tone: "problem", text: result.message || "Your message was not sent." });
+    setBusy(false);
+  }
+
   const editor = open && round.editableSections.length > 0
     ? (_key: string, element: ReportNarrativeElement, drawn: React.ReactNode) => round.editableSections.includes(element.key)
       ? <PortalNarrativeSection element={element} composition={round.composition} drawn={drawn} draft={drafts[element.key]}
@@ -67,9 +103,25 @@ export function PortalReviewReport({ jobId, initial }: { jobId: string; initial:
       <span className="nzs-hint">{pending.length === 0 ? "No unsaved changes" : `${pending.length} section${pending.length === 1 ? "" : "s"} changed, not yet sent`}</span>
       <span className="nzs-spacer" />
       <button type="button" className="nz-btn pri" data-portal-review-update disabled={busy || pending.length === 0} onClick={() => void update()}>{busy ? "Updating…" : "Update"}</button>
+      <button type="button" className="nz-btn" data-portal-review-approve disabled={busy || pending.length > 0 || confirming} title={approveBlockedReason(pending.length) ?? undefined} onClick={() => setConfirming(true)}>Approve report</button>
+    </div> : null}
+    {open && confirming ? <div className="nz-hint" role="alertdialog" aria-label="Approve report" data-portal-review-approve-note style={{ margin: "8px 0" }}>
+      <p>{APPROVE_NOTE}</p>
+      <button type="button" className="nz-btn pri" data-portal-review-approve-confirm disabled={busy} onClick={() => void approve()}>{busy ? "Approving…" : "Approve"}</button>
+      <button type="button" className="nz-btn" disabled={busy} onClick={() => setConfirming(false)}>Cancel</button>
     </div> : null}
     {message ? <p className={message.tone === "ok" ? "nz-hint" : "nzs-narr-note"} role={message.tone === "ok" ? "status" : "alert"} data-portal-review-message>{message.text}</p> : null}
     <ReportComposedView composition={round.composition} issuerLogoSrc={NO_LOGO} clientLogoSrc={NO_LOGO} preview mode="flow" {...(editor ? { narrativeEditor: editor } : {})} />
+    <section className="nz-panel" aria-label="Messages with the team" data-portal-review-messages style={{ marginTop: 16 }}>
+      <h2>Messages with the team</h2>
+      {round.messages.length === 0 ? <p className="nz-hint">No messages yet. Write to the team here if you have a question or want something changed.</p>
+        : round.messages.map((entry) => <article key={entry.commentId} data-portal-review-message-from={entry.authorPrincipal} style={{ margin: "8px 0" }}>
+            <b>{entry.authorPrincipal === "portal" ? "You" : "The team"}</b> <span className="nz-hint">{entry.authorDisplayName} · {new Date(entry.createdAt).toLocaleString()}</span>
+            <p style={{ whiteSpace: "pre-wrap" }}>{entry.body}</p>
+          </article>)}
+      <textarea className="nz-input" aria-label="Write to the team" rows={3} maxLength={4000} value={draftMessage} onChange={(event) => setDraftMessage(event.target.value)} />
+      <button type="button" className="nz-btn pri" data-portal-review-send disabled={busy || messageToSend(draftMessage) === null} onClick={() => void send()}>Send message</button>
+    </section>
   </div>;
 }
 

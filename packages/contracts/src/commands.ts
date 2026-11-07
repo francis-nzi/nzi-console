@@ -101,6 +101,7 @@ export type CommandKey =
   | "report.sendToClientReview"
   | "report.clientApprove"
   | "portal.report.update"
+  | "portal.report.message.post"
   | "report.finalApprove"
   | "report.reopen"
   | "client.reportProfile.set"
@@ -868,6 +869,8 @@ export type CommandInputMap = {
    * money is refused). One Update is one batch and one version bump. Figures, charts and tables are not editable: only narrative sections.
    */
   "portal.report.update":{reportVersionId:string;expectedVersion:number;edits:Array<{sectionKey:string;bodyHtml:string}>};
+  /** Client-review loop S5: the client writes to the team on a round open for their review (or just approved). Plain text, 1-4,000 characters. */
+  "portal.report.message.post":{reportVersionId:string;body:string};
   /** S1: the CRM's final approval of a client-approved round — locks it in full (published, marked final) and freezes its composition. */
   "report.finalApprove":{reportVersionId:string;expectedStatus:"client_approved";manifestVersion:number;reviewedSnapshotId:string;expectedVersion:number};
   /**
@@ -2250,6 +2253,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   // Client-review loop S1 (RULING-reporting-client-review-state-model). Staff transitions need `report.publish`, the capability that
   // releases a report; the client's approval is a portal command under the client's own grant. Each is pinned to the version the caller saw.
   "report.sendToClientReview":{key:"report.sendToClientReview",label:"Send a report to the client for review",permission:"report.publish",reasonRequired:false,transaction:"validated version → in_client_review + version bump + audit + outbox + idempotency",auditAction:"report_sent_to_client_review",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"reportVersionId",input.reportVersionId);if(input.expectedStatus!=="validated")issues.push({field:"expectedStatus",code:"PRECONDITION",message:"Only a validated report can be sent to the client for review."});if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});return issues;}},
+  "portal.report.message.post":{key:"portal.report.message.post",label:"Message the team about the report in the client portal",principal:"portal",permission:"portal.review",reasonRequired:false,transaction:"message in the round's report thread + the team's notify-only email queued + audit (ids only, never the text) + outbox + idempotency",auditAction:"portal_report_message_posted",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"reportVersionId",input.reportVersionId);const text=typeof input.body==="string"?input.body.trim():"";if(!text||text.length>4000)issues.push({field:"body",code:"INVALID",message:"A message between 1 and 4,000 characters is required."});return issues;}},
   "portal.report.update":{key:"portal.report.update",label:"Update the report in the client portal",principal:"portal",permission:"portal.review",reasonRequired:false,transaction:"narrative edits re-frozen on the in_client_review version + one version bump + report_version_edits rows (one batch) + audit + outbox + idempotency",auditAction:"portal_report_updated",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"reportVersionId",input.reportVersionId);if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});
     if(!Array.isArray(input.edits)||input.edits.length===0)issues.push({field:"edits",code:"REQUIRED",message:"Change at least one section before updating."});
     else{
