@@ -8,6 +8,7 @@ import { approveReportAsClient, finalApproveReport, reopenReport, sendReportToCl
 import { updateReportSectionPlan } from "../src/reportSectionPlans";
 import { listReportStatusRegister } from "../src/reportStatusRegister";
 import { getReportComposition, previewReportComposition } from "../src/reportCompositions";
+import { reportIsLoopFinal } from "../src/portalIssuedReport";
 import { SeparationOfDutiesError } from "../src/access";
 import { AuthorizationError } from "../src/auth";
 import { ScopeConflictError, VersionConflictError } from "../src/errors";
@@ -307,6 +308,27 @@ describe("S1: the client-review loop lifecycle, against a real database", { skip
     assert.deepEqual([r.status, r.final_approved_at, r.final_approved_by, r.sent_to_review_at], ["published", null, null, null]);
     const reopened = await reopen(v.id, "published");
     assert.equal((await row(reopened.data.reportVersionId as string)).revision, 2, "a directly-published report can also be taken round the loop");
+  });
+
+  it("S8: the portal's issued-report gate keys on final_approved_at alone - a loop-completed report is final, a directly-published one (J000663's path) is not, and a round still open is never PDF-only", async () => {
+    const final = (id: string) => withTenantRead(database.pool, ORG, (db) => reportIsLoopFinal(db, id));
+    const direct = await validated();
+    await publishCrpReport(database.pool, { reportVersionId: direct.id, expectedStatus: "validated", manifestVersion: 1, reviewedSnapshotId: direct.snapshotId, expectedVersion: await version(direct.id) }, staff("rev", "reviewer"));
+    assert.equal((await row(direct.id)).final_approved_at, null);
+    assert.equal(await final(direct.id), false, "published by the direct path: the portal view is unchanged");
+
+    const looped = await validated();
+    await send(looped.id);
+    assert.equal(await final(looped.id), false, "in review: not PDF-only");
+    await approve(looped.id);
+    assert.equal(await final(looped.id), false, "client-approved, awaiting the final approval: not PDF-only");
+    await finalApprove(looped.id, looped.snapshotId);
+    assert.ok((await row(looped.id)).final_approved_at);
+    assert.equal(await final(looped.id), true, "loop-completed: the issued, locked view");
+
+    assert.equal(await final("no-such-version"), false, "nothing read is never read as final");
+    const reopened = (await reopen(looped.id, "published")).data.reportVersionId as string;
+    assert.equal(await final(reopened), false, "a reopened round is open again, not PDF-only");
   });
 
   it("the commands' contracts refuse a malformed request before any database work", () => {

@@ -151,6 +151,7 @@ export * from "./masterTemplates";
 export * from "./reportSectionPlans";
 export * from "./reportReviewLoop";
 export * from "./reportVersionChain";
+export * from "./portalIssuedReport";
 export * from "./reportVersionEdits";
 export * from "./portalReportReview";
 export * from "./jobSiteInclusions";
