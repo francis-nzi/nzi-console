@@ -1031,6 +1031,9 @@ jobs:
       # message queues one notify-only email in its own transaction (a link, never the words); the client's Approve is version-pinned and tells the team.
       - name: Client and team message on a review round, the notify-only email, and the client approves
         run: npx tsx --test packages/isolated-backend/tests/portalReportMessagingReal.test.ts
+      # Client-review loop S7: the CRM restores an earlier version's wording into the round in flight (report.restoreVersion) - words only, pinned, one batch.
+      - name: The CRM restores an earlier version's wording into the round in flight
+        run: npx tsx --test packages/isolated-backend/tests/reportVersionRestoreReal.test.ts
       # Client-review loop S1 (RULING-reporting-client-review-state-model; migration 0214): the widened status CHECK and the two
       # open-round indexes; validated → in_client_review → client_approved → published (final), each only from its prior state, by
       # the right principal, pinned to the version the caller saw; the CRM's amend refused once the client has approved; the document

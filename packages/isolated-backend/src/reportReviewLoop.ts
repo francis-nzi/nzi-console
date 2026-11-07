@@ -10,7 +10,7 @@
 // refused rather than acted on — and the client can only approve the content that was on their screen. A status is checked against
 // the contract's allow-list (`reportLifecycle.ts`); the database's CHECKs and unique indexes (0214) are the second line.
 import { randomUUID } from "node:crypto";
-import { clientMayEdit, CLIENT_EDITABLE_STATUSES, reportNarrativeBodyIssues, type CommandContext, type CommandInputMap, type ReportNarrativeElement } from "@nzi/contracts";
+import { carryNarrativeForward, clientMayEdit, CLIENT_EDITABLE_STATUSES, reportEditRefusal, reportNarrativeBodyIssues, staffMayEditNarrative, STAFF_NARRATIVE_EDITABLE_STATUSES, type CommandContext, type CommandInputMap, type ReportNarrativeElement } from "@nzi/contracts";
 import { ScopeConflictError, VersionConflictError, isUniqueViolation } from "./errors";
 import { queueMessageNotification } from "./portalMessageNotifications";
 import type { PoolLike, Queryable } from "./postgres";
@@ -222,6 +222,66 @@ export async function reopenReport(pool: PoolLike, input: CommandInputMap["repor
         earlierRound: report.status === "published" ? "stays-live" as const : "superseded" as const },
       before: { reportVersionId: input.reportVersionId, status: report.status, version: report.version, revision: report.revision },
       entityType: "report_version", entityId: reportVersionId, topic: "report.reopened",
+    };
+  });
+}
+
+/** The versions the CRM may restore wording FROM: an earlier version that is closed - replaced by a later round, or issued. A round still in flight is not a source. */
+export const RESTORE_SOURCE_STATUSES: readonly string[] = ["superseded", "published"];
+
+/**
+ * Roll the words of the current round back to an earlier version of the same job and scope (S7). The current round must be one the CRM
+ * may still amend (validated or in_client_review - after the client approves, a change is a reopen first). The earlier version's frozen
+ * narrative is carried onto the sections THIS round draws (`carryNarrativeForward`, the logic reopen and the unlock use): the current plan's
+ * order and membership stand, a section the earlier version did not draw keeps its current wording, and no figure moves - bodies are
+ * tokens, so the numbers stay the current snapshot's. All or nothing, version-pinned, one batch and one version bump, a `restore` row per
+ * changed section (before to after). Like the client's Update it does not write the job's working sections: it corrects THIS round.
+ */
+export async function restoreReportVersion(pool: PoolLike, input: CommandInputMap["report.restoreVersion"], context: CommandContext) {
+  return runPostgresCommand(pool, "report.restoreVersion", input, context, async (db) => {
+    const report = await lockVersion(db, context.organisationId, input.reportVersionId);
+    requireSeenVersion(report, input.expectedVersion);
+    if (!staffMayEditNarrative(report.status)) throw refuse("reportVersionId", "PRECONDITION", reportEditRefusal(report.status));
+    if (input.fromReportVersionId === input.reportVersionId) throw refuse("fromReportVersionId", "INVALID", "Choose an earlier version to restore from, not this one.");
+    const current = (await db.query<{ narrative: ReportNarrativeElement[] | null }>(
+      `SELECT narrative FROM nzi_console.report_versions WHERE organisation_id = $1 AND report_version_id = $2`, [context.organisationId, input.reportVersionId])).rows[0]?.narrative;
+    const source = (await db.query<{ job_id: string; scope_key: string; status: string; revision: number; narrative: ReportNarrativeElement[] | null }>(
+      `SELECT job_id, scope_key, status, revision, narrative FROM nzi_console.report_versions WHERE organisation_id = $1 AND report_version_id = $2`,
+      [context.organisationId, input.fromReportVersionId])).rows[0];
+    // Another job's or scope's version is refused exactly as a missing one: the answer does not say whether it exists.
+    if (!source || source.job_id !== report.job_id || source.scope_key !== report.scope_key) throw refuse("fromReportVersionId", "NOT_FOUND", "That version is not part of this report's history.");
+    if (!RESTORE_SOURCE_STATUSES.includes(source.status)) throw refuse("fromReportVersionId", "PRECONDITION", "Only an earlier version that has been replaced or issued can be restored from.");
+    if (!current || !source.narrative) throw refuse("fromReportVersionId", "NO_FROZEN_NARRATIVE", "One of these versions has no frozen wording to restore.");
+    const carried = carryNarrativeForward(current, source.narrative).narrative;
+    const issues: Array<{ field: string; code: string; message: string }> = [];
+    const changed: Array<{ sectionKey: string; before: string; after: string }> = [];
+    const next = current.map((element, index) => {
+      const restored = carried[index]!;
+      if (restored.bodyHtml === element.bodyHtml) return element;
+      // The same rule every other path holds a body to, so a rule tightened since the earlier version was written is not bypassed by restoring it.
+      for (const issue of reportNarrativeBodyIssues(restored.bodyHtml)) issues.push({ field: `narrative.${element.key}`, code: issue.code, message: issue.message });
+      changed.push({ sectionKey: element.key, before: element.bodyHtml, after: restored.bodyHtml });
+      return restored;
+    });
+    if (issues.length) throw new CommandValidationError(issues);
+    if (changed.length === 0) {
+      return { data: { reportVersionId: input.reportVersionId, jobId: report.job_id, fromReportVersionId: input.fromReportVersionId, fromRevision: source.revision, version: report.version, changedSections: [] as string[], batchId: null as string | null },
+        entityType: "report_version", entityId: input.reportVersionId, topic: "report.versionRestored" };
+    }
+    const updated = await db.query<{ version: number }>(
+      `UPDATE nzi_console.report_versions SET narrative = $3::jsonb, version = version + 1
+        WHERE organisation_id = $1 AND report_version_id = $2 AND status = ANY($5::text[]) AND version = $4 RETURNING version`,
+      [context.organisationId, input.reportVersionId, JSON.stringify(next), input.expectedVersion, [...STAFF_NARRATIVE_EDITABLE_STATUSES]]);
+    if (!updated.rows[0]) throw new VersionConflictError(input.expectedVersion, report.version);
+    const batchId = randomUUID();
+    for (const edit of changed) {
+      await appendReportVersionEdit(db, { organisationId: context.organisationId, reportVersionId: input.reportVersionId, actorId: context.actorId, principal: "staff",
+        sectionKey: edit.sectionKey, action: "restore", beforeHtml: edit.before, afterHtml: edit.after, batchId });
+    }
+    return {
+      data: { reportVersionId: input.reportVersionId, jobId: report.job_id, fromReportVersionId: input.fromReportVersionId, fromRevision: source.revision, version: updated.rows[0].version, changedSections: changed.map((edit) => edit.sectionKey), batchId },
+      before: { version: report.version },
+      entityType: "report_version", entityId: input.reportVersionId, topic: "report.versionRestored",
     };
   });
 }
