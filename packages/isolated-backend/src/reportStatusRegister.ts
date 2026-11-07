@@ -37,7 +37,7 @@ export type ReportStatusRow = {
   v7Report: { version: number; status: string; finalisedAt: string | null; dataHash: string | null } | null;
 };
 
-type PublishedEntry = { reportVersionId: string; scopeKind: "whole" | "sites"; siteIds: string[] | null; status: "published" | "in_client_review" | "client_approved"; scopeKey: string; approvals: number; lastFrom: "portal" | "staff" | null };
+type PublishedEntry = { reportVersionId: string; scopeKind: "whole" | "sites"; siteIds: string[] | null; status: "published" | "in_client_review" | "client_approved"; scopeKey: string; approvals: number; lastFrom: "portal" | "staff" | null; lastClientAt: string | null; lastStaffAt: string | null };
 
 /**
  * Track A: the one read model the Reports page and the preparation picker share (and the job page reads its own row of) —
@@ -67,7 +67,14 @@ export async function listReportStatusRegister(db: Queryable, options: { jobId?:
                        'reportVersionId', p.report_version_id, 'scopeKind', p.scope_kind, 'siteIds', p.scope_site_ids, 'status', p.status, 'scopeKey', p.scope_key,
                        'approvals', (SELECT count(*) FROM nzi_console.portal_report_approvals a WHERE (a.organisation_id, a.report_version_id) = (p.organisation_id, p.report_version_id)),
                        'lastFrom', (SELECT m.author_principal FROM nzi_console.portal_report_comments m WHERE (m.organisation_id, m.report_version_id) = (p.organisation_id, p.report_version_id)
-                                     ORDER BY m.created_at DESC, m.comment_id DESC LIMIT 1))
+                                     ORDER BY m.created_at DESC, m.comment_id DESC LIMIT 1),
+                       -- S6: whose turn a round open for review is - the client's latest act (message, edit) against the team's (reply, edit). A client act is only ever after the round was sent, so sending it is not a separate input.
+                       'lastClientAt', greatest(
+                         (SELECT max(m.created_at) FROM nzi_console.portal_report_comments m WHERE (m.organisation_id, m.report_version_id) = (p.organisation_id, p.report_version_id) AND m.author_principal = 'portal'),
+                         (SELECT max(e.at) FROM nzi_console.report_version_edits e WHERE (e.organisation_id, e.report_version_id) = (p.organisation_id, p.report_version_id) AND e.principal = 'portal')),
+                       'lastStaffAt', greatest(
+                         (SELECT max(m.created_at) FROM nzi_console.portal_report_comments m WHERE (m.organisation_id, m.report_version_id) = (p.organisation_id, p.report_version_id) AND m.author_principal = 'staff'),
+                         (SELECT max(e.at) FROM nzi_console.report_version_edits e WHERE (e.organisation_id, e.report_version_id) = (p.organisation_id, p.report_version_id) AND e.principal = 'staff')))
                      ORDER BY (p.scope_kind = 'whole') DESC, coalesce(p.published_at, p.sent_to_review_at) DESC, p.report_version_id)
                 -- S1: the versions the client holds — published, and the rounds open with them (the stored status is read, not guessed).
                 FROM nzi_console.report_versions p WHERE (p.organisation_id, p.job_id) = (j.organisation_id, j.job_id) AND p.status IN ('published', 'in_client_review', 'client_approved')), '[]'::jsonb) AS published,
@@ -88,7 +95,7 @@ export async function listReportStatusRegister(db: Queryable, options: { jobId?:
       hasValidatedVersion: row.has_validated,
       published: row.published.map((entry) => {
         const scope: ReportScope = entry.scopeKind === "sites" && entry.siteIds ? { kind: "sites", siteIds: entry.siteIds } : { kind: "whole" };
-        return { scopeLabel: reportScopeLabel(scope, names), approvalCount: Number(entry.approvals), lastCommentFrom: entry.lastFrom, status: entry.status, scopeKey: entry.scopeKey };
+        return { scopeLabel: reportScopeLabel(scope, names), approvalCount: Number(entry.approvals), lastCommentFrom: entry.lastFrom, status: entry.status, scopeKey: entry.scopeKey, lastClientActionAt: entry.lastClientAt, lastStaffActionAt: entry.lastStaffAt };
       }),
       v7Record: row.v7_record,
     });

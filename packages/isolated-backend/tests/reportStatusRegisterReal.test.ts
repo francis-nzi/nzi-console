@@ -4,6 +4,8 @@ import { after, before, describe, it } from "node:test";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { listReportStatusRegister } from "../src/reportStatusRegister";
 import { withTenantRead } from "../src/postgres";
+// Client-review loop S6 (whose turn a round open for review is, and the CRM queue) is the same read model: its real-database suite (support/reportCrmQueueSuite.ts) runs with this file, so the CI step that runs this one runs it too.
+import "./support/reportCrmQueueSuite";
 
 /**
  * R-ST1 (RULING-reporting-site-scope), against a real database: every live CRP job at its derived stage, from the records

@@ -21,7 +21,9 @@ export function reportStageNext(stage: ReportStage, readyForReporting: boolean):
     case "ready-to-validate": return "The snapshot is approved. Draft the report, choose its signee and validate it in the Report Studio.";
     case "ready-to-publish": return "A validated version is ready. Publish it to the client portal from the Report Studio.";
     case "awaiting-client": return "Published — the client has not yet approved it.";
+    case "client-responded": return "The client has edited or written back on the report open for their review — review it and reply.";
     case "changes-requested": return "Published — the client has asked for changes.";
+    case "awaiting-final-approval": return "The client has approved the report — give it the final approval to issue it.";
     case "client-approved": return "Published and approved by the client.";
     case "v7-record": return "This period's record of account is its earlier issued report.";
   }

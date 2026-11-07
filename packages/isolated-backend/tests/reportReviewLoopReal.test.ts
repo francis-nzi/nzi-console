@@ -254,7 +254,7 @@ describe("S1: the client-review loop lifecycle, against a real database", { skip
 
     await amend(next, "Second round wording.");
     await approve(next, "pu-2");
-    assert.equal((await stage()).stage, "client-approved");
+    assert.equal((await stage()).stage, "awaiting-final-approval");
     await finalApprove(next, v.snapshotId);
     assert.deepEqual([(await row(v.id)).status, (await row(next)).status], ["superseded", "published"], "the new round replaces the old at its final approval");
     assert.match(JSON.stringify((await getReportComposition0(next)).narrative), /Second round wording/);

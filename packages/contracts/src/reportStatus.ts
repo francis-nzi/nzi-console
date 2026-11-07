@@ -6,7 +6,7 @@
 /** The stages, in the order a report moves through them. */
 export const REPORT_STAGES = [
   "in-preparation", "awaiting-review", "ready-to-validate", "ready-to-publish",
-  "awaiting-client", "changes-requested", "client-approved",
+  "awaiting-client", "client-responded", "changes-requested", "awaiting-final-approval", "client-approved",
 ] as const;
 export type ReportStage = (typeof REPORT_STAGES)[number] | "v7-record";
 
@@ -16,7 +16,9 @@ export const reportStageLabels: Record<ReportStage, string> = {
   "ready-to-validate": "Ready to validate",
   "ready-to-publish": "Ready to publish",
   "awaiting-client": "Awaiting client approval",
+  "client-responded": "Client responded — review needed",
   "changes-requested": "Changes requested",
+  "awaiting-final-approval": "Awaiting final approval",
   "client-approved": "Client approved",
   "v7-record": "Issued before the console",
 };
@@ -44,8 +46,23 @@ export type ReportStatusFacts = {
  * say. Absent, it is `published` — derived from the client's response as before. `scopeKey` pairs a reopened round with the
  * published version it will replace.
  */
-export type PublishedScopeFacts = { scopeLabel: string; approvalCount: number; lastCommentFrom: "portal" | "staff" | null; status?: "published" | "in_client_review" | "client_approved"; scopeKey?: string };
-type ClientStage = "awaiting-client" | "changes-requested" | "client-approved";
+export type PublishedScopeFacts = { scopeLabel: string; approvalCount: number; lastCommentFrom: "portal" | "staff" | null; status?: "published" | "in_client_review" | "client_approved"; scopeKey?: string;
+  /**
+   * Client-review loop S6, for a round `in_client_review`: whose turn it is. The client's latest act (an edit, a message) and the team's
+   * latest (a reply, an edit) - ISO times. The client acting after the team is the CRM's turn; absent, the thread's last
+   * author decides, as it did before.
+   */
+  lastClientActionAt?: string | null; lastStaffActionAt?: string | null };
+type ClientStage = "awaiting-client" | "client-responded" | "changes-requested" | "awaiting-final-approval" | "client-approved";
+
+/** S6: a round open for review - has the client acted since the team last did? Equal times are the team's (it spoke last). */
+export function clientActedLast(round: Pick<PublishedScopeFacts, "lastCommentFrom" | "lastClientActionAt" | "lastStaffActionAt">): boolean {
+  if (round.lastClientActionAt === undefined && round.lastStaffActionAt === undefined) return round.lastCommentFrom === "portal";
+  const client = round.lastClientActionAt ? Date.parse(round.lastClientActionAt) : NaN;
+  if (Number.isNaN(client)) return false;
+  const staff = round.lastStaffActionAt ? Date.parse(round.lastStaffActionAt) : NaN;
+  return Number.isNaN(staff) || client > staff;
+}
 
 export type DerivedReportStatus = {
   stage: ReportStage;
@@ -58,8 +75,8 @@ export type DerivedReportStatus = {
 /** One published report's client stage. Approval outranks an open thread — the client's own act of approving is the stronger signal. */
 const clientStage = (published: PublishedScopeFacts): ClientStage => {
   // The stored status first (client-review loop S1): the register and the version can never disagree about a round in the loop.
-  if (published.status === "client_approved") return "client-approved";
-  if (published.status === "in_client_review") return published.lastCommentFrom === "portal" ? "changes-requested" : "awaiting-client";
+  if (published.status === "client_approved") return "awaiting-final-approval";
+  if (published.status === "in_client_review") return clientActedLast(published) ? "client-responded" : "awaiting-client";
   return published.approvalCount > 0 ? "client-approved" : published.lastCommentFrom === "portal" ? "changes-requested" : "awaiting-client";
 };
 
@@ -75,7 +92,21 @@ function currentPerScope(entries: ReadonlyArray<PublishedScopeFacts>): Published
  * report the client has yet to approve, then approved. So one scope approved and another with changes requested reads
  * "Changes requested" — nothing is hidden behind an approval elsewhere.
  */
-const ATTENTION: readonly ClientStage[] = ["changes-requested", "awaiting-client", "client-approved"];
+const ATTENTION: readonly ClientStage[] = ["client-responded", "changes-requested", "awaiting-final-approval", "awaiting-client", "client-approved"];
+
+/** S6: the stages where the ball is in the CRM's court - the client responded, asked for changes, or approved and awaits the final approval. */
+export const CRM_TURN_STAGES: readonly ReportStage[] = ["client-responded", "changes-requested", "awaiting-final-approval"];
+export const crmTurn = (stage: ReportStage): boolean => CRM_TURN_STAGES.includes(stage);
+
+/**
+ * S6: how many reports wait on the CRM. A job with several scopes counts each scope that needs the team (the row shows only the most
+ * pressing one); a round awaiting the client is not counted. Derived from the register rows - nothing stored.
+ */
+export function crmQueue(rows: ReadonlyArray<{ stage: ReportStage; scopes?: ReadonlyArray<{ stage: ReportStage }> }>): { total: number; byStage: Record<"client-responded" | "changes-requested" | "awaiting-final-approval", number> } {
+  const byStage = { "client-responded": 0, "changes-requested": 0, "awaiting-final-approval": 0 };
+  for (const row of rows) for (const stage of row.scopes?.length ? row.scopes.map((scope) => scope.stage) : [row.stage]) if (stage in byStage) byStage[stage as keyof typeof byStage] += 1;
+  return { total: byStage["client-responded"] + byStage["changes-requested"] + byStage["awaiting-final-approval"], byStage };
+}
 
 /**
  * One rule. The published versions, when there are any, are what the client holds, so their client-side state is the job's
