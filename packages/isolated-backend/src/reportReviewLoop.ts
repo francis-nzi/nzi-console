@@ -10,9 +10,10 @@
 // refused rather than acted on — and the client can only approve the content that was on their screen. A status is checked against
 // the contract's allow-list (`reportLifecycle.ts`); the database's CHECKs and unique indexes (0214) are the second line.
 import { randomUUID } from "node:crypto";
-import type { CommandContext, CommandInputMap } from "@nzi/contracts";
+import { clientMayEdit, CLIENT_EDITABLE_STATUSES, reportNarrativeBodyIssues, type CommandContext, type CommandInputMap, type ReportNarrativeElement } from "@nzi/contracts";
 import { ScopeConflictError, VersionConflictError, isUniqueViolation } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
+import { appendReportVersionEdit } from "./reportVersionEdits";
 import { CommandValidationError, issueReportVersion, requireReleasableSnapshot, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 
 type LockedVersion = { job_id: string; status: string; version: number; manifest_version: number; reviewed_snapshot_id: string; scope_key: string; revision: number };
@@ -174,6 +175,68 @@ export async function reopenReport(pool: PoolLike, input: CommandInputMap["repor
         earlierRound: report.status === "published" ? "stays-live" as const : "superseded" as const },
       before: { reportVersionId: input.reportVersionId, status: report.status, version: report.version, revision: report.revision },
       entityType: "report_version", entityId: reportVersionId, topic: "report.reopened",
+    };
+  });
+}
+
+/** Why a client cannot edit a round, in the client's words - never the staff's ("reopen it" is theirs to ask, not to do). */
+export function clientEditRefusal(status: unknown): string {
+  if (status === "client_approved") return "You have approved this report, so it is locked. Message the team if you need to change it.";
+  if (status === "published") return "This report has been issued and can no longer be edited. Message the team if you need a change.";
+  if (status === "superseded") return "A newer version of this report has replaced this one.";
+  return "This report is not open for your edits.";
+}
+
+/**
+ * Client-review loop S4: the client's "Update" - a batch of narrative edits to a round open for their review. Mirrors the staff
+ * amend (lock the version, validate each tokenised body, re-freeze onto `report_versions.narrative`, write the S3 history) as a
+ * portal command, with these differences: it is gated by the CLIENT allow-list (`in_client_review` only - `client_approved` locks the
+ * client out), it never touches the job's working sections (the client edits THIS round, not the template the next report starts from),
+ * and the whole save is one batch and ONE version bump, so an approval afterwards is of exactly what was saved.
+ * Figures are not editable: a body is tokenised HTML, a typed figure or money is refused, and only the sections the version already
+ * draws (its frozen narrative) can change - charts, tables and figures are not narrative.
+ */
+export async function updateReportAsClient(pool: PoolLike, input: CommandInputMap["portal.report.update"], context: CommandContext) {
+  return runPostgresCommand(pool, "portal.report.update", input, context, async (db) => {
+    const report = await lockVersion(db, context.organisationId, input.reportVersionId);
+    requireSeenVersion(report, input.expectedVersion);
+    if (!clientMayEdit(report.status)) throw refuse("reportVersionId", "PRECONDITION", clientEditRefusal(report.status));
+    const frozen = (await db.query<{ narrative: ReportNarrativeElement[] | null }>(
+      `SELECT narrative FROM nzi_console.report_versions WHERE organisation_id = $1 AND report_version_id = $2`, [context.organisationId, input.reportVersionId])).rows[0]?.narrative;
+    if (!frozen) throw refuse("reportVersionId", "NO_FROZEN_NARRATIVE", "This report has no editable wording.");
+    const issues: Array<{ field: string; code: string; message: string }> = [];
+    const next = frozen.map((element) => element);
+    const changed: Array<{ sectionKey: string; before: string; after: string }> = [];
+    for (const edit of input.edits) {
+      const index = next.findIndex((element) => element.key === edit.sectionKey);
+      if (index < 0) { issues.push({ field: `edits.${edit.sectionKey}`, code: "NOT_EDITABLE", message: "This report does not draw that section as editable wording." }); continue; }
+      const bodyHtml = edit.bodyHtml.trim();
+      // The same rule the staff amend holds a body to (B2-4): the server never trusts the browser's check.
+      for (const issue of reportNarrativeBodyIssues(bodyHtml)) issues.push({ field: `edits.${edit.sectionKey}`, code: issue.code, message: issue.message });
+      if (bodyHtml === next[index]!.bodyHtml) continue;
+      changed.push({ sectionKey: edit.sectionKey, before: next[index]!.bodyHtml, after: bodyHtml });
+      next[index] = { ...next[index]!, bodyHtml, contentSource: "client-edited" };
+    }
+    if (issues.length) throw new CommandValidationError(issues);
+    // Nothing differs from what is frozen: nothing is written, the version does not move, and the client is told so.
+    if (changed.length === 0) {
+      return { data: { reportVersionId: input.reportVersionId, jobId: report.job_id, version: report.version, changedSections: [] as string[], batchId: null as string | null },
+        entityType: "report_version", entityId: input.reportVersionId, topic: "report.clientUpdated" };
+    }
+    const updated = await db.query<{ version: number }>(
+      `UPDATE nzi_console.report_versions SET narrative = $3::jsonb, version = version + 1
+        WHERE organisation_id = $1 AND report_version_id = $2 AND status = ANY($5::text[]) AND version = $4 RETURNING version`,
+      [context.organisationId, input.reportVersionId, JSON.stringify(next), input.expectedVersion, [...CLIENT_EDITABLE_STATUSES]]);
+    if (!updated.rows[0]) throw new VersionConflictError(input.expectedVersion, report.version);
+    const batchId = randomUUID();
+    for (const edit of changed) {
+      await appendReportVersionEdit(db, { organisationId: context.organisationId, reportVersionId: input.reportVersionId, actorId: context.actorId, principal: "portal",
+        sectionKey: edit.sectionKey, action: "edit", beforeHtml: edit.before, afterHtml: edit.after, batchId });
+    }
+    return {
+      data: { reportVersionId: input.reportVersionId, jobId: report.job_id, version: updated.rows[0].version, changedSections: changed.map((edit) => edit.sectionKey), batchId },
+      before: { version: report.version },
+      entityType: "report_version", entityId: input.reportVersionId, topic: "report.clientUpdated",
     };
   });
 }

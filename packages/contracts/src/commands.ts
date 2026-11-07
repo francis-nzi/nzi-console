@@ -100,6 +100,7 @@ export type CommandKey =
   | "report.sectionPlan.update"
   | "report.sendToClientReview"
   | "report.clientApprove"
+  | "portal.report.update"
   | "report.finalApprove"
   | "report.reopen"
   | "client.reportProfile.set"
@@ -861,6 +862,12 @@ export type CommandInputMap = {
    * pins what the client saw: the version moves with every amend, so an approval can only be of the content on the screen.
    */
   "report.clientApprove":{reportVersionId:string;expectedVersion:number};
+  /**
+   * Client-review loop S4: the client's "Update" - a batch of narrative edits to a round open for their review (`in_client_review`).
+   * `expectedVersion` pins what they saw. Each edit is a section's whole body as tokenised HTML (a figure is a token, never a numeral;
+   * money is refused). One Update is one batch and one version bump. Figures, charts and tables are not editable: only narrative sections.
+   */
+  "portal.report.update":{reportVersionId:string;expectedVersion:number;edits:Array<{sectionKey:string;bodyHtml:string}>};
   /** S1: the CRM's final approval of a client-approved round — locks it in full (published, marked final) and freezes its composition. */
   "report.finalApprove":{reportVersionId:string;expectedStatus:"client_approved";manifestVersion:number;reviewedSnapshotId:string;expectedVersion:number};
   /**
@@ -1827,6 +1834,8 @@ const milestoneIssues = (issues: CommandIssue[], input: { jobId: string; kind: u
   if (!isMilestoneKind(input.kind)) issues.push({ field: "kind", code: "INVALID", message: "A milestone is data collection, first draft or final report." });
   if (input.expectedVersion !== undefined && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
 };
+/** The most sections one portal "Update" may change: the catalogue's narrative sections, with headroom. */
+export const REPORT_UPDATE_MAX_SECTIONS = 20;
 const reportSectionBodyIssues = (bodyHtml: unknown): CommandIssue[] => {
   const issues: CommandIssue[] = [];
   if (typeof bodyHtml !== "string" || bodyHtml.trim().length === 0) { issues.push({ field: "bodyHtml", code: "REQUIRED", message: "Section body is required." }); return issues; }
@@ -2241,6 +2250,19 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   // Client-review loop S1 (RULING-reporting-client-review-state-model). Staff transitions need `report.publish`, the capability that
   // releases a report; the client's approval is a portal command under the client's own grant. Each is pinned to the version the caller saw.
   "report.sendToClientReview":{key:"report.sendToClientReview",label:"Send a report to the client for review",permission:"report.publish",reasonRequired:false,transaction:"validated version → in_client_review + version bump + audit + outbox + idempotency",auditAction:"report_sent_to_client_review",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"reportVersionId",input.reportVersionId);if(input.expectedStatus!=="validated")issues.push({field:"expectedStatus",code:"PRECONDITION",message:"Only a validated report can be sent to the client for review."});if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});return issues;}},
+  "portal.report.update":{key:"portal.report.update",label:"Update the report in the client portal",principal:"portal",permission:"portal.review",reasonRequired:false,transaction:"narrative edits re-frozen on the in_client_review version + one version bump + report_version_edits rows (one batch) + audit + outbox + idempotency",auditAction:"portal_report_updated",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"reportVersionId",input.reportVersionId);if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});
+    if(!Array.isArray(input.edits)||input.edits.length===0)issues.push({field:"edits",code:"REQUIRED",message:"Change at least one section before updating."});
+    else{
+      if(input.edits.length>REPORT_UPDATE_MAX_SECTIONS)issues.push({field:"edits",code:"TOO_MANY",message:`An update changes at most ${REPORT_UPDATE_MAX_SECTIONS} sections.`});
+      const seen=new Set<string>();
+      input.edits.forEach((edit,index)=>{
+        if(!edit||typeof edit!=="object"||!text(edit.sectionKey)||!isCrpReportSectionKey(edit.sectionKey)){issues.push({field:`edits.${index}.sectionKey`,code:"INVALID",message:"Unknown report section."});return;}
+        if(seen.has(edit.sectionKey))issues.push({field:`edits.${index}.sectionKey`,code:"DUPLICATE",message:"A section is changed once per update."});
+        seen.add(edit.sectionKey);
+        for(const issue of reportSectionBodyIssues(edit.bodyHtml))issues.push({...issue,field:`edits.${edit.sectionKey}`});
+      });
+    }
+    return issues;}},
   "report.clientApprove":{key:"report.clientApprove",label:"Approve the report in the client portal",principal:"portal",permission:"portal.review",reasonRequired:false,transaction:"approval record + in_client_review → client_approved + version bump + audit + outbox + idempotency",auditAction:"report_client_approved",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"reportVersionId",input.reportVersionId);if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});return issues;}},
   "report.finalApprove":{key:"report.finalApprove",label:"Give a report its final approval",permission:"report.publish",reasonRequired:false,transaction:"client_approved → published (final) + supersede same scope + frozen composition + audit + outbox + idempotency",auditAction:"report_final_approved",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"reportVersionId",input.reportVersionId);required(issues,"reviewedSnapshotId",input.reviewedSnapshotId);if(input.expectedStatus!=="client_approved")issues.push({field:"expectedStatus",code:"PRECONDITION",message:"Only a report the client has approved can be given its final approval."});if(!positive(input.manifestVersion))issues.push({field:"manifestVersion",code:"INVALID",message:"Manifest version must be positive."});if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});return issues;}},
   "report.reopen":{key:"report.reopen",label:"Reopen a report for another round of client review",permission:"report.publish",reasonRequired:true,transaction:"new version row (revision + 1, narrative carried forward) + earlier open round superseded + audit + outbox + idempotency",auditAction:"report_reopened",validate:(input,context)=>{const issues=baseIssues(context,true);required(issues,"reportVersionId",input.reportVersionId);if(!oneOf(input.expectedStatus,["client_approved","published"] as const))issues.push({field:"expectedStatus",code:"PRECONDITION",message:"Only a client-approved or published report can be reopened."});if(!positive(input.expectedVersion))issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be positive."});return issues;}},

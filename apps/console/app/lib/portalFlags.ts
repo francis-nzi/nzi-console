@@ -41,6 +41,10 @@ export type PortalFeature =
   // portal-conversations AND portal-files as well - the file gate (quarantine, scan, signed URL) is the dependency, so this stays off until the
   // managed scanner/storage decision. Off, a message is text only and a multipart message request is 404.
   | "portal-message-attachments"
+  // Client-review loop S4: the report review round in the portal - the client edits the narrative of a report sent for their review and
+  // presses Update. Dark by absence: declared here only, not in render.yaml; Francis adds the token in the dashboard. Off, the review page,
+  // its read and its write route are all 404 and the job page shows no banner.
+  | "portal-report-review"
   | "portal-shell";
 
 const enabled = (): Set<string> =>
