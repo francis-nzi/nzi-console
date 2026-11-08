@@ -148,8 +148,21 @@ describe("S5: client ↔ CRM messaging on a review round, the notify-only email,
     assert.equal(summary.blockedNoConsent, 1, "Pia has not consented");
     const toClient = await since(mark, "message.notification");
     assert.deepEqual(toClient.map((m) => m.to_email), ["pat@client.example"]);
-    assert.match(toClient[0]!.text_body, /\/portal\/jobs\/prm-job\/messages\?thread=thr-rv-/);
+    // F3: a report-review round's notification deep-links to the review page (from the thread's own report_version_id), not the Messages page.
+    assert.match(toClient[0]!.text_body, /\/portal\/jobs\/prm-job\/review(?![\w?/])/);
+    assert.doesNotMatch(toClient[0]!.text_body, /messages\?thread=/);
     assert.ok(!/revised figures|123\.4|section two/.test([toClient[0]!.text_body, toClient[0]!.html_body, toClient[0]!.subject].join("\n")), "the reply's words are in the email");
+  });
+
+  it("F3 (0218): the worker may read which version a thread belongs to - and still not the report itself, the thread's text, or write the thread", async () => {
+    const v = await sent();
+    await post(v.id, "Is the second paragraph right?");
+    const seen = await withTenantWorker(database.pool, ORG, async (tx) => (await tx.query<{ report_version_id: string | null }>(`SELECT report_version_id FROM nzi_console.portal_threads WHERE report_version_id = $1`, [v.id])).rows);
+    assert.deepEqual(seen.map((row) => row.report_version_id), [v.id]);
+    const denied = async (sql: string) => assert.rejects(() => withTenantWorker(database.pool, ORG, (tx) => tx.query(sql)), (error: unknown) => (error as { code?: string }).code === "42501");
+    await denied(`SELECT status FROM nzi_console.report_versions LIMIT 1`);
+    await denied(`SELECT body FROM nzi_console.portal_report_comments LIMIT 1`);
+    await denied(`UPDATE nzi_console.portal_threads SET report_version_id = NULL`);
   });
 
   it("a stubbed recipient never fails the post: an address the isolation gate refuses is stubbed at delivery, and the message is already posted", async () => {
