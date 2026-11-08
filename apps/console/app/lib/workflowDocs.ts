@@ -39,3 +39,5 @@ export const categoryWorkflowHref = (categoryCode: string | null | undefined): s
 /** The doc for a scope band header ("1" | "2" | "3"), or null when it has none. */
 export const scopeWorkflowHref = (scope: string | null | undefined): string | null => hrefOf(own(SCOPE_DOCS, scope));
 export const workflowCategoryCodes: readonly string[] = Object.keys(CATEGORY_DOCS);
+/** The one reporting-process doc, shown on the Report Studio and the job's report-state card. Not keyed: one doc for the whole process. */
+export const reportingWorkflowHref = (): string => "/workflows/WF-reporting.html";

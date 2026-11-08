@@ -17,6 +17,8 @@ import { ReportEditHistory } from "./ReportEditHistory";
 import { ReportVersionChain } from "./ReportVersionChain";
 import { ReportRoundThread } from "./ReportRoundThread";
 import { useJobReportRow } from "../../../lib/useJobReportRow";
+import { reportingWorkflowHref } from "../../../lib/workflowDocs";
+import { WorkflowPill } from "../../WorkflowPill";
 import { useReportSignees } from "../../../lib/useReportSignees";
 import { SigneeEmptyHint } from "../../../lib/SigneeEmptyHint";
 import { PrepareFrame } from "../../../report-preview/PrepareFrame";
@@ -238,6 +240,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
           <span className="nzs-hint">{whole ? "Whole client · all sites" : version?.scopeLabel}</span>
         </div>}
       <span className="nzs-spacer" />
+      <WorkflowPill href={reportingWorkflowHref()} label="Reporting" />
       <span className={`nzs-status ${kind === "published" ? "issued" : kind}`} data-studio-status={kind}>{status}</span>
       {kind === "draft" ? <div className="nzs-ctl nzs-signee">
         <span className="nzs-ctl-label" aria-hidden="true">Signee</span>

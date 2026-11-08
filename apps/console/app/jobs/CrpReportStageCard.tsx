@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { reportStageLabels, v7RecordLine, type ReportStage } from "@nzi/contracts";
 import { useJobReportRow } from "../lib/useJobReportRow";
+import { reportingWorkflowHref } from "../lib/workflowDocs";
+import { WorkflowPill } from "./WorkflowPill";
 import { studioHasReport } from "./[jobId]/report/studio";
 
 /**
@@ -37,7 +39,7 @@ export function CrpReportStageCard({ jobId, readyForReporting }: { jobId: string
   const studio = `/jobs/${encodeURIComponent(jobId)}/report/printing`;
   return <section className="nz-panel nz-report-stage" aria-label="Report state">
     <div className="nz-report-stage-h">
-      <div><span className="nz-eyebrow">Report</span><b>{reportStageLabels[row.stage]}</b></div>
+      <div><span className="nz-eyebrow">Report</span> <WorkflowPill href={reportingWorkflowHref()} label="Reporting" /><b>{reportStageLabels[row.stage]}</b></div>
       <span className={`nz-st ${row.stage === "client-approved" ? "done" : ready ? "est" : "need"}`} data-report-stage={row.stage}>{reportStageLabels[row.stage]}</span>
     </div>
     <p className="sub">{row.stage === "v7-record" ? v7RecordLine(row.v7Report) : reportStageNext(row.stage, readyForReporting)}</p>
