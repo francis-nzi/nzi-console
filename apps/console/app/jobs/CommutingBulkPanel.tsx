@@ -20,9 +20,11 @@ type Row = {
 const SAMPLE = "Employee\tMode\tDistance / year\tUnit\tWFH days\tWFH hours\nA. Example\tCar — petrol\t7500\tkm\t52\t7.5\nB. Example\tRail\t3200\tkm\t104\t7.5";
 const blankRow = (line?: Partial<Row>): Row => ({ key: crypto.randomUUID(), employee: line?.employee ?? "", mode: line?.mode ?? COMMUTE_MODES[0]!, distance: line?.distance ?? null, distanceUnit: line?.distanceUnit ?? "km", wfhDaysPerYear: line?.wfhDaysPerYear ?? null, wfhHoursPerDay: line?.wfhHoursPerDay ?? null, factorId: "", state: "", detail: "" });
 
-export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; factors: FactorOption[]; notice: Notice }) {
+export function CommutingBulkPanel({ jobId, factors, sites = [], notice }: { jobId: string; factors: FactorOption[]; /** The sites the job reports on: commuters belong to one (uplift is per site). */ sites?: Array<{ id: string; name: string }>; notice: Notice }) {
   const [groups, setGroups] = useState<EmissionSourceGroup[]>([]);
   const [groupId, setGroupId] = useState("");
+  const [siteId, setSiteId] = useState(sites.length === 1 ? sites[0]!.id : "");
+  const siteMissing = sites.length > 0 && siteId === "";
   const [commuters, setCommuters] = useState(0);
   const [raw, setRaw] = useState("");
   const [rows, setRows] = useState<Row[]>([]);
@@ -64,6 +66,7 @@ export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; 
 
   async function importRows() {
     if (busy) return;
+    if (siteMissing) { notice({ kind: "warn", text: "Choose the site these commuters work at." }); return; }
     const toSave = rows.filter(ready);
     if (toSave.length === 0) { notice({ kind: "warn", text: "Add at least one row with a controlled mode, a distance and a factor." }); return; }
     setBusy(true);
@@ -75,7 +78,7 @@ export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; 
       update(row.key, { state: "saving", detail: "" });
       const factor = commuteFactors.find((item) => item.factorId === row.factorId);
       const created = await postBrowserCommand<{ sourceId: string }>(`/api/isolated/jobs/${jobId}/emission-sources`, {
-        groupId: groupId || null, scope: "3.7", sourceType: "commuting", sourceSubtype: null, siteId: null,
+        groupId: groupId || null, scope: "3.7", sourceType: "commuting", sourceSubtype: null, siteId: siteId || null,
         sourceName: label, assetIdentifier: null,
         purchasedGoodsCategoryId: null,
         datasetId: factor?.factorSource === "dataset" ? factor.datasetId : null,
@@ -136,6 +139,13 @@ export function CommutingBulkPanel({ jobId, factors, notice }: { jobId: string; 
         </div>
       ) : (
         <>
+          {sites.length > 1 ? <label className="nz-fl" style={{ maxWidth: 360 }} data-commuting-site>
+            Site these commuters work at
+            <select className="nz-sel" value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+              <option value="">Choose a site</option>
+              {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+            </select>
+          </label> : null}
           <label className="nz-fl" style={{ maxWidth: 360 }}>
             Roll-up group <span className="muted">(optional)</span>
             <select className="nz-sel" value={groupId} onChange={(event) => setGroupId(event.target.value)}>

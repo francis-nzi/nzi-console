@@ -11,9 +11,9 @@ import { importErrorText } from "./data/portalImportErrors";
 
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
 
-export function PortalCommutingImport({ base, factors, existingCommuters, reportingMonths, canImport, adviser, notice, onImported }: {
+export function PortalCommutingImport({ base, factors, sites, existingCommuters, reportingMonths, canImport, adviser, notice, onImported }: {
   /** `…/jobs/<id>` on the portal API. */
-  base: string; factors: FactorOption[]; existingCommuters: number; reportingMonths: string[];
+  base: string; factors: FactorOption[]; sites: Array<{ id: string; name: string }>; existingCommuters: number; reportingMonths: string[];
   /** The entry window is open and this is not the staff preview. The command refuses otherwise too. */
   canImport: boolean; adviser: string; notice: Notice; onImported: () => void | Promise<void>;
 }) {
@@ -21,6 +21,9 @@ export function PortalCommutingImport({ base, factors, existingCommuters, report
   const [chosen, setChosen] = useState<Record<number, string>>({});
   const [preview, setPreview] = useState<DeclaredFactorPreviewResult | null>(null);
   const [busy, setBusy] = useState(false);
+  // Commuters belong to a site (uplift is per site): a one-site client's is the only choice, otherwise the file is for the site picked.
+  const [siteId, setSiteId] = useState(sites.length === 1 ? sites[0]!.id : "");
+  const siteMissing = sites.length > 0 && siteId === "";
   const [error, setError] = useState("");
 
   // The category's declared factor and exclusions, from the same resolution the write uses — a convenience the write never needs.
@@ -53,9 +56,9 @@ export function PortalCommutingImport({ base, factors, existingCommuters, report
   }
 
   async function confirm() {
-    if (busy || !ready.length) return;
+    if (busy || !ready.length || siteMissing) return;
     setBusy(true); setError("");
-    const rows = ready.map((line, index) => portalCommutingRow(line, existingCommuters + index + 1, factorFor(line)!, factors));
+    const rows = ready.map((line, index) => portalCommutingRow(line, existingCommuters + index + 1, factorFor(line)!, factors, siteId || null));
     const result = await postBrowserCommand<{ count: number }>(`${base}/scope-rows/import`, { template: "commuting", rows }, crypto.randomUUID());
     setBusy(false);
     if (result.state === "success") {
@@ -68,6 +71,11 @@ export function PortalCommutingImport({ base, factors, existingCommuters, report
   return <div className="nz-commuting-template">
     <div className="nz-sect">From the template</div>
     <p className="muted">One row per commuter: commute mode, distance per year and unit, and working-from-home days and hours. The employee column only lines the file up — names are never saved; each commuter is filed by number and mode. Nothing is saved until you confirm.</p>
+    {sites.length > 1 ? <label className="nz-fl" data-commuting-site>Site this file is for
+      <select className="nz-sel" value={siteId} onChange={(event) => setSiteId(event.target.value)}>
+        <option value="">Choose a site</option>
+        {sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}
+      </select></label> : null}
     <div className="nz-config-actions">
       <button type="button" className="nz-btn" onClick={download}>Download commuting template</button>
       {canImport ? <label className="nz-btn">Upload filled template<input type="file" accept=".csv,text/csv" hidden aria-label="Commuting template file" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then(read); event.target.value = ""; }} /></label> : null}
@@ -100,7 +108,7 @@ export function PortalCommutingImport({ base, factors, existingCommuters, report
       {error ? <p className="nz-banner warn" role="alert">{error}</p> : null}
       <div className="nz-config-actions" style={{ marginTop: 12 }}>
         <button type="button" className="nz-btn" disabled={busy} onClick={() => { setLines([]); setChosen({}); setError(""); }}>Clear</button>
-        <button type="button" className="nz-btn pri" disabled={busy || ready.length === 0 || ready.length > PORTAL_IMPORT_MAX_ROWS} onClick={() => void confirm()}>
+        <button type="button" className="nz-btn pri" disabled={busy || siteMissing || ready.length === 0 || ready.length > PORTAL_IMPORT_MAX_ROWS} onClick={() => void confirm()}>
           {busy ? "Saving…" : `Confirm ${ready.length} commuter${ready.length === 1 ? "" : "s"}`}</button>
       </div>
       {lines.length > ready.length ? <p className="muted">{lines.length - ready.length} row{lines.length - ready.length === 1 ? "" : "s"} marked Check {lines.length - ready.length === 1 ? "isn't" : "aren't"} included until fixed in the file or given a factor.</p> : null}

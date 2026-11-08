@@ -26,6 +26,7 @@ import { useOrganisationName } from "../../../../lib/OrganisationNameProvider";
 import { dataEntryAdapterEnabled } from "../../../../lib/featureFlags";
 import { PortalBoundaryStrip } from "../../../PortalBoundaryStrip";
 import { PortalCommutingImport } from "../../../PortalCommutingImport";
+import { CommutingUpliftPanel } from "../../../../jobs/CommutingUpliftPanel";
 import { PortalSpendImport } from "../../../PortalSpendImport";
 import { PortalTravelImport } from "../../../PortalTravelImport";
 import { PortalVehicleImport } from "../../../PortalVehicleImport";
@@ -108,8 +109,9 @@ export function PortalDataView({ jobId }: { jobId: string }) {
       return { title, body: <PortalTravelImport base={base} factors={view.factors} sites={view.sites.map((entry) => ({ id: entry.id, name: entry.name }))}
         reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> };
     if (category.code === "3.7" && dataEntryAdapterEnabled("commuting"))
-      return { title, body: <PortalCommutingImport base={base} factors={view.factors} existingCommuters={view.rows.filter((row) => row.scope === "3.7" || row.categoryCode === "3.7").length}
-        reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> };
+      return { title, body: <><PortalCommutingImport base={base} factors={view.factors} sites={view.sites.map((entry) => ({ id: entry.id, name: entry.name }))} existingCommuters={view.rows.filter((row) => row.scope === "3.7" || row.categoryCode === "3.7").length}
+        reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} />
+        <CommutingUpliftPanel jobId={jobId} audience="portal" notice={setNotice} writeEnabled={open && !surface.readOnly} /></> };
     if (category.code === "1.company-vehicles" && dataEntryAdapterEnabled("vehicle"))
       return { title, body: <PortalVehicleImport base={base} factors={view.factors} sites={view.sites.map((entry) => ({ id: entry.id, name: entry.name }))}
         reportingMonths={view.reportingMonths} canImport={open && !surface.readOnly} adviser={org.your("adviser")} notice={setNotice} onImported={refresh} /> };

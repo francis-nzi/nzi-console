@@ -41,12 +41,12 @@ export function previewPortalCommuting(text: string): { lines: PortalCommutingLi
 export const commutingLineReady = (line: PortalCommutingLine, factor: EntryFactorRef | null) => line.issues.length === 0 && factor !== null;
 
 /** One ready line as the row the portal files: the create command's own fields, no name, no staff-only field. */
-export function portalCommutingRow(line: PortalCommutingLine, ordinal: number, factor: EntryFactorRef, sources: readonly FactorOption[]): PortalScopeRowFields {
+export function portalCommutingRow(line: PortalCommutingLine, ordinal: number, factor: EntryFactorRef, sources: readonly FactorOption[], siteId: string | null = null): PortalScopeRowFields {
   const source = sources.find((candidate) => candidate.factorId === factor.factorId && candidate.datasetId === factor.datasetId);
   const wfh = line.wfhDaysPerYear !== null || line.wfhHoursPerDay !== null
     ? `Working from home: ${line.wfhDaysPerYear ?? "—"} days a year, ${line.wfhHoursPerDay ?? "—"} hours a day` : "";
   return {
-    scope: "3.7", categoryCode: "3.7", sourceLabel: commuterLabel(ordinal, line.mode), siteId: null,
+    scope: "3.7", categoryCode: "3.7", sourceLabel: commuterLabel(ordinal, line.mode), siteId,
     quantity: line.distance, unit: line.distanceUnit === "mi" ? "mi" : "km", monthlyActivity: [],
     datasetId: factor.datasetId ?? null, factorId: factor.factorId ?? null, factorVersion: factor.datasetVersion ?? null, factorLabel: source?.label ?? factor.label,
     notes: [wfh, "Commuting template import"].filter(Boolean).join(" · "),

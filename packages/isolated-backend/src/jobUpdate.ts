@@ -63,6 +63,8 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   portal_tracker_actions: { periodBound: true, why: "actions tracked against the period's report" },
   // Data entry D3 (0194): the CRM's average FX rate over the reporting period — a different period is a different average.
   job_site_fx_rates: { periodBound: true, why: "the average FX rate over the reporting period" },
+  // Commuting uplift (0219): the headcount at each site in the period - a different period is a different workforce.
+  job_site_headcount: { periodBound: true, why: "the headcount at each site over the reporting period" },
   // Data entry D3 (0195): the prior job this job's carried lines came from — chosen as the year before this period.
   job_carry_forward_basis: { periodBound: true, why: "the prior period this job's carried-forward lines came from" },
   // Kept in step by this command, or not about the period.

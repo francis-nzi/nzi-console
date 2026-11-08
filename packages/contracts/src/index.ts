@@ -171,3 +171,4 @@ export * from "./vehicleCapture";
 export * from "./travelCapture";
 export * from "./commutingCapture";
 export * from "./firstName";
+export * from "./commutingUplift";

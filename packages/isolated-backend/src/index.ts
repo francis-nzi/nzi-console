@@ -269,6 +269,7 @@ export {
   dismissSpendAllocationSuggestion, type SpendSuggestionModel, type SpendSuggestionRecorded, type SpendSuggestionConfirmed,
 } from "./spendAllocationSuggestions";
 export { readJobCurrencies, setJobSiteFxRate, type JobCurrencies, type JobSiteCurrency, type JobSiteFxResult } from "./jobSiteFx";
+export { readJobCommutingUplift, setJobSiteHeadcount, savePortalSiteHeadcount, upliftForSite, snapshotCommutingUplift, type JobCommutingUplift, type SiteUpliftView, type SiteHeadcountResult } from "./jobSiteHeadcount";
 // Data entry D4 (R1): company-vehicle registrations sealed under the client's own key; the client's opt-out.
 export {
   copySealedVehicleIdentifier, resealVehicleIdentifiers, sealExistingVehicleRegistrations, sealVehicleIdentifiers, setVehicleRegistrationsOptOut,
