@@ -5,7 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { postBrowserCommand } from "@nzi/api-client";
 import { crpProfessionalManifest } from "@nzi/charts";
 import {
-  drawsMockupDocument, moveReportSection, reportSectionPlanOf, setReportSectionIncluded, v7RecordLine,
+  drawsMockupDocument, moveReportSection, reportSectionPlanOf, setReportSectionIncluded, staffMayEditNarrative, v7RecordLine,
   type ReportComposition, type ReportScope, type ReportSectionPlan,
 } from "@nzi/contracts";
 import type { ReportDraftComposition } from "@nzi/isolated-backend";
@@ -15,6 +15,7 @@ import { accessFor, useStaffMe, type EditAccess } from "../../../lib/useEditAcce
 import { IndependentApprovalMarker, useApprovalPolicy } from "../../../lib/IndependentApprovalMarker";
 import { ReportEditHistory } from "./ReportEditHistory";
 import { ReportVersionChain } from "./ReportVersionChain";
+import { ReportRoundThread } from "./ReportRoundThread";
 import { useJobReportRow } from "../../../lib/useJobReportRow";
 import { useReportSignees } from "../../../lib/useReportSignees";
 import { SigneeEmptyHint } from "../../../lib/SigneeEmptyHint";
@@ -27,7 +28,7 @@ import { StudioNarrativeEditor, type NarrativeEditTarget } from "./StudioNarrati
 import { reportingYearLabel } from "../../../reports/[versionId]/ReportComposedV5";
 import { StudioPagedView } from "./StudioPagedView";
 import { buildStudioPagedCss, buildStudioPrintCss, studioPrintMark } from "./studioPrint";
-import { samePlan, studioDraftQuery, studioRail, studioRailLegend, type StudioVersion } from "./studio";
+import { samePlan, studioDraftQuery, studioIsReviewRound, studioPlanEditable, studioRail, studioRailLegend, studioStatusText, type StudioKind, type StudioVersion } from "./studio";
 
 /**
  * The Report Studio, to `REPORT-STUDIO-design-reference.html` — the job's report in the console's chrome, with its three
@@ -91,7 +92,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
   const [mode, setMode] = useState<ViewMode>("flow");
   const stage = useRef<HTMLDivElement | null>(null);
   const flowSource = useRef<HTMLDivElement | null>(null);
-  const kind: "draft" | "validated" | "published" = draft || !version ? "draft" : version.status;
+  const kind: StudioKind = draft || !version ? "draft" : version.status;
   // D/E: composed@5 is paged for real — Page · A4 is Paged.js over the flow document, with the rules Print uses. Older
   // renderers (a version validated before composed@5) keep the view they have always had.
   const paged = drawsMockupDocument(composition);
@@ -104,7 +105,8 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
   const [scope, setScope] = useState<ReportScope>(draft?.scope ?? composition.scope ?? { kind: "whole" });
   const [pending, setPending] = useState<"save" | "validate" | "publish" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const editable = kind !== "published" && pending === null;
+  // F1: the plan rail belongs to a draft and a validated version; a round in client review or approved by the client keeps the plan it was sent with.
+  const editable = studioPlanEditable(kind) && pending === null;
   const rail = studioRail(composition, plan);
   const dirty = kind === "validated" && !samePlan(plan, drawnPlan);
   const whole = scope.kind === "whole";
@@ -133,7 +135,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
   // pinned by this version and bumping it, so it changes in place. A published version is never editable.
   const narrativeOn = reportFeatureEnabled("report-edit") && Boolean(composition.narrative);
   const narrativeTarget: NarrativeEditTarget | null = kind === "draft" ? { kind: "draft", jobId }
-    : kind === "validated" && version ? { kind: "validated", reportVersionId: version.reportVersionId, version: version.version }
+    : version && staffMayEditNarrative(kind) ? { kind: "validated", reportVersionId: version.reportVersionId, version: version.version }
     : null;
   const editAccess: EditAccess = me === undefined ? { state: "checking", reason: "Checking your permissions…" }
     : me === "signed-out" ? { state: "denied", reason: "Sign in as staff to edit the narrative." }
@@ -218,13 +220,13 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const movable = rail.filter((row) => row.movable);
-  const status = kind === "draft" ? "Draft — not validated, not issued" : kind === "validated" ? "Validated — preview, not issued"
-    : `Published ${version?.publishedAt ? formatDate(version.publishedAt.slice(0, 10)) : ""}`.trim();
+  const status = studioStatusText(kind, version?.publishedAt ? formatDate(version.publishedAt.slice(0, 10)) : null);
 
   return <ReportStudioFrame jobId={jobId} page="printing">
     <IndependentApprovalMarker policy={approvalPolicy} />
     {version && !draft ? <ReportEditHistory reportVersionId={version.reportVersionId} refresh={version.version} /> : null}
     {version && !draft ? <ReportVersionChain reportVersionId={version.reportVersionId} refresh={version.version} /> : null}
+    {version && !draft && studioIsReviewRound(kind) ? <ReportRoundThread reportVersionId={version.reportVersionId} /> : null}
     <div className="nzs-toolbar" role="toolbar" aria-label="Report view">
       {kind === "draft" && draft
         ? <div className="nzs-ctl nzs-scope-live"><ReportScopeSelector choices={draft.scopeChoices} scope={scope} onChange={changeScope} disabled={pending !== null} /></div>
@@ -300,7 +302,7 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
         <ul className="nzs-legend" aria-label="Section status">
           {studioRailLegend.map((item) => <li key={item.status}><span className={`nzs-dot ${item.status}`} aria-hidden="true" />{item.label}</li>)}
         </ul>
-        <p className="nzs-rail-note">{kind === "published" ? "This report is published: its sections are fixed." : kind === "validated"
+        <p className="nzs-rail-note">{kind === "published" ? "This report is published: its sections are fixed." : studioIsReviewRound(kind) ? "This round is with the client: its sections are fixed." : kind === "validated"
           ? "Reorder or show and hide sections, then save. Publishing issues the saved plan."
           : "Reorder or show and hide sections, and choose the scope: the draft recomposes. Validating holds this plan."}</p>
       </nav>
@@ -308,6 +310,9 @@ export function ReportStudioPrinting({ jobId, version, composition, draft }: {
         {kind === "draft" && draft ? <div className="report-preview-band nzs-draft-band" role="note" data-report-draft="not-validated">
           <b>Draft — not validated, not issued.</b> Composed {formatDateTime(draft.draftedAt)} from this job&rsquo;s latest approved snapshot (version {draft.snapshotVersion}) with the plan and scope chosen here. Nothing here is stored or sent; validating holds it.
           {draft.blockers.length > 0 ? <ul className="nzs-blockers" data-studio-blockers>{draft.blockers.map((blocker, index) => <li key={`${blocker.field}-${index}`}>{blocker.message}</li>)}</ul> : null}
+        </div> : studioIsReviewRound(kind) ? <div className="report-preview-band" role="note" data-report-round={kind}>
+          <b>{kind === "in_client_review" ? "In client review — not issued." : "Approved by the client — not yet issued."}</b> Drawn live from this round&rsquo;s frozen snapshot, plan and narrative, including any wording the client has changed (the edit history lists each change).
+          {narrativeEditor ? <> You can <b>amend the narrative here</b> while the round is open; each save bumps the version and is recorded.</> : kind === "client_approved" ? " The client has approved it, so it is read-only: reopen the report to change it." : null}
         </div> : kind === "validated" ? <div className="report-preview-band" role="note" data-report-preview="not-issued">
           <b>Preview — not issued.</b> Composed from this version&rsquo;s frozen snapshot and section plan, exactly as publishing would issue it.{narrativeEditor ? null : " Nothing here is stored or sent."}
           {composition.narrative ? narrativeEditor

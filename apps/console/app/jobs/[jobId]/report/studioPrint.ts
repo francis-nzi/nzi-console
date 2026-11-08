@@ -12,8 +12,9 @@
 // stay whole; a table's header repeats on every page it continues onto; a heading never ends a page.
 
 /** What a printed page says it is — so a draft PDF can never be taken for the issued document. Published: nothing. */
-export function studioPrintMark(kind: "draft" | "validated" | "published"): string | null {
-  return kind === "draft" ? "DRAFT — not validated, not issued" : kind === "validated" ? "PREVIEW — validated, not issued" : null;
+export function studioPrintMark(kind: "draft" | "validated" | "in_client_review" | "client_approved" | "published"): string | null {
+  return kind === "draft" ? "DRAFT — not validated, not issued" : kind === "validated" ? "PREVIEW — validated, not issued"
+    : kind === "in_client_review" || kind === "client_approved" ? "PREVIEW — in client review, not issued" : null;
 }
 
 /** CSS-escape a value embedded in an `@page` `content: "…"` string. */

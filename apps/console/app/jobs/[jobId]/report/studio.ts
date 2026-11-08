@@ -14,7 +14,7 @@ import { COMPOSED5_TITLES, composed5Draws } from "../../../reports/[versionId]/R
 
 /** The fields of a register row the studio reads (`ReportVersionRegisterItem`). */
 export type StudioRegisterRow = {
-  reportVersionId: string; jobId: string; status: "draft" | "validated" | "published" | "superseded";
+  reportVersionId: string; jobId: string; status: "draft" | "validated" | "in_client_review" | "client_approved" | "published" | "superseded";
   createdAt: string; publishedAt: string | null; scopeLabel: string;
   /** The row's version — what `report.sectionPlan.update` and `report.publish` pin. */
   version: number;
@@ -22,20 +22,28 @@ export type StudioRegisterRow = {
   manifestVersion: number; snapshotId: string;
 };
 
+/** The statuses the studio opens (F1: the client-review round and the client-approved one join validated and published). */
+export type StudioOpenStatus = "validated" | "in_client_review" | "client_approved" | "published";
+const STUDIO_OPEN_STATUSES: readonly string[] = ["validated", "in_client_review", "client_approved", "published"];
+
+/** What the studio is showing: the job's draft, or a version by its status. */
+export type StudioKind = "draft" | StudioOpenStatus;
+
 export type StudioVersion = {
-  reportVersionId: string; status: "validated" | "published"; createdAt: string; publishedAt: string | null; scopeLabel: string; version: number;
+  reportVersionId: string; status: StudioOpenStatus; createdAt: string; publishedAt: string | null; scopeLabel: string; version: number;
   manifestVersion: number; snapshotId: string;
 };
 
 /**
- * The job's version the studio opens: its newest validated or published one. A published version is the issued report; a
- * validated one is previewed exactly as publish would freeze it (B0). Superseded and draft versions are never opened — the
+ * The job's version the studio opens: its newest validated, in-review, client-approved or published one. A published version is the
+ * issued report; a validated one is previewed exactly as publish would freeze it (B0); a round in client review (F1) or approved by the
+ * client is drawn live from its own frozen snapshot, plan and narrative. Superseded and draft versions are never opened — the
  * first is no longer the report, the second has nothing composed. A version asked for by id (the register's row link) is
  * opened when it is one of these and this job's — never another job's. Null: no version yet (the studio then shows a draft).
  */
 export function pickStudioVersion(register: readonly StudioRegisterRow[], jobId: string, wanted?: string | null): StudioVersion | null {
-  const open = register.filter((row): row is StudioRegisterRow & { status: "validated" | "published" } =>
-    row.jobId === jobId && (row.status === "validated" || row.status === "published"));
+  const open = register.filter((row): row is StudioRegisterRow & { status: StudioOpenStatus } =>
+    row.jobId === jobId && STUDIO_OPEN_STATUSES.includes(row.status));
   const newest = (wanted ? open.find((row) => row.reportVersionId === wanted) : undefined)
     ?? [...open].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.reportVersionId.localeCompare(a.reportVersionId))[0];
   return newest ? { reportVersionId: newest.reportVersionId, status: newest.status, createdAt: newest.createdAt, publishedAt: newest.publishedAt, scopeLabel: newest.scopeLabel, version: newest.version,
@@ -119,3 +127,18 @@ export const studioRailLegend = [
   { status: "ai", label: "AI-drafted" },
   { status: "locked", label: "Figures locked to data" },
 ] as const;
+
+/**
+ * F1: what the studio's controls may do on a version of this kind. The plan rail and publish belong to a draft and a validated version;
+ * the narrative is amendable wherever the staff allow-list says so (validated, or the open client-review round); a client-approved round
+ * is read-only until it is reopened; the issued report is fixed. The server judges every one of these again.
+ */
+export const studioPlanEditable = (kind: StudioKind): boolean => kind === "draft" || kind === "validated";
+export const studioIsReviewRound = (kind: StudioKind): boolean => kind === "in_client_review" || kind === "client_approved";
+
+/** The status pill's words. */
+export function studioStatusText(kind: StudioKind, publishedOn: string | null): string {
+  return kind === "draft" ? "Draft — not validated, not issued" : kind === "validated" ? "Validated — preview, not issued"
+    : kind === "in_client_review" ? "In client review — not issued" : kind === "client_approved" ? "Approved by the client — awaiting final approval"
+    : `Published ${publishedOn ?? ""}`.trim();
+}

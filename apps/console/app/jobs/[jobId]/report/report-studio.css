@@ -87,7 +87,7 @@ button.nzs-switch:disabled{cursor:default}
 .nzs-rail-save .nzs-rail-note{margin:2px 0 0;flex-basis:100%}
 .nzs-rail-msg{margin:10px 8px 0;padding:8px 10px;border-radius:8px;background:#FDEBE8;color:#7A2418;font-size:11.5px;line-height:1.45}
 .nzs-status.draft{background:#EEF5FC;border-color:var(--nzs-sky-line);color:var(--nzs-sky-ink)}
-.nzs-status.validated{background:#FFF7E3;border-color:#FFC24B;color:#5C4300}
+.nzs-status.validated,.nzs-status.in_client_review,.nzs-status.client_approved{background:#FFF7E3;border-color:#FFC24B;color:#5C4300}
 .nzs-draft-band{background:#EEF5FC;border-color:var(--nzs-sky-line)}
 .nzs-blockers{margin:8px 0 0;padding-left:18px;color:#7A2418}
 .nzs-scope-live .nz-scope-select{display:flex;align-items:center;gap:10px;flex-wrap:wrap}

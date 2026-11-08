@@ -17,7 +17,7 @@ describe("C — Edit / Generate / Reset on the composed narrative", () => {
   it("is offered on a draft and (d)(ii) a validated version, behind report-edit, to someone holding report.edit — never a published one", () => {
     assert.match(studio, /const narrativeOn = reportFeatureEnabled\("report-edit"\) && Boolean\(composition\.narrative\);/);
     assert.match(studio, /: accessFor\(me, "report\.edit"\);/);
-    assert.match(studio, /const narrativeTarget: NarrativeEditTarget \| null = kind === "draft" \? \{ kind: "draft", jobId \}\n\s+: kind === "validated" && version \? \{ kind: "validated", reportVersionId: version\.reportVersionId, version: version\.version \}\n\s+: null;/,
+    assert.match(studio, /const narrativeTarget: NarrativeEditTarget \| null = kind === "draft" \? \{ kind: "draft", jobId \}\n\s+: version && staffMayEditNarrative\(kind\) \? \{ kind: "validated", reportVersionId: version\.reportVersionId, version: version\.version \}\n\s+: null;/,
       "a published version has no target, so no editor");
     assert.match(studio, /const narrativeEditor: NarrativeEditor \| undefined = narrativeTarget && narrativeOn\n\s+\? \(_key, element, drawn\) => <StudioNarrativeEditor target=\{narrativeTarget\} /);
     assert.match(studio, /canEdit=\{editAccess\.state === "allowed" && pending === null\}/);
