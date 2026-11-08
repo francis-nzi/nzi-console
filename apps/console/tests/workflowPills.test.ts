@@ -47,9 +47,10 @@ describe("workflow doc mapping (keyed on category_code)", () => {
     for (const code of [null, undefined, "", "3.16", "Natural Gas", "natural gas", "constructor", "__proto__"]) assert.equal(categoryWorkflowHref(code as string), null, String(code));
   });
 
-  it("hosts exactly the 24 docs and the index, with no script in any", () => {
+  it("hosts exactly the 24 docs, the reporting doc and the index, with no script in any", () => {
     const files = readdirSync(docsDir).filter((name) => name.endsWith(".html"));
-    assert.equal(files.length, 25);
+    assert.equal(files.length, 26);
+    assert.ok(files.includes("WF-reporting.html"));
     assert.ok(files.includes("index.html"));
     for (const file of files) assert.doesNotMatch(readFileSync(new URL(file, docsDir), "utf8"), /<script/i, file);
   });
