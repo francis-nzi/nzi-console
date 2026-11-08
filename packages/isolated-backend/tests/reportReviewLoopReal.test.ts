@@ -9,6 +9,8 @@ import { updateReportSectionPlan } from "../src/reportSectionPlans";
 import { listReportStatusRegister } from "../src/reportStatusRegister";
 import { getReportComposition, previewReportComposition } from "../src/reportCompositions";
 import { reportIsLoopFinal } from "../src/portalIssuedReport";
+import { addGrantedReportComment, approveGrantedPublishedReport, LOOP_FINAL_REFUSAL } from "../src/portalReview";
+import type { PortalSession } from "../src/auth";
 import { SeparationOfDutiesError } from "../src/access";
 import { AuthorizationError } from "../src/auth";
 import { ScopeConflictError, VersionConflictError } from "../src/errors";
@@ -329,6 +331,34 @@ describe("S1: the client-review loop lifecycle, against a real database", { skip
     assert.equal(await final("no-such-version"), false, "nothing read is never read as final");
     const reopened = (await reopen(looped.id, "published")).data.reportVersionId as string;
     assert.equal(await final(reopened), false, "a reopened round is open again, not PDF-only");
+  });
+
+  it("F2: a loop-completed report is locked server-side - the legacy approval and client comment are refused and write nothing; a directly-published report still takes both", async () => {
+    const session = (userId: string) => ({ organisationId: ORG, userId, clientId: CLIENT, sessionId: `session-${userId}`, displayName: userId }) as unknown as PortalSession & { displayName: string };
+    const writes = async (id: string) => Number((await q(`SELECT (SELECT count(*) FROM nzi_console.portal_report_comments WHERE report_version_id = $1) + (SELECT count(*) FROM nzi_console.portal_report_approvals WHERE report_version_id = $1) AS n`, [id]))[0]!.n);
+    const locked = (error: unknown) => error instanceof AuthorizationError && error.message === LOOP_FINAL_REFUSAL;
+
+    const direct = await validated();
+    await publishCrpReport(database.pool, { reportVersionId: direct.id, expectedStatus: "validated", manifestVersion: 1, reviewedSnapshotId: direct.snapshotId, expectedVersion: await version(direct.id) }, staff("rev", "reviewer"));
+    const comment = await addGrantedReportComment(database.pool, session("pu-1"), { jobId: JOB, reportVersionId: direct.id, body: "Please explain the Scope 3 change." });
+    assert.equal(comment.reportVersionId, direct.id, "a directly-published report (J000663's path) still takes a legacy comment");
+    const approval = await approveGrantedPublishedReport(database.pool, session("pu-1"), { jobId: JOB, reportVersionId: direct.id });
+    assert.equal(approval.reportVersionId, direct.id, "...and a legacy approval");
+    assert.equal(await writes(direct.id), 2);
+
+    const looped = await toFinal();
+    assert.ok((await row(looped.id)).final_approved_at);
+    const before = await writes(looped.id);
+    await assert.rejects(() => addGrantedReportComment(database.pool, session("pu-1"), { jobId: JOB, reportVersionId: looped.id, body: "One more thing." }), locked);
+    await assert.rejects(() => approveGrantedPublishedReport(database.pool, session("pu-2"), { jobId: JOB, reportVersionId: looped.id }), locked);
+    assert.equal(await writes(looped.id), before, "nothing was recorded against the final report");
+    assert.equal(Number((await q(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE action IN ('portal.report.comment.create','portal.report.approve') AND (entity_id = $1 OR after_json->>'reportVersionId' = $1)`, [looped.id]))[0]!.n), 0, "...and nothing was audited as done");
+
+    const reopened = (await reopen(looped.id, "published")).data.reportVersionId as string;
+    const older = await row(looped.id);
+    assert.equal(older.final_approved_at !== null, true, "the earlier round keeps its final stamp, so it stays locked once a later round exists");
+    await assert.rejects(() => addGrantedReportComment(database.pool, session("pu-1"), { jobId: JOB, reportVersionId: looped.id, body: "Still locked." }), locked);
+    assert.ok(reopened);
   });
 
   it("the commands' contracts refuse a malformed request before any database work", () => {
