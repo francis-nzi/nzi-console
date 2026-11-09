@@ -635,6 +635,12 @@ jobs:
       # assessment sends nothing; through the existing outbox and drain, scan and send apart; audited by reference.
       - name: SRS review date and the once-per-date reminder to the CRM, through the existing email pipe
         run: npx tsx --test packages/isolated-backend/tests/srsReviewReal.test.ts
+      # 0221 (SRS messaging, Phase B): one SRS readiness conversation per client on the portal conversations. A client's post is
+      # recorded and queues the CRM's notify-only email; a review request is surfaced to the CRM and never writes the assessment;
+      # the CRM replies under srs.manage and the consenting client is emailed a link to the readiness view; the client reads the
+      # adviser as the firm (NZC-110) and only its own conversation (NZC-120); audited by ids, never the text.
+      - name: The client's SRS readiness conversation, review requests surfaced, never an assessment write
+        run: npx tsx --test packages/isolated-backend/tests/srsMessagingReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

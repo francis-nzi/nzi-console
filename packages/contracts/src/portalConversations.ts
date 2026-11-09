@@ -80,6 +80,8 @@ export type PortalMessage = {
   authorName?: string | null;
   /** Files sent with the message (M3), in the order attached. Empty when none, or while attachments are off. */
   attachments: PortalMessageAttachment[];
+  /** SRS messaging (0221): the client asked for a review of their readiness assessment in this message. Absent: no. */
+  reviewRequest?: boolean;
 };
 
 export type PortalThreadDetail = { thread: PortalThreadSummary; messages: PortalMessage[] };

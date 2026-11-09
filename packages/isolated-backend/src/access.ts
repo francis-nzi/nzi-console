@@ -240,6 +240,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "srs.assessment.reopen": srsAssessment,
   "srs.assessment.notes.set": srsAssessment,
   "srs.assessment.review.set": srsAssessment,
+  "srs.message.post": client,
   // SRS S3: every gap act concerns one assessment, so its client — resolved and held to the own-clients scope as ever.
   "srs.gap.suggestions.record": srsAssessment,
   "srs.gap.suggestion.withdraw": srsAssessment,
@@ -281,6 +282,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   // job grant is the handler's). The subject-tag lookup is the organisation's.
   "portal.thread.start": client,
   "portal.message.post": client,
+  "portal.srs.message.post": client,
   "portal.thread.read": client,
   "portal.notices.seen": client,
   "client.thread.start": client,
@@ -429,7 +431,7 @@ async function authorizePortalCommand<K extends CommandKey>(db: Queryable, key: 
   if ((commandDefinitions[key] as { permission: string }).permission === "portal.plan") return authorizePortalPlanCommand(db, subject, context);
   if ((commandDefinitions[key] as { permission: string }).permission === "portal.review") return authorizePortalReportCommand(db, subject, context);
   // Portal files: the client's own, by an active user — the same session rule as the plan; the file's job grant is the handler's.
-  if (key === "portal.file.upload" || key === "portal.file.download" || key === "portal.thread.start" || key === "portal.message.post" || key === "portal.thread.read" || key === "portal.notices.seen") return authorizePortalPlanCommand(db, subject, context);
+  if (key === "portal.file.upload" || key === "portal.file.download" || key === "portal.thread.start" || key === "portal.message.post" || key === "portal.srs.message.post" || key === "portal.thread.read" || key === "portal.notices.seen") return authorizePortalPlanCommand(db, subject, context);
   if (subject.kind !== "job") throw new AuthorizationError("tenant", TENANT_REFUSED);
   const access = await resolveAccess(db, context.organisationId, context.actorId, "job", subject.id);
   if (access.clientId !== context.portal.clientId) throw new AuthorizationError("tenant", "This job is not available to your account.");
