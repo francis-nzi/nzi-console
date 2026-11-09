@@ -88,7 +88,7 @@ describe("one-click start, one title, noise behind i-pills", () => {
   });
 
   it("leaves per-answer overrides inside the assessment, on the item form", () => {
-    assert.match(forms, /Override it if the disclosure needs something different/);
+    assert.match(forms, /Override if the disclosure needs something different/);
     assert.match(forms, /export function SrsWizard/);
   });
 

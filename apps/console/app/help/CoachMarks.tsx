@@ -25,10 +25,12 @@ import type { TourDefinition, TourStep } from "@nzi/contracts";
 
 type Rect = { top: number; left: number; width: number; height: number };
 
-export function CoachMarks({ tour, onFinish }: {
+export function CoachMarks({ tour, onFinish, rememberable = true }: {
   tour: TourDefinition;
   /** `dismissed` is true when they asked not to be shown it again. */
   onFinish: (outcome: { dismissed: boolean }) => void;
+  /** False for a tour only ever started by hand, where "don't show again" would promise nothing. */
+  rememberable?: boolean;
 }) {
   // Only the steps whose anchors actually exist, resolved once when the tour starts.
   const steps = useMemo(
@@ -128,10 +130,10 @@ export function CoachMarks({ tour, onFinish }: {
         <p>{step.body}</p>
         {step.action !== undefined ? <p className="do"><b>Try it:</b> {step.action}</p> : null}
       </div>
-      <label className="dsa">
+      {rememberable ? <label className="dsa">
         <input type="checkbox" checked={dismiss} onChange={(event) => setDismiss(event.target.checked)} />
         Don&rsquo;t show this tour again
-      </label>
+      </label> : null}
       <div className="row">
         <button type="button" className="skip" onClick={() => end({ dismissed: dismiss })}>Skip</button>
         <span className="sp" />

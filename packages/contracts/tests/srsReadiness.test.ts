@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   benchmark, evidenceCoverage, gaps, maturityLabel, overallReadiness, pillarReadiness,
-  isAssessed, latestAssessed, prefillFromNzi, readinessTrend, rollup, srsCompletion, standardReadiness,
+  isAssessed, latestAssessed, prefillFromNzi, readinessTrend, rollup, srsAutoReason, srsCompletion, standardReadiness,
   type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity, type SrsNziFacts,
 } from "../src/srsReadiness";
 import { commandGrantForRole, validateCommand } from "../src/index";
@@ -127,7 +127,7 @@ test("pre-fill answers only what the client's record actually shows", () => {
   assert.ok(scope1, "Scope 1 is answered from the assured footprint");
   assert.equal(scope1!.maturity, 3);
   assert.equal(scope1!.evidence?.kind, "data");
-  assert.match(scope1!.evidence!.note, /2 verified reporting years/);
+  assert.equal(scope1!.evidence!.note, "Based on verified client data · 2 reporting years");
   assert.ok(filled.find((entry) => entry.requirementId === "m2"), "targets are answered from the target model");
   // Nothing is claimed for a requirement the record does not answer.
   assert.ok(!filled.some((entry) => entry.requirementId === "g1"));
@@ -147,6 +147,37 @@ test("pre-fill claims nothing when the record is empty, and never claims assuran
     intensityBasesResolved: 0, independentlyAssured: false,
   });
   assert.equal(migrated.find((entry) => entry.requirementId === "m1")!.maturity, 2);
+});
+
+test("auto-allocation reasons are plain wording, M1–M7 keep their maturity steps (copy only, 9 Nov)", () => {
+  const keys = ["footprint.scope1", "footprint.scope2", "footprint.scope3", "footprint.method", "footprint.provenance", "targets.model", "targets.gap"];
+  const metrics: SrsFramework = { ...framework, requirements: keys.map((key, index) => requirement(`m${index + 1}`, "S2", "metrics", { source: "nzi-data", nziSourceKey: key, targetMaturity: 3 })) };
+  const facts = (verified: boolean): SrsNziFacts => ({
+    assuredYears: 1, scopesReported: { scope1: true, scope2: true, scope3: true },
+    provenanceStamped: true, provenanceVerified: verified, targetsSet: true, targetProgressMeasured: true,
+    intensityBasesResolved: 0, independentlyAssured: false,
+  });
+  const filled = prefillFromNzi(metrics, facts(true));
+  assert.deepEqual(filled.map((entry) => [entry.requirementId, entry.maturity, entry.evidence!.note]), [
+    ["m1", 3, "Based on verified client data · 1 reporting year"],
+    ["m2", 3, "Based on verified client data · 1 reporting year"],
+    ["m3", 3, "Based on verified client data · 1 reporting year"],
+    ["m4", 3, "Based on client emissions data"],
+    ["m5", 3, "Based on verified client factor data"],
+    ["m6", 3, "Based on client-set targets"],
+    ["m7", 3, "Progress measured against client-set targets"],
+  ]);
+  // A migrated stamp still steps down — the levels are unchanged; only the words are.
+  assert.deepEqual(prefillFromNzi(metrics, facts(false)).map((entry) => entry.maturity), [2, 2, 2, 3, 2, 3, 3]);
+  for (const entry of prefillFromNzi(metrics, facts(false))) assert.doesNotMatch(entry.evidence!.note, /unverified|snapshot|gap engine|forward target model|backfilled/);
+});
+
+test("an answer saved with the older wording reads in the new wording, keeping its year count", () => {
+  assert.equal(srsAutoReason("footprint.scope2", "Scope 2 resolved from the client's reviewed snapshot · 3 verified reporting years"), "Based on verified client data · 3 reporting years");
+  assert.equal(srsAutoReason("footprint.provenance", "Factor-set stamp present but backfilled (migrated, unverified)"), "Based on verified client factor data");
+  assert.equal(srsAutoReason("targets.gap", "Progress measured against the target line by the gap engine"), "Progress measured against client-set targets");
+  // Sources this does not word keep their own note.
+  assert.equal(srsAutoReason("intensity.metrics", "2 intensity bases resolved from the client's own denominators"), "2 intensity bases resolved from the client's own denominators");
 });
 
 test("the trend reads oldest first, across reassessments", () => {

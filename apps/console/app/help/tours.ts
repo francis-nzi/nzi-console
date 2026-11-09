@@ -50,3 +50,31 @@ export const TOURS: TourDefinition[] = [
     ],
   },
 ];
+
+/**
+ * The SRS Readiness walk-through (BRIEF-srs-readiness-copy-and-modal-declutter). It lives on a client's `?area=srs`, which
+ * the path-matched tours above cannot tell apart from the rest of the workspace, so it is not in `TOURS`: the area starts
+ * it from its own Walk-through button. It chains the cards in page order and says the keyboard shortcuts and the
+ * assessment lifecycle once, here, rather than on every question.
+ */
+export const SRS_READINESS_TOUR: TourDefinition = {
+  id: "srs-readiness",
+  version: 1,
+  path: "/clients",
+  title: "SRS Readiness",
+  summary: "How ready the client is against UK SRS, and the path to close the gaps.",
+  steps: [
+    { anchor: ".nz-srs-headline", title: "Where the client stands", body: "Overall maturity on the 0–4 ladder, then each pillar against its target." },
+    { anchor: "[data-tour=\"srs-pillars\"]", title: "By pillar", body: "Each pillar as a dial or a meter. Table shows the same numbers." },
+    { anchor: "[data-tour=\"srs-web\"]", title: "The readiness web", body: "The four pillars and their targets in one shape." },
+    { anchor: "[data-tour=\"srs-trend\"]", title: "Readiness over time", body: "One point per completed assessment. Reassess to draw the line." },
+    { anchor: "[data-tour=\"srs-auto\"]", title: "Auto allocation", body: "Climate metrics scored automatically from the client's verified data. Override any row if the disclosure needs something different." },
+    { anchor: "[data-tour=\"srs-path\"]", title: "Path to SRS-ready", body: "Your open gaps, highest priority first — turn each into a dated action to close it." },
+    {
+      anchor: "[data-tour=\"srs-register\"]",
+      title: "Requirement register",
+      body: "Every requirement with its score and evidence. Score every requirement; the assessment is dated as assessed when you complete it. A gap below target becomes an action through Bridge this gap.",
+      action: "In the assessment, keys 0–4 score a question and Enter moves on.",
+    },
+  ],
+};

@@ -5,10 +5,12 @@ import { patchBrowserCommand, postBrowserCommand } from "@nzi/api-client";
 import { SrsDial, SrsMeter, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
 import { Collapsible, Drawer, GatedButton, InfoTip } from "@nzi/ui";
 import {
-  comparePriority, gaps as resolveGaps, priorityLabels, srsBridgedBy, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
+  comparePriority, gaps as resolveGaps, priorityLabels, srsAutoReason, srsBridgedBy, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
   type ClientStrategy, type SrsAssessment, type SrsDashboardModel, type SrsFramework, type SrsGapSuggestion,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
+import { CoachMarks } from "../../help/CoachMarks";
+import { SRS_READINESS_TOUR } from "../../help/tours";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead, Empty } from "./OverviewArea";
@@ -57,6 +59,7 @@ export function SrsArea({ workspace, access, onDrawer, onSaved }: {
   const wizardDrawer = wizard && wizardAssessment && framework
     ? <Drawer open onClose={() => closeWizard.current?.()} ariaLabel="Guided SRS readiness assessment" className="nz-srs-wizard">
       <SrsWizard key={wizard.nonce} framework={framework} assessment={wizardAssessment} startAt={wizard.startAt} access={access} plan={workspace.strategies.plan}
+        contacts={workspace.contacts}
         closeRef={closeWizard}
         onClose={(changed) => { setWizard(null); if (changed) onSaved("Assessment progress saved."); }}
         onBridge={(requirementId) => onDrawer({ kind: "srs-bridge", assessment: wizardAssessment, requirementId })}
@@ -161,6 +164,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   const [trendBy, setTrendBy] = useState<"overall" | "pillar">("overall");
   const [showTable, setShowTable] = useState<Record<string, boolean>>({});
   const toggle = (key: string) => setShowTable((now) => ({ ...now, [key]: !now[key] }));
+  const [touring, setTouring] = useState(false);
 
   const assessment = assessments.find((entry) => entry.assessmentId === assessmentId) ?? current;
   // S3 (from the S2 review): each assessment read against the framework version it was made against.
@@ -194,7 +198,9 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
         <p>Each assessment is measured against {model.frameworkLabel} version {model.frameworkVersion}; the version is stamped on it, so a later framework change never restates what was assessed. It is dated as assessed only when every requirement has been addressed and it is completed — until then it reads as in progress.</p>
         <p>Requirements the client&apos;s verified record answers are filled in from it and marked resolved from NZI data; override any of them with Assess.</p>
         <p>Assessing is gated on <b>srs.manage</b> and every answer is audited. The framework is Admin-managed and versioned.</p>
-      </InfoTip><span style={{ flex: 1 }} />
+      </InfoTip>
+      <button type="button" className="nz-editlink" onClick={() => setTouring(true)}>Walk-through</button>
+      <span style={{ flex: 1 }} />
       <span className={current.status === "draft" ? "nz-st need" : "nz-st done"}>{current.status === "draft" ? `In progress · ${currentCompletion.addressed} of ${currentCompletion.total} addressed` : "Assessed"}</span>
       {current.status === "draft"
         // Conducting the assessment is the guided wizard; it is completed on its last screen (dated on completion, S1 R3).
@@ -263,7 +269,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
     </section>
 
     {/* R2: the dials — with the linear meters as the compact equivalent, and the table view. */}
-    <section className="nz-panel">
+    <section className="nz-panel" data-tour="srs-pillars">
       <CardHead title="By pillar" right={<span className="nz-srs-seg" role="group" aria-label="Show as">
         <button type="button" aria-pressed={dialsAs === "dials"} onClick={() => setDialsAs("dials")}>Dials</button>
         <button type="button" aria-pressed={dialsAs === "meters"} onClick={() => setDialsAs("meters")}>Meters</button>
@@ -280,7 +286,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
     <div className="nz-cw-grid">
       <div className="nz-cw-col">
         {/* R3: the radar — four fixed axes, the client and the target, and its table beside it (always). */}
-        <section className="nz-panel">
+        <section className="nz-panel" data-tour="srs-web">
           <CardHead title="The readiness web" right={<span className="hint">4 pillars · ≤ 2 shapes</span>} />
           <div className="nz-card-b nz-srs-radar2">
             <SrsRadar axes={model.pillars.map((pillar) => ({ label: shortPillar(pillar.label), value: pillar.level, target: pillar.targetLevel }))}
@@ -291,7 +297,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
       </div>
       <div className="nz-cw-col">
         {/* R5: the trend — completed assessments only; one assessment is one point. */}
-        <section className="nz-panel">
+        <section className="nz-panel" data-tour="srs-trend">
           <CardHead title="Readiness over time" right={<span className="nz-srs-seg" role="group" aria-label="Trend by">
             <button type="button" aria-pressed={trendBy === "overall"} onClick={() => setTrendBy("overall")}>Overall</button>
             <button type="button" aria-pressed={trendBy === "pillar"} onClick={() => setTrendBy("pillar")}>By pillar</button>
@@ -319,7 +325,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
 
     <div className="nz-cw-grid">
       <div className="nz-cw-col">
-        <MetricsReadThrough model={model} />
+        <MetricsReadThrough model={model} framework={framework} />
         <section className="nz-panel">
           <CardHead title="Sector comparison" right={<span className="nz-st est">Future</span>} />
           <div className="nz-card-b">
@@ -333,8 +339,8 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
         </section>
       </div>
       <div className="nz-cw-col">
-        <section className="nz-panel">
-          <CardHead title="Path to SRS-ready" right={<span className="hint">by priority · gaps → actions</span>} />
+        <section className="nz-panel" data-tour="srs-path">
+          <CardHead title="Path to SRS-ready" right={<InfoTip label="Path to SRS-ready">Your open gaps, highest priority first — turn each into a dated action to close it.</InfoTip>} />
           <div style={{ padding: "6px 16px 12px" }}>
             {gaps.length === 0
               ? <p className="sub" style={{ margin: "6px 0" }}>No requirement sits below its target. Reassess as the framework moves.</p>
@@ -358,6 +364,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
     <SrsRegister model={model} assessment={assessment} framework={framework} access={access} onDrawer={onDrawer} onWizard={onWizard} standardKey={standardKey} strategiesByRequirement={strategiesByRequirement}
       plan={workspace.strategies.plan} suggestions={workspace.srs.suggestions} />
     {conversation ? <SrsConversation clientId={client.id} thread={conversation} access={access} onSaved={onSaved} /> : null}
+    {touring ? <CoachMarks tour={SRS_READINESS_TOUR} rememberable={false} onFinish={() => setTouring(false)} /> : null}
   </>;
 }
 
@@ -366,17 +373,18 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
  * R7: Metrics & targets as the client's assured NZI record answered it — read through with its provenance (the evidence
  * each pre-filled answer carries), not re-keyed and not redrawn as new numbers.
  */
-function MetricsReadThrough({ model }: { model: SrsDashboardModel }) {
+function MetricsReadThrough({ model, framework }: { model: SrsDashboardModel; framework: SrsFramework }) {
   const fromData = model.requirements.filter((requirement) => requirement.source === "auto");
-  return <section className="nz-panel">
-    <CardHead title="From the verified NZI record" right={<span className="hint">read-through · not re-keyed</span>} />
+  const sourceKeys = new Map(framework.requirements.map((requirement) => [requirement.id, requirement.nziSourceKey]));
+  return <section className="nz-panel" data-tour="srs-auto">
+    <CardHead title="Auto allocation" right={<InfoTip label="auto allocation">Climate metrics scored automatically from the client&apos;s verified data. Override any row if the disclosure needs something different.</InfoTip>} />
     <div style={{ padding: "6px 16px 12px" }}>
       {fromData.length === 0
         ? <p className="sub" style={{ margin: "6px 0" }}>Nothing in this assessment was answered from the client&apos;s verified record — no verified emissions, targets or intensity metrics were held when it was started, so the consultant answered every requirement.</p>
         : fromData.map((requirement) => <div className="nz-kv" key={requirement.id}>
           <span className="k"><b>{requirement.code}</b> {requirement.title}</span>
           <span className="v"><span className="nz-srs-chip" data-step={requirement.maturity ?? 0}>{requirement.maturity ?? "–"}</span> {requirement.stepName ?? "—"}
-            <span className="muted"> · {requirement.evidence?.note || requirement.evidence?.ref || "NZI record"}</span></span>
+            <span className="muted"> · {srsAutoReason(sourceKeys.get(requirement.id) ?? null, requirement.evidence?.note ?? "") || requirement.evidence?.ref || "NZI record"}</span></span>
         </div>)}
     </div>
   </section>;
@@ -425,10 +433,11 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, onWizard,
     <button type="button" className="nz-srs-sort" onClick={() => setSort((now) => ({ key, dir: now.key === key ? (now.dir === 1 ? -1 : 1) : 1 }))}>{label}{sort.key === key ? (sort.dir === 1 ? " ↑" : " ↓") : ""}</button>
   </th>;
   const editable = assessment.status === "draft";
+  const sourceKeys = new Map(framework.requirements.map((requirement) => [requirement.id, requirement.nziSourceKey]));
   const pillars = [...framework.pillars].sort((a, b) => a.ordering - b.ordering)
     .map((pillar) => ({ pillar, rows: sorted.filter((requirement) => requirement.pillarKey === pillar.key) })).filter((group) => group.rows.length > 0);
 
-  return <section className="nz-panel" style={{ marginTop: 16 }}>
+  return <section className="nz-panel" style={{ marginTop: 16 }} data-tour="srs-register">
     <CardHead title="Requirement register" right={<span className="hint">{model.requirements.length} requirements · sortable</span>} />
     <div className="nz-card-b">
       {pillars.map(({ pillar, rows }) => <Collapsible key={pillar.key} title={pillar.label} count={pillarSummary(framework, pillar.key, assessment.items, standardKey).text}>
@@ -446,7 +455,11 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, onWizard,
                   <td>{requirement.maturity === null ? <span className="muted">Not answered</span>
                     : <><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}{model.assessment.provisional ? <span className="muted"> · provisional</span> : null}</>}</td>
                   <td className="num">{requirement.target}</td>
-                  <td>{requirement.evidence ? <span title={requirement.evidence.note}>{requirement.evidence.kind} · {(requirement.evidence.ref ?? requirement.evidence.note).slice(0, 40)}</span> : <span className="up">none</span>}</td>
+                  <td>{requirement.evidence ? (() => {
+                    // An auto-allocated answer reads in the current wording, whatever its stored note says.
+                    const note = requirement.source === "auto" ? srsAutoReason(sourceKeys.get(requirement.id) ?? null, requirement.evidence.note) : requirement.evidence.note;
+                    return <span title={note}>{requirement.evidence.kind} · {(requirement.evidence.ref ?? note).slice(0, 40)}</span>;
+                  })() : <span className="up">none</span>}</td>
                   <td>{requirement.priority ? priorityLabels[requirement.priority] : <span className="muted">—</span>}</td>
                   <td>{requirement.owner || <span className="muted">—</span>}</td>
                   <td>{requirement.dueDate ? formatDate(requirement.dueDate) : <span className="muted">—</span>}</td>
