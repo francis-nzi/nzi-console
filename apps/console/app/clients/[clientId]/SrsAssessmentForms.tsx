@@ -1,11 +1,11 @@
 "use client";
 
 import { useRef, useState, type KeyboardEvent, type MutableRefObject } from "react";
-import { GatedButton, InfoTip } from "@nzi/ui";
+import { GatedButton, InfoTip, SmartSearch } from "@nzi/ui";
 import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
   PRIORITIES, SRS_ASSESSMENT_NOTES_MAX, isPriority, priorityLabels, srsBridgedBy, strategyStatusLabels,
-  type ClientStrategy, type Priority, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity,
+  type ClientContactReadModel, type ClientStrategy, type Priority, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
@@ -46,13 +46,15 @@ const sameDraft = (a: Draft, b: Draft) => (Object.keys(a) as Array<keyof Draft>)
 const evidenceProblem = (draft: Draft) =>
   draft.evidenceKind !== "" && !draft.evidenceRef.trim() && !draft.evidenceNote.trim() ? "Evidence needs a reference or a note." : null;
 
-export function SrsWizard({ framework, assessment, startAt, access, plan, closeRef, onClose, onBridge, onCompleted }: {
+export function SrsWizard({ framework, assessment, startAt, access, plan, contacts, closeRef, onClose, onBridge, onCompleted }: {
   framework: SrsFramework;
   assessment: SrsAssessment;
   /** The requirement to open on (a register row's Edit); otherwise the first one still to address. */
   startAt?: string | null;
   access: EditAccess;
   plan: readonly ClientStrategy[];
+  /** This client's contacts — the owner is chosen from them, as the Actions owner is. */
+  contacts: readonly ClientContactReadModel[];
   /** Escape and the page host close through here, so a question in progress is saved first. */
   closeRef: MutableRefObject<(() => void) | null>;
   /** `changed`: at least one answer was saved, so the page needs to refresh. */
@@ -192,7 +194,8 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
     if (!divider && !readOnly && !typing && /^[0-4]$/.test(event.key) && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault(); set({ maturity: Number(event.key) as SrsMaturity }); return;
     }
-    if (event.key === "Enter" && !event.shiftKey && !(target instanceof HTMLButtonElement) && !(target instanceof HTMLSelectElement)
+    // A control that used the Enter itself (the owner search choosing a contact) keeps it.
+    if (event.key === "Enter" && !event.shiftKey && !event.defaultPrevented && !(target instanceof HTMLButtonElement) && !(target instanceof HTMLSelectElement)
       && !(target instanceof HTMLTextAreaElement) && !(target instanceof HTMLAnchorElement)) {
       event.preventDefault(); void next();
     }
@@ -236,9 +239,9 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
             {" · "}SRS expects <b>{targetLabel}</b> here.
           </p>
           {requirement.source === "nzi-data" ? <div className="nz-banner ok" role="status" style={{ marginBottom: 10 }}>
-            <div><b>This one reads the client&apos;s own record.</b><div style={{ marginTop: 4 }}>{item?.source === "auto"
-              ? "Answered from the verified emissions, targets or intensity already held for this client. Override it if the disclosure needs something different."
-              : "It can be answered from the verified emissions, targets or intensity already held for this client."}</div></div>
+            <div>{item?.source === "auto"
+              ? "Scored automatically from the client's verified data. Override if the disclosure needs something different."
+              : "Can be scored automatically from the client's verified data."}</div>
           </div> : null}
 
           <div className="nz-sect">Maturity</div>
@@ -249,7 +252,6 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
             </label>)}
           </div>
           <button type="button" className="nz-editlink" onClick={() => set({ maturity: null })} disabled={readOnly || draft.maturity === null}>Clear answer</button>
-          <p className="nz-maps">{belowTarget ? "Below target is a gap, and appears on the roadmap." : "At or above target, this requirement is not a gap."} Keys 0–4 score; Enter moves on.</p>
 
           <div className="nz-sect">Evidence</div>
           <label className="nz-fl"><span>Kind</span>
@@ -265,25 +267,20 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
             <label className="nz-fl"><span>Note</span><input className="nz-inp" disabled={readOnly} value={draft.evidenceNote} onChange={(event) => set({ evidenceNote: event.target.value })} placeholder="What the evidence shows" /></label>
           </> : <span className="nz-hint">Readiness that cannot be evidenced is shown as unevidenced rather than counted as verified.</span>}
 
-          <div className="nz-sect">Priority</div>
-          <label className="nz-fl"><span>How soon this gap is closed</span>
-            <select className="nz-sel" disabled={readOnly} value={draft.priority} onChange={(event) => set({ priority: isPriority(event.target.value) ? event.target.value : "" })}>
-              <option value="">Not set</option>
-              {PRIORITIES.map((priority) => <option key={priority} value={priority}>{priorityLabels[priority]}</option>)}
-            </select>
-          </label>
-          <span className="nz-hint">Orders the Path to SRS-ready list, high first. For your team only — the client does not see it.</span>
+          <div className="nz-sect">Priority <InfoTip label="priority">Internal only — sets the order of Path to SRS-ready. The client doesn&apos;t see it.</InfoTip></div>
+          <select className="nz-sel" aria-label="Priority" disabled={readOnly} value={draft.priority} onChange={(event) => set({ priority: isPriority(event.target.value) ? event.target.value : "" })}>
+            <option value="">Not set</option>
+            {PRIORITIES.map((priority) => <option key={priority} value={priority}>{priorityLabels[priority]}</option>)}
+          </select>
 
           <div className="nz-sect">Owner and date</div>
           <div className="nz-two">
-            <label className="nz-fl"><span>Owner</span><input className="nz-inp" disabled={readOnly} value={draft.owner} onChange={(event) => set({ owner: event.target.value })} placeholder="Who closes this" /></label>
+            <SrsOwnerPicker contacts={contacts} owner={draft.owner} disabled={readOnly} onChange={(owner) => set({ owner })} />
             <label className="nz-fl"><span>Target date</span><input className="nz-inp" type="date" disabled={readOnly} value={draft.dueDate} onChange={(event) => set({ dueDate: event.target.value })} /></label>
           </div>
 
-          <div className="nz-sect">Notes</div>
-          <label className="nz-fl"><span>Assessment notes — one note for the whole assessment, the same on every question</span>
-            <textarea className="nz-in" rows={3} maxLength={SRS_ASSESSMENT_NOTES_MAX} disabled={readOnly} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Context for this assessment — kept with it, for your team only" />
-          </label>
+          <div className="nz-sect">Notes <InfoTip label="notes">One note for the whole assessment — your team only.</InfoTip></div>
+          <textarea className="nz-in" aria-label="Notes" rows={3} style={{ width: "100%", boxSizing: "border-box" }} maxLength={SRS_ASSESSMENT_NOTES_MAX} disabled={readOnly} value={notes} onChange={(event) => setNotes(event.target.value)} />
 
           <div className="nz-sect">Gap → action</div>
           {bridged.length > 0
@@ -307,5 +304,24 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, closeR
           reasonClassName="hint nz-gated-reason" onClick={() => void complete()}>Complete assessment</GatedButton> : null}
       <button type="button" className="nz-btn" disabled={pending || (last && !divider) || conflict} onClick={() => void next()}>{divider ? "Start section" : pending ? "Saving…" : "Next"}</button>
     </div>
+  </div>;
+}
+
+/**
+ * The owner: a type-ahead over this client's active contacts (the ones the Actions owner picker lists), not free text.
+ * The answer still stores the owner as a name — choosing a contact writes their name, so the item command is unchanged.
+ * An owner typed before this, who is not one of the contacts, is shown until a contact is chosen.
+ */
+function SrsOwnerPicker({ contacts, owner, disabled, onChange }: {
+  contacts: readonly ClientContactReadModel[]; owner: string; disabled: boolean; onChange: (owner: string) => void;
+}) {
+  const options = contacts.filter((contact) => contact.status === "active")
+    .map((contact) => ({ id: contact.id, label: contact.fullName, ...(contact.jobTitle ? { hint: contact.jobTitle } : {}) }));
+  const chosen = options.find((option) => option.label === owner) ?? null;
+  return <div className="nz-fl"><label htmlFor="srs-owner"><span>Owner</span></label>
+    <SmartSearch id="srs-owner" label="Owner" options={options} value={chosen?.id ?? ""} disabled={disabled}
+      emptyHint="This client has no active contacts yet — add one in Profile to give it an owner."
+      onChange={(_id, option) => onChange(option?.label ?? "")} />
+    {owner && !chosen ? <small className="hint">Previously noted as &ldquo;{owner}&rdquo; — choose the contact who owns it.</small> : null}
   </div>;
 }

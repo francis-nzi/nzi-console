@@ -49,7 +49,7 @@ const assessment = (items: SrsAssessmentItem[], status: "draft" | "complete" = "
 });
 const allowed = { state: "allowed" as const };
 const render = (a: SrsAssessment, startAt: string | null = null, access: import("../app/lib/useEditAccess").EditAccess = allowed) =>
-  renderToStaticMarkup(createElement(SrsWizard, { framework, assessment: a, startAt, access, plan: [], closeRef: { current: null }, onClose: () => {}, onBridge: () => {}, onCompleted: () => {} }));
+  renderToStaticMarkup(createElement(SrsWizard, { framework, assessment: a, startAt, access, plan: [], contacts: [], closeRef: { current: null }, onClose: () => {}, onBridge: () => {}, onCompleted: () => {} }));
 const completeButton = (html: string) => html.match(/<button[^>]*>Complete assessment<\/button>/)?.[0] ?? "";
 const everyItem = (maturity: SrsMaturity | null) => framework.requirements.map((r) => item(r.id, maturity));
 
@@ -112,16 +112,17 @@ describe("the wizard screen", () => {
   it("carries every field inline: maturity 0–4, evidence, priority, owner, target date, gap → action", () => {
     const html = render(assessment([]), "g1");
     for (const rung of ["0 · Not started", "1 · Developing", "2 · Established", "3 · Advanced", "4 · Verified"]) assert.match(html, new RegExp(rung));
-    for (const field of [">Kind<", ">Priority<", ">Owner<", ">Target date<", ">Gap → action<"]) assert.match(html, new RegExp(field));
+    for (const field of [">Kind<", ">Priority ", ">Owner<", ">Target date<", ">Gap → action<"]) assert.match(html, new RegExp(field));
     assert.match(html, /<option value="high">High<\/option><option value="medium">Medium<\/option><option value="low">Low<\/option>/);
     assert.match(html, /SRS expects <b>Established<\/b>/, "the target maturity");
   });
 
   it("gives Priority its own labelled section beside Owner and date, and Notes its own, in that order", () => {
     const html = render(assessment([]), "g1");
-    const sections = [...html.matchAll(/<div class="nz-sect">([^<]*)<\/div>/g)].map((match) => match[1]);
+    // A section's heading is its text; Priority and Notes carry their (i) after it.
+    const sections = [...html.matchAll(/<div class="nz-sect">([^<]*)/g)].map((match) => match[1]!.trim());
     assert.deepEqual(sections, ["Maturity", "Evidence", "Priority", "Owner and date", "Notes", "Gap → action"]);
-    const priority = html.slice(html.indexOf(">Priority</div>"), html.indexOf(">Owner and date</div>"));
+    const priority = html.slice(html.indexOf(">Priority "), html.indexOf(">Owner and date</div>"));
     assert.match(priority, /<select[^>]*>[\s\S]*<option value="high">High<\/option>/);
     assert.doesNotMatch(priority, /Owner|Target date/, "priority is its own section, not mixed in with the owner fields");
   });
@@ -129,7 +130,10 @@ describe("the wizard screen", () => {
   it("shows the assessment's note on every question — the same text — editable on a draft, read-only when complete or without access", () => {
     const note = "Board paper due in March";
     for (const at of ["g1", "m1"]) assert.match(render(assessment([], "draft", note), at), new RegExp(`<textarea[^>]*maxLength="4000"[^>]*>${note}</textarea>`), at);
-    assert.match(render(assessment([], "draft", note), "g1"), /one note for the whole assessment, the same on every question/);
+    assert.match(render(assessment([], "draft", note), "g1"), /One note for the whole assessment — your team only\./);
+    const textarea = /<textarea[^>]*>/.exec(render(assessment([], "draft", note), "g1"))?.[0] ?? "";
+    assert.match(textarea, /width:100%/, "full width");
+    assert.doesNotMatch(textarea, /placeholder/, "no placeholder");
     assert.match(render(assessment(everyItem(2), "complete", note), "g1"), /<textarea[^>]*disabled=""[^>]*>Board paper due in March<\/textarea>/);
     assert.match(render(assessment([], "draft", note), "g1", { state: "denied", reason: "No." }), /<textarea[^>]*disabled=""/);
   });
@@ -219,7 +223,7 @@ describe("the review page", () => {
   it("keeps the 0–4 ladder and the pre-fill override inside the wizard", () => {
     const forms = read("app/clients/[clientId]/SrsAssessmentForms.tsx");
     assert.match(forms, /framework\.maturityLevels\.map/);
-    assert.match(forms, /Override it if the disclosure needs something different/);
+    assert.match(forms, /Override if the disclosure needs something different/);
     assert.match(forms, /srs\.assessment\.item\.set|putBrowserCommand/);
     assert.match(forms, /expectedVersion: versions\.current\[requirement\.id\] \?\? 0/);
   });

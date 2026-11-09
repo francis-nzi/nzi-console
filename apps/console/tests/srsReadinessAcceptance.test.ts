@@ -66,7 +66,7 @@ describe("SRS readiness", () => {
     assert.match(migration, /'nzi-data'/);
     assert.match(migration, /footprint\.scope1/);
     assert.match(migration, /targets\.model/);
-    assert.match(forms, /reads the client&apos;s own record|reads the client's own record/);
+    assert.match(forms, /Scored automatically from the client's verified data\. Override if the disclosure needs something different\./);
     // Pre-filled answers are marked, so a reader can tell them from a consultant's judgement.
     assert.match(read("packages/isolated-backend/src/srsReadiness.ts"), /'auto'/);
   });

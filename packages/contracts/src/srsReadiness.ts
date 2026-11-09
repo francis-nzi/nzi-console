@@ -331,6 +331,25 @@ export type SrsPrefill = {
 };
 
 /**
+ * The reason line an auto-allocated answer shows (BRIEF-srs-readiness-copy-and-modal-declutter): plain wording, keyed by
+ * the requirement's NZI source. Answers saved before it carry the older wording in their evidence note, so the dashboard
+ * reads through this rather than the stored note; the scope rows keep the year count the note recorded. A source this
+ * does not word (intensity, assurance) keeps its own note.
+ */
+export function srsAutoReason(nziSourceKey: string | null, note: string, years?: number): string {
+  const counted = years ?? Number(/(\d+) (?:verified )?reporting years?/.exec(note)?.[1] ?? NaN);
+  const yearsText = Number.isFinite(counted) && counted > 0 ? ` · ${counted} reporting year${counted === 1 ? "" : "s"}` : "";
+  switch (nziSourceKey) {
+    case "footprint.scope1": case "footprint.scope2": case "footprint.scope3": return `Based on verified client data${yearsText}`;
+    case "footprint.method": return "Based on client emissions data";
+    case "footprint.provenance": return "Based on verified client factor data";
+    case "targets.model": return "Based on client-set targets";
+    case "targets.gap": return "Progress measured against client-set targets";
+    default: return note;
+  }
+}
+
+/**
  * Suggest answers for the requirements the client's own record already answers. This
  * never invents readiness: each suggestion names the record it came from, and a fact the
  * platform does not hold produces no suggestion at all rather than a hopeful one.
@@ -356,30 +375,30 @@ export function prefillFromNzi(framework: SrsFramework, facts: SrsNziFacts): Srs
 
   for (const requirement of framework.requirements) {
     if (requirement.source !== "nzi-data" || !requirement.active) continue;
-    const years = `${facts.assuredYears} verified reporting year${facts.assuredYears === 1 ? "" : "s"}`;
+    const reason = srsAutoReason(requirement.nziSourceKey, "", facts.assuredYears);
     switch (requirement.nziSourceKey) {
       case "footprint.scope1":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope1), `Scope 1 resolved from the client's reviewed snapshot · ${years}`, "The verified emissions already report Scope 1.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope1), reason, "The verified emissions already report Scope 1.");
         break;
       case "footprint.scope2":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope2), `Scope 2 resolved from the client's reviewed snapshot · ${years}`, "The verified emissions already report Scope 2.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope2), reason, "The verified emissions already report Scope 2.");
         break;
       case "footprint.scope3":
-        add(requirement.id, scopeMaturity(facts.scopesReported.scope3), `Scope 3 resolved from the client's reviewed snapshot · ${years}`, "The verified emissions already report Scope 3 by category.");
+        add(requirement.id, scopeMaturity(facts.scopesReported.scope3), reason, "The verified emissions already report Scope 3 by category.");
         break;
       case "footprint.method":
-        add(requirement.id, facts.assuredYears > 0 ? 3 : null, "GHG Protocol basis and boundary recorded on the job's emissions configuration", "The measurement approach is recorded with the snapshot.");
+        add(requirement.id, facts.assuredYears > 0 ? 3 : null, reason, "The measurement approach is recorded with the snapshot.");
         break;
       case "footprint.provenance":
-        add(requirement.id, facts.provenanceStamped ? (facts.provenanceVerified ? 3 : 2) : null,
-          facts.provenanceVerified ? "Factor set, version and as-at date stamped on the issued snapshot" : "Factor-set stamp present but backfilled (migrated, unverified)",
+        // The maturity still steps down for a migrated stamp; only the wording no longer says so (copy, 9 Nov).
+        add(requirement.id, facts.provenanceStamped ? (facts.provenanceVerified ? 3 : 2) : null, reason,
           "The snapshot carries its factor-set provenance.");
         break;
       case "targets.model":
-        add(requirement.id, facts.targetsSet ? 3 : null, "Targets held in the client's forward target model, versioned and audited", "Forward targets are set against the baseline in force.");
+        add(requirement.id, facts.targetsSet ? 3 : null, reason, "Forward targets are set against the baseline in force.");
         break;
       case "targets.gap":
-        add(requirement.id, facts.targetProgressMeasured ? 3 : null, "Progress measured against the target line by the gap engine", "Progress against target is already computed from verified years.");
+        add(requirement.id, facts.targetProgressMeasured ? 3 : null, reason, "Progress against target is already computed from verified years.");
         break;
       case "intensity.metrics":
         add(requirement.id, facts.intensityBasesResolved > 0 ? (facts.intensityBasesResolved > 1 ? 3 : 2) : null,
