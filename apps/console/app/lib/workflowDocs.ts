@@ -41,3 +41,5 @@ export const scopeWorkflowHref = (scope: string | null | undefined): string | nu
 export const workflowCategoryCodes: readonly string[] = Object.keys(CATEGORY_DOCS);
 /** The one reporting-process doc, shown on the Report Studio and the job's report-state card. Not keyed: one doc for the whole process. */
 export const reportingWorkflowHref = (): string => "/workflows/WF-reporting.html";
+/** The one SRS Readiness & Reduction Strategies doc, shown in the SRS area header. Not keyed, like the reporting doc. */
+export const srsWorkflowHref = (): string => "/workflows/WF-srs.html";
