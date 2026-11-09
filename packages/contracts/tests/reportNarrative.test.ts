@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  crpReportSectionCatalogue, defaultReportSectionPlan, isMoneyShaped, REPORT_NARRATIVE_NUMBER_ALLOWLIST, REPORT_RENDERER_LATEST, reportIssuerLineIssues,
-  reportNarrativeBodyIssues, reportNarrativeDrawnKeys, reportRendererFor, reportTokenCatalogue, setReportSectionIncluded,
+  crpReportSectionCatalogue, defaultReportSectionPlan, drawsFrozenNarrative, drawsMockupDocument, drawsMockupSectionSet, isMoneyShaped, REPORT_NARRATIVE_NUMBER_ALLOWLIST, REPORT_RENDERER_LATEST, reportIssuerLineIssues,
+  reportNarrativeBodyIssues, reportNarrativeDrawnKeys, reportRendererFor, reportRendererOf, reportTokenCatalogue, setReportSectionIncluded,
   commandDefinitions, commandGrantForRole, validateCommand,
 } from "../src/index";
 
@@ -87,11 +87,24 @@ describe("what a plan draws, and the renderer it is stamped with (a)", () => {
   });
 
   it("stamps composed@6 exactly when a narrative is carried — a composed@6 without one cannot be made", () => {
-    assert.equal(REPORT_RENDERER_LATEST, "composed@6");
+    assert.equal(REPORT_RENDERER_LATEST, "composed@7");
     assert.equal(reportRendererFor({ narrative: [] }), "composed@6", "an empty narrative is still a frozen narrative");
     assert.equal(reportRendererFor({ narrative: [{ key: "executive-summary", bodyHtml: "<p>x</p>", contentSource: "default", sectionVersion: 0 }] }), "composed@6");
     assert.equal(reportRendererFor({ narrative: null }), "composed@5", "validated before B2-4");
     assert.equal(reportRendererFor({}), "composed@5");
+  });
+
+  it("stamps composed@7 exactly when an uplifted-commuting statement with a site is carried; an empty one does not", () => {
+    const uplift = { method: "m", sites: [{ siteId: "s", siteLabel: "S", employees: 100, companyCarUsers: 10, respondents: 54, eligible: 90, responseRate: 0.6, headcount: 36, factor: 90 / 54, agreedBy: null, agreedAt: null }] };
+    assert.equal(reportRendererFor({ commutingUplift: uplift }), "composed@7");
+    assert.equal(reportRendererFor({ commutingUplift: uplift, narrative: [] }), "composed@7", "composed@7 still draws a narrative");
+    assert.equal(reportRendererFor({ commutingUplift: { method: "m", sites: [] }, narrative: [] }), "composed@6");
+    assert.equal(reportRendererFor({ commutingUplift: null }), "composed@5");
+    for (const renderer of ["composed@6", "composed@7"]) assert.equal(drawsFrozenNarrative({ renderer }), true);
+    assert.equal(drawsFrozenNarrative({ renderer: "composed@5" }), false);
+    assert.equal(drawsMockupDocument({ renderer: "composed@7" }), true);
+    assert.equal(drawsMockupSectionSet({ renderer: "composed@7" }), true);
+    assert.equal(reportRendererOf({ renderer: "composed@7" }), "composed@7");
   });
 });
 

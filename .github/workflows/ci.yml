@@ -992,6 +992,10 @@ jobs:
       # figure per comparison period (null where none, never modelled); the preview equals what publish freezes; no money.
       - name: A report composed now is drawn composed@5, freezing its logo, organisation, site details and per-site/per-category years
         run: npx tsx --test packages/isolated-backend/tests/reportComposed5Real.test.ts
+      # composed@7 (BRIEF-commuting-uplift-methodology-line): the snapshot's extrapolated-commuting statement is carried into the
+      # composition, cut to the report's sites, stamping composed@7 only then; without it nothing changes; an issued report keeps it.
+      - name: A report whose snapshot uplifted commuting is drawn composed@7 carrying its frozen statement; one without it is unchanged
+        run: npx tsx --test packages/isolated-backend/tests/reportComposed7Real.test.ts
       # Migration 0167 (ACCEPT-composed5-checkpoint3/4): Net Zero Commitment and Background turned on, once — a new version of an
       # active profile, a validated version in place with its version bumped — never a published version, a withdrawn profile or
       # a frozen composition; run again, nothing changes.
