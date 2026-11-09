@@ -74,7 +74,8 @@ export function ReportComposedView({ composition, issuerLogoSrc = staffIssuerLog
   // are untouched by it.
   if (renderer === "composed@5") return <ComposedV5 composition={composition} issuerLogoSrc={issuerLogoSrc} {...(clientLogoSrc ? { clientLogoSrc } : {})} preview={preview} mode={mode} />;
   // B2-4 (RULING-report-studio-B2-4 (a)): composed@6 is composed@5 drawing its frozen narrative — the same renderer, its own branch.
-  if (renderer === "composed@6") return <ComposedV5 composition={composition} issuerLogoSrc={issuerLogoSrc} {...(clientLogoSrc ? { clientLogoSrc } : {})} preview={preview} mode={mode} narrativeEditor={narrativeEditor} />;
+  // composed@7 is composed@6 that also states its extrapolated commuting on Methodology (BRIEF-commuting-uplift-methodology-line).
+  if (renderer === "composed@6" || renderer === "composed@7") return <ComposedV5 composition={composition} issuerLogoSrc={issuerLogoSrc} {...(clientLogoSrc ? { clientLogoSrc } : {})} preview={preview} mode={mode} narrativeEditor={narrativeEditor} />;
   return <UnknownRenderer renderer={composition.renderer ?? ""} />;
 }
 

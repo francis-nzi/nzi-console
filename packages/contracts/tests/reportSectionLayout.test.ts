@@ -19,11 +19,11 @@ describe("the renderer a composition was issued under", () => {
     assert.equal(reportRendererOf({ renderer: "composed@5" }), "composed@5");
     // B2-4: composed@6 — composed@5 drawing a frozen narrative — is stamped on new compositions that carry one; composed@5 stays.
     assert.equal(reportRendererOf({ renderer: "composed@6" }), "composed@6");
-    assert.equal(REPORT_RENDERER_LATEST, "composed@6");
+    assert.equal(REPORT_RENDERER_LATEST, "composed@7");
   });
 
   it("is null for a layout this code does not carry — never quietly drawn with another", () => {
-    assert.equal(reportRendererOf({ renderer: "composed@7" }), null);
+    assert.equal(reportRendererOf({ renderer: "composed@8" }), null);
     assert.equal(reportRendererOf({ renderer: "" }), null);
   });
 });

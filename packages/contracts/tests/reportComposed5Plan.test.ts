@@ -14,7 +14,7 @@ import {
 describe("composed@5: the renderer and its plan", () => {
   it("is the latest; it reads its plan complete and heads by the mockup's titles, as composed@4 does", () => {
     // B2-4: composed@6 (composed@5 drawing a frozen narrative) is now the latest; composed@5 reads and heads exactly as before.
-    assert.equal(REPORT_RENDERER_LATEST, "composed@6");
+    assert.equal(REPORT_RENDERER_LATEST, "composed@7");
     assert.equal(drawsMockupSectionSet({ renderer: "composed@6" }), true);
     assert.equal(drawsMockupSectionSet({ renderer: "composed@5" }), true);
     assert.equal(drawsMockupSectionSet({ renderer: "composed@4" }), true);

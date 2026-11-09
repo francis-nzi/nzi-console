@@ -1,5 +1,6 @@
 import { strategiesBySrsRequirement, strategyIsReportable, strategyStatusLabels, type ClientStrategy, type FrozenStrategyStatus, type Lever, type StrategyControlLevel } from "./reductionStrategies";
 import { gaps as resolveGaps, maturityLabel, type SrsAssessmentItem, type SrsFramework } from "./srsReadiness";
+import type { CommutingUpliftProvenance } from "./commutingUplift";
 import type { ReportAuditAppendix, ReportSources } from "./reportSources";
 
 /**
@@ -130,16 +131,22 @@ export const reportSectionMetaFor = (composition: { renderer?: string }): Record
   return reportRendererOf(composition) === "composed@4" ? reportSectionMetaV4 : reportSectionMetaV5;
 };
 
-/** `composed@4` and its successors `composed@5` and `composed@6` draw the mockup's section set and read their plans complete. */
+/** `composed@4` and its successors `composed@5`, `composed@6` and `composed@7` draw the mockup's section set and read their plans complete. */
 export const drawsMockupSectionSet = (composition: { renderer?: string }): boolean => {
   const renderer = reportRendererOf(composition);
-  return renderer === "composed@4" || renderer === "composed@5" || renderer === "composed@6";
+  return renderer === "composed@4" || renderer === "composed@5" || renderer === "composed@6" || renderer === "composed@7";
 };
 
-/** `composed@5` and `composed@6` are the mockup's own document (`ComposedV5`): pages, cover, narrative with locked tokens. */
+/** `composed@5`, `composed@6` and `composed@7` are the mockup's own document (`ComposedV5`): pages, cover, narrative with locked tokens. */
 export const drawsMockupDocument = (composition: { renderer?: string }): boolean => {
   const renderer = reportRendererOf(composition);
-  return renderer === "composed@5" || renderer === "composed@6";
+  return renderer === "composed@5" || renderer === "composed@6" || renderer === "composed@7";
+};
+
+/** `composed@6` and `composed@7` draw the frozen narrative when the composition carries one (B2-4); `composed@7` only adds the uplift statement. */
+export const drawsFrozenNarrative = (composition: { renderer?: string }): boolean => {
+  const renderer = reportRendererOf(composition);
+  return renderer === "composed@6" || renderer === "composed@7";
 };
 
 /* ── Renderer version (F-0; RULING-reporting-F Q4) ───────────────────────────────────── */
@@ -152,7 +159,7 @@ export const drawsMockupDocument = (composition: { renderer?: string }): boolean
  * already-issued composition, its golden pin fails — the pin is **not** updated; the change forks to `composed@N+1`, and the
  * `composed@N` path stays until no live report uses it. New compositions stamp the latest.
  */
-export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4", "composed@5", "composed@6"] as const;
+export const reportRenderers = ["composed@1", "composed@2", "composed@3", "composed@4", "composed@5", "composed@6", "composed@7"] as const;
 export type ReportRenderer = (typeof reportRenderers)[number];
 /**
  * F-2 (chart parity, RULING-reporting-F4 D2): `composed@2` is `composed@1` with the manifest's charts — scope donut,
@@ -180,16 +187,24 @@ export type ReportRenderer = (typeof reportRenderers)[number];
  * as validate froze it (the job's working sections), its tokens resolved from the frozen composition — in place of the template.
  * Not a file fork: a branch inside `ComposedV5`, reached only with the renderer `composed@6` **and** the narrative present. Every
  * `composed@1–5` report draws exactly as before.
+ *
+ * BRIEF-commuting-uplift-methodology-line: `composed@7` is `composed@6`/`composed@5` that also states, on its Methodology page, that
+ * employee commuting at some sites is extrapolated from a sample (the representativeness caveat) and, per uplifted site, how many
+ * responded and the factor — read from the composition's frozen `commutingUplift`, never a live read. Stamped exactly when that
+ * block is present (`reportRendererFor`); a report with no uplift is stamped as before and draws byte-for-byte as before. Not a
+ * file fork: a branch inside `ComposedV5`, reached only with the block present.
  */
-export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@6";
+export const REPORT_RENDERER_LATEST: ReportRenderer = "composed@7";
 
 /**
- * The renderer a composition is stamped with: `composed@6` exactly when it carries a narrative, else `composed@5`. One rule, at
+ * The renderer a composition is stamped with: `composed@7` exactly when it carries an uplifted-commuting statement, else `composed@6`
+ * exactly when it carries a narrative, else `composed@5`. One rule, at
  * the one compose path, so a `composed@6` composition without a narrative cannot be made — a version validated before B2-4
  * (no frozen narrative) composes, previews and publishes as `composed@5`, as the rollout requires.
  */
-export function reportRendererFor(input: { narrative?: readonly ReportNarrativeElement[] | null }): ReportRenderer {
-  return input.narrative ? REPORT_RENDERER_LATEST : "composed@5";
+export function reportRendererFor(input: { narrative?: readonly ReportNarrativeElement[] | null; commutingUplift?: ReportCommutingUplift | null }): ReportRenderer {
+  if (input.commutingUplift && input.commutingUplift.sites.length > 0) return REPORT_RENDERER_LATEST;
+  return input.narrative ? "composed@6" : "composed@5";
 }
 
 /**
@@ -873,7 +888,16 @@ export type ReportComposition = {
    * renderer is `composed@6` (`reportRendererFor`); a composition without it is `composed@5` and draws the template.
    */
   narrative?: ReportNarrativeElement[];
+  /**
+   * BRIEF-commuting-uplift-methodology-line (`composed@7`): the extrapolated-commuting statement — the snapshot's own `commutingUplift`
+   * (the methodology line and each uplifted site's provenance), frozen with the report and cut to the sites it covers. Present
+   * exactly when the renderer is `composed@7`; absent on every earlier composition and on a report with no uplifted site in scope.
+   */
+  commutingUplift?: ReportCommutingUplift;
 };
+
+/** The uplift statement a composition freezes: the snapshot's methodology line and per-site provenance (E, C, R, response rate, factor). */
+export type ReportCommutingUplift = { method: string; sites: CommutingUpliftProvenance[] };
 
 /** One frozen narrative section: its catalogue key, its body (token keys, no typed figures), where it came from, its version. */
 export type ReportNarrativeElement = { key: string; bodyHtml: string; contentSource: "default" | "ai" | "client-edited"; sectionVersion: number };

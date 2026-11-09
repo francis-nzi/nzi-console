@@ -204,6 +204,10 @@
   .nzr5[data-renderer="composed@6"] .r5-editblock{border-left:0!important;padding-left:0!important;margin-left:0!important}
   .nzr5[data-renderer="composed@6"] .r5-tok{background:none!important;border:0!important;padding:0!important;color:inherit!important}
   .nzr5[data-renderer="composed@6"] .r5-tok::before{display:none!important}
+  .nzr5[data-renderer="composed@7"] .r5-spill{display:none!important}
+  .nzr5[data-renderer="composed@7"] .r5-editblock{border-left:0!important;padding-left:0!important;margin-left:0!important}
+  .nzr5[data-renderer="composed@7"] .r5-tok{background:none!important;border:0!important;padding:0!important;color:inherit!important}
+  .nzr5[data-renderer="composed@7"] .r5-tok::before{display:none!important}
 }
 
 /* Print: the page view, one sheet per page, no ground or shadow. */

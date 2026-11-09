@@ -6,7 +6,7 @@ import {
   intensityDenominatorText, REPORTED_INTENSITY_METRICS, type IntensityTargetReadModel, isCurrencyIntensityTarget, reportingIntensityOf,
   type ReportComposition, type ReportIssuer, type ReportEmissionsSection, type ReportIntensitySection,
   type ReportProvenance, type ReportSectionGap, type ReportSrsSection, type ReportTargetsSection,
-  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, siteFloorAreaForPeriod, WHOLE_CLIENT_SCOPE, reportRendererFor, type ReportNarrativeElement, defaultReportSectionPlan, normaliseReportPlanKeys, type ReportSectionPlan,
+  composeScopedComparison, composeScopedEmissions, resolveFloorAreaDenominator, siteFloorAreaForPeriod, WHOLE_CLIENT_SCOPE, reportRendererFor, type ReportCommutingUplift, type ReportNarrativeElement, defaultReportSectionPlan, normaliseReportPlanKeys, type ReportSectionPlan,
   composeReportChartBasis, type ChartBasisSnapshot, composeReportAudit, composeReportSources, type ReportSources, type SnapshotProvenanceStamp,
   type ClientSiteReadModel, type IntensityMetricDefinition, type ReportingPeriod, type ReportScope, type ScopedHistoryPeriod,
 } from "@nzi/contracts";
@@ -85,6 +85,8 @@ export type SnapshotForComposition = {
    * (`job-target`) shape on a snapshot frozen before 3c-3.
    */
   intensityTarget?: IntensityTargetReadModel | null;
+  /** The snapshot's extrapolated-commuting statement (present only when a site was uplifted at the lock). */
+  commutingUplift?: ReportCommutingUplift | null;
 };
 
 /** What a scope composes against (S-2): the scope, the earlier assured periods' frozen rows, the baseline year, the conflicts. */
@@ -358,6 +360,7 @@ export async function composeReport(db: Queryable, input: {
   const targets = await composeTargets(db, { clientId: input.clientId, snapshot: input.snapshot, actuals: input.actuals });
   const srs = await composeSrs(db, input.clientId, strategies);
   const levers = await listLevers(db);
+  const uplift = scopedCommutingUplift(input.snapshot.commutingUplift, context.scope);
   // Requirement ids mean nothing to a reader, so the report carries codes like "S2 M2".
   const requirementRows = await db.query<{ requirement_id: string; code: string }>(`SELECT requirement_id, code FROM nzi_console.srs_requirements`);
   const requirementCodes = new Map(requirementRows.rows.map((row) => [row.requirement_id, row.code]));
@@ -383,8 +386,10 @@ export async function composeReport(db: Queryable, input: {
     // F-0 (RULING-reporting-F Q4): the layout this report is issued under, frozen with it, so a later layout cannot redraw it.
     // B2-4: `composed@6` exactly when the report carries a narrative, else `composed@5` — one rule, so a composed@6 composition
     // without its narrative cannot be made (a version validated before B2-4 composes, previews and publishes as composed@5).
-    renderer: reportRendererFor({ narrative: input.narrative ?? null }),
+    // composed@7: exactly when the snapshot uplifted a commuting site this report covers (its frozen statement is carried below).
+    renderer: reportRendererFor({ narrative: input.narrative ?? null, commutingUplift: uplift }),
     ...(input.narrative ? { narrative: input.narrative } : {}),
+    ...(uplift ? { commutingUplift: uplift } : {}),
     // F-2 (chart parity): the charts' input, cut to this report's scope — what `composed@2` draws its charts from.
     chartBasis: composeReportChartBasis({
       snapshot: input.snapshot as unknown as ChartBasisSnapshot,
@@ -399,6 +404,16 @@ export async function composeReport(db: Queryable, input: {
     // B2-3 (`composed@4`): the reporting period the snapshot stamp holds — the cover's metacard row. None stamped: none frozen.
     ...withPeriod(input.snapshot.provenance?.reportingPeriod),
   };
+}
+
+/**
+ * The extrapolated-commuting statement this report carries: the snapshot's own, cut to the sites the report covers (a site-scoped
+ * report states only its sites). Nothing when the snapshot uplifted none, or none of them is in this report's scope.
+ */
+function scopedCommutingUplift(uplift: ReportCommutingUplift | null | undefined, scope: ReportScope): ReportCommutingUplift | undefined {
+  if (!uplift) return undefined;
+  const sites = scope.kind === "whole" ? uplift.sites : uplift.sites.filter((site) => scope.siteIds.includes(site.siteId));
+  return sites.length > 0 ? { method: uplift.method, sites } : undefined;
 }
 
 const withPeriod = (period: { from?: string; to?: string } | undefined) =>
@@ -530,6 +545,7 @@ export async function composeForSnapshot(db: Queryable, input: {
       annualComparison?: Array<{ year: number; values: Array<{ scope: string; value: number }> }>;
       intensityTarget?: IntensityTargetReadModel | null;
       provenance?: SnapshotProvenanceStamp | null;
+      commutingUplift?: ReportCommutingUplift | null;
     };
   }>(
     `SELECT snapshot_id, job_id, data_hash, created_at, created_by, payload_json
@@ -585,6 +601,7 @@ export async function composeForSnapshot(db: Queryable, input: {
       annualComparison: payload.annualComparison ?? [],
       intensityTarget: payload.intensityTarget ?? null,
       provenance: payload.provenance ?? null,
+      commutingUplift: payload.commutingUplift ?? null,
     },
   });
   return {

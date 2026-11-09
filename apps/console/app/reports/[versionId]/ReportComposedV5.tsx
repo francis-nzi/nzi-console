@@ -1,7 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import {
-  crpScopeCategoryLabel, isReportGap, reportRendererOf, reportSectionLayout, reportSectionPlanOf, strategyControlLevelLabels, strategyControlLevels, strategyStatusLabels,
-  type ReportComposition, type ReportNarrativeElement,
+  crpScopeCategoryLabel, drawsFrozenNarrative, isReportGap, reportRendererOf, reportSectionLayout, reportSectionPlanOf, strategyControlLevelLabels, strategyControlLevels, strategyStatusLabels,
+  type ReportCommutingUplift, type ReportComposition, type ReportNarrativeElement,
 } from "@nzi/contracts";
 import { drawNarrativeBody } from "./composedNarrative";
 import { LogoMark } from "../../lib/LogoMark";
@@ -109,7 +109,7 @@ const SOURCE_LABEL: Record<ReportNarrativeElement["contentSource"], string> = { 
  * draw has no frozen body, and nothing is drawn for it.
  */
 function NarrativeSection({ composition, sectionKey, editor, children }: { composition: ReportComposition; sectionKey: string; editor?: NarrativeEditor; children: ReactNode }) {
-  if (reportRendererOf(composition) !== "composed@6" || !composition.narrative) return <Narrative children={children} />;
+  if (!drawsFrozenNarrative(composition) || !composition.narrative) return <Narrative children={children} />;
   const element = composition.narrative.find((entry) => entry.key === sectionKey);
   if (!element) return null;
   const drawn = <div className={`r5-editblock r5-src-${element.contentSource}`} data-narrative={sectionKey}>
@@ -772,6 +772,17 @@ function omittedSections(composition: ReportComposition): string[] {
   return reportSectionPlanOf(composition).filter((entry) => !entry.included && entry.key in DRAWN && entry.key !== "cover").map((entry) => COMPOSED5_TITLES[entry.key] ?? entry.key);
 }
 
+/**
+ * composed@7 (BRIEF-commuting-uplift-methodology-line): employee commuting at the listed sites is scaled up from a sample. The caveat is the
+ * snapshot's own line, and each site says how many of its eligible staff responded and by what factor — all from the frozen composition.
+ */
+function CommutingUpliftStatement({ uplift }: { uplift: ReportCommutingUplift }) {
+  return <div data-commuting-uplift>
+    <p>{uplift.method}</p>
+    <ul>{uplift.sites.map((site) => <li key={site.siteId}>{site.siteLabel ?? "Site"}: {site.respondents} of {site.eligible} eligible staff responded{site.responseRate === null ? "" : ` (${Math.round(site.responseRate * 100)}%)`}, scaled &times;{site.factor.toFixed(2)}.</li>)}</ul>
+  </div>;
+}
+
 function MethodologySection({ composition, number }: { composition: ReportComposition; number: string }) {
   const issuer = composition.issuer;
   const mix = qualityMix(composition);
@@ -779,6 +790,8 @@ function MethodologySection({ composition, number }: { composition: ReportCompos
   const period = composition.reportingPeriod;
   const asAt = composition.chartBasis?.generatedAt;
   const factors = composition.sources?.sets.map((set) => set.label).join(" · ");
+  // composed@7 only: the frozen extrapolated-commuting statement. An earlier renderer never draws it, whatever a composition holds.
+  const uplift = reportRendererOf(composition) === "composed@7" ? composition.commutingUplift : undefined;
   return <>
     <div className="r5-kicker">{number} · Verification</div><h2 className="r5-h2">Standards, Methodology &amp; Sign-off</h2>
     <div className="r5-kvbox">
@@ -792,6 +805,7 @@ function MethodologySection({ composition, number }: { composition: ReportCompos
     <div className="r5-verify"><h4>Basis of preparation</h4>
       <p>This greenhouse gas emissions report has been prepared in accordance with the GHG Protocol Corporate Accounting and Reporting Standard. Every figure is derived from {composition.client}&apos;s reviewed measurement snapshot and carries its factor set, version, data hash and as-at date. The platform records who reviewed the measurement; this report is <b>not third-party verified</b>.</p>
       {omitted.length ? <p>Omitted from this report at the issuer&rsquo;s choice: {omitted.join(", ")}.</p> : null}
+      {uplift ? <CommutingUpliftStatement uplift={uplift} /> : null}
     </div>
     <h3 className="r5-h3">Data quality</h3>
     <p className="r5-prose r5-lead">The mix of measured, estimated, spend-based and survey activity data behind the reported emissions, by tCO₂e.</p>
@@ -925,7 +939,7 @@ export function ComposedV5({ composition, issuerLogoSrc, clientLogoSrc = (assetI
   const layout = reportSectionLayout(reportSectionPlanOf(composition), (key) => key in DRAWN).filter((entry) => entry.key !== "cover");
   const pages = layout.length + 1;
   const title = reportTitle(composition);
-  return <main className={`nzr5 r5-mode-${mode}`} data-renderer={reportRendererOf(composition) === "composed@6" ? "composed@6" : "composed@5"}>
+  return <main className={`nzr5 r5-mode-${mode}`} data-renderer={reportRendererOf(composition) ?? "composed@5"}>
     <div className="r5-pageflow">
       <section className="r5-page"><Cover composition={composition} issuerLogoSrc={issuerLogoSrc} clientLogoSrc={clientLogoSrc} preview={preview} /></section>
       {layout.map((entry, index) => {
