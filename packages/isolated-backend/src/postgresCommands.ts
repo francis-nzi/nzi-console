@@ -55,6 +55,8 @@ import { resolveReopenRequestOnEdit } from "./portalReopenRequests";
 import { copySealedVehicleIdentifier, resealVehicleIdentifiers, sealVehicleIdentifiers, VEHICLE_CATEGORY_CODE, vehicleIdentityKey } from "./vehicleRegistrations";
 import { composeForReportVersion, freezeReportComposition } from "./reportCompositions";
 import { resolveReportNarrative } from "./reportNarrative";
+import { snapshotCommutingUplift } from "./jobSiteHeadcount";
+import { COMMUTING_UPLIFT_METHOD_LINE } from "@nzi/contracts";
 import { insertClientContact } from "./clientContactRecords";
 import { authorizeCommandInTransaction, requireConditionalCapability, SeparationOfDutiesError, type ClientAccess } from "./access";
 import { organisationRequiresIndependentApproval, preparerMayProceed } from "./independentApproval";
@@ -2859,7 +2861,15 @@ export async function createReviewedCrpSnapshot(
       const reportingYear = job.reporting_year ?? Number(dateOnly(job.start_date).slice(0, 4));
       const historicalResult=await db.query<{snapshot_id:string;data_hash:string;reporting_year:number;measurements:Array<{scope:string;tco2e:number}>}>(`SELECT DISTINCT ON ((s.payload_json->>'reportingYear')::integer) s.snapshot_id,s.data_hash,(s.payload_json->>'reportingYear')::integer AS reporting_year,s.payload_json->'measurements' AS measurements FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs previous_job ON (previous_job.organisation_id,previous_job.job_id)=(s.organisation_id,s.job_id) WHERE s.organisation_id=$1 AND previous_job.client_id=$2 AND previous_job.job_family='crp' AND (s.payload_json->>'reportingYear')::integer<$3 ORDER BY (s.payload_json->>'reportingYear')::integer,s.snapshot_version DESC`,[context.organisationId,job.client_id,reportingYear]);
       const scopeValues=(measurements:Array<{scope:string;tco2e:number}>)=>(["1","2","3"] as const).map(scope=>({scope,value:measurements.filter(row=>row.scope===scope).reduce((sum,row)=>sum+Number(row.tco2e),0)}));
-      const currentMeasurements=enabled.map(row=>({scope:row.scope.split(".")[0]!,tco2e:Number(row.override_tco2e??row.calculated_tco2e)}));
+      // BRIEF-commuting-uplift-lean: a site whose commuting uplift is on has its 3.7 figures scaled here - at the figure that locks - and
+      // nowhere else; the stored rows keep their own. A row with no site is never scaled. No uplift: this is the figure as it always was.
+      const commutingUplift = await snapshotCommutingUplift(db, context.organisationId, input.jobId, enabled);
+      const upliftOf = (row: { scope: string; site_id: string | null }) => (row.scope === "3.7" && row.site_id ? commutingUplift.bySite.get(row.site_id) : undefined);
+      const lockedTco2e = (row: { scope: string; site_id: string | null; override_tco2e: unknown; calculated_tco2e: unknown }) => {
+        const sampled = Number(row.override_tco2e ?? row.calculated_tco2e), uplift = upliftOf(row);
+        return uplift ? sampled * uplift.factor : sampled;
+      };
+      const currentMeasurements=enabled.map(row=>({scope:row.scope.split(".")[0]!,tco2e:lockedTco2e(row)}));
       const annualComparison=[...historicalResult.rows.map(row=>({year:row.reporting_year,sourceSnapshotId:row.snapshot_id,sourceDataHash:row.data_hash,values:scopeValues(row.measurements)})),{year:reportingYear,sourceSnapshotId:"current",sourceDataHash:"current",values:scopeValues(currentMeasurements)}];
       // NZC-066 — stamp the factor sets actually applied, so a figure's signature is read,
       // never reconstructed. Deterministic (no clock), so identical data still hashes alike.
@@ -2891,6 +2901,8 @@ export async function createReviewedCrpSnapshot(
         annualComparison,
         sections: await listReportSections(db, input.jobId),
         gapResolutions: await listGapResolutions(db, input.jobId),
+        // Only when a site was uplifted: the method line and, per site, E, C, R, U, f, the response rate and who agreed it, when.
+        ...(commutingUplift.provenance.length ? { commutingUplift: { method: COMMUTING_UPLIFT_METHOD_LINE, sites: commutingUplift.provenance } } : {}),
         measurements: enabled.map((row) => ({
           rowId: row.scope_row_id,
           rowVersion: row.version,
@@ -2915,7 +2927,9 @@ export async function createReviewedCrpSnapshot(
           siteLabel:row.site_label,
           purchasedGoodsCategoryId:row.purchased_goods_category_id,
           purchasedGoodsCategoryLabel:row.purchased_goods_category_label,
-          tco2e: Number(row.override_tco2e ?? row.calculated_tco2e),
+          tco2e: lockedTco2e(row),
+          // The sampled figure and the factor it was scaled by, only on a row that was - so a row without uplift serialises as before.
+          ...(upliftOf(row) ? { sampledTco2e: Number(row.override_tco2e ?? row.calculated_tco2e), upliftFactor: upliftOf(row)!.factor } : {}),
           factorSet: [row.factor_label, row.factor_version]
             .filter(Boolean)
             .join(" · "),

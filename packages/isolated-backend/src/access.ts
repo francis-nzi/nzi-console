@@ -67,6 +67,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "portal.scope.row.import": job,
   "portal.scope.row.update": job,
   "portal.scope.row.deactivate": job,
+  "portal.site.headcount.save": job,
   "portal.scope.row.reopen.request": job,
   // Actions A2: the client's own plan — the session's client, held to it in `authorizePortalCommand`.
   "portal.strategy.add": client,
@@ -194,6 +195,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "spend_allocation.suggestion.confirm": job,
   "spend_allocation.suggestion.dismiss": job,
   "job.site.fx.set": job,
+  "job.site.headcount.set": job,
   "message_template.deactivate": organisation,
   "message_template.reinstate": organisation,
   "bd_stage.create": organisation,

@@ -87,6 +87,7 @@ export type CommandKey =
   | "portal.scope.row.import"
   | "portal.scope.row.update"
   | "portal.scope.row.deactivate"
+  | "portal.site.headcount.save"
   | "portal.scope.row.reopen.request"
   | "portal.strategy.add"
   | "portal.strategy.propose"
@@ -199,6 +200,7 @@ export type CommandKey =
   | "spend_allocation.suggestion.confirm"
   | "spend_allocation.suggestion.dismiss"
   | "job.site.fx.set"
+  | "job.site.headcount.set"
   | "bd_stage.create"
   | "bd_stage.update"
   | "bd_stage.deactivate"
@@ -578,6 +580,7 @@ export type ScopeRowReadModel = ScopeRowWriteFields & { id: string; jobId: strin
 export type ScopeQaReadiness={total:number;enabled:number;approved:number;pending:number;rejected:number;calculationMissing:number;qualityMissing:number;independentReviewPending:number;/** Decision 12: rows imported from v7. Any at all makes this an imported period, never ready for a console snapshot. */migratedRows:number;readyForReporting:boolean};
 export type EmissionsTargetReadModel={jobId:string;baselineYear:number;baselineTco2e:number;interimYear:number;interimReductionPercent:number;netZeroYear:number;version:number;updatedAt:string;updatedBy:string};
 /** NZC-071 — where an intensity denominator came from. A floor-area metric is always derived from the in-boundary sites. */
+export type SiteHeadcountInput = { jobId: string; siteId: string; employees: number; companyCarUsers: number; upliftEnabled: boolean; agreedHeadcount: number | null; expectedVersion?: number | null };
 export type IntensityDenominatorBasis={kind:"typed"}|{kind:"site-floor-area";state:"resolved"|"unavailable";reason:string|null;sites:Array<{siteId:string;name:string;floorAreaM2:number|null}>};
 /** `reportingDenominator` is null when it cannot be resolved (a floor-area metric with a site missing its floor area) — never zero. */
 /**
@@ -827,6 +830,8 @@ export type CommandInputMap = {
   "portal.scope.row.update": { jobId: string; rowId: string; expectedVersion: number } & PortalScopeRowFields;
   /** Off by default (profile `deactivate`); the same row rule as update, with a reason as staff give one. */
   "portal.scope.row.deactivate": { jobId: string; rowId: string; expectedVersion: number };
+  /** The client's own entry of the same record (employees, company-car staff, uplift and the headcount it agrees). */
+  "portal.site.headcount.save": SiteHeadcountInput;
   "portal.scope.row.reopen.request": { jobId: string; rowId: string; expectedVersion: number; reason: string };
   /**
    * Actions A2: the client in their own plan. `clientId` is the portal session's client — set by the route, never read
@@ -1076,6 +1081,8 @@ export type CommandInputMap = {
   "spend_allocation.suggestion.dismiss": { jobId: string; suggestionId: string; expectedVersion: number };
   // D3 R1: a job's FX rate for one site — the CRM's average for the reporting period, from the site's currency to the client's.
   "job.site.fx.set": { jobId: string; siteId: string; rate: number; expectedVersion?: number | null };
+  /** BRIEF-commuting-uplift-lean: a site's headcount for the job and its commuting-uplift choice. `agreedHeadcount` null takes the computed default. */
+  "job.site.headcount.set": SiteHeadcountInput;
   // The BD funnel (admin Phase F2; ruled phaseF plan). admin.lookups; a stage's key set once.
   "bd_stage.create": BdStageEditableFields & { stageKey: string };
   "bd_stage.update": BdStageEditableFields & { stageId: string; expectedVersion: number };
@@ -1363,6 +1370,18 @@ export const isPortalCommand = (key: CommandKey): boolean => (commandDefinitions
 const text = (value: unknown) => typeof value === "string" && value.trim().length > 0;
 /** D3 (R6): the longest reason a client may give for asking to reopen an entry (0195's CHECK). */
 export const REOPEN_REASON_MAX = 1000;
+const wholeCount = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 10_000_000;
+const siteHeadcountIssues = (input: SiteHeadcountInput, context: CommandContext) => {
+  const issues = baseIssues(context, false);
+  required(issues, "jobId", input.jobId); required(issues, "siteId", input.siteId);
+  if (!wholeCount(input.employees)) issues.push({ field: "employees", code: "INVALID", message: "Employees is a whole number, 0 or more." });
+  if (!wholeCount(input.companyCarUsers)) issues.push({ field: "companyCarUsers", code: "INVALID", message: "Company-car users is a whole number, 0 or more." });
+  else if (wholeCount(input.employees) && input.companyCarUsers > input.employees) issues.push({ field: "companyCarUsers", code: "INVALID", message: "Company-car users cannot be more than the employees at the site." });
+  if (typeof input.upliftEnabled !== "boolean") issues.push({ field: "upliftEnabled", code: "INVALID", message: "Uplift is on or off." });
+  if (input.agreedHeadcount !== null && !wholeCount(input.agreedHeadcount)) issues.push({ field: "agreedHeadcount", code: "INVALID", message: "The agreed uplift headcount is a whole number, 0 or more, or left to the default." });
+  if (input.expectedVersion !== undefined && input.expectedVersion !== null && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+  return issues;
+};
 const positive = (value: unknown) => typeof value === "number" && Number.isInteger(value) && value > 0;
 const oneOf = <T extends string>(value: unknown, allowed: readonly T[]): value is T => typeof value === "string" && allowed.includes(value as T);
 /**
@@ -2992,6 +3011,8 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (input.expectedVersion !== undefined && input.expectedVersion !== null && !positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
     return issues;
   } },
+  "job.site.headcount.set": { key: "job.site.headcount.set", label: "Set a site's headcount and commuting uplift", permission: "scoperow.edit", reasonRequired: false, transaction: "versioned site headcount + audit + outbox + idempotency", auditAction: "job_site_headcount_set", validate: (input, context) => siteHeadcountIssues(input, context) },
+  "portal.site.headcount.save": { key: "portal.site.headcount.save", label: "Enter a site's headcount in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "versioned site headcount + audit + outbox + idempotency", auditAction: "portal_site_headcount_saved", validate: (input, context) => siteHeadcountIssues(input, context) },
   // The BD funnel (admin Phase F2). admin.lookups; the key set once; the last active stage stays.
   "bd_stage.create": { key: "bd_stage.create", label: "Add a funnel stage", permission: "admin.lookups", reasonRequired: false, transaction: "funnel stage + audit + outbox + idempotency", auditAction: "bd_stage.created", validate: (input, context) => {
     const issues = baseIssues(context, false);

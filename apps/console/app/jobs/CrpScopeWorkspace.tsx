@@ -65,6 +65,7 @@ import { filterRowsBySite, resolveCaptureDrawer } from "./scopeRegister";
 import {CrpDataEntryAccordion,type AccordionLens} from "./CrpDataEntryAccordion";
 import { ReallocateControl } from "./ReallocateControl";
 import { JobCurrencyPanel } from "./JobCurrencyPanel";
+import { CommutingUpliftPanel } from "./CommutingUpliftPanel";
 import { ReopenRequestsBanner } from "./ReopenRequestsBanner";
 import {JobStageStepper,StageSection,StageFocusStrip,stageAnchorId,type StageStatus} from "./CrpStageSections";
 import {JobShellHeader,datasetsSummary,milestonesSummary,type JobShellDrawer,type JobShellSummary} from "./JobShellHeader";
@@ -320,7 +321,7 @@ export function CrpScopeWorkspace({
       if(dataEntryAdapterEnabled("spend"))tabs.push({id:"roll",label:"Roll forward last year",node:<SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>});
       return tabs.length?{title:`${category.name} — import & templates`,body:<ImportMethods idBase="import-pgs" tabs={tabs}/>}:null;
     }
-    if(category.code==="3.7")return dataEntryAdapterEnabled("commuting")?{title:`${category.name} — import & templates`,body:<CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}:null;
+    if(category.code==="3.7")return dataEntryAdapterEnabled("commuting")?{title:`${category.name} — import & templates`,body:<CommutingBulkPanel jobId={job.header.id} factors={factors} sites={captureSites} notice={setNotice}/>}:null;
     // D5 (R6): Business Travel's template — trips filed by mode and factor, one roll-up row each.
     if(category.code==="3.6")return dataEntryAdapterEnabled("travel")?{title:`${category.name} — import & templates`,body:<TravelTemplateImport jobId={job.header.id} job={vehicleTemplateJob} factors={factors} notice={setNotice}/>}:null;
     if(category.code==="1.company-vehicles")return dataEntryAdapterEnabled("vehicle")?{title:`${category.name} — import & templates`,body:<VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice} job={vehicleTemplateJob}/>}:null;
@@ -525,6 +526,7 @@ export function CrpScopeWorkspace({
       <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
       {/* Data entry D3 (R1): each site's currency, the job's FX rates, and the job's spend in the client's currency. */}
       <JobCurrencyPanel jobId={job.header.id} rows={rows} notice={setNotice} writeEnabled={writeEnabled}/>
+      <CommutingUpliftPanel jobId={job.header.id} audience="staff" notice={setNotice} writeEnabled={writeEnabled}/>
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
     </>
   );
@@ -537,6 +539,7 @@ export function CrpScopeWorkspace({
       <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
       {/* Data entry D3 (R1): each site's currency, the job's FX rates, and the job's spend in the client's currency. */}
       <JobCurrencyPanel jobId={job.header.id} rows={rows} notice={setNotice} writeEnabled={writeEnabled}/>
+      <CommutingUpliftPanel jobId={job.header.id} audience="staff" notice={setNotice} writeEnabled={writeEnabled}/>
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
     </>
   );
@@ -566,7 +569,7 @@ export function CrpScopeWorkspace({
       {dataEntryAdapterEnabled("spend") && <SpendRollforwardPanel jobId={job.header.id} notice={setNotice}/>}
       {dataEntryAdapterEnabled("spend") && <SpendLedgerAdapter jobId={job.header.id} factors={factors} categories={purchasedGoodsCategories} reportingMonths={spendReportingMonths} notice={setNotice}/>}
       {dataEntryAdapterEnabled("spend-import") && <SpendImportPanel jobId={job.header.id} clientId={job.header.clientId} jobNumber={job.header.number} clientName={job.header.client} jobName={job.header.title} reportingYear={reportingYear} categories={purchasedGoodsCategories} factors={factors} notice={setNotice}/>}
-      {dataEntryAdapterEnabled("commuting") && <CommutingBulkPanel jobId={job.header.id} factors={factors} notice={setNotice}/>}
+      {dataEntryAdapterEnabled("commuting") && <CommutingBulkPanel jobId={job.header.id} factors={factors} sites={captureSites} notice={setNotice}/>}
       {dataEntryAdapterEnabled("vehicle") && <VehicleBulkPanel jobId={job.header.id} factors={factors} notice={setNotice} job={vehicleTemplateJob}/>}
     </>
   );
