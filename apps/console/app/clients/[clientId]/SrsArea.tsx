@@ -14,6 +14,8 @@ import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead, Empty } from "./OverviewArea";
 import { SrsWizard } from "./SrsAssessmentForms";
 import { SrsReviewLine } from "./SrsReviewLine";
+import { SrsConversation, SrsReviewRequestBanner } from "./SrsConversation";
+import { portalFeatureEnabled } from "../../lib/portalFlags";
 import type { SrsDrawerRequest } from "./srsDrawers";
 import { gapsByPriority, pillarSummary } from "./srsWizard";
 
@@ -150,6 +152,8 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   onStarted: () => void;
 }) {
   const { client } = workspace;
+  // SRS messaging (Phase B): the client's conversation about readiness, with the conversations.
+  const conversation = portalFeatureEnabled("portal-conversations") ? workspace.srs.thread ?? null : null;
   // The filter row (R10): which standard, which assessment. The one in progress (or the latest) leads.
   const [standardKey, setStandardKey] = useState<string | null>(null);
   const [assessmentId, setAssessmentId] = useState(current.assessmentId);
@@ -217,6 +221,8 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
     {/* The review loop (Phase A): the latest completed assessment's review date and its reminder to the client manager. */}
     {workspace.srs.review && workspace.srs.review.assessmentId === current.assessmentId
       ? <SrsReviewLine review={workspace.srs.review} access={access} onSaved={onSaved} /> : null}
+    {/* SRS messaging (Phase B): a review the client asked for, surfaced beside Reopen / Reassess. */}
+    {conversation ? <SrsReviewRequestBanner thread={conversation} /> : null}
 
     {/* The filter row (R10): which standard, which assessment — one row, above every graphic. */}
     <div className="nz-srs-filters" role="group" aria-label="Readiness filters">
@@ -351,6 +357,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
 
     <SrsRegister model={model} assessment={assessment} framework={framework} access={access} onDrawer={onDrawer} onWizard={onWizard} standardKey={standardKey} strategiesByRequirement={strategiesByRequirement}
       plan={workspace.strategies.plan} suggestions={workspace.srs.suggestions} />
+    {conversation ? <SrsConversation clientId={client.id} thread={conversation} access={access} onSaved={onSaved} /> : null}
   </>;
 }
 

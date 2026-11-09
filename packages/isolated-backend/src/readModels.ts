@@ -6,6 +6,7 @@ import { getSrsFramework, listSrsAssessments } from "./srsReadinessRecords";
 import { listLevers, listLibraryStrategies, listClientStrategies } from "./reductionStrategies";
 import { strategyReminderStatuses, type StrategyReminders } from "./dueReminders";
 import { readSrsReviewStatus } from "./srsReviewReminders";
+import { readClientSrsThread } from "./portalConversations";
 import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues } from "./intensityMetricRecords";
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
@@ -15,7 +16,7 @@ import { readClientReportProfile } from "./reportSectionPlanRecords";
 import type { AssuranceAuditRow, AssuranceCurrentRow, AssuranceMeasurement, AssuranceScreen, AssuranceTrend, ClientGroupStructure, ClientProfileFields, ClientReportingFrequency, CrpReportingChain, CrpReportVersionReadModel, DatasetOption, EmissionSource, EmissionSourceGroup, EmissionsTargetReadModel, FactorOption, FactorOptionCategory, GapResolution, IntensityTargetReadModel, PublishedCrpReportReadModel, PurchasedGoodsCategoryOption, ReportSectionEditorScreen, ReportSectionReadModel, ReviewedCrpSnapshotReadModel, ScopeRowRollforwardPreview, SiteOption, ScopeQaReadiness, ScopeQualityTier, ScopeRowReadModel, ClientEmissionsEvidence, ClientSiteReadModel, SnapshotProvenanceStamp, ClientReportProfile } from "@nzi/contracts";
 import { clientReferences, type ClientReferences } from "./clientReference";
 import { issuerOf, type IssuerColumns } from "./reportCompositions";
-import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type SrsGapSuggestion, type SrsReviewStatus, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget, type ClientReportingTemplateReadModel, type ReportingTemplateScope } from "@nzi/contracts";
+import { aggregateAssuranceYear, buildReportingChain, capabilities, computeAssuranceGaps, crpScopeCategoryLabel, isEligibleReportingYear, reportingPeriodDays, reportingPeriodForYear, resolveClientEmissionsEvidence, resolveFloorAreaDenominator, resolveReportSections, roleLabels, staffRoles, type CapabilityGrant, type CapabilityScope, type ClientContactReadModel, type ContactConsentEvent, type FigureTier, type ProvenanceSignature, type ReportingPeriod, type SrsAssessment, type SrsFramework, type SrsGapSuggestion, type SrsReviewStatus, type SrsThreadReadModel, type Lever, type LibraryStrategy, type ClientStrategy, type IntensityMetricDefinition, type IntensityMetricValue, type ClientIntensityTarget, type ClientReportingTemplateReadModel, type ReportingTemplateScope } from "@nzi/contracts";
 import { latestConsentByContact } from "./clientContacts";
 import { dateOnly, monthsBetween, periodKeyOf, samePeriod } from "./dates";
 import { listAssuredPeriodSnapshots } from "./assuredPeriodSnapshots";
@@ -360,7 +361,9 @@ export type ClientWorkspaceReadModel = {
    */
   srs: { framework: SrsFramework | null; assessments: SrsAssessment[]; frameworks: SrsFramework[]; suggestions: SrsGapSuggestion[];
     /** The review loop (Phase A): the latest completed assessment's review date and its reminder. Null: none to review, or it could not be read. */
-    review?: SrsReviewStatus | null };
+    review?: SrsReviewStatus | null;
+    /** SRS messaging (Phase B): the client's SRS readiness conversation and any review request still open. Null: it could not be read. */
+    thread?: SrsThreadReadModel | null };
   /**
    * The reduction plan: the levers, the Admin-managed library, and what this client holds.
    * Both travel together because the library drawer has to mark what is already assigned,
@@ -433,6 +436,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
   const srsFrameworks = await adjunct("srs", [] as SrsFramework[], srsFrameworksFor(db, srsAssessments).then((versions) => [...versions.values()]));
   const srsSuggestions = await adjunct("srs", [] as SrsGapSuggestion[], listSrsGapSuggestions(db, clientId));
   const srsReview = await adjunct("srs", null as SrsReviewStatus | null, readSrsReviewStatus(db, { clientId, today: todayInLondon() }));
+  const srsThread = await adjunct("srs", null as SrsThreadReadModel | null, readClientSrsThread(db, clientId));
   const intensityMetrics = await adjunct("intensity", [], listClientIntensityMetrics(db, clientId));
   const intensityValues = await adjunct("intensity", [], listClientIntensityValues(db, clientId));
   const libraryStrategies = await adjunct("strategies", [], listLibraryStrategies(db));
@@ -507,7 +511,7 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
     reports,
     messages,
     files,
-    srs: { framework: srsFramework, assessments: srsAssessments, frameworks: srsFrameworks, suggestions: srsSuggestions, review: srsReview },
+    srs: { framework: srsFramework, assessments: srsAssessments, frameworks: srsFrameworks, suggestions: srsSuggestions, review: srsReview, thread: srsThread },
     strategies: {
       levers, library: libraryStrategies,
       plan: clientStrategies.filter((strategy) => strategy.proposal === null || strategy.proposal.state === "approved"),

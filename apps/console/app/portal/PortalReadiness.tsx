@@ -9,6 +9,7 @@ import {formatDate} from "../lib/formatDate";
 import {redirectIfPortalSessionEnded} from "./portalSessionClient";
 import {postBrowserCommand} from "@nzi/api-client";
 import {portalFeatureEnabled} from "../lib/portalFlags";
+import {PortalSrsConversation} from "./PortalSrsConversation";
 
 /**
  * The client's own UK SRS readiness — where they stand, and what is aimed at each gap.
@@ -29,7 +30,8 @@ import {portalFeatureEnabled} from "../lib/portalFlags";
  * internal action link reaches this page (NZC-110); the model never carries them.
  *
  * Read-only throughout — the assessment is consultant-led, and there is no control here that
- * implies otherwise.
+ * implies otherwise. The one write beneath it is a message to the adviser (SRS messaging, Phase B),
+ * which may ask for a review but never changes the assessment.
  */
 
 const valid=(value:unknown):value is PortalReadinessReadModel=>{
@@ -71,12 +73,15 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
   if(model===null)return <section className="nz-panel"><div className="nz-portal-state loading" role="status"><i>↻</i><div>
     <b>Checking your readiness assessment</b><span>Reading your latest completed assessment…</span></div></div></section>;
 
+  // SRS messaging (Phase B): the client's conversation about readiness — in their own session only (never the staff preview), with the conversations.
+  const conversation=provided===undefined&&portalFeatureEnabled("portal-conversations")?<PortalSrsConversation/>:null;
+
   // Not assessed is not zero. A 0 here would read as a score the client had been given.
-  if(model.state==="none")return <section className="nz-panel"><div className="nz-card-b">
+  if(model.state==="none")return <><section className="nz-panel"><div className="nz-card-b">
     <span className="nz-eyebrow">UK SRS readiness</span>
     <h2 style={{margin:"2px 0 8px",fontSize:16}}>{model.phase==="not-started"?"Your readiness assessment hasn't started yet":"Your readiness assessment is in progress"}</h2>
     <p className="sub" style={{marginTop:0}}>{model.reason}</p>
-  </div></section>;
+  </div></section>{conversation}</>;
 
   const dashboard=model.dashboard;
   const totalGaps=model.roadmap.pillars.reduce((count,pillar)=>count+pillar.gaps.length,0);
@@ -150,6 +155,7 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
   <Drawer open={open!==null} onClose={()=>setOpenId(null)} ariaLabel={open?`${open.code} ${open.title}`:"Requirement"} className="nz-site-drawer nz-pdv-drawer" dismissOnOutsideClick>
     {open?<QuestionDrawer requirement={open} ideas={ideasFor(open.id)} canPropose={canPropose} onClose={()=>setOpenId(null)}/>:null}
   </Drawer>
+  {conversation}
   </>;
 }
 

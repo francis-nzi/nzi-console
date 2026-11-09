@@ -1,5 +1,6 @@
 import { dateOnly, londonDayOf, utcDay } from "./dayValues";
 import { greetingName } from "./firstName";
+import type { PortalMessage, PortalThreadSummary } from "./portalConversations";
 
 /**
  * The SRS review loop, Phase A (BRIEF-srs-iterative-review-and-messaging): when a completed readiness assessment is next due
@@ -150,4 +151,25 @@ export function srsReviewReminderLabel(reminder: SrsReviewStatus["reminder"]): s
 /** The values the reminder fills — every token the template declares. No score, no answer: a date and a link. */
 export function srsReviewValues(input: { firstName: string; clientName: string; assessedOn: string; reviewDate: string; srsLink: string }): Record<string, string> {
   return { firstName: input.firstName, clientName: input.clientName, assessedOn: formatUkDay(input.assessedOn), reviewDate: formatUkDay(input.reviewDate), srsLink: input.srsLink };
+}
+
+/* ── Phase B: the client's SRS readiness conversation ───────────────────────────────────────────────────────────────── */
+
+/** The client's SRS readiness conversation as either side reads it. `thread` null: nobody has written yet. */
+export type SrsThreadReadModel = {
+  thread: PortalThreadSummary | null;
+  messages: PortalMessage[];
+  /** The client's latest review request still awaiting the CRM — no adviser message after it. Null: none open. */
+  openReviewRequest: { messageId: string; createdAt: string } | null;
+};
+
+/**
+ * A review request is open until the CRM answers it in the thread. Surfaced, never acted on: the CRM reopens or reassesses
+ * through the existing commands (NZC-022), and nothing from the portal reaches the assessment.
+ */
+export function openSrsReviewRequest(messages: readonly Pick<PortalMessage, "messageId" | "seq" | "createdAt" | "authorPrincipal" | "reviewRequest">[]): SrsThreadReadModel["openReviewRequest"] {
+  const ordered = [...messages].sort((a, b) => a.seq - b.seq);
+  const lastStaff = ordered.reduce((seq, message) => message.authorPrincipal === "staff" ? message.seq : seq, 0);
+  const request = ordered.filter((message) => message.reviewRequest === true && message.authorPrincipal === "portal" && message.seq > lastStaff).at(-1);
+  return request ? { messageId: request.messageId, createdAt: request.createdAt } : null;
 }

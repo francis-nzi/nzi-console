@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { attachmentState, type CommandContext, type CommandInputMap, type PortalFileIngest, type PortalFileStatus, type PortalMessage, type PortalMessageAttachment, type PortalMessageAuthor, PortalThreadDetail, PortalThreadScope, PortalThreadState, PortalThreadSubject, PortalThreadSummary } from "@nzi/contracts";
+import { attachmentState, openSrsReviewRequest, type SrsThreadReadModel, type CommandContext, type CommandInputMap, type PortalFileIngest, type PortalFileStatus, type PortalMessage, type PortalMessageAttachment, type PortalMessageAuthor, PortalThreadDetail, PortalThreadScope, PortalThreadState, PortalThreadSubject, PortalThreadSummary } from "@nzi/contracts";
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
 import { AuthorizationError, type PortalPrincipal } from "./auth";
 import { VersionConflictError } from "./errors";
@@ -80,7 +80,7 @@ async function portalMayHave(db: Queryable, context: CommandContext, thread: Loc
 
 /** Append one message and move the thread: who spoke last decides the state; a client post sets the target, a staff post clears it. */
 type FileEvent = { action: string; entityType: string; entityId: string; before: Record<string, unknown>; after: Record<string, unknown> };
-async function appendMessage(db: Queryable, context: CommandContext, thread: Locked, author: "portal" | "staff", body: string, attachments: readonly PortalFileIngest[] = []): Promise<{ messageId: string; seq: number; state: PortalThreadState; fileEvents: FileEvent[] }> {
+async function appendMessage(db: Queryable, context: CommandContext, thread: Locked, author: "portal" | "staff", body: string, attachments: readonly PortalFileIngest[] = [], reviewRequest = false): Promise<{ messageId: string; seq: number; state: PortalThreadState; fileEvents: FileEvent[] }> {
   const messageId = randomUUID(), seq = thread.message_count + 1;
   const state: PortalThreadState = author === "portal" ? "awaiting_nzi" : "awaiting_client";
   let legacyCommentId: string | null = null;
@@ -96,8 +96,8 @@ async function appendMessage(db: Queryable, context: CommandContext, thread: Loc
       [context.organisationId, legacyCommentId, thread.report_version_id, thread.job_id, thread.client_id, author, context.actorId, name ?? (author === "portal" ? "Client user" : "Adviser"), body]);
   }
   await db.query(
-    `INSERT INTO nzi_console.portal_messages (organisation_id, message_id, thread_id, seq, author_principal, author_id, body, legacy_comment_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-    [context.organisationId, messageId, thread.thread_id, seq, author, context.actorId, body, legacyCommentId]);
+    `INSERT INTO nzi_console.portal_messages (organisation_id, message_id, thread_id, seq, author_principal, author_id, body, legacy_comment_id, review_request) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+    [context.organisationId, messageId, thread.thread_id, seq, author, context.actorId, body, legacyCommentId, reviewRequest]);
   const fileEvents = await attachFiles(db, context, thread, messageId, author, attachments);
   // Notify-only email to the other side (M4): queued here - one pending row per thread and audience - and sent by the worker after the window.
   await queueMessageNotification(db, context.organisationId, thread, author);
@@ -315,4 +315,83 @@ export function getClientThread(pool: PoolLike, holder: CapabilityHolder, client
       messages: messages.map((message): PortalMessage => ({ messageId: message.message_id, seq: message.seq, body: message.body, createdAt: iso(message.created_at)!, author: message.author_principal === "staff" ? "adviser" : "colleague", authorPrincipal: message.author_principal, authorName: message.author_name, attachments: attachments.get(message.message_id) ?? [] })),
     };
   });
+}
+
+// ── SRS messaging (BRIEF-srs-iterative-review-and-messaging, Phase B) ──────────────────────────────────────────────
+
+/**
+ * The client's one SRS readiness conversation (0221): a client-wide thread under the `srs` subject, created by the first message
+ * from either side and locked for this one. Everything after is the ordinary conversation path above - append-only messages,
+ * state by who spoke last, the other side's notify-only email queued in the same transaction - so there is one messaging system.
+ * The assessment is never touched from here: the client's only write is a message; a review request is surfaced to the CRM, who
+ * reopens through the existing command (NZC-022).
+ */
+const SRS_THREAD_TITLE = "SRS readiness";
+async function lockSrsThread(db: Queryable, context: CommandContext, clientId: string, author: "portal" | "staff"): Promise<Locked> {
+  await db.query(
+    `INSERT INTO nzi_console.portal_threads (organisation_id, thread_id, client_id, scope, job_id, subject_code, title, state, owner_id, started_by_principal, started_by_id, srs_readiness)
+     VALUES ($1,$2,$3,'client',NULL,'srs',$4,'open',$5,$6,$7,true)
+     ON CONFLICT (organisation_id, client_id) WHERE srs_readiness DO NOTHING`,
+    [context.organisationId, randomUUID(), clientId, SRS_THREAD_TITLE, author === "staff" ? context.actorId : null, author, context.actorId]);
+  const threadId = (await db.query<{ thread_id: string }>(
+    `SELECT thread_id FROM nzi_console.portal_threads WHERE organisation_id = $1 AND client_id = $2 AND srs_readiness`, [context.organisationId, clientId])).rows[0]!.thread_id;
+  return lockThread(db, context.organisationId, clientId, threadId);
+}
+
+/** The client writes about their readiness - optionally asking for a review. Authorised before this runs: an active user of this client. */
+export function postPortalSrsMessage(pool: PoolLike, input: CommandInputMap["portal.srs.message.post"], context: CommandContext): Promise<StoredOutcome<Record<string, unknown>>> {
+  return runPostgresCommand(pool, "portal.srs.message.post", input, context, async (db) => {
+    // Their own client only (NZC-120): the session's client, whatever the input says.
+    if (input.clientId !== context.portal!.clientId) throw refuse("clientId", "NOT_FOUND", "Client was not found.");
+    const thread = await lockSrsThread(db, context, input.clientId, "portal");
+    const reviewRequest = input.reviewRequest === true;
+    const posted = await appendMessage(db, context, thread, "portal", input.body.trim(), [], reviewRequest);
+    return recorded(input.clientId, thread.thread_id, { messageId: posted.messageId, seq: posted.seq, state: posted.state, previousState: thread.state, reviewRequest }, "portal.srs.message.posted");
+  });
+}
+
+/** The CRM replies (srs.manage on the client). The first adviser to write in an unowned SRS conversation owns it, as in any conversation. */
+export function postSrsMessage(pool: PoolLike, input: CommandInputMap["srs.message.post"], context: CommandContext): Promise<StoredOutcome<Record<string, unknown>>> {
+  return runPostgresCommand(pool, "srs.message.post", input, context, async (db) => {
+    if (!(await db.query(`SELECT 1 FROM nzi_console.clients WHERE organisation_id = $1 AND client_id = $2`, [context.organisationId, input.clientId])).rows[0]) throw refuse("clientId", "NOT_FOUND", "Client was not found.");
+    const thread = await lockSrsThread(db, context, input.clientId, "staff");
+    const posted = await appendMessage(db, context, thread, "staff", input.body.trim());
+    if (!thread.owner_id) await db.query(`UPDATE nzi_console.portal_threads SET owner_id = $3 WHERE organisation_id = $1 AND thread_id = $2`, [context.organisationId, thread.thread_id, context.actorId]);
+    return recorded(input.clientId, thread.thread_id, { messageId: posted.messageId, seq: posted.seq, state: posted.state, previousState: thread.state, ownerClaimed: !thread.owner_id }, "srs.message.posted");
+  });
+}
+
+type SrsMessageRow = { message_id: string; seq: number; author_principal: "portal" | "staff"; author_id: string; body: string; created_at: Date | string; review_request: boolean; author_name?: string | null };
+const srsThreadModel = (thread: PortalThreadSummary | null, messages: PortalMessage[]): SrsThreadReadModel => ({ thread, messages, openReviewRequest: openSrsReviewRequest(messages) });
+
+/**
+ * The client's SRS conversation for a portal user of that client - the session's client only (NZC-120). Staff read as "your
+ * adviser", never by name (NZC-110), as in every conversation. No thread yet: an empty model.
+ */
+export function getPortalSrsThread(pool: PoolLike, principal: PortalPrincipal): Promise<SrsThreadReadModel> {
+  return withTenantRead(pool, principal.organisationId, async (db) => {
+    const row = (await db.query<ThreadRow>(`SELECT ${SUMMARY_SELECT(PORTAL_UNREAD)} WHERE ${PORTAL_VISIBLE} AND t.srs_readiness`, [principal.organisationId, principal.clientId, principal.userId])).rows[0];
+    if (!row) return srsThreadModel(null, []);
+    const messages = (await db.query<SrsMessageRow>(
+      `SELECT message_id, seq, author_principal, author_id, body, created_at, review_request FROM nzi_console.portal_messages WHERE organisation_id = $1 AND thread_id = $2 ORDER BY seq`, [principal.organisationId, row.thread_id])).rows;
+    return srsThreadModel(toSummary(row, false), messages.map((message): PortalMessage => ({
+      messageId: message.message_id, seq: message.seq, body: message.body, createdAt: iso(message.created_at)!, author: authorOf(message, principal.userId), authorPrincipal: message.author_principal, attachments: [],
+      ...(message.review_request ? { reviewRequest: true } : {}),
+    })));
+  });
+}
+
+/** The client's SRS conversation for the CRM's SRS area, read in the workspace's tenant transaction (the client's access already checked). */
+export async function readClientSrsThread(db: Queryable, clientId: string): Promise<SrsThreadReadModel> {
+  const row = (await db.query<ThreadRow>(`SELECT ${SUMMARY_SELECT(STAFF_UNREAD)} WHERE t.client_id = $1 AND t.srs_readiness`, [clientId])).rows[0];
+  if (!row) return srsThreadModel(null, []);
+  const messages = (await db.query<SrsMessageRow>(
+    `SELECT x.message_id, x.seq, x.author_principal, x.author_id, x.body, x.created_at, x.review_request,
+            CASE WHEN x.author_principal = 'portal' THEN (SELECT u.display_name FROM nzi_console.portal_users u WHERE (u.organisation_id, u.portal_user_id) = (x.organisation_id, x.author_id))
+                 ELSE (SELECT m.display_name FROM nzi_console.memberships m WHERE (m.organisation_id, m.user_id) = (x.organisation_id, x.author_id)) END AS author_name
+       FROM nzi_console.portal_messages x WHERE x.thread_id = $1 ORDER BY x.seq`, [row.thread_id])).rows;
+  return srsThreadModel(toSummary(row, true), messages.map((message): PortalMessage => ({
+    messageId: message.message_id, seq: message.seq, body: message.body, createdAt: iso(message.created_at)!, author: message.author_principal === "staff" ? "adviser" : "colleague",
+    authorPrincipal: message.author_principal, authorName: message.author_name ?? null, attachments: [], ...(message.review_request ? { reviewRequest: true } : {}),
+  })));
 }

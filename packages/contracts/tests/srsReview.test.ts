@@ -3,7 +3,7 @@ import test from "node:test";
 import { commandDefinitions } from "../src/commands";
 import { MESSAGE_TEMPLATE_REGISTRY } from "../src/messageTemplates";
 import {
-  addCalendarMonths, SRS_REVIEW_TEMPLATE_KEY, srsNextReviewDate, srsReviewReminderLabel, srsReviewReminderState, srsReviewRecipient, srsReviewTiming, srsReviewValues,
+  addCalendarMonths, openSrsReviewRequest, SRS_REVIEW_TEMPLATE_KEY, srsNextReviewDate, srsReviewReminderLabel, srsReviewReminderState, srsReviewRecipient, srsReviewTiming, srsReviewValues,
   type SrsReviewCrm,
 } from "../src/srsReview";
 
@@ -76,4 +76,37 @@ test("srs.assessment.review.set: srs.manage, its own audit action; a date only w
   assert.deepEqual(validate({ cadence: "annual", customDate: "2027-01-31" }).map((issue) => issue.field), ["customDate"]);
   assert.deepEqual(validate({ cadence: "weekly" }).map((issue) => issue.field), ["cadence"]);
   assert.deepEqual(validate({ expectedVersion: -1 }).map((issue) => issue.field), ["expectedVersion"]);
+});
+
+/* ── Phase B: the client's SRS readiness conversation ── */
+
+const message = (seq: number, authorPrincipal: "portal" | "staff", reviewRequest = false) => ({ messageId: `m${seq}`, seq, createdAt: `2026-11-0${seq}T09:00:00Z`, authorPrincipal, ...(reviewRequest ? { reviewRequest } : {}) });
+
+test("a review request is open until the CRM writes after it; the latest open one is surfaced", () => {
+  assert.equal(openSrsReviewRequest([]), null);
+  assert.equal(openSrsReviewRequest([message(1, "portal")]), null, "a plain message is not a request");
+  assert.deepEqual(openSrsReviewRequest([message(1, "portal", true)]), { messageId: "m1", createdAt: "2026-11-01T09:00:00Z" });
+  assert.equal(openSrsReviewRequest([message(1, "portal", true), message(2, "staff")]), null, "answered");
+  assert.deepEqual(openSrsReviewRequest([message(1, "portal", true), message(2, "staff"), message(3, "portal", true), message(4, "portal")]), { messageId: "m3", createdAt: "2026-11-03T09:00:00Z" });
+  assert.equal(openSrsReviewRequest([message(1, "staff", true)]), null, "only a client's message can ask");
+});
+
+const portalContext = { organisationId: "o", actorId: "p", principal: "portal", portal: { portalUserId: "p", clientId: "c" }, idempotencyKey: "k", correlationId: "c" } as never;
+const issues = (key: "portal.srs.message.post" | "srs.message.post", input: Record<string, unknown>, ctx: unknown) =>
+  (commandDefinitions[key].validate as (i: unknown, c: unknown) => Array<{ field: string }>)({ clientId: "c", body: "Hello", ...input }, ctx).map((issue) => issue.field);
+
+test("portal.srs.message.post: a portal command, a message and an optional yes/no review request — nothing that names an assessment", () => {
+  const definition = commandDefinitions["portal.srs.message.post"];
+  assert.deepEqual([definition.principal, definition.auditAction], ["portal", "portal_srs_message_posted"]);
+  assert.deepEqual(issues("portal.srs.message.post", {}, portalContext), []);
+  assert.deepEqual(issues("portal.srs.message.post", { reviewRequest: true }, portalContext), []);
+  assert.deepEqual(issues("portal.srs.message.post", { reviewRequest: "yes" }, portalContext), ["reviewRequest"]);
+  assert.deepEqual(issues("portal.srs.message.post", { body: "  " }, portalContext), ["body"]);
+});
+
+test("srs.message.post: the CRM's reply, under srs.manage", () => {
+  const definition = commandDefinitions["srs.message.post"];
+  assert.deepEqual([definition.permission, definition.auditAction], ["srs.manage", "srs_message_posted"]);
+  assert.deepEqual(issues("srs.message.post", {}, context), []);
+  assert.deepEqual(issues("srs.message.post", { body: "" }, context), ["body"]);
 });

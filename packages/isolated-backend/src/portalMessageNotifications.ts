@@ -50,13 +50,16 @@ type DueRow = {
   job_id: string | null; scope: "client" | "job"; owner_id: string | null; client_name: string; crm_user_id: string | null;
   /** F3: set on a report-review round's thread (0201); null on every conversation. */
   report_version_id: string | null;
+  /** SRS messaging (0221): the client's SRS readiness conversation. */
+  srs_readiness: boolean;
 };
 
 /**
  * Where the client's notification points. A report-review round's thread (it carries `report_version_id`, 0201) links to the review page, where the round is
  * read and answered; every other thread links to its conversation, as before. Derived from the thread's own row - the worker reads nothing further.
  */
-export const portalLink = (origin: string, jobId: string | null, threadId: string, reportVersionId: string | null = null) => !jobId ? `${origin}/portal`
+export const portalLink = (origin: string, jobId: string | null, threadId: string, reportVersionId: string | null = null, srsReadiness = false) => srsReadiness ? `${origin}/portal/srs`
+  : !jobId ? `${origin}/portal`
   : reportVersionId ? `${origin}/portal/jobs/${encodeURIComponent(jobId)}/review`
   : `${origin}/portal/jobs/${encodeURIComponent(jobId)}/messages?thread=${encodeURIComponent(threadId)}`;
 
@@ -72,7 +75,7 @@ export async function scanMessageNotifications(db: Queryable, input: { organisat
   catch { throw new Error("The console's own address (NZI_ISOLATED_API_URL) is not set, so a message notification could not link to the portal; none was sent."); }
 
   const { rows } = await db.query<DueRow>(
-    `SELECT n.notification_id, n.thread_id, n.client_id, n.audience, n.message_count, t.job_id, t.scope, t.owner_id, t.report_version_id, c.name AS client_name,
+    `SELECT n.notification_id, n.thread_id, n.client_id, n.audience, n.message_count, t.job_id, t.scope, t.owner_id, t.report_version_id, t.srs_readiness, c.name AS client_name,
             coalesce(c.client_manager_user_id, c.owner_user_id) AS crm_user_id
        FROM nzi_console.portal_message_notifications n
        JOIN nzi_console.portal_threads t ON (t.organisation_id, t.thread_id) = (n.organisation_id, n.thread_id)
@@ -127,7 +130,7 @@ async function notifyClient(db: Queryable, organisationId: string, origin: strin
     await sendTemplatedEmail(db, organisationId, {
       templateCode: CLIENT_MESSAGE_TEMPLATE, to: person.email, consoleOrigin: origin,
       // Greeted by first name; the full name stays available to wording that still uses it (0207).
-      vars: { firstName: person.first_name || FIRST_NAME_FALLBACK, displayName: person.display_name?.trim() || FIRST_NAME_FALLBACK, clientName: row.client_name, threadLink: portalLink(origin, row.job_id ?? person.held_job, row.thread_id, row.report_version_id) },
+      vars: { firstName: person.first_name || FIRST_NAME_FALLBACK, displayName: person.display_name?.trim() || FIRST_NAME_FALLBACK, clientName: row.client_name, threadLink: portalLink(origin, row.job_id ?? person.held_job, row.thread_id, row.report_version_id, row.srs_readiness) },
       correlationId: row.notification_id, idempotencyKey: `${CLIENT_MESSAGE_TEMPLATE}:${row.notification_id}:${person.portal_user_id}`,
     });
     emailed += 1;
@@ -142,7 +145,7 @@ async function notifyStaff(db: Queryable, organisationId: string, origin: string
   if (!member?.email) return { emailed: 0, blocked: 0, noRecipient: true };
   await sendTemplatedEmail(db, organisationId, {
     templateCode: STAFF_MESSAGE_TEMPLATE, to: member.email, consoleOrigin: origin,
-    vars: { firstName: member.first_name || FIRST_NAME_FALLBACK, clientName: row.client_name, threadLink: `${origin}/clients/${encodeURIComponent(row.client_id)}?area=portal` },
+    vars: { firstName: member.first_name || FIRST_NAME_FALLBACK, clientName: row.client_name, threadLink: `${origin}/clients/${encodeURIComponent(row.client_id)}?area=${row.srs_readiness ? "srs" : "portal"}` },
     correlationId: row.notification_id, idempotencyKey: `${STAFF_MESSAGE_TEMPLATE}:${row.notification_id}`,
   });
   return { emailed: 1, blocked: 0, noRecipient: false };

@@ -248,6 +248,8 @@ export type CommandKey =
   | "srs.assessment.reopen"
   | "srs.assessment.notes.set"
   | "srs.assessment.review.set"
+  | "portal.srs.message.post"
+  | "srs.message.post"
   | "srs.gap.suggestions.record"
   | "srs.gap.suggestion.withdraw"
   | "srs.gap.bridge"
@@ -1193,6 +1195,10 @@ export type CommandInputMap = {
   "srs.assessment.notes.set": { assessmentId: string; notes: string; expectedVersion: number };
   /** SRS review loop (Phase A): when a completed assessment is next reviewed. `customDate` only with `custom`; `off` stops the reminder. */
   "srs.assessment.review.set": { assessmentId: string; cadence: SrsReviewCadence; customDate?: string | null; expectedVersion: number };
+  /** SRS messaging (Phase B): the client writes in their SRS readiness conversation — optionally asking for a review. Their only write. */
+  "portal.srs.message.post": { clientId: string; body: string; reviewRequest?: boolean };
+  /** SRS messaging (Phase B): the CRM replies in the client's SRS readiness conversation. */
+  "srs.message.post": { clientId: string; body: string };
   /**
    * SRS S3. `srs.gap.suggestions.record`: AI ideas for one gap, already grounded (no figure, no claim), with the model that
    * answered and the SHA-256 of the exact prompt — the request by reference, never its text. `srs.gap.bridge`: one source —
@@ -3469,6 +3475,22 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (!isSrsReviewCadence(input.cadence)) issues.push({ field: "cadence", code: "INVALID", message: "The review cadence is every 12 months, every 6 months, a date you choose, or off." });
     if (input.cadence === "custom" ? !isoDate(input.customDate) : input.customDate != null) issues.push({ field: "customDate", code: "INVALID", message: input.cadence === "custom" ? "Enter the review date as dd/mm/yyyy." : "A review date is chosen only with a custom cadence." });
     if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  // SRS messaging (Phase B): one conversation per client about their readiness, on the portal conversations. The client's post (a
+  // grant-free, client-wide conversation, as any) may ask for a review, which is surfaced and never acted on here; the CRM replies
+  // under srs.manage. Audited by ids — never the text.
+  "portal.srs.message.post": { key: "portal.srs.message.post", label: "Write about your SRS readiness in the client portal", principal: "portal", permission: "portal.dataentry", reasonRequired: false, transaction: "the client's SRS thread (created on first message) + message + thread state + the team's notify-only email queued + audit (ids only) + outbox + idempotency", auditAction: "portal_srs_message_posted", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    bodyIssues(issues, "body", input.body);
+    if (input.reviewRequest !== undefined && typeof input.reviewRequest !== "boolean") issues.push({ field: "reviewRequest", code: "INVALID", message: "A review request is yes or no." });
+    return issues;
+  } },
+  "srs.message.post": { key: "srs.message.post", label: "Reply to a client about their SRS readiness", permission: "srs.manage", reasonRequired: false, transaction: "the client's SRS thread (created on first message) + message + thread state + the client's notify-only email queued + audit (ids only) + outbox + idempotency", auditAction: "srs_message_posted", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "clientId", input.clientId);
+    bodyIssues(issues, "body", input.body);
     return issues;
   } },
   // SRS S3: bridging a gap — the library first, AI second — and the report export. All under srs.manage, all audited.
