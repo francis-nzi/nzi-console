@@ -11,7 +11,9 @@ import {
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
 import { CoachMarks } from "../../help/CoachMarks";
 import { SRS_READINESS_TOUR } from "../../help/tours";
+import { WorkflowPill } from "../../jobs/WorkflowPill";
 import { formatDate } from "../../lib/formatDate";
+import { srsWorkflowHref } from "../../lib/workflowDocs";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead, Empty } from "./OverviewArea";
 import { SrsWizard } from "./SrsAssessmentForms";
@@ -200,6 +202,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
         <p>Assessing is gated on <b>srs.manage</b> and every answer is audited. The framework is Admin-managed and versioned.</p>
       </InfoTip>
       <button type="button" className="nz-editlink" onClick={() => setTouring(true)}>Walk-through</button>
+      <WorkflowPill href={srsWorkflowHref()} label="SRS workflow" />
       <span style={{ flex: 1 }} />
       <span className={current.status === "draft" ? "nz-st need" : "nz-st done"}>{current.status === "draft" ? `In progress · ${currentCompletion.addressed} of ${currentCompletion.total} addressed` : "Assessed"}</span>
       {current.status === "draft"
