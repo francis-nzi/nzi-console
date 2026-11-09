@@ -24,6 +24,8 @@ describe("the registry", () => {
       "portal.access.invite", "password.reset.staff", "password.reset.portal", "message.notification",
       // Messages M4: the internal side of a new-message notification, to the adviser.
       "portal.message.staff-notification",
+      // SRS review loop (Phase A): the review-due reminder, to the client manager.
+      "srs.review.due",
       // Data entry D3 (R6): a client's request to reopen a reviewed entry, to the CRM.
       "portal.data.reopen-request",
     ]);

@@ -13,6 +13,7 @@ import { formatDate } from "../../lib/formatDate";
 import type { EditAccess } from "../../lib/useEditAccess";
 import { CardHead, Empty } from "./OverviewArea";
 import { SrsWizard } from "./SrsAssessmentForms";
+import { SrsReviewLine } from "./SrsReviewLine";
 import type { SrsDrawerRequest } from "./srsDrawers";
 import { gapsByPriority, pillarSummary } from "./srsWizard";
 
@@ -213,6 +214,9 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
     <p className="nz-cw-vsub">{client.name} · {model.assessment.assessedOn
       ? <>assessed {formatDate(model.assessment.assessedOn)} · scores locked · overall {model.overall.stepName} ({model.overall.level.toFixed(1)} of 4)</>
       : <>started {formatDate(model.assessment.startedOn)} · not yet assessed</>} · consultant-led by {assessment.assessedBy}.</p>
+    {/* The review loop (Phase A): the latest completed assessment's review date and its reminder to the client manager. */}
+    {workspace.srs.review && workspace.srs.review.assessmentId === current.assessmentId
+      ? <SrsReviewLine review={workspace.srs.review} access={access} onSaved={onSaved} /> : null}
 
     {/* The filter row (R10): which standard, which assessment — one row, above every graphic. */}
     <div className="nz-srs-filters" role="group" aria-label="Readiness filters">

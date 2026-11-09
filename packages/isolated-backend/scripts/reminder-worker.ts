@@ -91,7 +91,7 @@ async function main() {
       }
       // Email and reminders in their own transactions, email first: a reminder-side failure is reported, never fatal to email.
       // A3's due-date reminders link to the portal at the console's own address — the same variable the console uses.
-      const { emails, dueReminders, messageNotifications, reminders } = await runWorkerTick(pool, { organisationId, today: londonToday(), mailer, email,
+      const { emails, dueReminders, srsReviewReminders, messageNotifications, reminders } = await runWorkerTick(pool, { organisationId, today: londonToday(), mailer, email,
         consoleOrigin: process.env.NZI_ISOLATED_API_URL,
         // Messages M4: dark unless the deployment sets it. Off, new-message notifications wait as pending rows and nothing is sent.
         messageNotifications: process.env.NZI_PORTAL_MESSAGE_EMAIL === "on", env: {
@@ -110,6 +110,7 @@ async function main() {
         emails: emails.ok ? emails.summary : { failed: emails.error },
         ...(emailOrganisations.length > 0 ? { otherEmails } : {}),
         dueReminders: dueReminders.ok ? dueReminders.summary : { failed: dueReminders.error },
+        srsReviewReminders: srsReviewReminders.ok ? srsReviewReminders.summary : { failed: srsReviewReminders.error },
         messageNotifications: messageNotifications.ok ? messageNotifications.summary : { failed: messageNotifications.error },
         reminders: reminders.ok
           ? reminders.summary.off ? { off: true }

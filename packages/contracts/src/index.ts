@@ -116,6 +116,7 @@ export * from "./targets";
 export * from "./srsReadiness";
 export * from "./srsDashboard";
 export * from "./srsBridge";
+export * from "./srsReview";
 export * from "./readinessReportTemplates";
 export * from "./intensityMetrics";
 export * from "./reportingTemplate";
