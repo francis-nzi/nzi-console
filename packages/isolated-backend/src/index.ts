@@ -259,6 +259,7 @@ export {
   readReminderSettings, updateReminderSettings, scanDueReminders, listStrategyReminderStatuses, strategyReminderStatuses, DUE_REMINDER_ACTOR,
   type DueReminderScan, type ReminderSettingsResult, type StrategyReminders,
 } from "./dueReminders";
+export { readSrsReviewStatus, scanSrsReviewReminders, setSrsReviewSchedule, SRS_REVIEW_ACTOR, type SetSrsReviewResult, type SrsReviewScan } from "./srsReviewReminders";
 export { listEntryBasisDefaults, readJobEntryBasis, updateEntryBasisDefault, type EntryBasisDefaultResult } from "./entryBasis";
 export {
   listClientSpendAllocations, createSpendAllocation, updateSpendAllocation, archiveSpendAllocation, reinstateSpendAllocation, learnSpendAllocation,

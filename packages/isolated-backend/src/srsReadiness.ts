@@ -4,7 +4,8 @@
 // keep meaning what they meant when the framework moves. Reassessment is a new assessment,
 // which is what gives readiness a trend.
 import { randomUUID } from "node:crypto";
-import { prefillFromNzi, todayInLondon, type CommandContext, type CommandInputMap, type Priority, type SrsNziFacts } from "@nzi/contracts";
+import { prefillFromNzi, srsNextReviewDate, SRS_REVIEW_DEFAULT_CADENCE, todayInLondon, type CommandContext, type CommandInputMap, type Priority, type SrsNziFacts, type SrsReviewCadence } from "@nzi/contracts";
+import { dateOnlyOrNull } from "./dates";
 import { getSrsFramework } from "./srsReadinessRecords";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
@@ -121,13 +122,13 @@ export function setSrsAssessmentItem(pool: PoolLike, input: CommandInputMap["srs
   });
 }
 
-export type CompleteSrsAssessmentResult = { assessmentId: string; version: number; assessed: number; total: number; assessedOn: string };
+export type CompleteSrsAssessmentResult = { assessmentId: string; version: number; assessed: number; total: number; assessedOn: string; reviewCadence: SrsReviewCadence; nextReviewDate: string | null };
 
 /** Close the assessment. It stays readable, and the next reassessment starts a new one. */
 export function completeSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.assessment.complete"], context: CommandContext): Promise<StoredOutcome<CompleteSrsAssessmentResult>> {
   return runPostgresCommand(pool, "srs.assessment.complete", input, context, async (db) => {
-    const current = await db.query<{ version: number; status: "draft" | "complete"; framework_id: string }>(
-      `SELECT version,status,framework_id FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND assessment_id=$2 FOR UPDATE`,
+    const current = await db.query<{ version: number; status: "draft" | "complete"; framework_id: string; review_cadence: SrsReviewCadence | null; next_review_date: Date | string | null }>(
+      `SELECT version,status,framework_id,review_cadence,next_review_date FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND assessment_id=$2 FOR UPDATE`,
       [context.organisationId, input.assessmentId]);
     const row = current.rows[0];
     if (!row) throw new CommandValidationError([{ field: "assessmentId", code: "NOT_FOUND", message: "That assessment does not exist." }]);
@@ -149,13 +150,19 @@ export function completeSrsAssessment(pool: PoolLike, input: CommandInputMap["sr
 
     // The assessed date is the day it was completed.
     const assessedOn = todayInLondon();
+    // The review schedule (Phase A): annual by default. A reopened assessment keeps the cadence it had; a custom date stands
+    // only while it is still after the new assessed date, else it falls back to the default.
+    const held = dateOnlyOrNull(row.next_review_date);
+    const keepCustom = row.review_cadence === "custom" && held !== null && held > assessedOn;
+    const reviewCadence: SrsReviewCadence = row.review_cadence === null || (row.review_cadence === "custom" && !keepCustom) ? SRS_REVIEW_DEFAULT_CADENCE : row.review_cadence;
+    const nextReviewDate = srsNextReviewDate(assessedOn, reviewCadence, keepCustom ? held : null);
     const saved = await db.query<{ version: number }>(
-      `UPDATE nzi_console.srs_assessments SET status='complete',assessed_on=$3,completed_at=now(),updated_at=now(),version=version+1
-       WHERE organisation_id=$1 AND assessment_id=$2 RETURNING version`, [context.organisationId, input.assessmentId, assessedOn]);
+      `UPDATE nzi_console.srs_assessments SET status='complete',assessed_on=$3,completed_at=now(),updated_at=now(),version=version+1,review_cadence=$4,next_review_date=$5
+       WHERE organisation_id=$1 AND assessment_id=$2 RETURNING version`, [context.organisationId, input.assessmentId, assessedOn, reviewCadence, nextReviewDate]);
 
     return {
       // `data` is the audit event's after_json.
-      data: { assessmentId: input.assessmentId, version: saved.rows[0]!.version, assessed, total, assessedOn },
+      data: { assessmentId: input.assessmentId, version: saved.rows[0]!.version, assessed, total, assessedOn, reviewCadence, nextReviewDate },
       entityType: "srs_assessment", entityId: input.assessmentId, topic: "srs.assessment.completed",
       before: { status: "draft" },
     };

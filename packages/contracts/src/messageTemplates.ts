@@ -346,6 +346,43 @@ export const MESSAGE_TEMPLATE_REGISTRY: readonly MessageTemplateDefinition[] = [
     htmlPart: true,
   },
   {
+    // SRS review loop (Phase A): the CRM's prompt to review a completed readiness assessment. Internal staff mail, not consent-gated.
+    key: "srs.review.due",
+    label: "SRS readiness — review due, to the client manager",
+    purpose: "To the client's manager (else its owner), the reminder lead before a completed SRS readiness assessment's review date — once per review date. Never to the client. The assessment itself is not in the email; it is reviewed in the console.",
+    channel: "email",
+    sendSite: "The SRS review scan in the worker tick (srsReviewReminders.ts), through sendTemplatedEmail",
+    // No token for a score or an answer: a date and a link only.
+    tokens: [
+      { name: "firstName", description: "The client manager's first name — or \"there\" when their record has no name", sample: "Sam" },
+      { name: "clientName", description: "The client whose readiness is due for review", sample: "Example Manufacturing Ltd" },
+      { name: "assessedOn", description: "When the assessment was completed, dd/mm/yyyy", sample: "14/11/2025" },
+      { name: "reviewDate", description: "When it is due for review, dd/mm/yyyy", sample: "14/11/2026" },
+      { name: "srsLink", description: "A link to the client's UK SRS Readiness area in the console (sign-in still required)", sample: "https://console.example.test/clients/client-1?area=srs", required: true, kind: "url" },
+    ],
+    builtIn: {
+      subject: "SRS readiness review due for {{clientName}} — {{reviewDate}}",
+      body: [
+        "Hello {{firstName}},",
+        "",
+        "{{clientName}}'s UK SRS readiness assessment, completed {{assessedOn}}, is due for review on {{reviewDate}}.",
+        "",
+        "Reopen it to correct it, or reassess to record a new position, in the console:",
+        "{{srsLink}}",
+        "",
+        "To change when it is next reviewed, or to stop these reminders for it, set the review date there.",
+      ].join("\n"),
+      html: [
+        "<p>Hello {{firstName}},</p>",
+        "<p><b>{{clientName}}</b>'s UK SRS readiness assessment, completed {{assessedOn}}, is due for review on <b>{{reviewDate}}</b>.</p>",
+        "<p>Reopen it to correct it, or reassess to record a new position, in the console.</p>",
+        `<a class="cta" href="{{srsLink}}">Open SRS readiness</a>`,
+        `<p style="${SMALL}">To change when it is next reviewed, or to stop these reminders for it, set the review date there.</p>`,
+      ].join("\n"),
+    },
+    htmlPart: true,
+  },
+  {
     // Data entry D3 (R6): reopen after submit is a request to the CRM, never a self-serve recall.
     key: "portal.data.reopen-request",
     label: "Client portal — a client asks to reopen a reviewed entry",

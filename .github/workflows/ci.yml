@@ -628,6 +628,13 @@ jobs:
       # nothing; a failing scan writes nothing and leaves the drain unharmed; the worker reads the brand columns, not the profile.
       - name: Due-date reminders to an action's owner, once per date, through the existing email pipe
         run: npx tsx --test packages/isolated-backend/tests/dueRemindersReal.test.ts
+      # 0220 (SRS review loop, Phase A): completion sets the review date (annual default; the backfill gives every completed
+      # assessment annual); srs.assessment.review.set changes it (biannual / a date / off) on the latest completed one only.
+      # Run as nzi_console_worker, the scan enqueues the review-due reminder to the CRM — the client's manager, else its owner,
+      # never a client contact — once per assessment per review date, re-armed by a moved date; off, a superseded or a reopened
+      # assessment sends nothing; through the existing outbox and drain, scan and send apart; audited by reference.
+      - name: SRS review date and the once-per-date reminder to the CRM, through the existing email pipe
+        run: npx tsx --test packages/isolated-backend/tests/srsReviewReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic
