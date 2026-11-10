@@ -89,6 +89,11 @@ export const capabilities = [
   // finance.manage, in the command and the read alike.
   "time.log",
   "time.view",
+  // ── CRM tasks (matrix v13, 0224; BRIEF-crm-control-room-p3-tasks) ──
+  // Create, edit, reassign, reschedule, complete and reopen an internal staff to-do. A task is changed only by its assignee or
+  // its creator (access.ts) — the capability is the right to keep a to-do list, not to work anyone else's. Every role that
+  // does work holds it; the Viewer, who changes nothing, does not.
+  "task.manage",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 
@@ -103,7 +108,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 12;
+export const PERMISSION_MATRIX_VERSION = 13;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -133,10 +138,12 @@ export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability
     // T-Q7: a consultant logs time on — and sees time for — their own clients' jobs.
     "time.log": "own_clients",
     "time.view": "own_clients",
+    // v13: a task is the holder's own list (assignee or creator, access.ts), not a client's record — so `all`, not own clients.
+    "task.manage": "all",
   },
-  reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture", "time.log", "time.view"),
+  reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture", "time.log", "time.view", "task.manage"),
   // v10 (Time PR B): Finance reads everyone's hours — payroll and job cost need the whole team's time.
-  finance: { ...all("client.view", "report.view", "finance.view", "finance.manage", "knowledge.capture", "time.log", "time.view"), "audit.view": "own_clients" },
+  finance: { ...all("client.view", "report.view", "finance.view", "finance.manage", "knowledge.capture", "time.log", "time.view", "task.manage"), "audit.view": "own_clients" },
   viewer: all("client.view", "report.view", "knowledge.capture", "time.log"),
 };
 

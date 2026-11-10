@@ -36,6 +36,7 @@ const matrixMigrationV10 = readFileSync(resolve(here, "../migrations/0157_permis
 const matrixMigrationV11 = readFileSync(resolve(here, "../migrations/0204_permission_matrix_v11.sql"), "utf8");
 // v12 — Consultant gains snapshot.review and report.publish: a consultant CRM approves the snapshot and releases the report (0216).
 const matrixMigrationV12 = readFileSync(resolve(here, "../migrations/0216_permission_matrix_v12.sql"), "utf8");
+const matrixMigrationV13 = readFileSync(resolve(here, "../migrations/0224_permission_matrix_v13.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -47,7 +48,8 @@ const matrixMigrationV12 = readFileSync(resolve(here, "../migrations/0216_permis
 // earlier versions stay readable, which is the point of versioning the matrix at all.
 const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}\n${matrixMigrationV4}\n${matrixMigrationV5}\n${matrixMigrationV6}\n${matrixMigrationV7}\n${matrixMigrationV8}\n${matrixMigrationV9}\n${matrixMigrationV10}
 ${matrixMigrationV11}
-${matrixMigrationV12}`;
+${matrixMigrationV12}
+${matrixMigrationV13}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 
@@ -331,11 +333,28 @@ describe("the consultant's release capabilities (matrix v12)", () => {
     assert.equal(SELF_APPROVAL_CAPABILITY, "report.publish");
     assert.deepEqual([...separationOfDutiesCapabilities], ["snapshot.review", "report.publish"], "both are separation-of-duties capabilities: holding them is not an exemption");
   });
-  it("the version is 12 and the consultant's full capability set is pinned", () => {
-    assert.equal(PERMISSION_MATRIX_VERSION, 12);
+  it("the version is 13 and the consultant's full capability set is pinned", () => {
+    assert.equal(PERMISSION_MATRIX_VERSION, 13);
     assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.consultant).sort(), [
       "audit.view", "baseline.rebaseline", "category.visibility", "clientfactor.manage", "client.create", "client.edit", "client.view", "contact.manage", "finance.view",
       "job.manage", "knowledge.approve", "knowledge.capture", "portal.admin", "report.edit", "report.publish", "report.view", "scoperow.edit", "site.manage", "snapshot.review",
-      "srs.manage", "strategy.manage", "support.portal_impersonate", "target.edit", "time.log", "time.view", "training.entitlement.manage", "training.manage"].sort());
+      "srs.manage", "strategy.manage", "support.portal_impersonate", "target.edit", "task.manage", "time.log", "time.view", "training.entitlement.manage", "training.manage"].sort());
+  });
+});
+
+describe("matrix v13: CRM tasks (BRIEF-crm-control-room-p3-tasks)", () => {
+  it("task.manage is held at 'all' by every role that does work, and not by the Viewer", () => {
+    for (const role of ["admin", "consultant", "reviewer", "finance"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["task.manage"], "all", role);
+    assert.equal(ROLE_CAPABILITY_MATRIX.viewer["task.manage"], undefined);
+  });
+  it("unlocks exactly the four task commands, and they are staff commands", () => {
+    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "task.manage").map((definition) => definition.key).sort(), ["task.complete", "task.create", "task.reopen", "task.update"]);
+    for (const key of ["task.create", "task.update", "task.complete", "task.reopen"] as const) assert.notEqual((commandDefinitions[key] as { principal?: string }).principal, "portal", key);
+  });
+  it("v13 adds task.manage and changes nothing else from v12", () => {
+    const rows = (sql: string, version: number) => [...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`).sort();
+    const added = rows(matrixMigrationV13, 13).filter((row) => !rows(matrixMigrationV12, 12).includes(row));
+    assert.deepEqual(added, ["admin task.manage all", "consultant task.manage all", "finance task.manage all", "reviewer task.manage all"]);
+    assert.deepEqual(rows(matrixMigrationV12, 12).filter((row) => !rows(matrixMigrationV13, 13).includes(row)), [], "nothing is taken away");
   });
 });
