@@ -4,7 +4,7 @@ import { useRef, useState, type KeyboardEvent, type MutableRefObject } from "rea
 import { GatedButton, InfoTip, SmartSearch } from "@nzi/ui";
 import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  PRIORITIES, SRS_ASSESSMENT_NOTES_MAX, isPriority, priorityLabels, srsBridgedBy, strategyStatusLabels,
+  PRIORITIES, SRS_ASSESSMENT_NOTES_MAX, isPriority, priorityLabels, srsBridgedBy, srsRequirementCode, strategyStatusLabels,
   type ClientContactReadModel, type ClientStrategy, type Priority, type SrsAssessment, type SrsAssessmentItem, type SrsFramework, type SrsMaturity,
 } from "@nzi/contracts";
 import { formatDate } from "../../lib/formatDate";
@@ -96,6 +96,9 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, contac
   const draft = drafts[requirement.id]!;
   const item = items.get(requirement.id) ?? null;
   const targetLabel = framework.maturityLevels.find((level) => level.level === requirement.targetMaturity)?.label ?? "";
+  // The framework is named in the header; the question then carries its bare pillar code.
+  const frameworkLabel = framework.standards.find((standard) => standard.key === requirement.standardKey)?.label ?? requirement.standardKey;
+  const code = srsRequirementCode(requirement.code);
   const belowTarget = draft.maturity === null ? requirement.targetMaturity > 0 : draft.maturity < requirement.targetMaturity;
   const bridged = srsBridgedBy(requirement.id, plan, item?.linkedActionId ?? null);
   const set = (patch: Partial<Draft>) => setDrafts((now) => ({ ...now, [requirement.id]: { ...now[requirement.id]!, ...patch } }));
@@ -211,7 +214,7 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, contac
 
   return <div className="nz-srs-wizard-body" onKeyDown={onKeyDown}>
     <div className="nz-dh">
-      <div className="k">{divider ? "Next section" : `${pillar.label} · ${requirement.standardKey}`}</div>
+      <div className="k">{divider ? "Next section" : `${frameworkLabel} · ${pillar.label}`}</div>
       <h3>{divider ? pillar.label : requirement.title}</h3>
       <div className="m">
         <b>{index + 1} of {steps.length}</b> · {addressed} addressed
@@ -235,7 +238,7 @@ export function SrsWizard({ framework, assessment, startAt, access, plan, contac
         </div>
         : <>
           <p className="nz-hint" style={{ marginTop: 0 }}>
-            {requirement.code}{requirement.helpText ? <InfoTip label={`About ${requirement.code}`}>{requirement.helpText}</InfoTip> : null}
+            {code}{requirement.helpText ? <InfoTip label={`About ${code}`}>{requirement.helpText}</InfoTip> : null}
             {" · "}SRS expects <b>{targetLabel}</b> here.
           </p>
           {requirement.source === "nzi-data" ? <div className="nz-banner ok" role="status" style={{ marginBottom: 10 }}>

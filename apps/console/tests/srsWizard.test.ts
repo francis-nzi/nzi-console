@@ -98,9 +98,10 @@ describe("the Path-to-SRS-ready order", () => {
 });
 
 describe("the wizard screen", () => {
-  it("shows one question at a time, with its pillar and standard, progress, and a jump-to-section menu of the pillars", () => {
+  it("shows one question at a time, with its framework and pillar, progress, and a jump-to-section menu of the pillars", () => {
     const html = render(assessment([item("g1", 2), item("g2", 2)]));
-    assert.match(html, /Strategy · S2/, "opens on the first unaddressed question — s1, under Strategy");
+    assert.match(html, /<div class="k">UK SRS S2 · Strategy<\/div>/, "opens on the first unaddressed question — s1, under Strategy, its framework named");
+    assert.match(html, /<p class="nz-hint"[^>]*>Str1<span/, "the bare code, with Strategy never a lone S");
     assert.match(html, /<h3>Requirement s1<\/h3>/);
     assert.equal((html.match(/<h3>/g) ?? []).length, 1, "one question on screen");
     assert.doesNotMatch(html, /Requirement s2|Requirement g1|Requirement m1/);

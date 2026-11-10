@@ -54,7 +54,7 @@ export function SrsFrameworkBoard({ versions, active, draft, editing }: {
   const columns: DataListColumn<SrsRequirement>[] = [
     { key: "code", header: "Code", sortKey: "code", cell: (row) => <span className="nz-a-mono">{row.code}</span> },
     { key: "title", header: "Requirement", cell: (row) => <button type="button" className="nz-a-linkish" onClick={() => setOpen({ requirement: row })}>{row.title}</button> },
-    { key: "pillar", header: "Standard · pillar", cell: (row) => `${row.standardKey} · ${label(row.pillarKey, shown?.pillars ?? [])}` },
+    { key: "pillar", header: "Framework · pillar", cell: (row) => `${label(row.standardKey, shown?.standards ?? [])} · ${label(row.pillarKey, shown?.pillars ?? [])}` },
     { key: "weight", header: "Weight", sortKey: "weight", numeric: true, cell: (row) => <span className="nz-a-mono">{row.weight}</span> },
     { key: "target", header: "Target", cell: (row) => `${row.targetMaturity} · ${shown?.maturityLevels.find((level) => level.level === row.targetMaturity)?.label ?? ""}` },
     { key: "source", header: "Answered from", cell: (row) => row.source === "nzi-data" ? "NZI data" : "Consultant" },
@@ -66,7 +66,7 @@ export function SrsFrameworkBoard({ versions, active, draft, editing }: {
       <div>
         <div className="nz-a-eyebrow">Disclosure</div>
         <h1>SRS framework</h1>
-        <p>The UK SRS standards, pillars, requirements, weights and the five-step maturity ladder every readiness assessment is made against. Versioned: a change is a new version, published to supersede the one before, and an assessment always keeps the version it was made against.</p>
+        <p>The UK SRS frameworks (S2 Climate and S1 General), their pillars, requirements, weights and the five-step maturity ladder every readiness assessment is made against. Versioned: a change is a new version, published to supersede the one before, and an assessment always keeps the version it was made against.</p>
       </div>
       <div className="nz-a-head-actions">
         <CapabilityChip capability="admin.lookups" />
@@ -156,7 +156,7 @@ function RequirementDrawer({ framework, requirement, editable, onClose, onSaved 
     </>}>
     {problem ? <div className="nz-a-error" role="alert">{problem}</div> : null}
     <FieldRow>
-      <SelectField label="Standard" value={draft.standardKey} options={framework.standards.map((standard) => ({ value: standard.key, label: standard.label }))}
+      <SelectField label="Framework" value={draft.standardKey} options={framework.standards.map((standard) => ({ value: standard.key, label: standard.label }))}
         disabled={readOnly || !isNew} error={issues.standardKey} onChange={(standardKey) => setDraft({ ...draft, standardKey })} />
       <SelectField label="Pillar" value={draft.pillarKey} options={framework.pillars.map((pillar) => ({ value: pillar.key, label: pillar.label }))}
         disabled={readOnly || !isNew} error={issues.pillarKey} onChange={(pillarKey) => setDraft({ ...draft, pillarKey })} />

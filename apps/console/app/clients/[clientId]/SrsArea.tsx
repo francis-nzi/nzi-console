@@ -5,7 +5,7 @@ import { patchBrowserCommand, postBrowserCommand } from "@nzi/api-client";
 import { SrsDial, SrsMeter, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
 import { Collapsible, Drawer, GatedButton, InfoTip } from "@nzi/ui";
 import {
-  comparePriority, gaps as resolveGaps, priorityLabels, srsAutoReason, srsBridgedBy, srsDashboard, strategiesBySrsRequirement, strategyStatusLabels,
+  comparePriority, gaps as resolveGaps, priorityLabels, srsAutoReason, srsBridgedBy, srsByFramework, srsDashboard, srsRequirementCode, strategiesBySrsRequirement, strategyStatusLabels,
   type ClientStrategy, type SrsAssessment, type SrsDashboardModel, type SrsFramework, type SrsGapSuggestion,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
@@ -71,7 +71,7 @@ export function SrsArea({ workspace, access, onDrawer, onSaved }: {
   if (!framework) {
     return <section className="nz-panel">
       <div className="nz-cw-vhead"><h2>UK SRS Readiness</h2></div>
-      <Empty text="No SRS framework is published for this organisation, so there is nothing to assess against. An administrator publishes the framework — standards, pillars, requirements, weights and the maturity ladder — and it is versioned from then on." />
+      <Empty text="No SRS framework is published for this organisation, so there is nothing to assess against. An administrator publishes the framework — UK SRS S2 Climate and S1 General, with their pillars, requirements, weights and the maturity ladder — and it is versioned from then on." />
     </section>;
   }
   if (!current) return <SrsEmpty framework={framework} clientId={workspace.client.id} access={access} onSaved={onSaved} onStarted={() => setOpenOnArrival(true)} />;
@@ -159,7 +159,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   const { client } = workspace;
   // SRS messaging (Phase B): the client's conversation about readiness, with the conversations.
   const conversation = portalFeatureEnabled("portal-conversations") ? workspace.srs.thread ?? null : null;
-  // The filter row (R10): which standard, which assessment. The one in progress (or the latest) leads.
+  // The filter row (R10): which framework, which assessment. The one in progress (or the latest) leads.
   const [standardKey, setStandardKey] = useState<string | null>(null);
   const [assessmentId, setAssessmentId] = useState(current.assessmentId);
   const [dialsAs, setDialsAs] = useState<"dials" | "meters">("dials");
@@ -192,7 +192,8 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
   }
   const currentCompletion = useMemo(() => srsDashboard(framework, current, assessments).assessment, [framework, current, assessments]);
   const tableRows = model.pillars.map((pillar) => ({ label: pillar.label, level: pillar.level, stepName: pillar.stepName, target: pillar.targetLevel, delta: pillar.delta }));
-  const standardLabel = standardKey ? model.standards.find((standard) => standard.key === standardKey)?.label ?? standardKey : "S1 and S2";
+  const standardLabel = standardKey ? model.standards.find((standard) => standard.key === standardKey)?.label ?? standardKey : "both frameworks";
+  const frameworkLabels = new Map(model.standards.map((standard) => [standard.key, standard.label]));
 
   return <>
     <div className="nz-cw-vhead"><div><h2>UK SRS Readiness</h2></div>
@@ -233,10 +234,10 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
     {/* SRS messaging (Phase B): a review the client asked for, surfaced beside Reopen / Reassess. */}
     {conversation ? <SrsReviewRequestBanner thread={conversation} /> : null}
 
-    {/* The filter row (R10): which standard, which assessment — one row, above every graphic. */}
+    {/* The filter row (R10): which framework, which assessment — one row, above every graphic. */}
     <div className="nz-srs-filters" role="group" aria-label="Readiness filters">
-      <label>Standard <select className="nz-sel" value={standardKey ?? ""} onChange={(event) => setStandardKey(event.target.value || null)}>
-        <option value="">Both — S2 climate-led, S1 general</option>
+      <label>Framework <select className="nz-sel" value={standardKey ?? ""} onChange={(event) => setStandardKey(event.target.value || null)}>
+        <option value="">Both frameworks — S2 climate-led, S1 general</option>
         {model.standards.map((standard) => <option key={standard.key} value={standard.key}>{standard.label}</option>)}
       </select></label>
       <label>Assessment <select className="nz-sel" value={assessmentId} onChange={(event) => setAssessmentId(event.target.value)}>
@@ -351,7 +352,7 @@ function SrsDashboard({ workspace, framework, current, assessments, access, onDr
                 <span className="dot" aria-hidden="true" />
                 <div>
                   <div className="nm">{gap.requirement.title}</div>
-                  <div className="sub">{framework.pillars.find((pillar) => pillar.key === gap.requirement.pillarKey)?.label} · {gap.requirement.standardKey}
+                  <div className="sub">{framework.pillars.find((pillar) => pillar.key === gap.requirement.pillarKey)?.label} · {frameworkLabels.get(gap.requirement.standardKey) ?? gap.requirement.standardKey}
                     {gap.owner ? ` · owner ${gap.owner}` : ""}
                     {gapPriority.get(gap.requirement.id) ? ` · ${priorityLabels[gapPriority.get(gap.requirement.id)!]} priority` : ""}</div>
                   <AlignedStrategies strategies={strategiesByRequirement.get(gap.requirement.id) ?? []} />
@@ -385,7 +386,7 @@ function MetricsReadThrough({ model, framework }: { model: SrsDashboardModel; fr
       {fromData.length === 0
         ? <p className="sub" style={{ margin: "6px 0" }}>Nothing in this assessment was answered from the client&apos;s verified record — no verified emissions, targets or intensity metrics were held when it was started, so the consultant answered every requirement.</p>
         : fromData.map((requirement) => <div className="nz-kv" key={requirement.id}>
-          <span className="k"><b>{requirement.code}</b> {requirement.title}</span>
+          <span className="k"><b>{srsRequirementCode(requirement.code)}</b> {requirement.title}</span>
           <span className="v"><span className="nz-srs-chip" data-step={requirement.maturity ?? 0}>{requirement.maturity ?? "–"}</span> {requirement.stepName ?? "—"}
             <span className="muted"> · {srsAutoReason(sourceKeys.get(requirement.id) ?? null, requirement.evidence?.note ?? "") || requirement.evidence?.ref || "NZI record"}</span></span>
         </div>)}
@@ -447,14 +448,16 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, onWizard,
         <div className="nz-srs-tablewrap">
           <table className="nz-tbl nz-srs-register">
             <thead><tr>{header("code", "Requirement")}{header("maturity", "Maturity")}<th scope="col">Target</th><th scope="col">Evidence</th>{header("priority", "Priority")}<th scope="col">Owner</th>{header("due", "Due")}{header("gap", "Gap → action")}<th /></tr></thead>
-            <tbody>
-              {rows.map((requirement) => {
+            {/* The framework is named once, as its group's header; each row then carries the bare pillar code. */}
+            {srsByFramework(rows, (requirement) => requirement.standardKey, model.standards).map((group) => <tbody key={group.key ?? "other"}>
+              {group.label ? <tr><th scope="colgroup" colSpan={9}><span className="nz-eyebrow">{group.label}</span></th></tr> : null}
+              {group.rows.map((requirement) => {
                 const bridged = srsBridgedBy(requirement.id, plan, requirement.linkedActionId ?? null);
                 const aligned = (strategiesByRequirement.get(requirement.id) ?? []).filter((strategy) => !bridged.some((action) => action.id === strategy.id));
                 const ideas = suggestions.filter((idea) => idea.assessmentId === assessment.assessmentId && idea.requirementId === requirement.id).length;
                 return <tr key={requirement.id}>
-                  <td><b>{requirement.title}</b>{requirement.helpText ? <InfoTip label={`About ${requirement.code}`}>{requirement.helpText}</InfoTip> : null}
-                    <div className="muted">{requirement.code} · {requirement.standardKey}{requirement.source === "auto" ? " · from NZI data" : ""}</div></td>
+                  <td><b>{requirement.title}</b>{requirement.helpText ? <InfoTip label={`About ${srsRequirementCode(requirement.code)}`}>{requirement.helpText}</InfoTip> : null}
+                    <div className="muted">{srsRequirementCode(requirement.code)}{requirement.source === "auto" ? " · from NZI data" : ""}</div></td>
                   <td>{requirement.maturity === null ? <span className="muted">Not answered</span>
                     : <><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}{model.assessment.provisional ? <span className="muted"> · provisional</span> : null}</>}</td>
                   <td className="num">{requirement.target}</td>
@@ -483,7 +486,7 @@ function SrsRegister({ model, assessment, framework, access, onDrawer, onWizard,
                   </td>
                 </tr>;
               })}
-            </tbody>
+            </tbody>)}
           </table>
         </div>
       </Collapsible>)}
