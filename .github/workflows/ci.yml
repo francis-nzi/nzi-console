@@ -646,6 +646,11 @@ jobs:
       # Jobs and Clients lists' crm filter lands on exactly that CRM's work; never another organisation's.
       - name: The personalised Control Room — the CRM's own counts, recent jobs and filtered lists
         run: npx tsx --test packages/isolated-backend/tests/crmControlRoomReal.test.ts
+      # 0223 + 0224 (matrix v13) — CRM tasks: created, rescheduled, reassigned, completed and reopened, each versioned and audited
+      # by the task's id; only the assignee or creator may change one (Admin, another organisation and a portal user refused);
+      # never deleted; the Control Room reads only the CRM's own open tasks into the Red box (tier 3) and the deadlines.
+      - name: CRM tasks — the governed commands, own-task access, and the Control Room's task rows
+        run: npx tsx --test packages/isolated-backend/tests/crmTasksReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

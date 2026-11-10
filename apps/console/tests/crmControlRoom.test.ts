@@ -3,7 +3,10 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 import { clientListSpec, jobListSpec, listQueryToSearchParams, parseListQuery, screenContracts } from "@nzi/contracts";
 import type { CrmRedBoxRow } from "@nzi/isolated-backend";
-import { deadlineHref, redBoxLink, threadPaths } from "../app/lib/crmControlRoomLinks";
+import { readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { deadlineHref, redBoxLink, taskFilterOf, taskPath, tasksFor, TASKS_PATH, threadPaths } from "../app/lib/crmControlRoomLinks";
 
 // The personalised Control Room, Phase 1 (BRIEF-crm-control-room-redesign): My work by default, Firm-wide as it was, and the
 // filtered lists it links to. The reads themselves are proven against a real database (crmControlRoomReal.test.ts).
@@ -58,7 +61,7 @@ describe("the personalised Control Room (Phase 1)", () => {
     for (const label of ["My live jobs", "Awaiting client", "To validate / issue", "Unread messages", "Reviews due"]) assert.ok(page.includes(`label="${label}"`), label);
     assert.match(page, /data-crm-control-room="failed"/);
     assert.match(page, /data-crm-control-room="no-crm"/);
-    assert.match(page, /const NO_CRM:CrmControlRoomView=\{userId:null,cards:null,recentJobs:\[\],redBox:\[\],threads:\[\],deadlines:\[\],pulse:null\}/);
+    assert.match(page, /const NO_CRM:CrmControlRoomView=\{userId:null,cards:null,recentJobs:\[\],redBox:\[\],threads:\[\],deadlines:\[\],pulse:null,tasks:\[\],taskOptions:null\}/);
     assert.equal(screenContracts.crmControlRoom.validate(NO_CRM_SHAPE), true);
     assert.equal(screenContracts.crmControlRoom.validate({ cards: {} }), false, "a body without the recent list is refused, not shown as empty");
     assert.equal(screenContracts.crmControlRoom.isEmpty(NO_CRM_SHAPE), false);
@@ -67,7 +70,7 @@ describe("the personalised Control Room (Phase 1)", () => {
 
 describe("the personalised Control Room (Phase 2): the Red box, Messages and the thread drawer", () => {
   const drawer = read("../app/CrmThreadDrawer.tsx");
-  const row = (fields: Partial<CrmRedBoxRow>) => ({ kind: "unread", threadId: null, clientId: "c 1", jobId: null, ...fields }) as CrmRedBoxRow;
+  const row = (fields: Partial<CrmRedBoxRow>) => ({ kind: "unread", threadId: null, clientId: "c 1", jobId: null, taskId: null, ...fields }) as CrmRedBoxRow;
 
   it("the Needs me now card is the Red box's row count, and the box sits beside the jobs list", () => {
     assert.match(page, /<Metric label="Needs me now" value=\{String\(crm\.cards\.needsMeNow\)\} note="See the Red box"/);
@@ -85,9 +88,9 @@ describe("the personalised Control Room (Phase 2): the Red box, Messages and the
     assert.deepEqual(redBoxLink(row({ kind: "srs-review-overdue" })), { href: "/clients/c%201?area=srs", go: "Review" });
     assert.deepEqual(redBoxLink(row({ kind: "srs-review-today" })), { href: "/clients/c%201?area=srs", go: "Review" });
     assert.match(page, /href=\{link\.href\} scroll=\{false\} key=\{row\.subject\} data-red-box-row=\{row\.subject\}/);
-    assert.equal(deadlineHref({ kind: "srs-review", clientId: "c1", jobId: null }), "/clients/c1?area=srs");
-    assert.equal(deadlineHref({ kind: "action-due", clientId: "c1", jobId: null }), "/clients/c1?area=strategies");
-    assert.equal(deadlineHref({ kind: "window-closes", clientId: "c1", jobId: "j1" }), "/jobs/j1");
+    assert.equal(deadlineHref({ kind: "srs-review", clientId: "c1", jobId: null, taskId: null }), "/clients/c1?area=srs");
+    assert.equal(deadlineHref({ kind: "action-due", clientId: "c1", jobId: null, taskId: null }), "/clients/c1?area=strategies");
+    assert.equal(deadlineHref({ kind: "window-closes", clientId: "c1", jobId: "j1", taskId: null }), "/jobs/j1");
   });
 
   it("a message opens its own thread in the drawer, and only one of the CRM's", () => {
@@ -122,4 +125,60 @@ describe("the personalised Control Room (Phase 2): the Red box, Messages and the
   });
 });
 
-const NO_CRM_SHAPE = { userId: null, cards: null, recentJobs: [], redBox: [], threads: [], deadlines: [], pulse: null };
+const NO_CRM_SHAPE = { userId: null, cards: null, recentJobs: [], redBox: [], threads: [], deadlines: [], pulse: null, tasks: [], taskOptions: null };
+
+describe("the personalised Control Room (Phase 3): My tasks and the task drawer", () => {
+  const tasks = read("../app/CrmTasks.tsx");
+  const due = (dueDate: string | null) => ({ dueDate });
+
+  it("My tasks sits under Messages; the filters bucket by due date — today (and overdue), the week, all", () => {
+    assert.match(page, /<MessagesPanel threads=\{crm\.threads\} now=\{now\} day=\{day\}\/><TasksPanel tasks=\{crm\.tasks\} filter=\{taskFilter\} day=\{day\} jobs=\{crm\.taskOptions\.jobs\}\/>/);
+    assert.match(page, /taskFilter=\{taskFilterOf\(params\.tasks\)\}/);
+    const list = [due("2026-11-01"), due("2026-11-10"), due("2026-11-16"), due("2026-11-17"), due(null)];
+    assert.deepEqual(tasksFor(list, "today", "2026-11-10"), [list[0], list[1]], "today includes the overdue");
+    assert.deepEqual(tasksFor(list, "week", "2026-11-10"), [list[0], list[1], list[2]], "the week is today and the six days after");
+    assert.deepEqual(tasksFor(list, "all", "2026-11-10"), list, "all is every open task, undated included");
+    assert.deepEqual(tasksFor([due("2026-12-31"), due("2027-01-01")], "week", "2026-12-28").length, 2, "the week crosses the year");
+    assert.deepEqual([taskFilterOf("today"), taskFilterOf("week"), taskFilterOf("all"), taskFilterOf("nonsense"), taskFilterOf(undefined)], ["today", "week", "all", "all", "all"]);
+  });
+
+  it("quick-add creates a task for the caller through task.create — a title, and a due date or job when given", () => {
+    assert.equal(TASKS_PATH, "/api/isolated/tasks");
+    assert.match(tasks, /send\("POST", TASKS_PATH, \{ title: form\.title\.trim\(\), dueDate: form\.dueDate \|\| null, jobId: form\.jobId \|\| null \}\)/);
+    assert.doesNotMatch(tasks.slice(tasks.indexOf("export function TaskQuickAdd"), tasks.indexOf("export function CrmTaskDrawer")), /assignedUserId/, "no assignee: the command gives it to its creator");
+    assert.match(read("../app/api/isolated/tasks/route.ts"), /requireCommandPrincipal\(request, "task\.create"\)/);
+  });
+
+  it("a task opens in the drawer only if it is one of the CRM's open tasks, and every change goes to that task, versioned", () => {
+    assert.match(page, /<CrmTaskDrawer key=\{openTask\} task=\{crm\.tasks\.find\(task=>task\.taskId===openTask\)\?\?null\} staff=\{crm\.taskOptions\.staff\}\/>/);
+    assert.match(tasks, /\{!task \? <p className="sub" role="status">This task is not one of your open tasks, so it is not opened here\./);
+    assert.match(tasks, /send\("PATCH", taskPath\(task\.taskId\), changes\)/);
+    assert.match(tasks, /send\("POST", taskPath\(task\.taskId, "complete"\), \{ expectedVersion: state\.version \}\)/);
+    assert.match(tasks, /send\("POST", taskPath\(task\.taskId, "reopen"\), \{ expectedVersion: state\.version \}\)/);
+    assert.match(tasks, /const changes: Record<string, unknown> = \{ expectedVersion: state\.version \};/);
+    assert.equal(taskPath("t/1"), "/api/isolated/tasks/t%2F1");
+    assert.equal(taskPath("t1", "complete"), "/api/isolated/tasks/t1/complete");
+    for (const [file, key] of [["[taskId]/route.ts", "task.update"], ["[taskId]/complete/route.ts", "task.complete"], ["[taskId]/reopen/route.ts", "task.reopen"]] as const) {
+      assert.match(read(`../app/api/isolated/tasks/${file}`), new RegExp(`requireCommandPrincipal\\(request, "${key.replace(".", "\\.")}"\\)`), file);
+    }
+  });
+
+  it("a task's Red box row and deadline open the task drawer", () => {
+    assert.deepEqual(redBoxLink({ kind: "task-due", taskId: "k 1", jobId: "j1", threadId: null, clientId: "c1" }), { href: "/?task=k%201", go: "Do" });
+    assert.equal(deadlineHref({ kind: "task-due", clientId: null, jobId: null, taskId: "k1" }), "/?task=k1");
+  });
+
+  it("tasks are staff-only: no portal route reaches a task command or the task module", () => {
+    const portalApi = fileURLToPath(new URL("../app/api/portal", import.meta.url));
+    const files = (dir: string): string[] => readdirSync(dir).flatMap((name) => { const full = join(dir, name); return statSync(full).isDirectory() ? files(full) : [full]; });
+    for (const file of files(portalApi)) {
+      const source = readFileSync(file, "utf8");
+      assert.doesNotMatch(source, /createTask|updateTask|completeTask|reopenTask|"task\.(create|update|complete|reopen)"|crm_tasks|\/api\/isolated\/tasks/, file);
+    }
+    assert.ok(!files(portalApi).some((file) => /[\\/]tasks[\\/]/.test(file)), "no portal tasks route");
+  });
+
+  it("the contract refuses a body without the tasks", () => {
+    assert.equal(screenContracts.crmControlRoom.validate({ ...NO_CRM_SHAPE, tasks: undefined }), false);
+  });
+});

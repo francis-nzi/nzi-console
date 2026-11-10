@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { after, before, describe, it } from "node:test";
-import { commandGrantForRole, type CommandContext, type StaffRole } from "@nzi/contracts";
+import { commandGrantForRole, PERMISSION_MATRIX_VERSION, type CommandContext, type StaffRole } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { approveReviewedCrpSnapshot, validateCrpReport } from "../src/postgresCommands";
 import { approveReportAsClient, finalApproveReport, sendReportToClientReview } from "../src/reportReviewLoop";
@@ -84,7 +84,8 @@ describe("a consultant CRM approves and releases a report, under the independent
     const rows = await q(`SELECT capability, scope FROM nzi_console.staff_role_capabilities WHERE role_id = 'consultant' AND capability IN ('snapshot.review', 'report.publish')
       AND matrix_version = (SELECT max(matrix_version) FROM nzi_console.staff_capability_matrix_versions) ORDER BY capability`);
     assert.deepEqual(rows, [{ capability: "report.publish", scope: "all" }, { capability: "snapshot.review", scope: "all" }]);
-    assert.equal(Number((await q(`SELECT max(matrix_version)::int AS v FROM nzi_console.staff_capability_matrix_versions`))[0].v), 12);
+    // The version the code is on (v12 when this was written; v13 added task.manage and left these two alone).
+    assert.equal(Number((await q(`SELECT max(matrix_version)::int AS v FROM nzi_console.staff_capability_matrix_versions`))[0].v), PERMISSION_MATRIX_VERSION);
   });
 
   it("ON (the default): a consultant releases a report from another consultant's work - approve, validate, send, final-approve - but not from their own", async () => {
