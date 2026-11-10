@@ -2578,3 +2578,11 @@ details.nz-job-report-link{white-space:normal}
 .nz-drawer-scrim{position:fixed;inset:0;z-index:39;background:rgba(11,27,43,.28)}
 /* The docked evidence panel's own ×, with room so the title does not run under it. */
 .nz-dh.has-close{padding-right:48px}
+/* The personalised Control Room: the My work / Firm-wide switch (the existing segmented control, as links) and five quiet cards. */
+.nz-crm-view{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:10px}
+.nz-crm-view .nz-seg{width:auto;margin:0}
+.nz-seg a{padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--t3);text-decoration:none}
+.nz-seg a[aria-current="page"]{background:var(--card);color:var(--t1);box-shadow:0 1px 3px rgba(11,27,43,.12)}
+.nz-metrics.nz-crm-cards{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:1200px){.nz-metrics.nz-crm-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:680px){.nz-metrics.nz-crm-cards{grid-template-columns:1fr 1fr}}

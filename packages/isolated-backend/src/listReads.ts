@@ -1,5 +1,6 @@
 import { clientListSpec, dateOnlyOrNull, JOB_STATUS_ALL, jobListSpec, RISK_LEVELS, type ClientListFilterKey, type ClientListQuery, type JobListFilterKey, type JobListQuery, type ListPage, type RiskLevel } from "@nzi/contracts";
 import type { Queryable } from "./postgres";
+import { CLIENT_CRM_SQL, JOB_CRM_SQL } from "./crmRouting";
 import { defineListSql, readListPage } from "./listPage";
 import { clientRiskRankSql, jobRiskRankSql, riskLabelSql } from "./milestoneRisk";
 import type { ClientStatus, JobFamily, JobScreenReadModel } from "./readModels";
@@ -53,6 +54,7 @@ const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilter
       coalesce(${clean("ow.display_name")}, ${clean("c.owner_name")}) AS owner,
       ${clean("c.portfolio")} AS portfolio,
       coalesce(${clean("mg.display_name")}, ${clean("c.client_manager")}) AS manager,
+      ${CLIENT_CRM_SQL} AS crm_user_id,
       c.location, c.member_since, c.latest_footprint_tco2e AS latest_emissions, c.yoy_percent, c.completeness_percent AS completeness,
       c.next_report_due_label,
       (SELECT count(*) FROM nzi_console.jobs j WHERE (j.organisation_id, j.client_id) = (c.organisation_id, c.client_id)
@@ -71,6 +73,8 @@ const clientSql = defineListSql<ClientListQuery["sort"]["key"], ClientListFilter
     portfolio: { kind: "equals", column: "portfolio", facet: { noneLabel: "Unassigned" } },
     manager: { kind: "equals", column: "manager", facet: { noneLabel: "Unassigned" } },
     risk: riskFilter,
+    // "My clients" from the Control Room: a user id, routed as crmControlRoom.ts routes it. Not a facet — never a control.
+    crm: { kind: "equals", column: "crm_user_id" },
   },
   sort: {
     risk: { column: "risk_order" },
@@ -129,7 +133,8 @@ const jobSql = defineListSql<JobListQuery["sort"]["key"], JobListFilterKey>({
       j.client_id, c.name AS client, j.title, j.status::text AS status, j.workflow_stage, j.due_date, j.progress_percent,
       $1::date AS operating_day,
       /* Ruled D3: the job's manager, then the job's owner, then the client's manager. */
-      coalesce(${clean("jm.display_name")}, ${clean("j.owner_name")}, ${clean("cm.display_name")}, ${clean("c.client_manager")}) AS manager
+      coalesce(${clean("jm.display_name")}, ${clean("j.owner_name")}, ${clean("cm.display_name")}, ${clean("c.client_manager")}) AS manager,
+      ${JOB_CRM_SQL} AS crm_user_id
     FROM nzi_console.jobs j
     JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
     LEFT JOIN nzi_console.memberships jm ON (jm.organisation_id, jm.user_id) = (j.organisation_id, j.client_manager_user_id)
@@ -144,6 +149,8 @@ const jobSql = defineListSql<JobListQuery["sort"]["key"], JobListFilterKey>({
     risk: riskFilter,
     dueFrom: { kind: "onOrAfter", column: "due_date" },
     dueTo: { kind: "onOrBefore", column: "due_date" },
+    // "My jobs" from the Control Room — see the Clients list's `crm`.
+    crm: { kind: "equals", column: "crm_user_id" },
   },
   sort: {
     number: { column: "sequence" }, client: { column: "client", text: true }, title: { column: "title", text: true },

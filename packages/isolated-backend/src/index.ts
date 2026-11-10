@@ -53,6 +53,7 @@ export * from "./readModels";
 export * from "./reportStatusRegister";
 export * from "./clientHistory";
 export * from "./listReads";
+export * from "./crmControlRoom";
 export * from "./adminOverview";
 export * from "./referenceEngine";
 export * from "./timeEntries";

@@ -63,6 +63,10 @@ export function useStaffMe(enabled = true): StaffMe | "signed-out" | null | unde
   return me;
 }
 
+/** Whether `userId` is the signed-in staff member — "Your jobs" rather than someone else's. False while the check is in flight. */
+export const isSignedIn = (me: StaffMe | "signed-out" | null | undefined, userId: string | null): boolean =>
+  typeof me === "object" && me !== null && userId !== null && me.userId === userId;
+
 export function useEditAccess(capability: Capability, writeEnabled: boolean, clientOwnerUserId?: string | null): EditAccess {
   const me = useStaffMe(writeEnabled);
   if (!writeEnabled) return { state: "unavailable", reason: "Editing is switched off in this environment." };

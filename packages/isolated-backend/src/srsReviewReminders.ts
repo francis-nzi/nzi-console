@@ -37,7 +37,7 @@ const refuse = (field: string, code: string, message: string) => new CommandVali
 const iso = (value: Date | string) => value instanceof Date ? value.toISOString() : String(value);
 
 /** The latest assessment of a client, as the read model and reopen order them. */
-const LATEST_ASSESSMENT_SQL = (alias: string) => `(SELECT x.assessment_id FROM nzi_console.srs_assessments x
+export const LATEST_ASSESSMENT_SQL = (alias: string) => `(SELECT x.assessment_id FROM nzi_console.srs_assessments x
    WHERE x.organisation_id = ${alias}.organisation_id AND x.client_id = ${alias}.client_id
    ORDER BY coalesce(x.assessed_on, x.started_on) DESC, x.assessment_id DESC LIMIT 1)`;
 

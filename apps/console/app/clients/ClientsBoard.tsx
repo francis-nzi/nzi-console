@@ -10,6 +10,7 @@ import type { ClientListPage, ClientListRow } from "@nzi/isolated-backend";
 import { StaffRail } from "../lib/StaffRail";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { useListNavigation } from "../lib/useListNavigation";
+import { isSignedIn, useStaffMe } from "../lib/useEditAccess";
 
 function Completeness({ pct }: { pct: number }) {
   const color = pct >= 85 ? "var(--emerald)" : pct >= 50 ? "var(--amber)" : "var(--coral)";
@@ -96,6 +97,7 @@ const statusLabel = (value: string) => clientStatusMeta[value as keyof typeof cl
 export function ClientsBoard({ page, query }: { page: ClientListPage; query: ClientListQuery }) {
   const router = useRouter();
   const nav = useListNavigation(clientListSpec, query, "/clients");
+  const me = useStaffMe(query.filters.crm !== undefined);
   const [selectedId, setSelectedIdRaw] = useState<string>(page.rows[0]?.id ?? "");
   const [panelOpen, setPanelOpen] = useState(true);
   // A selected row opens its panel; the panel's close (x, Escape) closes it until a row is chosen again.
@@ -108,7 +110,10 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
 
   const selected = page.rows.find((c) => c.id === selectedId) ?? page.rows[0];
   const { summary } = page;
-  const filtered = hasActiveFilters(query);
+  // `?crm=` — "My clients" from the Control Room. Where the page is, like a Jobs list's client scope: Clear filters keeps it.
+  const crm = query.filters.crm?.[0] ?? null;
+  const keep = crm === null ? {} : { crm: [crm] };
+  const filtered = hasActiveFilters({ ...query, filters: { ...query.filters, crm: undefined } });
   const ownershipComplete = summary.withoutOwner === 0;
   const deliveryLinked = summary.deliveryClients > 0 && summary.deliveryWithoutJobs === 0;
   const footprintsRecorded = summary.activeWithoutEmissions === 0;
@@ -155,7 +160,9 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
         <div className="nz-job-titleline">
           <div>
             <div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1>
-            <div className="sub">Relationships, delivery health and reporting readiness across {page.unfilteredTotal.toLocaleString("en-GB")} organisations</div>
+            <div className="sub">{crm !== null
+              ? <>{isSignedIn(me, crm) ? "Your clients" : "One client manager’s clients"} · <Link href="/clients" className="nz-table-link">show every client</Link></>
+              : <>Relationships, delivery health and reporting readiness across {page.unfilteredTotal.toLocaleString("en-GB")} organisations</>}</div>
           </div>
           <Link className="nz-btn pri" href="/clients/new">+ Add client</Link>
         </div>
@@ -186,7 +193,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
           paging={{ page: page.page, pageCount: page.pageCount, pageSize: page.pageSize, pageSizes: PAGE_SIZES, total: page.total }}
           onPage={nav.page}
           onPageSize={nav.pageSize}
-          onClear={filtered ? () => nav.clear() : undefined}
+          onClear={filtered ? () => nav.clear(keep) : undefined}
           noMatches={<><b>No clients match these filters</b><span>Clear the search or a filter to return to the full portfolio.</span></>}
           selectedKey={selected?.id}
           onSelect={(c) => setSelectedId(c.id)}

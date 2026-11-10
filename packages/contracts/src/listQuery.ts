@@ -206,7 +206,8 @@ export const RISK_RANK: Readonly<Record<RiskLevel, number>> = { Overdue: 3, Due:
 export const clientListSpec = defineListSpec({
   sortKeys: ["name", "industry", "status", "owner", "emissions", "completeness", "openJobs", "risk"] as const,
   defaultSort: { key: "name", dir: "asc" },
-  filters: { industry: "value", status: "value", owner: "value", portfolio: "value", manager: "value", risk: "value" },
+  // `crm`: one user id — "My clients" from the Control Room, the clients routed to that CRM.
+  filters: { industry: "value", status: "value", owner: "value", portfolio: "value", manager: "value", risk: "value", crm: "value" },
 });
 export type ClientListSortKey = (typeof clientListSpec.sortKeys)[number];
 export type ClientListFilterKey = keyof typeof clientListSpec.filters;
@@ -220,7 +221,8 @@ export const JOB_STATUS_ALL = "all";
 export const jobListSpec = defineListSpec({
   sortKeys: ["number", "client", "title", "family", "manager", "dueDate", "status", "risk"] as const,
   defaultSort: { key: "number", dir: "desc" },
-  filters: { client: "value", manager: "value", family: "value", status: "value", risk: "value", dueFrom: "date", dueTo: "date" },
+  // `crm`: one user id — "My jobs" from the Control Room, the jobs routed to that CRM.
+  filters: { client: "value", manager: "value", family: "value", status: "value", risk: "value", dueFrom: "date", dueTo: "date", crm: "value" },
 });
 export type JobListSortKey = (typeof jobListSpec.sortKeys)[number];
 export type JobListFilterKey = keyof typeof jobListSpec.filters;

@@ -1,4 +1,4 @@
-export type ScreenKey = "inputSpec" | "control" | "clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "reportCompositionPreview" | "reportDraft" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "clientHistory" | "portalPreview" | "jobMilestones" | "jobSetupOptions" | "srsReport";
+export type ScreenKey = "inputSpec" | "control" | "crmControlRoom" |"clients" | "jobs" | "clientList" | "jobList" | "job" | "scopeRows" | "emissions" | "factorOptions" | "emissionsTarget" | "intensityTarget" | "sites" | "purchasedGoodsCategories" | "reviewedSnapshots" | "charts" | "datasets" | "reports" | "report" | "reportComposition" | "reportCompositionPreview" | "reportDraft" | "lca" | "lcaComponents" | "lcaReport" | "training" | "portal" | "sales" | "platform" | "clientWorkspace" | "clientHistory" | "portalPreview" | "jobMilestones" | "jobSetupOptions" | "srsReport";
 export type ScreenIssue = { code: string; message: string; retryable: boolean; correlationId?: string };
 export type ScreenMeta = { contract: ScreenKey; receivedAt: string; source: "fixture" | "api"; requestId: string };
 export type ScreenResult<T> =
@@ -16,6 +16,8 @@ const listPage = (value: unknown) => rows(value, "rows") && record(value) && typ
 
 export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   control: { key: "control", validate: record, isEmpty: () => false },
+  // The signed-in CRM's own Control Room. Never "empty": a CRM with no work has counts of nought, which are figures to show.
+  crmControlRoom: { key: "crmControlRoom", validate: (value) => rows(value, "recentJobs"), isEmpty: () => false },
   clients: { key: "clients", validate: (value) => rows(value, "clients"), isEmpty: (value) => record(value) && (value.clients as unknown[]).length === 0 },
   jobs: { key: "jobs", validate: (value) => rows(value, "jobs"), isEmpty: (value) => record(value) && (value.jobs as unknown[]).length === 0 },
   // The paged lists (docs/LIST_PARITY_DESIGN.md). Never "empty" here: the board tells "no clients yet"
