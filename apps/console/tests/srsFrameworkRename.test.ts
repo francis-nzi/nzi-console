@@ -60,7 +60,7 @@ describe("Standard reads Framework on every SRS surface", () => {
     assert.match(area, /<label>Framework <select className="nz-sel" value=\{standardKey \?\? ""\}/);
     assert.match(area, /<option value="">Both frameworks — S2 climate-led, S1 general<\/option>/);
     assert.match(admin, /header: "Framework · pillar"/);
-    assert.match(admin, /<SelectField label="Framework" value=\{draft\.standardKey\}/);
+    assert.match(admin, /<SelectField label="Framework" value=\{draft\.frameworkKey\}/);
     for (const [name, source] of [["SrsArea", area], ["SrsAssessmentForms", forms], ["PortalReadiness", portal], ["SrsFrameworkBoard", admin]] as const) {
       assert.doesNotMatch(source, /label="Standard"|>Standard <|"Standard · |S1 and S2"|as the standards move|UK SRS standards/, name);
     }
@@ -94,5 +94,24 @@ describe("the reference fix: the framework once, then the bare code", () => {
   it("keeps the stored code where it is data: the admin code column and the client's proposal note", () => {
     assert.match(admin, /cell: \(row\) => <span className="nz-a-mono">\{row\.code\}<\/span>/);
     assert.match(portal, /\(An idea suggested by AI for \$\{code\}\.\)/);
+  });
+});
+
+describe("the SRS readiness report (PDF) reads the same way (Phase B)", () => {
+  const report = read("app/clients/[clientId]/srs-report/SrsReportDocument.tsx");
+
+  it("draws one heatmap per framework, named once, with bare codes in its cells", () => {
+    assert.match(report, /srsByFramework\(dashboard\.requirements, \(requirement\) => requirement\.standardKey, dashboard\.standards\)\.map\(\(framework\) =>/);
+    assert.match(report, /\{framework\.label \? <h3>\{framework\.label\}<\/h3> : null\}/);
+    assert.match(report, /cells: group\.requirements\.map\(\(requirement\) => \(\{ code: srsRequirementCode\(requirement\.code\)/);
+  });
+
+  it("names the framework once in the metrics table and the roadmap, then the bare code", () => {
+    assert.match(report, /<tr><th scope="colgroup" colSpan=\{3\}>\{framework\.label\}<\/th><\/tr>/);
+    assert.match(report, /<th scope="row">\{srsRequirementCode\(requirement\.code\)\} · \{requirement\.title\}<\/th>/);
+    assert.match(report, /srsByFramework\(pillar\.gaps, \(gap\) => srsCodeFrameworkKey\(gap\.code\), dashboard\.standards\)/);
+    assert.match(report, /\{framework\.label \? <h4>\{framework\.label\}<\/h4> : null\}/, "each pillar's gaps name their framework once");
+    assert.match(report, /<b>\{srsRequirementCode\(gap\.code\)\}<\/b> \{gap\.title\}/);
+    assert.doesNotMatch(report, /\{requirement\.code\} · |<b>\{gap\.code\}<\/b>|code: requirement\.code,/, "no stored code printed as the reference");
   });
 });

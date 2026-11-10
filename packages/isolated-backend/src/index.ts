@@ -131,7 +131,8 @@ export { getJobAnnualMetrics, type JobAnnualMetricsReadModel } from "./intensity
 export { deactivateClientIntensityMetric, denominatorFor, listClientIntensityMetrics, listClientIntensityValues, listJobIntensityValues, setClientIntensityMetric, setJobIntensityValue } from "./intensityMetrics";
 export { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, reopenSrsAssessment, resolveNziFacts, setSrsAssessmentItem, setSrsAssessmentNotes, startSrsAssessment } from "./srsReadiness";
 export {
-  createSrsFrameworkDraft, listSrsFrameworkVersions, publishSrsFramework, updateSrsMaturityLevel, upsertSrsRequirement, type SrsFrameworkVersion,
+  listSrsFrameworkHistory, listSrsFrameworkSnapshots, listSrsFrameworkStates, lockSrsFramework, srsWorkingDefinitionId, unlockSrsFramework, updateSrsMaturityLevel,
+  upsertSrsPillar, upsertSrsRequirement, type SrsFrameworkHistoryEntry, type SrsFrameworkSnapshot, type SrsFrameworkState,
 } from "./srsFramework";
 export { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
 export * from "./clientLogo";

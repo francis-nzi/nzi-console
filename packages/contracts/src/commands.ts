@@ -254,10 +254,11 @@ export type CommandKey =
   | "srs.gap.suggestion.withdraw"
   | "srs.gap.bridge"
   | "srs.report.export"
-  | "srs.framework.draft.create"
+  | "srs.framework.unlock"
+  | "srs.framework.lock"
+  | "srs.framework.pillar.upsert"
   | "srs.framework.requirement.upsert"
   | "srs.framework.maturity.update"
-  | "srs.framework.publish"
   | "client.logo.set"
   | "client.logo.remove"
   | "report.section.edit"
@@ -1208,17 +1209,19 @@ export type CommandInputMap = {
   "srs.gap.suggestion.withdraw": { assessmentId: string; suggestionId: string };
   "srs.gap.bridge": { assessmentId: string; requirementId: string; strategyId?: string; suggestionId?: string; bespoke?: { title: string; scope: string; controlLevel: string; category?: string }; status?: string; includeInReport?: boolean };
   "srs.report.export": { assessmentId: string; templateKey: string };
-  /** S1, R1: a new framework version, as a draft copied from the one in force. One draft at a time. */
-  "srs.framework.draft.create": { label?: string; notes?: string };
-  /** Add a requirement to the draft, or change one: wording, help, weight, target, order — or retire it (`active: false`). */
+  /** Reopen a locked framework for editing (framework rework, Phase B). Assessments stay pinned to their snapshot. */
+  "srs.framework.unlock": { frameworkKey: string; expectedVersion: number };
+  /** Lock an unlocked framework: its working definition becomes the next snapshot, read-only, that assessments bind to. */
+  "srs.framework.lock": { frameworkKey: string; expectedVersion: number };
+  /** Add a pillar (no key) or rename one. Pillars are shared by every framework, so every framework must be unlocked. */
+  "srs.framework.pillar.upsert": { pillarKey?: string; label: string; description?: string };
+  /** Add a requirement to an unlocked framework, or change one: wording, help, weight, target, order — or retire it (`active: false`). */
   "srs.framework.requirement.upsert": {
-    frameworkId: string; requirementId?: string; standardKey: string; pillarKey: string; code: string; title: string;
+    frameworkKey: string; requirementId?: string; pillarKey: string; code: string; title: string;
     helpText?: string; weight: number; targetMaturity: number; active: boolean; ordering?: number;
   };
-  /** A ladder step's wording in the draft. The five steps themselves (0–4) are fixed (R5). */
-  "srs.framework.maturity.update": { frameworkId: string; level: number; label: string; definition: string };
-  /** Publish the draft: it becomes the version in force and the one before is superseded. */
-  "srs.framework.publish": { frameworkId: string; effectiveFrom: string };
+  /** A ladder step's wording. The five steps themselves (0–4) are fixed (R5); the ladder is shared, so every framework must be unlocked. */
+  "srs.framework.maturity.update": { level: number; label: string; definition: string };
   "client.logo.set": { clientId: string; fileName: string; contentType: ClientLogoContentType; dataBase64: string };
   "client.logo.remove": { clientId: string };
   "report.section.edit": { jobId: string; sectionKey: string; bodyHtml: string; expectedVersion: number; contentSource?: "ai" | "client-edited" };
@@ -3542,17 +3545,31 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   } },
   "srs.assessment.complete": { key: "srs.assessment.complete", label: "Complete an SRS readiness assessment", permission: "srs.manage", reasonRequired: false, transaction: "assessment status + completion stamp + audit + outbox + idempotency", auditAction: "srs_assessment_completed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "assessmentId", input.assessmentId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
   "srs.assessment.reopen": { key: "srs.assessment.reopen", label: "Reopen a completed SRS readiness assessment to correct it", permission: "srs.manage", reasonRequired: false, transaction: "assessment status back to draft + completion stamp cleared + audit + outbox + idempotency", auditAction: "srs_assessment_reopened", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "assessmentId", input.assessmentId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
-  // The SRS framework (S1, R1): reference data an Admin versions, so admin.lookups as the action library is. A draft is
-  // edited; publishing it supersedes the version in force; a published version never changes (0187's triggers).
-  "srs.framework.draft.create": { key: "srs.framework.draft.create", label: "Start a new SRS framework version", permission: "admin.lookups", reasonRequired: false, transaction: "draft framework copied from the version in force + audit + outbox + idempotency", auditAction: "srs_framework_draft_created", validate: (input, context) => {
+  // The SRS frameworks (S1, R1; framework rework, Phase B): reference data an Admin manages, so admin.lookups as the action
+  // library is. A framework is edited only while unlocked; locking it makes the next snapshot, which never changes (0187's
+  // triggers); unlocking reopens it. Every edit, lock and unlock is stamped in the append-only history (0222).
+  "srs.framework.unlock": { key: "srs.framework.unlock", label: "Unlock an SRS framework for editing", permission: "admin.lookups", reasonRequired: false, transaction: "lock row → unlocked (working definition made on the first unlock) + history + audit + outbox + idempotency", auditAction: "srs_framework_unlocked", validate: (input, context) => {
     const issues = baseIssues(context, false);
-    if (input.label !== undefined && (typeof input.label !== "string" || input.label.trim().length > 120)) issues.push({ field: "label", code: "INVALID", message: "A label of at most 120 characters." });
+    required(issues, "frameworkKey", input.frameworkKey);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
     return issues;
   } },
-  "srs.framework.requirement.upsert": { key: "srs.framework.requirement.upsert", label: "Add or edit an SRS requirement in a draft", permission: "admin.lookups", reasonRequired: false, transaction: "draft requirement + audit + outbox + idempotency", auditAction: "srs_framework_requirement_upserted", validate: (input, context) => {
+  "srs.framework.lock": { key: "srs.framework.lock", label: "Lock an SRS framework, making its next snapshot", permission: "admin.lookups", reasonRequired: false, transaction: "next snapshot (the snapshot in force superseded) + lock row → locked + history + audit + outbox + idempotency", auditAction: "srs_framework_locked", validate: (input, context) => {
     const issues = baseIssues(context, false);
-    required(issues, "frameworkId", input.frameworkId);
-    required(issues, "standardKey", input.standardKey);
+    required(issues, "frameworkKey", input.frameworkKey);
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." });
+    return issues;
+  } },
+  "srs.framework.pillar.upsert": { key: "srs.framework.pillar.upsert", label: "Add or rename an SRS pillar", permission: "admin.lookups", reasonRequired: false, transaction: "working-definition pillar + history + audit + outbox + idempotency", auditAction: "srs_framework_pillar_upserted", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "label", input.label);
+    if (typeof input.label === "string" && input.label.trim().length > 60) issues.push({ field: "label", code: "TOO_LONG", message: "A pillar's name is at most 60 characters." });
+    if (input.description !== undefined && (typeof input.description !== "string" || input.description.length > 500)) issues.push({ field: "description", code: "TOO_LONG", message: "A description of at most 500 characters." });
+    return issues;
+  } },
+  "srs.framework.requirement.upsert": { key: "srs.framework.requirement.upsert", label: "Add or edit an SRS requirement in an unlocked framework", permission: "admin.lookups", reasonRequired: false, transaction: "working-definition requirement + history + audit + outbox + idempotency", auditAction: "srs_framework_requirement_upserted", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "frameworkKey", input.frameworkKey);
     required(issues, "pillarKey", input.pillarKey);
     required(issues, "code", input.code);
     required(issues, "title", input.title);
@@ -3563,18 +3580,11 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (input.ordering !== undefined && !Number.isInteger(input.ordering)) issues.push({ field: "ordering", code: "INVALID", message: "Order is a whole number." });
     return issues;
   } },
-  "srs.framework.maturity.update": { key: "srs.framework.maturity.update", label: "Reword an SRS maturity step in a draft", permission: "admin.lookups", reasonRequired: false, transaction: "draft ladder wording + audit + outbox + idempotency", auditAction: "srs_framework_maturity_updated", validate: (input, context) => {
+  "srs.framework.maturity.update": { key: "srs.framework.maturity.update", label: "Reword an SRS maturity step", permission: "admin.lookups", reasonRequired: false, transaction: "working-definition ladder wording + history + audit + outbox + idempotency", auditAction: "srs_framework_maturity_updated", validate: (input, context) => {
     const issues = baseIssues(context, false);
-    required(issues, "frameworkId", input.frameworkId);
     if (!(Number.isInteger(input.level) && input.level >= 0 && input.level <= 4)) issues.push({ field: "level", code: "INVALID", message: "The ladder has five fixed steps, 0 to 4." });
     required(issues, "label", input.label);
     required(issues, "definition", input.definition);
-    return issues;
-  } },
-  "srs.framework.publish": { key: "srs.framework.publish", label: "Publish an SRS framework version", permission: "admin.lookups", reasonRequired: false, transaction: "draft → active, the version in force → superseded + audit + outbox + idempotency", auditAction: "srs_framework_published", validate: (input, context) => {
-    const issues = baseIssues(context, false);
-    required(issues, "frameworkId", input.frameworkId);
-    if (!isoDate(input.effectiveFrom)) issues.push({ field: "effectiveFrom", code: "INVALID", message: "Enter the date it takes effect as dd/mm/yyyy." });
     return issues;
   } },
   "client.targets.set": { key: "client.targets.set", label: "Set reduction targets", permission: "target.edit", reasonRequired: false, transaction: "versioned target record + benchmark stamp + audit + outbox + idempotency", auditAction: "client_targets_set", validate: (input, context) => { const issues = [...baseIssues(context, false), ...forwardTargetIssues(input)]; required(issues, "clientId", input.clientId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },

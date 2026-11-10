@@ -26,6 +26,14 @@ export function startSrsAssessment(pool: PoolLike, input: CommandInputMap["srs.a
   return runPostgresCommand(pool, "srs.assessment.start", input, context, async (db) => {
     const framework = await getSrsFramework(db);
     if (!framework) throw new CommandValidationError([{ field: "clientId", code: "NO_FRAMEWORK", message: "No SRS framework is published for this organisation." }]);
+    // An assessment binds to a locked snapshot: while a framework it covers is unlocked for editing, there is none to bind to (0222).
+    const unlocked = (await db.query<{ framework_key: string }>(
+      `SELECT framework_key FROM nzi_console.srs_framework_locks WHERE organisation_id=$1 AND NOT locked AND framework_key = ANY($2::text[]) ORDER BY framework_key`,
+      [context.organisationId, framework.standards.map((standard) => standard.key)])).rows;
+    if (unlocked.length > 0) {
+      const labels = unlocked.map((row) => framework.standards.find((standard) => standard.key === row.framework_key)?.label ?? row.framework_key);
+      throw new CommandValidationError([{ field: "clientId", code: "FRAMEWORK_UNLOCKED", message: `${labels.join(" and ")} ${labels.length === 1 ? "is" : "are"} unlocked for editing. An assessment is made against a locked framework — lock it first.` }]);
+    }
 
     const open = await db.query<{ assessment_id: string }>(
       `SELECT assessment_id FROM nzi_console.srs_assessments WHERE organisation_id=$1 AND client_id=$2 AND status='draft' LIMIT 1`,
