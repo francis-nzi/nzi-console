@@ -17,7 +17,7 @@ const listPage = (value: unknown) => rows(value, "rows") && record(value) && typ
 export const screenContracts: Record<ScreenKey, ScreenContract<unknown>> = {
   control: { key: "control", validate: record, isEmpty: () => false },
   // The signed-in CRM's own Control Room. Never "empty": a CRM with no work has counts of nought, which are figures to show.
-  crmControlRoom: { key: "crmControlRoom", validate: (value) => rows(value, "recentJobs"), isEmpty: () => false },
+  crmControlRoom: { key: "crmControlRoom", validate: (value) => ["recentJobs", "redBox", "threads", "deadlines"].every((field) => rows(value, field)), isEmpty: () => false },
   clients: { key: "clients", validate: (value) => rows(value, "clients"), isEmpty: (value) => record(value) && (value.clients as unknown[]).length === 0 },
   jobs: { key: "jobs", validate: (value) => rows(value, "jobs"), isEmpty: (value) => record(value) && (value.jobs as unknown[]).length === 0 },
   // The paged lists (docs/LIST_PARITY_DESIGN.md). Never "empty" here: the board tells "no clients yet"

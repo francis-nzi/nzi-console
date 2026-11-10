@@ -2583,6 +2583,17 @@ details.nz-job-report-link{white-space:normal}
 .nz-crm-view .nz-seg{width:auto;margin:0}
 .nz-seg a{padding:6px 12px;border-radius:7px;font-size:12.5px;font-weight:600;color:var(--t3);text-decoration:none}
 .nz-seg a[aria-current="page"]{background:var(--card);color:var(--t1);box-shadow:0 1px 3px rgba(11,27,43,.12)}
-.nz-metrics.nz-crm-cards{grid-template-columns:repeat(5,minmax(0,1fr))}
+.nz-metrics.nz-crm-cards{grid-template-columns:repeat(6,minmax(0,1fr))}
 @media (max-width:1200px){.nz-metrics.nz-crm-cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media (max-width:680px){.nz-metrics.nz-crm-cards{grid-template-columns:1fr 1fr}}
+/* Control Room, Phase 2: the Red box (the one panel drawn in the danger colour), the deadline date, the message drawer's reply. */
+.nz-panel.nz-redbox{border-color:var(--danger);overflow:hidden}
+.nz-redbox-h{display:flex;align-items:center;gap:8px;padding:13px 16px;background:var(--danger-bg);border-bottom:1px solid var(--line2)}
+.nz-redbox-h h2{font-size:15px;margin:0;color:#B23A2B}
+.nz-redbox-h b{margin-left:auto;color:#B23A2B;font-size:13px}
+.nz-priority-row.nz-crm-deadline{grid-template-columns:40px minmax(0,1fr)}
+.nz-crm-date{text-align:center}
+.nz-crm-date b{display:block;font-size:15px;line-height:1.1}
+.nz-crm-date span{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3)}
+.nz-crm-compose{border-top:1px solid var(--line);padding:12px 20px;background:#fff}
+.nz-crm-compose .nz-drawer-actions{margin-top:10px;padding-top:0;border-top:0}
