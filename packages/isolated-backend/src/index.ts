@@ -309,3 +309,4 @@ export {
   type SrsSuggestionModel, type SrsSuggestionRun,
 } from "./srsSuggestions";
 export { getSrsReport, type SrsReportReadModel } from "./srsReport";
+export * from "./crmTasks";

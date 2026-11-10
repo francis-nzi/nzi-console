@@ -82,6 +82,8 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   training_entitlements: { periodBound: false, why: "training has no reporting period" },
   training_run_snapshots: { periodBound: false, why: "training has no reporting period" },
   time_entries: { periodBound: false, why: "time worked on the job, dated by when it was done — not by the period it reports on" },
+  // CRM tasks (0222): an internal to-do about the job, dated by when it is due — not data measured for the period.
+  crm_tasks: { periodBound: false, why: "an internal staff to-do about the job — workflow, not data for the period" },
   // Phase 3a (0161): which client sites the job reports on — a decision about the report's scope, not a measurement of the
   // period; moving the period does not change what it says (the site's own in-service dates still decide the boundary).
   job_site_inclusions: { periodBound: false, why: "which of the client's sites the job reports on — a scope decision, not data for the period" },

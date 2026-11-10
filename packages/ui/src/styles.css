@@ -2597,3 +2597,11 @@ details.nz-job-report-link{white-space:normal}
 .nz-crm-date span{font-size:10px;font-weight:700;text-transform:uppercase;color:var(--t3)}
 .nz-crm-compose{border-top:1px solid var(--line);padding:12px 20px;background:#fff}
 .nz-crm-compose .nz-drawer-actions{margin-top:10px;padding-top:0;border-top:0}
+/* Control Room, Phase 3: My tasks — the filter links, the quick-add row, and a task done in its drawer. */
+.nz-crm-task-filter{display:inline}
+.nz-crm-task-filter a{color:var(--t3);text-decoration:none;font-weight:600}
+.nz-crm-task-filter a[aria-current="page"]{color:var(--pine)}
+.nz-crm-task-add{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:8px;padding:10px 16px;border-top:1px solid var(--line2)}
+@media (max-width:680px){.nz-crm-task-add{grid-template-columns:1fr 1fr}}
+.nz-crm-task-add .nz-banner{grid-column:1/-1}
+.nz-crm-task-done{text-decoration:line-through;color:var(--t3)}

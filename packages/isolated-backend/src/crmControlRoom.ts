@@ -2,6 +2,7 @@ import { latestAssessed, overallReadiness, utcDay, type ReportStage, type SrsFra
 import type { JobFamily, JobScreenReadModel } from "./readModels";
 import type { Queryable } from "./postgres";
 import { CLIENT_CRM_SQL, JOB_CRM_SQL } from "./crmRouting";
+import { listOpenTasks, readTaskOptions, type CrmTask } from "./crmTasks";
 import { dateOnlyOrNull } from "./dates";
 import { STAFF_UNREAD } from "./portalConversations";
 import { listReportStatusRegister } from "./reportStatusRegister";
@@ -11,7 +12,7 @@ import { LATEST_ASSESSMENT_SQL } from "./srsReviewReminders";
 /**
  * The personalised Control Room (BRIEF-crm-control-room-redesign): the signed-in CRM's own work. Phase 1 — quiet counts and
  * the last five jobs they worked on; Phase 2 — the Red box, their conversations, the next fortnight's deadlines and their
- * clients' readiness. Read-only; nothing here writes, and nothing is stored that the platform does not already keep.
+ * clients' readiness; Phase 3 — their open tasks, which also feed the Red box and the deadlines. Read-only; nothing here writes.
  *
  * **Whose work.** A job or a client is a CRM's by the routing the platform already uses (crmRouting.ts). A conversation is
  * theirs by its assignee, else its client's CRM (as the message notification routes it).
@@ -71,30 +72,36 @@ export type CrmThread = {
 export type CrmRedBoxKind =
   | "job-overdue" | "srs-review-overdue"
   | "report-answered" | "srs-review-request" | "awaiting-approval" | "unread"
+  | "task-due"
   | "srs-review-today";
 export const RED_BOX_TIER: Record<CrmRedBoxKind, 1 | 2 | 3 | 4> = {
   "job-overdue": 1, "srs-review-overdue": 1,
   "report-answered": 2, "srs-review-request": 2, "awaiting-approval": 2, unread: 2,
+  "task-due": 3,
   "srs-review-today": 4,
 };
 export type CrmRedBoxRow = {
-  /** `job:<id>`, `thread:<id>` or `srs:<clientId>` — what the row is about, and what it was deduped on. */
+  /** `job:<id>`, `thread:<id>`, `srs:<clientId>` or `task:<id>` — what the row is about, and what it was deduped on. */
   subject: string;
   kind: CrmRedBoxKind; tier: 1 | 2 | 3 | 4;
   /** How long it has waited: the date missed, or when the client asked. Oldest first within a tier. */
   since: string;
-  clientId: string; client: string; jobId: string | null; jobNumber: string | null; threadId: string | null;
+  clientId: string | null; client: string | null; jobId: string | null; jobNumber: string | null; threadId: string | null;
+  /** Phase 3: the task, for a task row; its title is `preview`. */
+  taskId: string | null;
   /** The due or review date; a report's stage; a message's unread count and quote — what the row says. */
   date: string | null; stage: ReportStage | null; unread: number; preview: string | null;
   /** The less urgent things on the same subject, collapsed into this row. */
   also: CrmRedBoxKind[];
 };
 
-export type CrmDeadlineKind = "srs-review" | "action-due" | "window-closes" | "job-end";
+export type CrmDeadlineKind = "srs-review" | "action-due" | "window-closes" | "job-end" | "task-due";
 export type CrmDeadline = {
-  kind: CrmDeadlineKind; date: string; clientId: string; client: string; jobId: string | null; jobNumber: string | null;
-  /** The action's or the job's title. */
+  kind: CrmDeadlineKind; date: string; clientId: string | null; client: string | null; jobId: string | null; jobNumber: string | null;
+  /** The action's, the job's or the task's title. */
   label: string;
+  /** Phase 3: the task, for a task's due date. */
+  taskId: string | null;
   /** For a data-entry window: how many client users' windows close that day. */
   count: number;
 };
@@ -107,6 +114,9 @@ export type CrmControlRoom = {
   redBox: CrmRedBoxRow[]; threads: CrmThread[]; deadlines: CrmDeadline[];
   /** Lowest readiness first; `notAssessed` counts the CRM's active clients with no completed assessment. */
   pulse: { rows: CrmPulseRow[]; notAssessed: number };
+  /** Phase 3: the CRM's open tasks, soonest due first; who a task can be given to, and the jobs a quick-add can name. */
+  tasks: CrmTask[];
+  taskOptions: { staff: Array<{ userId: string; displayName: string }>; jobs: Array<{ jobId: string; jobNumber: string; client: string }> };
 };
 
 const iso = (value: Date | string | null) => value === null ? null : new Date(value).toISOString();
@@ -163,23 +173,32 @@ export async function readCrmControlRoom(db: Queryable, input: { userId: string;
     `SELECT v.job_id, max(greatest(v.created_at, v.published_at, v.sent_to_review_at, v.client_approved_at)) AS moved_at
        FROM nzi_console.report_versions v WHERE v.job_id = ANY($1::text[]) GROUP BY v.job_id`, [[...mine]])).rows.map((row) => [row.job_id, iso(row.moved_at)!]));
 
+  const tasks = await listOpenTasks(db, userId);
   const redBox = dedupeRedBox([
     ...jobs.filter((job) => job.overdue).map((job): RedBoxItem => ({
       subject: `job:${job.job_id}`, kind: "job-overdue", since: dayStart(dateOnlyOrNull(job.due_date)!), clientId: job.client_id, client: job.client_name,
-      jobId: job.job_id, jobNumber: job.job_number, threadId: null, date: dateOnlyOrNull(job.due_date), stage: null, unread: 0, preview: null })),
+      jobId: job.job_id, jobNumber: job.job_number, threadId: null, taskId: null, date: dateOnlyOrNull(job.due_date), stage: null, unread: 0, preview: null })),
     ...reports.filter((row) => CLIENT_ANSWERED.has(row.stage) || TO_VALIDATE_OR_ISSUE.has(row.stage)).map((row): RedBoxItem => ({
       subject: `job:${row.jobId}`, kind: CLIENT_ANSWERED.has(row.stage) ? "report-answered" : "awaiting-approval", since: reportMoved.get(row.jobId) ?? dayStart(today),
-      clientId: row.clientId, client: row.client, jobId: row.jobId, jobNumber: row.jobNumber, threadId: null, date: null, stage: row.stage, unread: 0, preview: null })),
+      clientId: row.clientId, client: row.client, jobId: row.jobId, jobNumber: row.jobNumber, threadId: null, taskId: null, date: null, stage: row.stage, unread: 0, preview: null })),
     ...unreadThreads.map((thread): RedBoxItem => ({
       subject: threadSubject(thread), kind: thread.srs && thread.reviewRequest ? "srs-review-request" : "unread", since: thread.waitingSince ?? thread.lastMessageAt,
-      clientId: thread.clientId, client: thread.client, jobId: thread.jobId, jobNumber: thread.jobNumber, threadId: thread.threadId, date: null, stage: null, unread: thread.unread, preview: thread.preview })),
+      clientId: thread.clientId, client: thread.client, jobId: thread.jobId, jobNumber: thread.jobNumber, threadId: thread.threadId, taskId: null, date: null, stage: null, unread: thread.unread, preview: thread.preview })),
     ...reviewDates.filter((review) => review.date <= today).map((review): RedBoxItem => ({
       subject: `srs:${review.clientId}`, kind: review.date < today ? "srs-review-overdue" : "srs-review-today", since: dayStart(review.date),
-      clientId: review.clientId, client: review.client, jobId: null, jobNumber: null, threadId: null, date: review.date, stage: null, unread: 0, preview: null })),
+      clientId: review.clientId, client: review.client, jobId: null, jobNumber: null, threadId: null, taskId: null, date: review.date, stage: null, unread: 0, preview: null })),
+    // Phase 3: a task due today or overdue is its own subject — the CRM's own to-do, not the job's or the client's state.
+    ...tasks.filter((task) => task.dueDate !== null && task.dueDate <= today).map((task): RedBoxItem => ({
+      subject: `task:${task.taskId}`, kind: "task-due", since: dayStart(task.dueDate!), clientId: task.clientId, client: task.client,
+      jobId: task.jobId, jobNumber: task.jobNumber, threadId: null, taskId: task.taskId, date: task.dueDate, stage: null, unread: 0, preview: task.title })),
   ]);
 
-  const deadlines = await readDeadlines(db, { userId, today, horizon, reviewDates });
+  const deadlines = [...await readDeadlines(db, { userId, today, horizon, reviewDates }),
+    ...tasks.filter((task) => task.dueDate !== null && task.dueDate >= today && task.dueDate <= horizon).map((task): CrmDeadline => ({
+      kind: "task-due", date: task.dueDate!, clientId: task.clientId, client: task.client, jobId: task.jobId, jobNumber: task.jobNumber, label: task.title, taskId: task.taskId, count: 0 })),
+  ].sort(byDate);
   const pulse = await readPulse(db, userId);
+  const taskOptions = await readTaskOptions(db, JOB_CRM_SQL, userId);
 
   const recent = (await db.query<{ job_id: string; job_number: string; job_family: JobFamily; client_id: string; client_name: string; title: string;
     status: CrmRecentJob["status"]; workflow_stage: string; due_date: Date | string | null; last_worked_at: Date | string | null }>(
@@ -213,7 +232,7 @@ export async function readCrmControlRoom(db: Queryable, input: { userId: string;
       jobId: row.job_id, number: row.job_number, family: row.job_family, clientId: row.client_id, client: row.client_name, title: row.title,
       status: row.status, workflowStage: row.workflow_stage, dueDate: dateOnlyOrNull(row.due_date), lastWorkedAt: iso(row.last_worked_at),
     })),
-    redBox, threads, deadlines, pulse,
+    redBox, threads, deadlines, pulse, tasks, taskOptions,
   };
 }
 
@@ -266,14 +285,17 @@ async function readDeadlines(db: Queryable, input: { userId: string; today: stri
     `SELECT j.job_id, j.job_number, j.title, j.client_id, c.name AS client_name, j.due_date
        FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
       WHERE ${JOB_CRM_SQL} = $1 AND j.status IN ${LIVE} AND j.due_date BETWEEN $2::date AND $3::date`, [userId, today, horizon])).rows;
-  const none = { jobId: null, jobNumber: null, count: 0 };
+  const none = { jobId: null, jobNumber: null, count: 0, taskId: null };
   return [
     ...input.reviewDates.filter((review) => within(review.date)).map((review): CrmDeadline => ({ kind: "srs-review", date: review.date, clientId: review.clientId, client: review.client, label: "SRS readiness review", ...none })),
     ...actions.map((row): CrmDeadline => ({ kind: "action-due", date: dateOnlyOrNull(row.target_date)!, clientId: row.client_id, client: row.client_name, label: row.title, ...none })),
-    ...windows.map((row): CrmDeadline => ({ kind: "window-closes", date: row.closes_on, clientId: row.client_id, client: row.client_name, jobId: row.job_id, jobNumber: row.job_number, label: row.title, count: row.users })),
-    ...ends.map((row): CrmDeadline => ({ kind: "job-end", date: dateOnlyOrNull(row.due_date)!, clientId: row.client_id, client: row.client_name, jobId: row.job_id, jobNumber: row.job_number, label: row.title, count: 0 })),
-  ].sort((a, b) => a.date.localeCompare(b.date) || a.client.localeCompare(b.client) || a.kind.localeCompare(b.kind));
+    ...windows.map((row): CrmDeadline => ({ kind: "window-closes", date: row.closes_on, clientId: row.client_id, client: row.client_name, jobId: row.job_id, jobNumber: row.job_number, label: row.title, count: row.users, taskId: null })),
+    ...ends.map((row): CrmDeadline => ({ kind: "job-end", date: dateOnlyOrNull(row.due_date)!, clientId: row.client_id, client: row.client_name, jobId: row.job_id, jobNumber: row.job_number, label: row.title, count: 0, taskId: null })),
+  ].sort(byDate);
 }
+/** Nearest first; on one day, by client (one with none last), then kind. */
+const NO_CLIENT = "\uffff";
+const byDate = (a: CrmDeadline, b: CrmDeadline) => a.date.localeCompare(b.date) || (a.client ?? NO_CLIENT).localeCompare(b.client ?? NO_CLIENT) || a.kind.localeCompare(b.kind);
 
 /**
  * The CRM's active clients' readiness: each one's latest completed assessment, rolled up by the one resolver every surface

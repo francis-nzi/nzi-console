@@ -273,6 +273,10 @@ export type CommandKey =
   | "time.entry.edit"
   | "time.entry.void"
   | "time.entry.bill"
+  | "task.create"
+  | "task.update"
+  | "task.complete"
+  | "task.reopen"
   | "staff.capacity.set"
   | "job.budget.set"
   | "job.fee.set"
@@ -995,6 +999,17 @@ export type CommandInputMap = {
   "time.entry.void": { entryId: string; expectedVersion: number };
   /** Finance stamps (or clears, with null) the invoice an entry was billed on (T-Q5). A billed entry is locked. */
   "time.entry.bill": { entryId: string; expectedVersion: number; billedRef: string | null };
+  /**
+   * CRM tasks (BRIEF-crm-control-room-p3-tasks): an internal staff to-do. Assigned to the creator unless `assignedUserId` names an
+   * active colleague; optionally on a job (which carries its client) or a client.
+   */
+  "task.create": { title: string; notes?: string | null; dueDate?: string | null; jobId?: string | null; clientId?: string | null; assignedUserId?: string | null };
+  /** Edit, reschedule (`dueDate`, null clears it) or reassign an open task. Only the fields given change. */
+  "task.update": { taskId: string; expectedVersion: number; title?: string; notes?: string | null; dueDate?: string | null; assignedUserId?: string };
+  /** Mark an open task done. Done, never deleted. */
+  "task.complete": { taskId: string; expectedVersion: number };
+  /** Reopen a done task. */
+  "task.reopen": { taskId: string; expectedVersion: number };
   /** Time PR B (T-Q4): a person's weekly capacity, which utilisation is read against. Admin (admin.users). */
   "staff.capacity.set": { userId: string; expectedVersion: number; weeklyCapacityHours: number };
   /** Time PR B (⚑5): the job's budgeted hours — "budget used" is read against it. null clears it (no budget recorded). */
@@ -1411,6 +1426,21 @@ const timeEntryIssues = (issues: CommandIssue[], input: { workDate: string; minu
   if (!isTimeEntryMinutes(input.minutes)) issues.push({ field: "minutes", code: "INVALID", message: "Enter the time worked: more than none, and no more than 24 hours in one entry." });
   required(issues, "activityValueId", input.activityValueId);
   if (input.note != null && (typeof input.note !== "string" || input.note.length > TIME_ENTRY_NOTE_MAX)) issues.push({ field: "note", code: "INVALID", message: `A note is ${TIME_ENTRY_NOTE_MAX} characters or fewer.` });
+};
+/** CRM tasks: a title of 1–200 characters; notes of up to 4,000; a real day or none for the due date. */
+export const TASK_TITLE_MAX = 200;
+export const TASK_NOTES_MAX = 4000;
+const taskTitleIssues = (issues: CommandIssue[], title: unknown, present: boolean) => {
+  if (present && (typeof title !== "string" || !title.trim() || title.trim().length > TASK_TITLE_MAX)) issues.push({ field: "title", code: "INVALID", message: `Give the task a title of up to ${TASK_TITLE_MAX} characters.` });
+};
+const taskFieldIssues = (issues: CommandIssue[], input: { notes?: string | null; dueDate?: string | null }) => {
+  if (input.notes != null && (typeof input.notes !== "string" || input.notes.length > TASK_NOTES_MAX)) issues.push({ field: "notes", code: "INVALID", message: `Notes are ${TASK_NOTES_MAX} characters or fewer.` });
+  if (input.dueDate != null && !isoDate(input.dueDate)) issues.push({ field: "dueDate", code: "INVALID", message: "Enter a real day, or leave it empty." });
+};
+const taskVersionIssues = (issues: CommandIssue[], input: { taskId: string; expectedVersion: number }) => {
+  required(issues, "taskId", input.taskId);
+  if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+  return issues;
 };
 /** CLIENT-11: a site's structured address — up to four lines, a postcode or zip, and an ISO 3166-1 alpha-2 country. */
 export type SiteAddressFields = { addressLines?: string[]; postcode?: string | null; country?: string | null;
@@ -2577,6 +2607,29 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (input.billedRef !== null && (typeof input.billedRef !== "string" || !input.billedRef.trim() || input.billedRef.trim().length > 120)) issues.push({ field: "billedRef", code: "INVALID", message: "The invoice reference, up to 120 characters — or none, to unbill." });
     return issues;
   } },
+  // ── CRM tasks (BRIEF-crm-control-room-p3-tasks; matrix v13). Staff only; a task's assignee or creator (access.ts) ────────────
+  "task.create": { key: "task.create", label: "Add a task", permission: "task.manage", reasonRequired: false, transaction: "task + audit + outbox + idempotency", auditAction: "task.created", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    taskTitleIssues(issues, input.title, true);
+    taskFieldIssues(issues, input);
+    for (const field of ["jobId", "clientId", "assignedUserId"] as const) {
+      const value = input[field];
+      if (value !== undefined && value !== null && (typeof value !== "string" || !value.trim())) issues.push({ field, code: "INVALID", message: "Choose one, or leave it empty." });
+    }
+    return issues;
+  } },
+  "task.update": { key: "task.update", label: "Edit a task", permission: "task.manage", reasonRequired: false, transaction: "versioned task + audit + outbox + idempotency", auditAction: "task.updated", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "taskId", input.taskId);
+    if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
+    if (input.title !== undefined) taskTitleIssues(issues, input.title, true);
+    taskFieldIssues(issues, input);
+    if (input.assignedUserId !== undefined && (typeof input.assignedUserId !== "string" || !input.assignedUserId.trim())) issues.push({ field: "assignedUserId", code: "INVALID", message: "Choose who the task is for." });
+    if (input.title === undefined && input.notes === undefined && input.dueDate === undefined && input.assignedUserId === undefined) issues.push({ field: "taskId", code: "NO_CHANGE", message: "Nothing to change." });
+    return issues;
+  } },
+  "task.complete": { key: "task.complete", label: "Mark a task done", permission: "task.manage", reasonRequired: false, transaction: "versioned task status + audit + outbox + idempotency", auditAction: "task.completed", validate: (input, context) => taskVersionIssues(baseIssues(context, false), input) },
+  "task.reopen": { key: "task.reopen", label: "Reopen a task", permission: "task.manage", reasonRequired: false, transaction: "versioned task status + audit + outbox + idempotency", auditAction: "task.reopened", validate: (input, context) => taskVersionIssues(baseIssues(context, false), input) },
   // ── Time PR B: the figures the reads compare against ─────────────────────────────────────────────────────────
   "staff.capacity.set": { key: "staff.capacity.set", label: "Set weekly capacity", permission: "admin.users", reasonRequired: false, transaction: "versioned membership capacity + audit + outbox + idempotency", auditAction: "staff.capacity.set", validate: (input, context) => {
     const issues = baseIssues(context, false);

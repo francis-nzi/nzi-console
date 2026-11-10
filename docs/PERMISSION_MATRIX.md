@@ -74,6 +74,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `knowledge.publish` (internal → public: client-facing, website-bound) | ✓ | — | — | — | — |
 | `time.log` (log, edit and void one's **own** time on a job) ⚑ | ✓ | ⚑ own | ✓ | ✓ | ✓ |
 | `time.view` (read other people's time — hours; money only with `finance.view`) ⚑ | ✓ | ⚑ own | R | ✓ | — |
+| `task.manage` (keep CRM tasks: create, edit, reassign, reschedule, complete, reopen — only one's own or one's assigned) ⚑ | ✓ | ✓ | ✓ | ✓ | — |
 
 ### Conditional notes (⚑)
 
@@ -135,6 +136,12 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   `finance.view`; without it a reader sees hours alone. Editing a person's **weekly capacity** is
   `admin.users`; a job's **budgeted hours** is `job.manage`; its **fee** is `finance.manage`, and the fee
   never enters a payload (NZC-120).
+- **CRM tasks (matrix v13, 0223; BRIEF-crm-control-room-p3-tasks).** `task.manage` (all) is held by every role that does
+  work — Admin, Consultant, Reviewer, Finance — and not by the Viewer, who changes nothing. A task is an **internal staff
+  to-do** (0222 `crm_tasks`), never client-facing and never in a report; the portal has no route to it and a portal principal
+  is refused. **Own tasks only:** a task is created for oneself or assigned to an active colleague, and is edited, reassigned,
+  rescheduled, completed or reopened only by its **assignee or its creator** — Admin included; the capability is the right to
+  keep a to-do list, not to work anyone else's. Done, never deleted. Every change is versioned and audited by the task's id.
 
 ## Naming convention
 

@@ -20,7 +20,10 @@ type Subject =
   // A record that is the caller's own (ruled for time entries): resolved inside the tenant like any other, but the
   // owning client's owner is no gate — the handler's own-record check is. So a consultant can still correct their own
   // time on a client since handed to someone else.
-  | { kind: "ownTimeEntry"; id: string };
+  | { kind: "ownTimeEntry"; id: string }
+  // A CRM task (0222): an internal to-do, not a client's record. Only its assignee or its creator may change it — checked
+  // here, in the command's transaction — whatever client or job it is about.
+  | { kind: "task"; id: string };
 
 const organisation = (): Subject => ({ kind: "organisation" });
 const client = (input: { clientId: string }): Subject => ({ kind: "client", id: input.clientId });
@@ -32,6 +35,7 @@ const trainingRun = (input: { courseRunId: string }): Subject => ({ kind: "train
 const trainingSession = (input: { sessionId: string }): Subject => ({ kind: "trainingSession", id: input.sessionId });
 const timeEntry = (input: { entryId: string }): Subject => ({ kind: "timeEntry", id: input.entryId });
 const ownTimeEntry = (input: { entryId: string }): Subject => ({ kind: "ownTimeEntry", id: input.entryId });
+const task = (input: { taskId: string }): Subject => ({ kind: "task", id: input.taskId });
 // A grant's places all belong to one client, so the first resolves the own-clients scope.
 // The handler re-checks that every id really is from the same grant, so a caller cannot
 // smuggle another client's place in behind an id it does own.
@@ -346,6 +350,12 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "time.entry.edit": ownTimeEntry,
   "time.entry.void": ownTimeEntry,
   "time.entry.bill": timeEntry,
+  // CRM tasks (0222): a new task is the organisation's (its job or client, when named, is checked by the handler); every change
+  // after is the task's assignee's or creator's alone.
+  "task.create": organisation,
+  "task.update": task,
+  "task.complete": task,
+  "task.reopen": task,
   // Time PR B: capacity is the roster's (admin.users); a job's budget and fee are the job's (job.manage / finance.manage).
   "staff.capacity.set": organisation,
   "job.budget.set": job,
@@ -355,7 +365,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
 // Each resolves the owning client strictly inside the caller's organisation. Under RLS
 // another tenant's row is invisible as well — the explicit predicate makes the check
 // independent of it. The `nzi:access` marker names the statement in logs and tests.
-const accessSql: Record<Exclude<Subject["kind"], "organisation">, string> = {
+// A task resolves no client (it may have none): its own check is assertTaskHolder.
+const accessSql: Record<Exclude<Subject["kind"], "organisation" | "task">, string> = {
   client: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.clients c WHERE c.organisation_id=$1 AND c.client_id=$2`,
   job: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2`,
   site: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.client_sites s JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(s.organisation_id,s.client_id) WHERE s.organisation_id=$1 AND s.site_id=$2`,
@@ -380,6 +391,15 @@ async function resolveAccess(db: Queryable, organisationId: string, actorId: str
   const row = found.rows[0];
   if (!row) throw new AuthorizationError("tenant", TENANT_REFUSED);
   return { clientId: row.client_id, ownerUserId: row.owner_user_id ?? null, ownedByActor: (row.owner_user_id ?? null) === actorId };
+}
+
+/** A CRM task in this organisation that the actor is assigned or wrote. Anyone else — Admin included — is refused. */
+async function assertTaskHolder(db: Queryable, organisationId: string, actorId: string, taskId: string, capability: Capability): Promise<void> {
+  if (!taskId.trim()) throw new AuthorizationError("tenant", TENANT_REFUSED);
+  const row = (await db.query<{ assigned_user_id: string; created_by: string }>(
+    `SELECT /* nzi:access */ assigned_user_id, created_by FROM nzi_console.crm_tasks WHERE organisation_id = $1 AND task_id = $2`, [organisationId, taskId])).rows[0];
+  if (!row) throw new AuthorizationError("tenant", TENANT_REFUSED);
+  if (row.assigned_user_id !== actorId && row.created_by !== actorId) throw new AuthorizationError(capability, "This task is not yours: only who it is assigned to, or who wrote it, can change it.");
 }
 
 /** assert_client_access — the client exists in this organisation; says whether the actor owns it. */
@@ -411,6 +431,10 @@ export async function authorizeCommandInTransaction<K extends CommandKey>(db: Qu
   const subject = subjectOf[key](input);
   if (subject.kind === "organisation") {
     if (held.scope !== "all") throw new AuthorizationError(capability, "This capability is limited to your own clients.");
+    return null;
+  }
+  if (subject.kind === "task") {
+    await assertTaskHolder(db, context.organisationId, context.actorId, subject.id, capability);
     return null;
   }
   const access = await resolveAccess(db, context.organisationId, context.actorId, subject.kind, subject.id);
