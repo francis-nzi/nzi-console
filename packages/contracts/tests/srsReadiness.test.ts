@@ -224,10 +224,12 @@ test("S1 R3: only a completed assessment is 'assessed' — the trend, the portal
 test("S1 R1/R5: the framework commands keep the ladder at five fixed steps and a requirement's weight and target on it", () => {
   const context = { organisationId: "o", actorId: "a", principal: "staff" as const, idempotencyKey: "k", correlationId: "c", grant: commandGrantForRole("admin", "o", "a") };
   const fields = (key: Parameters<typeof validateCommand>[0], input: never) => validateCommand(key, input, context).map((issue) => `${issue.field}:${issue.code}`);
-  const requirementInput = { frameworkId: "f", standardKey: "S2", pillarKey: "metrics", code: "S2 M9", title: "T", weight: 1, targetMaturity: 2, active: true };
+  const requirementInput = { frameworkKey: "S2", pillarKey: "metrics", code: "S2 M9", title: "T", weight: 1, targetMaturity: 2, active: true };
   assert.deepEqual(fields("srs.framework.requirement.upsert", requirementInput as never), []);
-  assert.deepEqual(fields("srs.framework.requirement.upsert", { ...requirementInput, weight: 0, targetMaturity: 5 } as never), ["weight:INVALID", "targetMaturity:INVALID"]);
-  assert.deepEqual(fields("srs.framework.maturity.update", { frameworkId: "f", level: 5, label: "Beyond", definition: "d" } as never), ["level:INVALID"]);
-  assert.deepEqual(fields("srs.framework.publish", { frameworkId: "f", effectiveFrom: "soon" } as never), ["effectiveFrom:INVALID"]);
+  assert.deepEqual(fields("srs.framework.requirement.upsert", { ...requirementInput, frameworkKey: "", weight: 0, targetMaturity: 5 } as never), ["frameworkKey:REQUIRED", "weight:INVALID", "targetMaturity:INVALID"]);
+  assert.deepEqual(fields("srs.framework.maturity.update", { level: 5, label: "Beyond", definition: "d" } as never), ["level:INVALID"]);
+  assert.deepEqual(fields("srs.framework.lock", { frameworkKey: "S2", expectedVersion: -1 } as never), ["expectedVersion:INVALID"]);
+  assert.deepEqual(fields("srs.framework.unlock", { frameworkKey: "", expectedVersion: 0 } as never), ["frameworkKey:REQUIRED"]);
+  assert.deepEqual(fields("srs.framework.pillar.upsert", { label: "x".repeat(61) } as never), ["label:TOO_LONG"]);
   assert.deepEqual(fields("srs.assessment.start", { clientId: "c" } as never), [], "no date to type: it is dated when it is completed");
 });

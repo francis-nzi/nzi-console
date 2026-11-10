@@ -8,7 +8,9 @@ import {
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { withTenantRead } from "../src/postgres";
 import { assignClientStrategy, removeClientStrategy } from "../src/reductionStrategies";
-import { createSrsFrameworkDraft, listSrsFrameworkVersions, publishSrsFramework, updateSrsMaturityLevel, upsertSrsRequirement } from "../src/srsFramework";
+import {
+  listSrsFrameworkHistory, listSrsFrameworkSnapshots, listSrsFrameworkStates, lockSrsFramework, srsWorkingDefinitionId, unlockSrsFramework, updateSrsMaturityLevel, upsertSrsPillar, upsertSrsRequirement,
+} from "../src/srsFramework";
 import { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssessments, reopenSrsAssessment, setSrsAssessmentItem, setSrsAssessmentNotes, startSrsAssessment } from "../src/srsReadiness";
 
 /**
@@ -20,6 +22,7 @@ import { completeSrsAssessment, getSrsAssessment, getSrsFramework, listSrsAssess
  */
 
 const ORG = "srs-org";
+const LEGACY_ORG = "srs-legacy-draft-org";
 const A = "client-a";
 const B = "client-b";
 let keys = 0;
@@ -54,6 +57,14 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
     database = (await createDisposableDatabase("srss1", {
       // Assessments as they stood before 0187: a draft and a completed one, each with the date typed in at start.
       onMigration: async (filename, client) => {
+        // A draft version open from the old "start a new version" flow, in an organisation of its own, before 0222.
+        if (filename.startsWith("0221_")) {
+          await client.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, 'Legacy Draft Org')`, [LEGACY_ORG]);
+          await client.query(`SELECT set_config('app.organisation_id', $1, false)`, [LEGACY_ORG]);
+          await client.query(`INSERT INTO nzi_console.srs_frameworks (organisation_id, framework_id, version, label, status, published_by, published_at)
+            VALUES ($1, 'legacy-v2', 2, 'Draft', 'draft', 'bea', '2026-10-01T09:00:00Z')`, [LEGACY_ORG]);
+          return;
+        }
         if (!filename.startsWith("0186_")) return;
         await client.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, 'SRS Org')`, [ORG]);
         await client.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
@@ -272,64 +283,168 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
     });
   });
 
-  describe("the framework as versions (R1, R5)", () => {
-    let draftId = "";
+  describe("the frameworks locked and unlocked, edited only while unlocked, with stamped history (0222; R1, R5)", () => {
+    const state = async (key: string) => (await read(listSrsFrameworkStates)).find((framework) => framework.key === key)!;
+    const history = () => read((db) => listSrsFrameworkHistory(db));
+    const working = async () => (await read(async (db) => getSrsFramework(db, (await srsWorkingDefinitionId(db))!)))!;
+    let pinnedAssessment = "";
+    let pinnedTitles: Array<[string, string, number]> = [];
 
-    it("starts a draft as a full copy of the version in force — one draft at a time", async () => {
-      const created = await createSrsFrameworkDraft(database.pool, {}, context());
-      draftId = created.data.frameworkId;
-      assert.deepEqual([created.data.version, created.data.copiedFrom, created.data.requirements], [v1.version + 1, v1.frameworkId, v1.requirements.length]);
-      const draft = (await read((db) => getSrsFramework(db, draftId)))!;
-      assert.deepEqual([draft.status, draft.maturityLevels.length, draft.pillars.length, draft.standards.length], ["draft", 5, 4, 2]);
-      assert.deepEqual(draft.requirements.map((r) => r.id).sort(), v1.requirements.map((r) => r.id).sort(), "the same requirements, carried over by id");
-      await assert.rejects(createSrsFrameworkDraft(database.pool, {}, context()), refused("DRAFT_OPEN"));
+    it("0222 seeds each framework locked at the snapshot in force, stamped by its publisher, with its lock in the history", async () => {
+      const states = await read(listSrsFrameworkStates);
+      assert.deepEqual(states.map((s) => [s.key, s.locked, s.changedBy, s.snapshotVersion, s.version]), [["S2", true, "migration:0070", v1.version, 1], ["S1", true, "migration:0070", v1.version, 1]]);
+      const seeded = (await history()).filter((entry) => entry.event === "locked").map((entry) => [entry.frameworkKey, entry.snapshotVersion, entry.actorId]).sort();
+      assert.deepEqual(seeded, [["S1", v1.version, "migration:0070"], ["S2", v1.version, "migration:0070"]]);
+      assert.equal(await read(srsWorkingDefinitionId), null, "no working definition until the first unlock");
     });
 
-    it("edits only the draft: reword, reweight, retire, add — and a published version is refused, in the command and the database", async () => {
-      const [reworded, retired] = v1.requirements.filter((r) => r.active && r.source === "entered");
-      await upsertSrsRequirement(database.pool, { ...reqInput(draftId, reworded!), title: "Board oversight of climate risk, minuted quarterly", weight: 3 }, context());
-      await upsertSrsRequirement(database.pool, { ...reqInput(draftId, retired!), active: false }, context());
-      const added = await upsertSrsRequirement(database.pool, { frameworkId: draftId, standardKey: "S2", pillarKey: "metrics", code: "S2 M99", title: "Transition-plan metrics", weight: 1, targetMaturity: 2, active: true }, context());
-      const draft = (await read((db) => getSrsFramework(db, draftId)))!;
-      assert.equal(draft.requirements.find((r) => r.id === reworded!.id)!.weight, 3);
-      assert.equal(draft.requirements.find((r) => r.id === retired!.id)!.active, false);
-      assert.ok(draft.requirements.some((r) => r.id === added.data.requirementId && r.code === "S2 M99"));
-      await assert.rejects(upsertSrsRequirement(database.pool, { ...reqInput(draftId, reworded!), code: "S2 X1" }, context()), refused("FIXED"));
-      await assert.rejects(upsertSrsRequirement(database.pool, { ...reqInput(v1.frameworkId, reworded!), title: "Rewrite history" }, context()), refused("PUBLISHED"));
+    it("0222 turns a draft left open by the old flow into the working definition, its frameworks unlocked by whoever started it", async () => {
+      const rows = await q(`SELECT framework_key, locked, changed_by FROM nzi_console.srs_framework_locks WHERE organisation_id = $1 ORDER BY framework_key`, [LEGACY_ORG]);
+      assert.deepEqual(rows, [{ framework_key: "S1", locked: false, changed_by: "bea" }, { framework_key: "S2", locked: false, changed_by: "bea" }]);
+      const events = (await q(`SELECT event, framework_key, actor_id FROM nzi_console.srs_framework_history WHERE organisation_id = $1 ORDER BY event, framework_key`, [LEGACY_ORG]))
+        .map((row) => [row.event, row.framework_key, row.actor_id]);
+      assert.deepEqual(events, [["locked", "S1", "migration:0070"], ["locked", "S2", "migration:0070"], ["unlocked", "S1", "bea"], ["unlocked", "S2", "bea"]]);
+    });
+
+    it("a locked framework is read-only: an edit, a pillar and the ladder are refused while every framework is locked", async () => {
+      const requirement = v1.requirements.find((r) => r.standardKey === "S2" && r.active)!;
+      await assert.rejects(upsertSrsRequirement(database.pool, { ...reqInput(requirement), title: "Rewrite" }, context()), refused("LOCKED"));
+      await assert.rejects(upsertSrsPillar(database.pool, { label: "Transition" }, context()), refused("LOCKED"));
+      await assert.rejects(updateSrsMaturityLevel(database.pool, { level: 2, label: "X", definition: "Y" }, context()), refused("LOCKED"));
+      await assert.rejects(lockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 1 }, context()), refused("LOCKED"), "already locked");
+    });
+
+    it("unlocking is stamped, opens the working definition as a full copy of the snapshot in force, warns of pinned assessments, and stops new assessments", async () => {
+      await assert.rejects(unlockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 0 }, context()), /version|conflict/i);
+      const unlocked = await unlockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 1 }, context());
+      assert.deepEqual([unlocked.data.version, unlocked.data.reopenedFrom], [2, v1.version]);
+      assert.ok(unlocked.data.assessmentsPinned > 0, "the unlock reports the assessments pinned to their snapshots");
+      const s2 = await state("S2");
+      assert.deepEqual([s2.locked, s2.changedBy, s2.changedByName], [false, "ada", "Ada Admin"]);
+      assert.equal((await state("S1")).locked, true, "unlocking one framework leaves the other locked");
+      const definition = await working();
+      assert.equal(definition.status, "draft");
+      assert.deepEqual(definition.requirements.map((r) => [r.id, r.title, r.weight]), v1.requirements.map((r) => [r.id, r.title, r.weight]), "a full copy, carried by id");
+      const [latest] = await history();
+      assert.deepEqual([latest!.event, latest!.frameworkKey, latest!.actorId, latest!.snapshotVersion], ["unlocked", "S2", "ada", v1.version]);
+      await assert.rejects(unlockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 2 }, context()), refused("UNLOCKED"));
+      await assert.rejects(startSrsAssessment(database.pool, { clientId: B }, context()), refused("FRAMEWORK_UNLOCKED"), "no assessing an unlocked framework");
+    });
+
+    it("an unlocked framework is edited — reword, reweight, retire, add — each stamped; a locked one is refused in the command and the database", async () => {
+      const [reworded, retired] = v1.requirements.filter((r) => r.standardKey === "S2" && r.active && r.source === "entered");
+      await upsertSrsRequirement(database.pool, { ...reqInput(reworded!), title: "Board oversight of climate risk, minuted quarterly", weight: 3 }, context());
+      await upsertSrsRequirement(database.pool, { ...reqInput(retired!), active: false }, context());
+      const added = await upsertSrsRequirement(database.pool, { frameworkKey: "S2", pillarKey: "metrics", code: "S2 M99", title: "Transition-plan metrics", weight: 1, targetMaturity: 2, active: true }, context());
+      const definition = await working();
+      assert.equal(definition.requirements.find((r) => r.id === reworded!.id)!.weight, 3);
+      assert.equal(definition.requirements.find((r) => r.id === retired!.id)!.active, false);
+      assert.ok(definition.requirements.some((r) => r.id === added.data.requirementId && r.code === "S2 M99"));
+      await assert.rejects(upsertSrsRequirement(database.pool, { ...reqInput(reworded!), code: "S2 X1" }, context()), refused("FIXED"));
+
+      const stamped = (await history()).filter((entry) => entry.actorId === "ada" && entry.event.startsWith("requirement_"));
+      assert.deepEqual(stamped.map((entry) => [entry.event, entry.subject, entry.frameworkKey]).sort(),
+        [["requirement_added", added.data.requirementId, "S2"], ["requirement_edited", reworded!.id, "S2"], ["requirement_retired", retired!.id, "S2"]].sort());
+      const edit = stamped.find((entry) => entry.event === "requirement_edited")!;
+      assert.deepEqual([edit.before?.weight, edit.after?.weight, edit.actorName], [reworded!.weight, 3, "Ada Admin"]);
+
+      // S1 is still locked: refused by the command, and by the database underneath it.
+      const s1 = v1.requirements.find((r) => r.standardKey === "S1" && r.active)!;
+      await assert.rejects(upsertSrsRequirement(database.pool, { ...reqInput(s1), title: "Rewrite" }, context()), refused("LOCKED"));
+      await assert.rejects(q(`UPDATE nzi_console.srs_requirements SET title = 'Rewrite' WHERE framework_id = $1 AND requirement_id = $2`, [definition.frameworkId, s1.id]), /is locked/);
+      // Pillars and the ladder are shared: refused while S1 is locked.
+      await assert.rejects(upsertSrsPillar(database.pool, { label: "Transition" }, context()), refused("SHARED_LOCKED"));
+      await assert.rejects(updateSrsMaturityLevel(database.pool, { level: 2, label: "X", definition: "Y" }, context()), refused("SHARED_LOCKED"));
+      await assert.rejects(q(`UPDATE nzi_console.srs_pillars SET label = 'X' WHERE framework_id = $1 AND pillar_key = 'governance'`, [definition.frameworkId]), /shared/);
+      // A published snapshot is never edited.
       await assert.rejects(q(`UPDATE nzi_console.srs_requirements SET title = 'Rewrite history' WHERE framework_id = $1 AND requirement_id = $2`, [v1.frameworkId, reworded!.id]), /never edited/);
-      await updateSrsMaturityLevel(database.pool, { frameworkId: draftId, level: 2, label: "Established", definition: "Documented, operating and owned." }, context());
-      await assert.rejects(updateSrsMaturityLevel(database.pool, { frameworkId: draftId, level: 5, label: "Beyond", definition: "x" }, context()), refused("INVALID"), "five fixed steps");
-      await assert.rejects(q(`UPDATE nzi_console.srs_maturity_levels SET label = 'X' WHERE framework_id = $1 AND level = 1`, [v1.frameworkId]), /never edited/);
     });
 
-    it("publishes: the draft comes into force, the version before is superseded, the library's alignment is carried, and nothing goes back", async () => {
-      const published = await publishSrsFramework(database.pool, { frameworkId: draftId, effectiveFrom: "2027-01-01" }, context());
-      assert.equal(published.data.superseded, v1.frameworkId);
-      const versions = await read(listSrsFrameworkVersions);
-      assert.deepEqual(versions.map((v) => [v.version, v.status]), [[v1.version + 1, "active"], [v1.version, "superseded"]]);
-      assert.ok(published.data.libraryAlignmentsCarried > 0, "Add from library keeps pre-filling what a strategy advances");
+    it("locking makes the next snapshot: in force, read-only, the one before superseded, the library's alignment carried — and assessing resumes against it", async () => {
+      const locked = await lockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 2 }, context());
+      assert.deepEqual([locked.data.snapshotVersion, locked.data.superseded, locked.data.version], [v1.version + 1, v1.frameworkId, 3]);
+      assert.ok(locked.data.libraryAlignmentsCarried > 0, "Add from library keeps pre-filling what a strategy advances");
+      const snapshots = await read(listSrsFrameworkSnapshots);
+      assert.deepEqual(snapshots.map((s) => [s.version, s.status]), [[v1.version + 1, "active"], [v1.version, "superseded"]], "the working definition is not a snapshot");
+      assert.equal((await state("S2")).locked, true);
+      const [latest] = await history();
+      assert.deepEqual([latest!.event, latest!.frameworkKey, latest!.snapshotVersion, latest!.actorId], ["locked", "S2", v1.version + 1, "ada"]);
+      // Read-only again — in the command and in the working definition underneath it.
+      const requirement = (await working()).requirements.find((r) => r.standardKey === "S2" && r.active)!;
+      await assert.rejects(upsertSrsRequirement(database.pool, { ...reqInput(requirement), title: "Rewrite" }, context()), refused("LOCKED"));
+      await assert.rejects(q(`UPDATE nzi_console.srs_requirements SET title = 'Rewrite' WHERE framework_id = $1 AND requirement_id = $2`, [(await working()).frameworkId, requirement.id]), /is locked/);
       await assert.rejects(q(`UPDATE nzi_console.srs_frameworks SET status = 'active' WHERE framework_id = $1`, [v1.frameworkId]), /never back/);
-      // A new assessment stamps the new version; an earlier one keeps its own, unchanged.
-      const id = (await startSrsAssessment(database.pool, { clientId: B }, context())).data.assessmentId;
-      assert.equal((await assessment(id)).frameworkVersion, v1.version + 1, "a new assessment is made against the version in force");
-      const legacyDraft = await assessment("legacy-draft");
-      assert.equal(legacyDraft.frameworkVersion, v1.version, "an assessment keeps the version it was made against");
-      // The retired requirement leaves new assessments; completing B's needs only the new version's active set.
+
+      // A new assessment binds to the new snapshot; an earlier one keeps its own.
+      pinnedAssessment = (await startSrsAssessment(database.pool, { clientId: B }, context())).data.assessmentId;
+      assert.equal((await assessment(pinnedAssessment)).frameworkVersion, v1.version + 1);
+      assert.equal((await assessment("legacy-draft")).frameworkVersion, v1.version, "an assessment keeps the snapshot it was made against");
       const v2 = (await read((db) => getSrsFramework(db)))!;
       assert.equal(srsCompletion(v2, []).total, v1.requirements.filter((r) => r.active).length - 1 + 1, "one retired, one added");
+      pinnedTitles = v2.requirements.map((r) => [r.id, r.title, r.weight]);
       const old = (await read((db) => getSrsFramework(db, v1.frameworkId)))!;
-      assert.deepEqual(old.requirements.map((r) => [r.id, r.title, r.weight]), v1.requirements.map((r) => [r.id, r.title, r.weight]), "the superseded version reads exactly as it did");
+      assert.deepEqual(old.requirements.map((r) => [r.id, r.title, r.weight]), v1.requirements.map((r) => [r.id, r.title, r.weight]), "the superseded snapshot reads exactly as it did");
     });
 
-    it("is admin.lookups: a consultant cannot version the framework, and every step is audited", async () => {
-      await assert.rejects(createSrsFrameworkDraft(database.pool, {}, context("consultant")), /admin\.lookups|permission|not allowed/i);
+    it("locks one framework without the other's half-finished edits, changes pillars and the ladder only with every framework unlocked, and never moves a pinned assessment's basis", async () => {
+      const s1 = v1.requirements.find((r) => r.standardKey === "S1" && r.active)!;
+      const s2 = v1.requirements.filter((r) => r.standardKey === "S2" && r.active && r.source === "entered")[2]!;
+      await unlockSrsFramework(database.pool, { frameworkKey: "S1", expectedVersion: 1 }, context());
+      await upsertSrsRequirement(database.pool, { ...reqInput(s1), title: "Half-finished S1 wording" }, context());
+      await unlockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 3 }, context());
+      await upsertSrsRequirement(database.pool, { ...reqInput(s2), title: "Finished S2 wording" }, context());
+      // Both unlocked: the shared parts can change, stamped as shared (no framework).
+      const pillar = await upsertSrsPillar(database.pool, { label: "Transition planning", description: "The transition plan and its delivery." }, context());
+      await upsertSrsPillar(database.pool, { pillarKey: "risk", label: "Risk" }, context());
+      await updateSrsMaturityLevel(database.pool, { level: 2, label: "Established", definition: "Documented, operating and owned." }, context());
+      await assert.rejects(upsertSrsPillar(database.pool, { label: "transition planning" }, context()), refused("DUPLICATE"));
+      const shared = (await history()).filter((entry) => entry.frameworkKey === null && entry.actorId === "ada").map((entry) => [entry.event, entry.subject]).sort();
+      assert.deepEqual(shared, [["ladder_reworded", "2"], ["pillar_added", pillar.data.pillarKey], ["pillar_renamed", "risk"]]);
+
+      const s2Locked = await lockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 4 }, context());
+      const v3 = (await read((db) => getSrsFramework(db)))!;
+      assert.equal(v3.version, s2Locked.data.snapshotVersion);
+      assert.equal(v3.requirements.find((r) => r.id === s2.id)!.title, "Finished S2 wording", "the locked framework's edits are in the snapshot");
+      assert.equal(v3.requirements.find((r) => r.id === s1.id)!.title, s1.title, "the unlocked framework goes in as its last snapshot held it");
+      assert.equal((await working()).requirements.find((r) => r.id === s1.id)!.title, "Half-finished S1 wording", "and its edits carry on in the working definition");
+
+      const s1Locked = await lockSrsFramework(database.pool, { frameworkKey: "S1", expectedVersion: 2 }, context());
+      const v4 = (await read((db) => getSrsFramework(db)))!;
+      assert.equal(v4.version, s1Locked.data.snapshotVersion);
+      assert.deepEqual([v4.requirements.find((r) => r.id === s1.id)!.title, v4.requirements.find((r) => r.id === s2.id)!.title], ["Half-finished S1 wording", "Finished S2 wording"]);
+      assert.deepEqual([v4.pillars.find((p) => p.key === "risk")!.label, v4.pillars.some((p) => p.key === pillar.data.pillarKey), v4.maturityLevels[2]!.definition],
+        ["Risk", true, "Documented, operating and owned."]);
+      assert.ok((await read(listSrsFrameworkStates)).every((framework) => framework.locked));
+
+      // The assessment pinned to snapshot 2 reads exactly as it did, through every unlock, edit and lock since.
+      const pinned = await assessment(pinnedAssessment);
+      assert.equal(pinned.frameworkVersion, v1.version + 1);
+      const basis = (await read((db) => getSrsFramework(db, pinned.frameworkId)))!;
+      assert.deepEqual(basis.requirements.map((r) => [r.id, r.title, r.weight]), pinnedTitles);
+      const states = (await q(`SELECT count(*)::int AS n FROM nzi_console.srs_frameworks WHERE organisation_id = $1 AND status = 'draft'`, [ORG]))[0]!.n;
+      assert.equal(states, 1, "one working definition, kept");
+    });
+
+    it("keeps the history append-only — no update, no delete, even by the owner", async () => {
+      await assert.rejects(q(`UPDATE nzi_console.srs_framework_history SET actor_id = 'someone-else' WHERE organisation_id = $1`, [ORG]), /append-only/);
+      await assert.rejects(q(`DELETE FROM nzi_console.srs_framework_history WHERE organisation_id = $1`, [ORG]), /append-only/);
+      const grants = await q(`SELECT privilege_type FROM information_schema.role_table_grants WHERE grantee = 'nzi_console_app' AND table_name = 'srs_framework_history' ORDER BY privilege_type`);
+      assert.deepEqual(grants.map((row) => row.privilege_type), ["INSERT", "SELECT"]);
+    });
+
+    it("is admin.lookups: a consultant cannot lock, unlock or edit, and every step is audited as well as in the history", async () => {
+      await assert.rejects(unlockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 5 }, context("consultant")), /admin\.lookups|permission|not allowed/i);
+      await assert.rejects(upsertSrsPillar(database.pool, { label: "Nope" }, context("consultant")), /admin\.lookups|permission|not allowed/i);
       const actions = (await q<{ action: string }>(`SELECT DISTINCT action FROM nzi_console.audit_events WHERE action LIKE 'srs_framework_%' AND actor_id <> 'migration:0208'`)).map((row) => row.action).sort();
-      assert.deepEqual(actions, ["srs_framework_draft_created", "srs_framework_maturity_updated", "srs_framework_published", "srs_framework_requirement_upserted"]);
+      assert.deepEqual(actions, ["srs_framework_locked", "srs_framework_maturity_updated", "srs_framework_pillar_upserted", "srs_framework_requirement_upserted", "srs_framework_unlocked"]);
+      const audited = (await q(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE action IN ('srs_framework_locked', 'srs_framework_unlocked')`))[0]!.n;
+      const stamped = (await history()).filter((entry) => entry.actorId === "ada" && (entry.event === "locked" || entry.event === "unlocked")).length;
+      assert.deepEqual([audited, stamped], [6, 6], "every lock and unlock, in the audit log and the history alike");
     });
   });
 });
 
-const reqInput = (frameworkId: string, requirement: SrsFramework["requirements"][number]) => ({
-  frameworkId, requirementId: requirement.id, standardKey: requirement.standardKey, pillarKey: requirement.pillarKey, code: requirement.code,
+const reqInput = (requirement: SrsFramework["requirements"][number]) => ({
+  frameworkKey: requirement.standardKey, requirementId: requirement.id, pillarKey: requirement.pillarKey, code: requirement.code,
   title: requirement.title, helpText: requirement.helpText, weight: requirement.weight, targetMaturity: requirement.targetMaturity, active: requirement.active,
 });

@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { ADMIN_ITEMS } from "../app/admin/adminNav";
 
 /**
- * SRS S1 in the console: the Admin SRS framework page (R1 — versions, a draft, publish) and the client's SRS area dated
+ * SRS S1 in the console: the Admin SRS framework page (R1; Phase B — lock, unlock, history) and the client's SRS area dated
  * on completion (R3 — in progress vs assessed, completion held until every requirement is addressed, no date typed at
  * start, a reassessment that starts a new assessment).
  */
@@ -23,21 +23,31 @@ describe("the Admin SRS framework (R1)", () => {
     assert.deepEqual([item?.href, item?.capability, item?.phase], ["/admin/srs-framework", "admin.lookups", undefined]);
   });
 
-  it("reads every version, the one in force and the draft, and edits only with admin.lookups and writes on", () => {
-    assert.match(page, /listSrsFrameworkVersions\(db\)/);
-    assert.match(page, /getSrsFramework\(db, draftId\)/);
+  it("reads each framework's lock, the snapshots, the history, the one in force and the working definition, and edits only with admin.lookups and writes on", () => {
+    for (const call of ["listSrsFrameworkStates(db)", "listSrsFrameworkSnapshots(db)", "listSrsFrameworkHistory(db)", "getSrsFramework(db, workingId)"]) assert.ok(page.includes(call), call);
     assert.match(page, /holds\(access\.capabilities, "admin\.lookups"\)/);
   });
 
-  it("edits only a draft: the version in force is read-only, and a new version starts as a copy", () => {
-    assert.match(board, /const editable = Boolean\(draft\) && editing\.allowed/);
-    assert.match(board, /editing\.allowed && !draft && active/);
-    assert.match(board, /"\/api\/isolated\/srs-framework\/publish", \{ frameworkId: draft\.frameworkId, effectiveFrom \}/);
+  it("edits only an unlocked framework: a locked one is read-only, pillars and the ladder wait for every framework, and unlocking warns first (Phase B)", () => {
+    assert.match(board, /const unlockedKeys = new Set\(working && editing\.allowed \? frameworks\.filter\(\(framework\) => !framework\.locked\)/);
+    assert.match(board, /const readOnly = !unlocked\.has\(draft\.frameworkKey\)/);
+    assert.match(board, /\{allUnlocked \? <>/);
+    assert.match(board, /"\/api\/isolated\/srs-framework\/lock", \{ frameworkKey: framework\.key, expectedVersion: framework\.version \}/);
+    assert.match(board, /onClick=\{\(\) => setUnlocking\(framework\)\}>Unlock</, "an unlock opens the warning first, not the command");
+    assert.match(board, /assessment\{pinned === 1 \? " is" : "s are"\} pinned to/);
+    assert.doesNotMatch(board, /Start a new version|Publish version/);
+  });
+
+  it("shows the history per framework and per requirement, with who and when", () => {
+    assert.match(board, /entry\.frameworkKey === historyOf\.key \|\| entry\.frameworkKey === null/);
+    assert.match(board, /history\.filter\(\(entry\) => entry\.subject === open\.requirement!\.id\)/);
+    assert.match(board, /\{entry\.actorName \?\? entry\.actorId\} · \{formatDateTime\(entry\.at\)\}/);
   });
 
   it("routes each framework command through the command runner's principal check", () => {
-    for (const [path, command] of [["srs-framework/route.ts", "srs.framework.draft.create"], ["srs-framework/requirements/route.ts", "srs.framework.requirement.upsert"],
-      ["srs-framework/maturity/route.ts", "srs.framework.maturity.update"], ["srs-framework/publish/route.ts", "srs.framework.publish"]] as const) {
+    for (const [path, command] of [["srs-framework/unlock/route.ts", "srs.framework.unlock"], ["srs-framework/lock/route.ts", "srs.framework.lock"],
+      ["srs-framework/pillars/route.ts", "srs.framework.pillar.upsert"], ["srs-framework/requirements/route.ts", "srs.framework.requirement.upsert"],
+      ["srs-framework/maturity/route.ts", "srs.framework.maturity.update"]] as const) {
       assert.match(read(`app/api/isolated/${path}`), new RegExp(`requireCommandPrincipal\\(request, "${command.replace(/\./g, "\\.")}"\\)`), path);
     }
   });

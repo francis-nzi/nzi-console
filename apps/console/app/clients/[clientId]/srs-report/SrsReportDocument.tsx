@@ -1,5 +1,5 @@
 import { SrsDial, SrsHeatmap, SrsPillarTable, SrsRadar, SrsScaleKey, SrsTrend } from "@nzi/charts";
-import type { ReadinessReportSection, SrsDashboardRequirement } from "@nzi/contracts";
+import { srsByFramework, srsCodeFrameworkKey, srsRequirementCode, type ReadinessReportSection, type SrsDashboardRequirement } from "@nzi/contracts";
 import type { SrsReportReadModel } from "@nzi/isolated-backend";
 import { formatDate } from "../../../lib/formatDate";
 
@@ -67,10 +67,14 @@ function SectionBody({ section, report }: { section: ReadinessReportSection; rep
         <SrsPillarTable rows={rows} caption="The same four positions" />
       </div>;
     case "heatmap":
-      return <SrsHeatmap columns={byPillar(dashboard.requirements).map((group) => ({
-        label: group.label,
-        cells: group.requirements.map((requirement) => ({ code: requirement.code, title: requirement.title, maturity: requirement.maturity, stepName: requirement.stepName, target: requirement.target })),
-      }))} />;
+      // One heatmap per framework, named once; a cell carries the bare pillar code (G1, Str1), never the framework again.
+      return <>{srsByFramework(dashboard.requirements, (requirement) => requirement.standardKey, dashboard.standards).map((framework) => <div key={framework.key ?? "other"}>
+        {framework.label ? <h3>{framework.label}</h3> : null}
+        <SrsHeatmap columns={byPillar(framework.rows).map((group) => ({
+          label: group.label,
+          cells: group.requirements.map((requirement) => ({ code: srsRequirementCode(requirement.code), title: requirement.title, maturity: requirement.maturity, stepName: requirement.stepName, target: requirement.target })),
+        }))} />
+      </div>)}</>;
     case "trend":
       return dashboard.trend.overall.length <= 1
         ? <p>This is the first completed assessment, so there is one position and no trend yet. Reassessment adds the line.</p>
@@ -87,11 +91,14 @@ function SectionBody({ section, report }: { section: ReadinessReportSection; rep
         ? <p>No requirement in this assessment was answered from the verified record.</p>
         : <table className="nz-srs-table"><caption>Answered from your reviewed data</caption>
           <thead><tr><th scope="col">Requirement</th><th scope="col">Step reached</th><th scope="col">From</th></tr></thead>
-          <tbody>{fromRecord.map((requirement) => <tr key={requirement.id}>
-            <th scope="row">{requirement.code} · {requirement.title}</th>
-            <td>{requirement.maturity === null ? "Not answered" : `${requirement.maturity} · ${requirement.stepName}`}</td>
-            <td>{requirement.evidence?.ref ?? "Your verified record"}</td>
-          </tr>)}</tbody>
+          {srsByFramework(fromRecord, (requirement) => requirement.standardKey, dashboard.standards).map((framework) => <tbody key={framework.key ?? "other"}>
+            {framework.label ? <tr><th scope="colgroup" colSpan={3}>{framework.label}</th></tr> : null}
+            {framework.rows.map((requirement) => <tr key={requirement.id}>
+              <th scope="row">{srsRequirementCode(requirement.code)} · {requirement.title}</th>
+              <td>{requirement.maturity === null ? "Not answered" : `${requirement.maturity} · ${requirement.stepName}`}</td>
+              <td>{requirement.evidence?.ref ?? "Your verified record"}</td>
+            </tr>)}
+          </tbody>)}
         </table>;
     }
     case "roadmap": {
@@ -100,11 +107,15 @@ function SectionBody({ section, report }: { section: ReadinessReportSection; rep
       return <>
         {report.roadmap.pillars.map((pillar) => <div key={pillar.key} className="nzsr-gaps">
           <h3>{pillar.label}</h3>
-          {pillar.gaps.map((gap) => <div key={gap.code} className="nzsr-gap">
-            <div className="hd"><b>{gap.code}</b> {gap.title}<span className="lv">{gap.maturityLabel} → {gap.targetLabel}</span></div>
-            {gap.strategies.length > 0
-              ? <ul>{gap.strategies.map((strategy) => <li key={strategy.title}>{strategy.title} <span className="st">{strategy.statusLabel}</span></li>)}</ul>
-              : <p className="none">No action on the plan addresses this yet.</p>}
+          {/* A gap holds only its stored code, so its framework is read from the code's prefix; named once, then bare codes. */}
+          {srsByFramework(pillar.gaps, (gap) => srsCodeFrameworkKey(gap.code), dashboard.standards).map((framework) => <div key={framework.key ?? "other"}>
+            {framework.label ? <h4>{framework.label}</h4> : null}
+            {framework.rows.map((gap) => <div key={gap.code} className="nzsr-gap">
+              <div className="hd"><b>{srsRequirementCode(gap.code)}</b> {gap.title}<span className="lv">{gap.maturityLabel} → {gap.targetLabel}</span></div>
+              {gap.strategies.length > 0
+                ? <ul>{gap.strategies.map((strategy) => <li key={strategy.title}>{strategy.title} <span className="st">{strategy.statusLabel}</span></li>)}</ul>
+                : <p className="none">No action on the plan addresses this yet.</p>}
+            </div>)}
           </div>)}
         </div>)}
       </>;
