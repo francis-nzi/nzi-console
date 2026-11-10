@@ -286,7 +286,8 @@ export function getPortalThread(pool: PoolLike, principal: PortalPrincipal, thre
   });
 }
 
-const STAFF_UNREAD = `SELECT count(*) FROM nzi_console.portal_messages x WHERE (x.organisation_id, x.thread_id) = (t.organisation_id, t.thread_id) AND x.author_principal = 'portal'
+/** A thread's client messages since the team last spoke — what staff read as unread. Over `portal_threads t`; the Control Room counts it too. */
+export const STAFF_UNREAD = `SELECT count(*) FROM nzi_console.portal_messages x WHERE (x.organisation_id, x.thread_id) = (t.organisation_id, t.thread_id) AND x.author_principal = 'portal'
   AND x.seq > coalesce((SELECT max(y.seq) FROM nzi_console.portal_messages y WHERE (y.organisation_id, y.thread_id) = (t.organisation_id, t.thread_id) AND y.author_principal = 'staff'), 0)`;
 
 /** The client workspace's Conversations: every thread of the client (portal.admin on it), the subject tags, and the staff a thread can be assigned to. */

@@ -641,6 +641,11 @@ jobs:
       # adviser as the firm (NZC-110) and only its own conversation (NZC-120); audited by ids, never the text.
       - name: The client's SRS readiness conversation, review requests surfaced, never an assessment write
         run: npx tsx --test packages/isolated-backend/tests/srsMessagingReal.test.ts
+      # The personalised Control Room, Phase 1 (read-only, no migration): two CRMs see different work, routed as the platform
+      # routes it; the recent list is the CRM's own last five by their own last act; every card counts only their own; the
+      # Jobs and Clients lists' crm filter lands on exactly that CRM's work; never another organisation's.
+      - name: The personalised Control Room — the CRM's own counts, recent jobs and filtered lists
+        run: npx tsx --test packages/isolated-backend/tests/crmControlRoomReal.test.ts
       # 0130 — the enabled rules name the real, imported factors: in net-zero-international, on data through the real v7
       # transform, the console's write path and the portal's acceptance both land the real grid and diesel factors at
       # their values; companions stay held, units still reconcile, no active rule names a -demo id, and the synthetic

@@ -13,6 +13,7 @@ import { formatDate } from "../lib/formatDate";
 import { clientJobsHref, crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { useTeamOptions } from "../clients/useReferenceOptions";
 import { useListNavigation } from "../lib/useListNavigation";
+import { isSignedIn, useStaffMe } from "../lib/useEditAccess";
 
 const initialStage: Record<JobFamily, string> = { crp: jobWorkflowStages.crp[0], consultancy: jobWorkflowStages.consultancy[0], lca: jobWorkflowStages.lca[0], pcf: jobWorkflowStages.pcf[0], training: jobWorkflowStages.training[0] };
 
@@ -26,6 +27,9 @@ const addDays = (day: string, days: number) => { const date = new Date(`${day}T0
 export function JobsIndex({ page, query, clients, setup = { jobTypes: [], templates: [] } }: { page: JobListPage; query: JobListQuery; clients: ClientScreenReadModel[]; setup?: JobSetupOptions }) {
   const router = useRouter();
   const nav = useListNavigation(jobListSpec, query, "/jobs");
+  // `?crm=` — "My jobs" from the Control Room. Like the client scope, it is where the page is: Clear filters keeps it.
+  const crm = query.filters.crm?.[0] ?? null;
+  const me = useStaffMe(crm !== null);
   // `?client=` scopes the portfolio to one client — the route the client trail's "Jobs"
   // crumb points at. It is an ordinary server-side filter now. The client's name is resolved
   // from the record, or from the jobs themselves when the client list is degraded; it is never invented.
@@ -63,8 +67,8 @@ export function JobsIndex({ page, query, clients, setup = { jobTypes: [], templa
   const anchorDay = [draft.startDate, familyHasReportingPeriod(draft.family) ? draft.reportingPeriodStart ?? "" : ""].filter((day) => day && day.length === 10).sort().at(-1) ?? null;
   const { summary } = page;
   // The client scope is where the page is, not a filter someone applied — Clear filters keeps it.
-  const narrowed = hasActiveFilters({ ...query, filters: { ...query.filters, client: undefined } });
-  const keep = clientId === null ? {} : { client: [clientId] };
+  const narrowed = hasActiveFilters({ ...query, filters: { ...query.filters, client: undefined, crm: undefined } });
+  const keep = { ...(clientId === null ? {} : { client: [clientId] }), ...(crm === null ? {} : { crm: [crm] }) };
 
   /**
    * The job's client manager defaults to the client's own (NZC-092) and stays changeable.
@@ -165,6 +169,7 @@ export function JobsIndex({ page, query, clients, setup = { jobTypes: [], templa
       : workspaceCrumbs("Jobs", "/jobs"))} />
     <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">Delivery portfolio</div><h1>Jobs</h1><div className="sub">{scopedClient
       ? <>Jobs for {scopedClient.name ?? "this client"} · <Link href="/jobs" className="nz-table-link">show every client</Link></>
+      : crm !== null ? <>{isSignedIn(me, crm) ? "Your jobs" : "One client manager’s jobs"} · <Link href="/jobs" className="nz-table-link">show every job</Link></>
       : "Every client job, workflow and deadline in one governed portfolio"}</div></div><button type="button" className="nz-btn pri" disabled={eligibleClients.length===0} title={eligibleClients.length===0?"Create or onboard a client before opening a job.":undefined} aria-expanded={creating} onClick={() => { setCreating((value) => !value); setNotice(null); }}>{creating ? "Close editor" : "+ New job"}</button></div></div>
     <div className="nz-body" style={{ paddingTop: 16 }}>
       {/* The dark "NZI delivery command" band and its ✓ trust pills are gone (Part 1, Task B). They
@@ -266,6 +271,8 @@ export function JobsIndex({ page, query, clients, setup = { jobTypes: [], templa
           ? <><b>No jobs yet</b><span>Create the first governed job after an eligible client exists.</span></>
           : scopedClient && !narrowed
           ? <><b>No jobs for this client yet</b><span>This client has no delivery jobs on record.</span></>
+          : crm !== null && !narrowed
+          ? <><b>No jobs routed to this client manager</b><span>A job is theirs when they manage it, or manage or own its client.</span></>
           : <><b>No jobs match these filters</b><span>Clear the search or a filter to return to active delivery work.</span></>}
         busy={nav.pending}
       />
