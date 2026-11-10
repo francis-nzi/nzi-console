@@ -3,7 +3,7 @@ import { useOrganisationName } from "../lib/OrganisationNameProvider";
 import {useEffect,useState} from "react";
 import {Collapsible,Drawer} from "@nzi/ui";
 import {SrsDial,SrsMeter,SrsPillarTable,SrsRadar,SrsScaleKey} from "@nzi/charts";
-import type {ReportSrsRoadmapGap,ReportSrsRoadmapPillar,SrsDashboardModel,SrsDashboardRequirement} from "@nzi/contracts";
+import {srsByFramework,srsCodeFrameworkKey,srsRequirementCode,type ReportSrsRoadmapGap,type ReportSrsRoadmapPillar,type SrsDashboardModel,type SrsDashboardRequirement} from "@nzi/contracts";
 import type {PortalReadinessReadModel} from "@nzi/isolated-backend";
 import {formatDate} from "../lib/formatDate";
 import {redirectIfPortalSessionEnded} from "./portalSessionClient";
@@ -137,7 +137,7 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
 
   <section className="nz-panel"><div className="nz-card-b">
     {totalGaps===0
-      ? <p className="sub">No requirement sits below what the framework expects of it. Your consultant will reassess as the standards move.</p>
+      ? <p className="sub">No requirement sits below what the framework expects of it. Your consultant will reassess as the frameworks move.</p>
       : <>
         <h3 className="nz-portal-readiness-h">What to address next</h3>
         <p className="sub" style={{marginTop:0}}>
@@ -147,13 +147,13 @@ export function PortalReadiness({model:provided}:{model?:PortalReadinessReadMode
             : ""}
         </p>
         <div className="nz-portal-readiness-gaps">
-          {model.roadmap.pillars.map(pillar=><PillarGaps key={pillar.key} pillar={pillar} defaultOpen={expanded} ideasFor={code=>ideasFor(codeToId.get(code))} canPropose={canPropose}/>)}
+          {model.roadmap.pillars.map(pillar=><PillarGaps key={pillar.key} pillar={pillar} frameworks={dashboard.standards} defaultOpen={expanded} ideasFor={code=>ideasFor(codeToId.get(code))} canPropose={canPropose}/>)}
         </div>
       </>}
   </div></section>
 
-  <Drawer open={open!==null} onClose={()=>setOpenId(null)} ariaLabel={open?`${open.code} ${open.title}`:"Requirement"} className="nz-site-drawer nz-pdv-drawer" dismissOnOutsideClick>
-    {open?<QuestionDrawer requirement={open} ideas={ideasFor(open.id)} canPropose={canPropose} onClose={()=>setOpenId(null)}/>:null}
+  <Drawer open={open!==null} onClose={()=>setOpenId(null)} ariaLabel={open?`${srsRequirementCode(open.code)} ${open.title}`:"Requirement"} className="nz-site-drawer nz-pdv-drawer" dismissOnOutsideClick>
+    {open?<QuestionDrawer requirement={open} frameworkLabel={dashboard.standards.find(standard=>standard.key===open.standardKey)?.label??open.standardKey} ideas={ideasFor(open.id)} canPropose={canPropose} onClose={()=>setOpenId(null)}/>:null}
   </Drawer>
   {conversation}
   </>;
@@ -167,26 +167,30 @@ function QuestionList({model,onOpen}:{model:SrsDashboardModel;onOpen:(id:string)
     if(!group){group={key:requirement.pillarKey,label:requirement.pillarLabel,requirements:[]};groups.push(group);}
     group.requirements.push(requirement);
   }
+  // Within a pillar, each framework is named once, then its questions carry the bare pillar code.
   return <div className="nz-portal-readiness-gaps nz-srs-questions">{groups.map(group=><Collapsible key={group.key} title={group.label} count={`${group.requirements.length}`}>
-    <ul className="nz-srs-qlist">{group.requirements.map(requirement=><li key={requirement.id}>
-      <button type="button" onClick={()=>onOpen(requirement.id)}>
-        <span className="nz-tag">{requirement.code}</span>
-        <span className="t">{requirement.title}</span>
-        {requirement.maturity===null
-          ?<span className="muted">Not answered</span>
-          :<span className="s"><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}</span>}
-      </button>
-    </li>)}</ul>
+    {srsByFramework(group.requirements,requirement=>requirement.standardKey,model.standards).map(framework=><div key={framework.key??"other"}>
+      {framework.label?<span className="nz-eyebrow">{framework.label}</span>:null}
+      <ul className="nz-srs-qlist">{framework.rows.map(requirement=><li key={requirement.id}>
+        <button type="button" onClick={()=>onOpen(requirement.id)}>
+          <span className="nz-tag">{srsRequirementCode(requirement.code)}</span>
+          <span className="t">{requirement.title}</span>
+          {requirement.maturity===null
+            ?<span className="muted">Not answered</span>
+            :<span className="s"><span className="nz-srs-chip" data-step={requirement.maturity}>{requirement.maturity}</span> {requirement.stepName}</span>}
+        </button>
+      </li>)}</ul>
+    </div>)}
   </Collapsible>)}</div>;
 }
 
 type Idea={requirementId:string;title:string;how:string};
 
-function QuestionDrawer({requirement,ideas,canPropose,onClose}:{requirement:SrsDashboardRequirement;ideas:Idea[];canPropose:boolean;onClose:()=>void}){
+function QuestionDrawer({requirement,frameworkLabel,ideas,canPropose,onClose}:{requirement:SrsDashboardRequirement;frameworkLabel:string;ideas:Idea[];canPropose:boolean;onClose:()=>void}){
   const evidenceKind={document:"Document",data:"From your own reported data",note:"Note"} as const;
   return <div className="nz-pdv-drawer-b">
     <div className="nz-pdv-drawer-h">
-      <span className="nz-eyebrow">{requirement.pillarLabel} · {requirement.code}</span>
+      <span className="nz-eyebrow">{frameworkLabel} · {requirement.pillarLabel} · {srsRequirementCode(requirement.code)}</span>
       <h2>{requirement.title}</h2>
     </div>
     {requirement.helpText?<div className="nz-pdv-sec"><h3>The question</h3><p>{requirement.helpText}</p></div>:null}
@@ -217,16 +221,20 @@ function QuestionDrawer({requirement,ideas,canPropose,onClose}:{requirement:SrsD
   </div>;
 }
 
-function PillarGaps({pillar,defaultOpen,ideasFor,canPropose}:{pillar:ReportSrsRoadmapPillar;defaultOpen:boolean;ideasFor:(code:string)=>Idea[];canPropose:boolean}){
+function PillarGaps({pillar,frameworks,defaultOpen,ideasFor,canPropose}:{pillar:ReportSrsRoadmapPillar;frameworks:ReadonlyArray<{key:string;label:string}>;defaultOpen:boolean;ideasFor:(code:string)=>Idea[];canPropose:boolean}){
+  // A gap holds only its stored code, so its framework is read from that code's prefix — named once per group.
   return <Collapsible title={pillar.label} count={`${pillar.gaps.length}`} defaultOpen={defaultOpen}>
-    {pillar.gaps.map(gap=><Gap key={gap.code} gap={gap} ideas={ideasFor(gap.code)} canPropose={canPropose}/>)}
+    {srsByFramework(pillar.gaps,gap=>srsCodeFrameworkKey(gap.code),frameworks).map(framework=><div key={framework.key??"other"}>
+      {framework.label?<span className="nz-eyebrow">{framework.label}</span>:null}
+      {framework.rows.map(gap=><Gap key={gap.code} gap={gap} ideas={ideasFor(gap.code)} canPropose={canPropose}/>)}
+    </div>)}
   </Collapsible>;
 }
 
 function Gap({gap,ideas,canPropose}:{gap:ReportSrsRoadmapGap;ideas:Idea[];canPropose:boolean}){
   return <div className="nz-portal-gap">
     <div className="hd">
-      <span className="nz-tag">{gap.code}</span>
+      <span className="nz-tag">{srsRequirementCode(gap.code)}</span>
       <b>{gap.title}</b>
       <span className="lv">{gap.maturityLabel} → {gap.targetLabel}</span>
     </div>

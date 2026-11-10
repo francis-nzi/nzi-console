@@ -4,7 +4,7 @@ import { useState } from "react";
 import { postBrowserCommand, putBrowserCommand, type BrowserCommandResult } from "@nzi/api-client";
 import { GatedButton } from "@nzi/ui";
 import {
-  srsBridgeCandidates, strategyControlLevelLabels, strategyControlLevels, strategyScopeLabel, strategyScopes,
+  srsBridgeCandidates, srsRequirementCode, strategyControlLevelLabels, strategyControlLevels, strategyScopeLabel, strategyScopes,
   type SrsAssessment, type StrategyControlLevel, type StrategyScope,
 } from "@nzi/contracts";
 import type { ClientWorkspaceReadModel } from "@nzi/isolated-backend";
@@ -33,6 +33,8 @@ export function SrsBridgeForm({ workspace, assessment, requirementId, access, on
 }) {
   const framework = workspace.srs.frameworks.find((version) => version.frameworkId === assessment.frameworkId) ?? workspace.srs.framework;
   const requirement = framework?.requirements.find((entry) => entry.id === requirementId) ?? null;
+  // Named once by its framework, then the bare pillar code: "UK SRS S2 — Climate · G1".
+  const reference = requirement ? `${framework?.standards.find((standard) => standard.key === requirement.standardKey)?.label ?? requirement.standardKey} · ${srsRequirementCode(requirement.code)}` : null;
   const maturity = assessment.items.find((item) => item.requirementId === requirementId)?.maturity ?? null;
   const stepName = (level: number) => framework?.maturityLevels.find((entry) => entry.level === level)?.label ?? `Step ${level}`;
   const candidates = srsBridgeCandidates(requirementId, workspace.strategies.library, workspace.strategies.plan);
@@ -54,7 +56,7 @@ export function SrsBridgeForm({ workspace, assessment, requirementId, access, on
     const result = await postBrowserCommand<{ clientStrategyId: string; linked: boolean }>(`${base}/bridge`, { ...body, status: agreed ? "agreed" : "proposed" }, crypto.randomUUID());
     setPending(null);
     if (result.state !== "success") { setError(errorText(result)); return; }
-    onSaved(`${label} is on the plan, bridging ${requirement?.code ?? "the gap"}${result.data.linked ? ", and linked from this assessment" : ""}.`);
+    onSaved(`${label} is on the plan, bridging ${reference ?? "the gap"}${result.data.linked ? ", and linked from this assessment" : ""}.`);
   }
 
   async function suggest() {
@@ -80,7 +82,7 @@ export function SrsBridgeForm({ workspace, assessment, requirementId, access, on
 
   return <>
     <div className="nz-dh">
-      <div className="kick">Bridge a readiness gap · {requirement.code}</div>
+      <div className="kick">Bridge a readiness gap · {reference}</div>
       <h3>{requirement.title}</h3>
       <div className="m">{maturity === null ? "Not yet answered" : `${maturity} · ${stepName(maturity)}`} → expected {requirement.targetMaturity} · {stepName(requirement.targetMaturity)}</div>
     </div>
@@ -88,7 +90,7 @@ export function SrsBridgeForm({ workspace, assessment, requirementId, access, on
       <section className="nz-bridge-sec">
         <h4>From the Actions library</h4>
         <p className="hint">Actions whose alignment names this requirement.</p>
-        {candidates.length === 0 ? <p className="sub">No library action is aligned to {requirement.code} yet.</p>
+        {candidates.length === 0 ? <p className="sub">No library action is aligned to {reference} yet.</p>
           : candidates.map(({ strategy, onPlan }) => <div className="nz-lib-item" key={strategy.id}>
             <div className="nz-lib-main"><div className="nm">{strategy.title}</div>
               <div className="sub"><span className="nz-tag">{strategyScopeLabel(strategy.scope)}</span> {strategy.category}</div></div>

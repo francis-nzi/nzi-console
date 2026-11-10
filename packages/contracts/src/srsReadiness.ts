@@ -90,6 +90,32 @@ export type SrsAssessment = {
 };
 
 /**
+ * A requirement's reference as a person reads it (SRS framework rework, Phase A). The stored code starts with its
+ * framework ("S2 G1"); a screen shows the framework once, as the group, and then the bare pillar code ("G1"). Strategy
+ * reads "Str", never a lone "S" that looks like the old S1/S2 prefix. A code outside that shape is shown as stored.
+ * Display only: the stored code is unchanged.
+ */
+export function srsRequirementCode(code: string): string {
+  const match = /^(?:S\d+\s+)?([A-Z])(\d+)$/.exec(code.trim());
+  if (!match) return code;
+  return `${match[1] === "S" ? "Str" : match[1]}${match[2]}`;
+}
+
+/** The framework a stored code belongs to ("S2 G1" → "S2"), for a surface that holds only the code. */
+export const srsCodeFrameworkKey = (code: string): string | null => /^(S\d+)\s/.exec(code.trim())?.[1] ?? null;
+
+/**
+ * Rows cut by framework, in the frameworks' own order (the climate-led one first), each group labelled once. A row whose
+ * framework is not listed falls in a last, unlabelled group rather than being dropped.
+ */
+export function srsByFramework<T>(rows: readonly T[], keyOf: (row: T) => string | null, frameworks: ReadonlyArray<{ key: string; label: string }>): Array<{ key: string | null; label: string | null; rows: T[] }> {
+  const groups = frameworks.map((framework) => ({ key: framework.key as string | null, label: framework.label as string | null, rows: rows.filter((row) => keyOf(row) === framework.key) }));
+  const known = new Set(frameworks.map((framework) => framework.key));
+  const rest = rows.filter((row) => !known.has(keyOf(row) ?? ""));
+  return [...groups, { key: null, label: null, rows: rest }].filter((group) => group.rows.length > 0);
+}
+
+/**
  * The order a person works through the framework: the climate standard first, then the
  * general one, each by pillar and then by the framework's own ordering. Alphabetical would
  * put S1 ahead of S2, which is backwards — S2 is the one that leads.
