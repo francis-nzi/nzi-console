@@ -5,7 +5,7 @@ import { AuthorizationError, requireCapability, type StaffPrincipal } from "./au
 import { assertCapabilityOnClient } from "./access";
 import { listInputSpecForClient } from "./categoryVisibility";
 import { listLivePortalBroadcasts } from "./portalBroadcasts";
-import { assemblePortalDataView, assemblePortalJobEmissions, assemblePortalRowHistory, type PortalDataView, type PortalRowHistoryEntry } from "./portalCapture";
+import { assemblePortalCategories, assemblePortalDataView, assemblePortalJobEmissions, assemblePortalRowHistory, type PortalDataView, type PortalRowHistoryEntry } from "./portalCapture";
 import type { JobEmissions } from "./emissionsAggregation";
 import { assemblePortalAssuredDashboard } from "./portalAnalytics";
 import { assemblePortalReportView, portalPublishedReportOf, type PortalReportView } from "./portalComposition";
@@ -107,6 +107,11 @@ export function getPortalDataViewForStaff(pool: PoolLike, principal: StaffPrinci
 /** The client's totals band in preview, narrowed to a site (BUILD-portal-data-crm-parity R2) — the client's own assembly. */
 export function getPortalJobEmissionsForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string, siteId: string | null): Promise<JobEmissions> {
   return previewRead(pool, principal, clientId, jobId, (db) => assemblePortalJobEmissions(db, principal.organisationId, clientId, jobId, siteId));
+}
+
+/** The client's category view in preview, narrowed to a site tab — the client's own assembly (assemblePortalCategories). */
+export function getPortalDataCategoriesForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string, siteId: string | null): Promise<PortalDataView["categories"]> {
+  return previewRead(pool, principal, clientId, jobId, (db) => assemblePortalCategories(db, clientId, jobId, siteId));
 }
 
 export function getPortalRowHistoryForStaff(pool: PoolLike, principal: StaffPrincipal, clientId: string, jobId: string, rowId: string): Promise<PortalRowHistoryEntry[]> {

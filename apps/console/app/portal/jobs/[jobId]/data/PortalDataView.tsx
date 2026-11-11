@@ -4,7 +4,7 @@
 // narrowed by the client's profile, with the CRM's own server totals), the entry form (`EmissionEntryForm`, portal audience,
 // writing the shared row on save), the source detail (`rowSourceDetail`) and the row History (`RowHistory`) — narrowed by the
 // client's portal profile. Writes go to the portal commands, which hold every gate again at the write boundary.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Collapsible, Drawer } from "@nzi/ui";
 import { patchBrowserCommand, postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import type { ApplicableCategory, InputSpecCategory, JobEntryBasis, ScopeRowReadModel } from "@nzi/contracts";
@@ -81,6 +81,32 @@ export function PortalDataView({ jobId }: { jobId: string }) {
     return () => { live = false; };
   }, [adding, base, surface.readOnly]);
 
+  // The category list follows the site tab, as the totals band does: the CRM's own figures inside the profile gate, re-read
+  // for the site (data-categories). All sites is the Data view's own list. The previous figures stay drawn while a re-read is in
+  // flight, and only the latest one lands, so a quick switch never leaves another site's figures on screen.
+  const [siteCategories, setSiteCategories] = useState<{ state: "ready"; categories: View["categories"] } | { state: "failed" } | null>(null);
+  const latestCategories = useRef(0);
+  const loadedView = load.state === "ready" ? load.view : null;
+  const readSiteCategories = useCallback(async () => {
+    const request = ++latestCategories.current;
+    if (!siteId || !loadedView) { setSiteCategories(null); return; }
+    try {
+      const response = await fetch(`${base}/data-categories?siteId=${encodeURIComponent(siteId)}`, { cache: "no-store" });
+      if (await surface.sessionEnded(response)) return;
+      const body: unknown = response.ok ? await response.json() : null;
+      if (request !== latestCategories.current) return;
+      const categories = body && typeof body === "object" && Array.isArray((body as View["categories"]).categories) ? body as View["categories"] : null;
+      setSiteCategories(categories ? { state: "ready", categories } : { state: "failed" });
+    } catch { if (request === latestCategories.current) setSiteCategories({ state: "failed" }); }
+  }, [base, siteId, loadedView, surface]);
+  useEffect(() => { void readSiteCategories(); }, [readSiteCategories]);
+  const [shownCategories, setShownCategories] = useState<View["categories"] | null>(null);
+  useEffect(() => {
+    if (!loadedView) return;
+    if (!siteId) setShownCategories(loadedView.categories);
+    else if (siteCategories?.state === "ready") setShownCategories(siteCategories.categories);
+  }, [loadedView, siteId, siteCategories]);
+
   if (load.state === "loading") return <div className="nz-portal-state loading" role="status"><i>↻</i><div><b>Loading your data</b><span>Reading this job&apos;s categories and entries…</span></div></div>;
   if (load.state === "failed") return <div className="nz-portal-state failed" role="alert"><i>!</i><div><b>Your data is temporarily unavailable</b><span>Nothing has been assumed about your entries.</span><button className="nz-btn" onClick={() => void refresh()}>Try again</button></div></div>;
 
@@ -155,8 +181,10 @@ export function PortalDataView({ jobId }: { jobId: string }) {
       {crmParity ? null : <p className="nz-pdv-note" role="note">What you enter goes straight into this job&apos;s data and waits for {org.your("adviser")}&apos;s review; it counts once reviewed. You can change an entry you made until it has been reviewed.</p>}
       {notice ? <div className={`nz-banner ${notice.kind}`} role={notice.kind === "ok" ? "status" : "alert"}>{notice.text}</div> : null}
 
+      {siteId && siteCategories?.state === "failed" ? <div className="nz-banner warn" role="alert">This site&apos;s category figures could not be read, so the list below still shows the last figures read.{" "}
+        <button type="button" className="nz-btn" onClick={() => void readSiteCategories()}>Retry</button></div> : null}
       <CrpDataEntryAccordion
-        audience="portal" applicable={view.categories} canAdd={open && !surface.readOnly}
+        audience="portal" applicable={shownCategories ?? view.categories} canAdd={open && !surface.readOnly}
         specs={specs} jobId={jobId} rows={rows} selectedRowId={openRowId ?? ""}
         onOpenRow={(rowId) => { setAdding(null); setOpenRowId(rowId); }}
         onAddEntry={(category) => { setOpenRowId(null); setFormError(""); setAdding(category); }}
