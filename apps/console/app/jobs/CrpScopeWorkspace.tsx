@@ -58,6 +58,7 @@ import {SpendImportPanel} from "./SpendImportPanel";
 import type { DatasetUpdate, JobEmissions } from "@nzi/isolated-backend";
 import { EmissionsSummary } from "./EmissionsSummary";
 import { JobSiteTabs, siteLabelFor } from "./JobSiteTabs";
+import { UNASSIGNED_SITE_ID } from "@nzi/contracts";
 import { EmissionEntryForm } from "./EmissionEntryForm";
 import { useUsageTypes } from "./usageTypes";
 import { categoryRowScope, declaredOptionFor, emissionEntryDraftToScopeRow, ENTRY_FACTOR_REQUIRED, entryFactorRefsFor, entryHasFactor, optionsForCategory, type DeclaredFactorPreviewResult, type RegistrationLookupOutcome } from "./emissionEntryModel";
@@ -443,7 +444,8 @@ export function CrpScopeWorkspace({
   async function saveQuickAdd(category: ApplicableCategory, draft: Parameters<typeof emissionEntryDraftToScopeRow>[0]) {
     if (quickAddBusy) return { ok: false };
     setQuickAddBusy(true); setQuickAddError("");
-    const site = { id: siteId, label: siteId === null ? null : siteLabel };
+    // "Unassigned" enters a row with no site, as "All sites" does.
+    const site = siteId === null || siteId === UNASSIGNED_SITE_ID ? { id: null, label: null } : { id: siteId, label: siteLabel };
     const result = await createEntryFromForm(
       emissionEntryDraftToScopeRow(draft, category, site, entryFactorRefs, spendReportingMonths));
     setQuickAddBusy(false);
@@ -471,7 +473,7 @@ export function CrpScopeWorkspace({
         spec={specs[addingCategory.code] ?? null}
         category={addingCategory}
         audience="crm"
-        site={{ id: siteId, label: siteId === null ? "Unallocated" : siteLabel }}
+        site={siteId === null || siteId === UNASSIGNED_SITE_ID ? { id: null, label: "Unallocated" } : { id: siteId, label: siteLabel }}
         factors={quickAddOptions}
         declared={declaredOption}
         entryBasis={entryBasis}
@@ -779,6 +781,7 @@ export function CrpScopeWorkspace({
           emissions={emissions}
           selected={siteId}
           onSelect={setSiteId}
+          unassigned
         />
       </div>
       {/* D3 (R6): the client's requests to reopen a reviewed entry — the CRM reopens by editing it. */}
