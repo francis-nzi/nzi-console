@@ -132,7 +132,7 @@ describe("the staff portal preview, job-aware (console)", () => {
 
     it("mirror every client GET the previewed components make", () => {
       const rel = routes.map((path) => decodeURIComponent(path).split("/portal-preview/")[1] ?? "").sort();
-      for (const expected of ["route.ts", "jobs/route.ts", "input-spec/route.ts", "broadcasts/route.ts", "jobs/[jobId]/data-view/route.ts",
+      for (const expected of ["route.ts", "jobs/route.ts", "input-spec/route.ts", "broadcasts/route.ts", "jobs/[jobId]/data-view/route.ts", "jobs/[jobId]/data-categories/route.ts",
         "jobs/[jobId]/scope-rows/[rowId]/history/route.ts", "jobs/[jobId]/dashboard/route.ts", "jobs/[jobId]/published-report/route.ts",
         "jobs/[jobId]/published-report/composition/route.ts", "jobs/[jobId]/data-entry-access/route.ts", "jobs/[jobId]/data-entry-records/route.ts"]) {
         assert.ok(rel.includes(expected), expected);

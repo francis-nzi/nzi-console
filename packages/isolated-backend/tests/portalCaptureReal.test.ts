@@ -7,7 +7,7 @@ import pg from "pg";
 import { commandGrantForRole, type CommandContext, type CommandInputMap, type PortalCommandContext } from "@nzi/contracts";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import {
-  AuthorizationError, CommandValidationError, createPortalScopeRow, createScopeRow, deactivatePortalScopeRow, getPortalDataView, getPortalRowHistory,
+  AuthorizationError, CommandValidationError, createPortalScopeRow, createScopeRow, deactivatePortalScopeRow, getPortalDataCategories, getPortalDataView, getPortalRowHistory,
   importPortalScopeRows, listInputSpecForClient, listJobFactorOptions, setClientCategoryVisibility, setClientPortalProfile, setClientPortalScopeVisibility, updatePortalScopeRow, updateScopeRow,
   type PortalPrincipal,
 } from "../src/index";
@@ -252,6 +252,42 @@ describe("the client enters on the shared scope rows (portal data-entry phase 2)
       const theirs = await getPortalRowHistory(database.pool, portalPrincipal, JOB, staffRow);
       assert.deepEqual(theirs.map((entry) => entry.who), ["adviser"]);
       assert.doesNotMatch(JSON.stringify(theirs), new RegExp(STAFF));
+    });
+
+    it("the category list under a site tab: the CRM's figures narrowed to the site, inside the profile gate — the site never widens it", async () => {
+      for (const site of ["cat-a", "cat-b"]) {
+        await db.query(`INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by) VALUES ($1,$2,$3,$2,$4)`, [ORG, site, CLIENT, STAFF]);
+      }
+      // Gas: two rows at site A (1 + 2 t), one at site B (4 t); every earlier gas row has no site.
+      for (const [id, site, tco2e] of [["cat-r1", "cat-a", 1], ["cat-r2", "cat-a", 2], ["cat-r3", "cat-b", 4]] as const) {
+        await db.query(
+          `INSERT INTO nzi_console.job_scope_rows (organisation_id,scope_row_id,job_id,scope,category_code,source_label,report_label,level_1,level_2,unit,enabled,version,site_id,calculated_tco2e)
+           VALUES ($1,$2,$3,'1','1.natural-gas',$2,$2,'L1','L2','kWh',true,1,$4,$5)`, [ORG, id, JOB, site, tco2e]);
+      }
+      const gasIn = (list: { categories: Array<{ code: string; entryCount: number; tco2e: number }> }) => list.categories.find((category) => category.code === "1.natural-gas");
+      const all = (await getPortalDataView(database.pool, portalPrincipal, JOB)).categories;
+      const siteA = await getPortalDataCategories(database.pool, portalPrincipal, JOB, "cat-a");
+      const siteB = await getPortalDataCategories(database.pool, portalPrincipal, JOB, "cat-b");
+      assert.deepEqual([gasIn(siteA)?.entryCount, gasIn(siteA)?.tco2e], [2, 3], "site A's gas only");
+      assert.deepEqual([gasIn(siteB)?.entryCount, gasIn(siteB)?.tco2e], [1, 4], "site B's gas only");
+      assert.ok(gasIn(all)!.entryCount > 3, "all sites counts the rows with no site too");
+      assert.deepEqual(await getPortalDataCategories(database.pool, portalPrincipal, JOB, null), all, "unnarrowed, it is the Data view's own list");
+      const codes = (list: { categories: Array<{ code: string }> }) => list.categories.map((category) => category.code);
+      assert.deepEqual(codes(siteA), codes(all), "the categories offered do not change with the site");
+
+      // The profile gate holds under a site: a hidden category stays hidden, whatever the site.
+      await setClientCategoryVisibility(database.pool, { clientId: CLIENT, categoryCode: "1.natural-gas", visible: false }, staff());
+      try {
+        for (const siteId of [null, "cat-a", "cat-b"]) {
+          const narrowed = await getPortalDataCategories(database.pool, portalPrincipal, JOB, siteId);
+          assert.equal(gasIn(narrowed), undefined, `gas is hidden under ${siteId ?? "all sites"}`);
+          assert.ok(codes(narrowed).every((code) => codes(all).includes(code)), `nothing beyond the unhidden list under ${siteId ?? "all sites"}`);
+        }
+      } finally {
+        await setClientCategoryVisibility(database.pool, { clientId: CLIENT, categoryCode: "1.natural-gas", visible: null }, staff());
+      }
+      await assert.rejects(getPortalDataCategories(database.pool, portalPrincipal, OTHER_JOB, "cat-a"), AuthorizationError, "behind the job's grant");
+      await assert.rejects(getPortalDataCategories(database.pool, portalPrincipal, UNGRANTED_JOB, null), AuthorizationError, "a revoked grant reads nothing");
     });
   });
 

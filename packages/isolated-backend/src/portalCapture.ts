@@ -216,17 +216,36 @@ export async function getPortalJobEmissions(pool: PoolLike, principal: PortalPri
 }
 
 /**
+ * The client's category view: the CRM's own server metrics (entry count, tCO₂e, completeness) for the categories the client's
+ * profile shows — never recomputed. `siteId` narrows each category's figures to that site (the site tab in force), inside the
+ * same profile gate: it only ever narrows, so a category or row the profile hides never appears whatever the site. The
+ * categories offered do not change with the site. The Data view's own categories are this, unnarrowed.
+ */
+export async function assemblePortalCategories(db: Queryable, clientId: string, jobId: string, siteId: string | null): Promise<PortalDataView["categories"]> {
+  const [gate, crm] = await Promise.all([clientCategoryGate(db, clientId), listJobApplicableCategories(db, jobId, "crm", siteId)]);
+  const categories = crm.categories.filter((category) => gate.shows(category.code, category.scope));
+  return { audience: "portal", includedScopes: crm.includedScopes.filter((scope) => categories.some((category) => category.scope === scope)), categories };
+}
+
+/** The category view re-read for a site tab (`/api/portal/jobs/{jobId}/data-categories?siteId=`), behind the job's grant. */
+export async function getPortalDataCategories(pool: PoolLike, principal: PortalPrincipal, jobId: string, siteId: string | null): Promise<PortalDataView["categories"]> {
+  return withTenantRead(pool, principal.organisationId, async (db) => {
+    await assertPortalJobAccess(db, principal, jobId);
+    return assemblePortalCategories(db, principal.clientId, jobId, siteId);
+  });
+}
+
+/**
  * The Data view's assembly, once, for whichever authorizer opened the read — the portal grant (`getPortalDataView`) or the staff
  * preview (`getPortalDataViewForStaff`). Only who may ask and where `clientId` comes from differ; what the client sees is this.
  */
 export async function assemblePortalDataView(db: Queryable, organisationId: string, clientId: string, jobId: string, access: PortalDataEntryAccess | null): Promise<PortalDataView> {
-  const [{ profile }, gate, crm, rows, factors, sites, pgs, months] = await Promise.all([
-    portalFacingProfile(db, clientId), clientCategoryGate(db, clientId), listJobApplicableCategories(db, jobId, "crm"),
+  const [{ profile }, gate, categories, rows, factors, sites, pgs, months] = await Promise.all([
+    portalFacingProfile(db, clientId), clientCategoryGate(db, clientId), assemblePortalCategories(db, clientId, jobId, null),
     listScopeRows(db, jobId), listJobFactorOptions(db, jobId), listJobSites(db, jobId), listJobPurchasedGoodsCategories(db, jobId), listJobReportingMonths(db, jobId),
   ]);
   const period = (await db.query<{ reporting_from: Date | string; reporting_to: Date | string }>(
     `SELECT reporting_from, reporting_to FROM nzi_console.job_emissions_config WHERE job_id = $1`, [jobId])).rows[0];
-  const categories = crm.categories.filter((category) => gate.shows(category.code, category.scope));
   const visible = await visibleRowIds(db, clientId, jobId, rows);
   const emissions = await aggregateJobEmissions(db, { organisationId, jobId, siteId: null, rowIds: visible });
   // The CRM's own QA readiness, over the same rows (polish fix 5): read-only status for the client's Review & QA section.
@@ -234,8 +253,8 @@ export async function assemblePortalDataView(db: Queryable, organisationId: stri
   const reopenRequested = await openReopenRequestsByRow(db, jobId);
   return {
     profile, access, emissions, qa,
-    // The CRM's own server metrics (entry count, tCO₂e, completeness), for the categories the client sees — never recomputed.
-    categories: { audience: "portal", includedScopes: crm.includedScopes.filter((scope) => categories.some((category) => category.scope === scope)), categories },
+    // The CRM's own server metrics for the categories the client sees, all sites (assemblePortalCategories).
+    categories,
     rows: rows.filter((row) => gate.shows(categoryOf(row), row.scope)).map((row) => ({ ...clientFacingScopeRow(row), reopenRequestedAt: reopenRequested.get(row.id) ?? null })),
     factors: factors.filter((factor) => factor.factorSource !== "client"),
     sites: sites.filter((site) => site.included !== false).map((site) => ({ id: site.id, name: site.name })),
