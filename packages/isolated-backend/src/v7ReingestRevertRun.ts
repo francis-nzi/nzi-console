@@ -9,7 +9,7 @@ import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { revertV7ReingestInTransaction } from "./v7Reingest";
 
 export type V7ReingestRevertRunInput = { organisationId: string; jobId: string; runId: string; reason: string; commit: boolean };
-/** The job's re-ingest state: tCO2e-free counts only. */
+/** The job's re-ingest state: tCO2e-free counts only. v7 rows are the job's current ones — never those a re-sync superseded (0225). */
 export type V7ReingestJobCounts = { linkedLiveRows: number; linkedLiveOn: number; v7Rows: number; v7On: number; runStatus: string | null };
 export type V7ReingestRevertRunReport = {
   jobId: string; runId: string; committed: boolean;
@@ -29,8 +29,8 @@ async function jobCounts(db: Queryable, organisationId: string, jobId: string, r
   const row = (await db.query<{ linked: string; linked_on: string; v7: string; v7_on: string; status: string | null }>(
     `SELECT count(*) FILTER (WHERE origin = 'live' AND reingested_from_row_id IS NOT NULL)::text AS linked,
             count(*) FILTER (WHERE origin = 'live' AND reingested_from_row_id IS NOT NULL AND enabled)::text AS linked_on,
-            count(*) FILTER (WHERE origin = 'migrated')::text AS v7,
-            count(*) FILTER (WHERE origin = 'migrated' AND enabled)::text AS v7_on,
+            count(*) FILTER (WHERE origin = 'migrated' AND superseded_by_run IS NULL)::text AS v7,
+            count(*) FILTER (WHERE origin = 'migrated' AND superseded_by_run IS NULL AND enabled)::text AS v7_on,
             (SELECT status FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND run_id = $3) AS status
        FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2`, [organisationId, jobId, runId])).rows[0]!;
   return { linkedLiveRows: Number(row.linked), linkedLiveOn: Number(row.linked_on), v7Rows: Number(row.v7), v7On: Number(row.v7_on), runStatus: row.status };

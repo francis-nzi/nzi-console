@@ -88,7 +88,10 @@ export function v7MonthSlots(months: Array<number | null> | null, reportingMonth
 const fail = (code: string, message: string, field = "rows"): never => { throw new CommandValidationError([{ field, code, message }]); };
 const round6 = (n: number) => Math.round(n * 1e6) / 1e6;
 
-/** The job's migrated rows, with a fingerprint of everything 0133 keeps immutable (asserted unchanged after the run). */
+/**
+ * The job's current migrated rows, with a fingerprint of everything 0133 keeps immutable (asserted unchanged after the run).
+ * A row a v7 re-sync superseded (0225) is not one of them: it is history beside v7's current record, never re-ingested.
+ */
 async function migratedRows(db: Queryable, organisationId: string, jobId: string): Promise<MigratedRow[]> {
   return (await db.query<MigratedRow>(
     `SELECT scope_row_id, scope, enabled, migrated_record->>'reported_tco2e' AS reported,
@@ -96,8 +99,17 @@ async function migratedRows(db: Queryable, organisationId: string, jobId: string
             site_id, data_confidence, column_text, migrated_record->'months' AS months, migrated_record->>'data_source' AS data_source,
             migrated_record->>'qty' AS qty, migrated_record->>'uom' AS uom, migrated_record->>'apply_pct' AS apply_pct
        FROM nzi_console.job_scope_rows r
-      WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' ORDER BY scope_row_id FOR UPDATE`,
+      WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' AND superseded_by_run IS NULL ORDER BY scope_row_id FOR UPDATE`,
     [organisationId, jobId])).rows;
+}
+
+/** Of these v7 row ids, the ones a v7 re-sync superseded (0225) — each with the run that did it. */
+async function supersededRows(db: Queryable, organisationId: string, jobId: string, rowIds: readonly string[]): Promise<Map<string, string>> {
+  if (rowIds.length === 0) return new Map();
+  return new Map((await db.query<{ scope_row_id: string; superseded_by_run: string }>(
+    `SELECT scope_row_id, superseded_by_run FROM nzi_console.job_scope_rows
+      WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' AND superseded_by_run IS NOT NULL AND scope_row_id = ANY($3::text[])`,
+    [organisationId, jobId, [...rowIds]])).rows.map((row) => [row.scope_row_id, row.superseded_by_run]));
 }
 
 function rowContext(context: CommandContext, runId: string, v7RowId: string, step: string): CommandContext {
@@ -121,6 +133,10 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
     if (enabledV7.length === 0) fail("NOTHING_TO_REINGEST", "This job has no enabled v7 rows.", "jobId");
     const v7ById = new Map(enabledV7.map((row) => [row.scope_row_id, row]));
     const planned = new Set(input.rows.map((row) => row.v7RowId));
+    // 0225: a plan built before a v7 re-sync names the rows it superseded. Refused by name, so the remedy is plain: re-plan
+    // from the job's current v7 rows.
+    const superseded = await supersededRows(db, context.organisationId, input.jobId, input.rows.map((row) => row.v7RowId).filter((id) => !v7ById.has(id)));
+    if (superseded.size) fail("PLAN_SUPERSEDED_ROW", `${superseded.size} plan row(s) name v7 rows a re-sync has superseded (${[...superseded].slice(0, 5).map(([id, run]) => `${id} by ${run}`).join(", ")}); re-plan from the job's current v7 rows.`);
     for (const row of input.rows) {
       const v7 = v7ById.get(row.v7RowId);
       if (!v7) fail("PLAN_UNKNOWN_ROW", `v7 row ${row.v7RowId} is not an enabled v7 row of this job.`);
@@ -342,6 +358,15 @@ async function carriedFactor(db: Queryable, context: CommandContext, jobId: stri
   return { clientFactorId, created: createdSoFar + 1 };
 }
 
+/**
+ * The revert's snapshot gate: has the job been snapshotted (reviewed and frozen) since `since` — or at all, when `since` is null?
+ * Shared with the v7 re-sync (RULING-v7-resync-job R1), which refuses a job with any snapshot.
+ */
+export async function snapshottedSince(db: Queryable, organisationId: string, jobId: string, since: Date | null): Promise<boolean> {
+  return (await db.query(`SELECT 1 FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND job_id = $2 AND ($3::timestamptz IS NULL OR created_at >= $3)`,
+    [organisationId, jobId, since])).rows.length > 0;
+}
+
 /** `v7.reingest.revert`, inside the caller's transaction: before any snapshot of the job, nothing deleted either way. */
 export function revertV7ReingestInTransaction(db: Queryable, input: CommandInputMap["v7.reingest.revert"], context: CommandContext): Promise<StoredOutcome<V7ReingestRevertResult>> {
   return runPostgresCommandInTransaction(db, "v7.reingest.revert", input, context, async (db) => {
@@ -351,19 +376,31 @@ export function revertV7ReingestInTransaction(db: Queryable, input: CommandInput
       [context.organisationId, input.jobId, input.runId])).rows[0];
     if (!run) fail("NOT_FOUND", "No such re-ingest run for this job.", "runId");
     if (run!.status !== "completed") fail("NOT_COMPLETED", "Only a completed re-ingest is reverted.", "runId");
-    if ((await db.query(`SELECT 1 FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND job_id = $2 AND created_at >= $3`,
-      [context.organisationId, input.jobId, run!.created_at])).rows.length) fail("SNAPSHOT_EXISTS", "The job has been snapshotted since the re-ingest; it is no longer reverted here.", "runId");
+    if (await snapshottedSince(db, context.organisationId, input.jobId, run!.created_at)) fail("SNAPSHOT_EXISTS", "The job has been snapshotted since the re-ingest; it is no longer reverted here.", "runId");
     // RULING-v7-reingest-row-protection 2: the run's rows are found by what nothing but the run writes — never by provenance,
     // which an edit could rewrite (the J000663 finding: two edited rows had lost their run id, and the revert would have
     // reversed 78 of 80 and still marked the run reverted). The run's v7 rows are its own `v7_row_superseded` audit events
     // (append-only), checked against the count the run recorded; its live rows, the job's enabled rows linked to them by
-    // `reingested_from_row_id` (one per v7 row, 0166's unique index).
+    // `reingested_from_row_id` (one per v7 row, 0166's unique index). A v7 row a re-sync has superseded (0225) is never switched
+    // back on: it is history beside v7's current record.
     const v7RowIds = (await db.query<{ entity_id: string }>(
       `SELECT DISTINCT a.entity_id FROM nzi_console.audit_events a
          JOIN nzi_console.job_scope_rows v ON v.organisation_id = a.organisation_id AND v.scope_row_id = a.entity_id AND v.job_id = $2 AND v.origin = 'migrated'
+              AND v.superseded_by_run IS NULL
         WHERE a.organisation_id = $1 AND a.action = 'v7_row_superseded' AND a.entity_type = 'scope_row' AND a.actor_id = $4 AND a.after_json->>'runId' = $3
         ORDER BY a.entity_id`,
       [context.organisationId, input.jobId, input.runId, V7_REINGEST_ACTOR])).rows.map((row) => row.entity_id);
+    // A re-sync refuses a job with a completed re-ingest, so a superseded row on a completed run's record means the record and
+    // the rows disagree: refused by name, nothing reverted.
+    const onRecordSuperseded = (await db.query<{ entity_id: string; superseded_by_run: string }>(
+      `SELECT DISTINCT a.entity_id, v.superseded_by_run FROM nzi_console.audit_events a
+         JOIN nzi_console.job_scope_rows v ON v.organisation_id = a.organisation_id AND v.scope_row_id = a.entity_id AND v.job_id = $2 AND v.origin = 'migrated'
+              AND v.superseded_by_run IS NOT NULL
+        WHERE a.organisation_id = $1 AND a.action = 'v7_row_superseded' AND a.entity_type = 'scope_row' AND a.actor_id = $4 AND a.after_json->>'runId' = $3
+        ORDER BY a.entity_id`,
+      [context.organisationId, input.jobId, input.runId, V7_REINGEST_ACTOR])).rows;
+    if (onRecordSuperseded.length)
+      fail("REVERT_SUPERSEDED_ROW", `${onRecordSuperseded.length} v7 row(s) on this run's record were superseded by a re-sync (${onRecordSuperseded.slice(0, 5).map((row) => `${row.entity_id} by ${row.superseded_by_run}`).join(", ")}); nothing is reverted.`, "runId");
     const recorded = Object.values(run!.rows_by_disposition_json).reduce((sum, n) => sum + Number(n), 0);
     if (v7RowIds.length !== recorded)
       fail("REVERT_INCOMPLETE", `The run recorded ${recorded} row(s) but ${v7RowIds.length} v7 row(s) are on its record; nothing is reverted.`, "runId");

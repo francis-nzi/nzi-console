@@ -103,9 +103,11 @@ export async function planReingestAttestation(db: Queryable, context: Pick<Comma
   const run = (await db.query<{ run_id: string }>(
     `SELECT run_id FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND status = 'completed'`, [org, jobId])).rows[0];
   if (!run) return empty;
+  // A v7 row a re-sync superseded (0225) is history, never attested against: only the job's current v7 rows count.
   const v7RowIds = (await db.query<{ entity_id: string }>(
     `SELECT DISTINCT a.entity_id FROM nzi_console.audit_events a
        JOIN nzi_console.job_scope_rows v ON v.organisation_id = a.organisation_id AND v.scope_row_id = a.entity_id AND v.job_id = $2 AND v.origin = 'migrated'
+            AND v.superseded_by_run IS NULL
       WHERE a.organisation_id = $1 AND a.action = 'v7_row_superseded' AND a.entity_type = 'scope_row' AND a.actor_id = $4 AND a.after_json->>'runId' = $3`,
     [org, jobId, run.run_id, V7_REINGEST_ACTOR])).rows.map((row) => row.entity_id);
   const rows = (await db.query<RunRow>(
@@ -118,6 +120,7 @@ export async function planReingestAttestation(db: Queryable, context: Pick<Comma
             v.migrated_record->>'qty' AS v7_qty, v.migrated_record->>'uom' AS v7_uom, v.migrated_record->>'apply_pct' AS v7_apply_pct
        FROM nzi_console.job_scope_rows r
        JOIN nzi_console.job_scope_rows v ON v.organisation_id = r.organisation_id AND v.scope_row_id = r.reingested_from_row_id AND v.origin = 'migrated'
+            AND v.superseded_by_run IS NULL
       WHERE r.organisation_id = $1 AND r.job_id = $2 AND r.origin = 'live' AND r.enabled AND r.reingested_from_row_id = ANY($3::text[])
       ORDER BY r.scope_row_id${lock ? " FOR UPDATE OF r" : ""}`, [org, jobId, v7RowIds])).rows;
 

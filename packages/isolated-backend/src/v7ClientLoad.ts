@@ -5,7 +5,7 @@ import { openLegacyReport, sealLegacyReport, type LegacyReportParticulars } from
 import type { SealingKeys } from "./piiSealing";
 import { resolveSealingKeys } from "./piiSealingKeys";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
-import { IMPORT_ACTOR, SOURCE_SYSTEM, type ClientImportPlan, type PlannedClient, type PlannedJob } from "./v7ClientImport";
+import { IMPORT_ACTOR, SOURCE_SYSTEM, type ClientImportPlan, type PlannedClient, type PlannedJob, type PlannedRow } from "./v7ClientImport";
 
 /**
  * Write a v7 client-and-job plan (docs/CLIENT_JOB_IMPORT_DESIGN.md §8). In foreign-key order — client → sites →
@@ -45,10 +45,10 @@ export type LoadOutcome = {
 
 export type LoadOptions = { commit: boolean; runId?: string; keys?: SealingKeys };
 
-type Col = { column: string; value: unknown; type: string; compare?: boolean };
+export type Col = { column: string; value: unknown; type: string; compare?: boolean };
 
 /** The columns that differ between what is stored and what the plan would write, compared by Postgres itself. */
-async function differs(db: Queryable, table: string, where: string, whereParams: unknown[], cols: readonly Col[]): Promise<string[] | null> {
+export async function differs(db: Queryable, table: string, where: string, whereParams: unknown[], cols: readonly Col[]): Promise<string[] | null> {
   const compared = cols.filter((col) => col.compare !== false);
   const params = [...whereParams, ...compared.map((col) => serialise(col))];
   const checks = compared.map((col, index) =>
@@ -63,16 +63,23 @@ const serialise = (col: Col): unknown =>
     : col.type === "jsonb" ? JSON.stringify(col.value)
       : typeof col.value === "number" ? String(col.value) : col.value;
 
-async function insert(db: Queryable, table: string, cols: readonly Col[]): Promise<void> {
+export async function insert(db: Queryable, table: string, cols: readonly Col[]): Promise<void> {
   await db.query(
     `INSERT INTO nzi_console.${table} (${cols.map((col) => col.column).join(",")}) VALUES (${cols.map((col, index) => `$${index + 1}::${col.type}`).join(",")})`,
     cols.map(serialise));
 }
 
+/**
+ * The import key's lookup. On `job_scope_rows` it is the current row only: a v7 re-sync (0225) keeps the row it superseded beside
+ * v7's current record, and the import identity is unique over the current rows alone.
+ */
+const identityWhere = (table: string) =>
+  `organisation_id=$1 AND source_system=$2 AND legacy_db_id=$3${table === "job_scope_rows" ? " AND superseded_by_run IS NULL" : ""}`;
+
 /** Absent → insert; identical → unchanged; different → refused. The identity is the import key. */
 async function reconcile(db: Queryable, table: string, organisationId: string, legacyDbId: string, cols: readonly Col[], what: string):
   Promise<"inserted" | "unchanged"> {
-  const found = await differs(db, table, "organisation_id=$1 AND source_system=$2 AND legacy_db_id=$3", [organisationId, SOURCE_SYSTEM, legacyDbId], cols);
+  const found = await differs(db, table, identityWhere(table), [organisationId, SOURCE_SYSTEM, legacyDbId], cols);
   if (found === null) {
     await insert(db, table, [
       { column: "organisation_id", value: organisationId, type: "text" },
@@ -267,36 +274,7 @@ async function loadClient(
     }
     let rowsInserted = 0;
     for (const row of job.rows) {
-      const state = await reconcile(db, "job_scope_rows", org, row.legacyDbId, [
-        { column: "scope_row_id", value: row.scopeRowId, type: "text" },
-        { column: "job_id", value: job.jobId, type: "text" },
-        { column: "scope", value: row.scope, type: "text" },
-        { column: "source_label", value: row.sourceLabel, type: "text" },
-        { column: "report_label", value: row.reportLabel, type: "text" },
-        { column: "level_1", value: row.level1, type: "text" }, { column: "level_2", value: row.level2, type: "text" },
-        { column: "level_3", value: row.level3, type: "text" }, { column: "level_4", value: row.level4, type: "text" },
-        { column: "column_text", value: row.columnText, type: "text" },
-        { column: "quantity", value: row.quantity, type: "numeric" }, { column: "unit", value: row.unit, type: "text" },
-        { column: "dataset_id", value: row.datasetId, type: "text" }, { column: "factor_id", value: row.factorId, type: "text" },
-        { column: "calculated_tco2e", value: row.calculatedTco2e, type: "numeric" },
-        { column: "review_status", value: row.reviewStatus, type: "text" },
-        // Carried from v7 (decision 7): the import is the act of record, never a console reviewer.
-        { column: "reviewed_row_version", value: row.reviewStatus === "pending" ? null : 1, type: "integer", compare: false },
-        { column: "reviewed_by", value: row.reviewStatus === "pending" ? null : IMPORT_ACTOR, type: "text", compare: false },
-        { column: "reviewed_at", value: row.reviewStatus === "pending" ? null : new Date().toISOString(), type: "timestamptz", compare: false },
-        { column: "reviewer_note", value: row.reviewStatus === "rejected" ? "Rejected in v7; carried by the import." : null, type: "text", compare: false },
-        { column: "enabled", value: row.enabled, type: "boolean" },
-        { column: "apply_pct", value: row.applyPct, type: "numeric" },
-        { column: "data_confidence", value: row.dataConfidence, type: "text" },
-        { column: "site_id", value: row.siteId, type: "text" },
-        { column: "is_auto_generated", value: row.isAutoGenerated, type: "boolean" },
-        { column: "auto_pair_kind", value: row.autoPairKind, type: "text" },
-        { column: "linked_row_id", value: row.linkedRowId, type: "text" },
-        { column: "provenance_json", value: row.provenance, type: "jsonb" },
-        { column: "lineage_json", value: row.lineage, type: "jsonb" },
-        { column: "origin", value: "migrated", type: "text" },
-        { column: "migrated_record", value: row.migratedRecord, type: "jsonb" },
-      ], `row ${row.scopeRowId} of ${job.legacyJobNumber}`);
+      const state = await reconcile(db, "job_scope_rows", org, row.legacyDbId, migratedRowCols(job.jobId, row), `row ${row.scopeRowId} of ${job.legacyJobNumber}`);
       tally("rows", state);
       if (state === "inserted") rowsInserted += 1;
     }
@@ -368,7 +346,44 @@ async function loadClient(
   }
 }
 
-const sameParticulars = (stored: LegacyReportParticulars | null, planned: LegacyReportParticulars): boolean =>
+/**
+ * A migrated row's columns, as the import writes them and compares them. `scope_row_id` is written but not compared: the
+ * identity is the import key, and after a v7 re-sync (0225) the current row's id is its replacement id (`…-r<n>`).
+ */
+export function migratedRowCols(jobId: string, row: PlannedRow, scopeRowId = row.scopeRowId): Col[] {
+  return [
+    { column: "scope_row_id", value: scopeRowId, type: "text", compare: false },
+    { column: "job_id", value: jobId, type: "text" },
+    { column: "scope", value: row.scope, type: "text" },
+    { column: "source_label", value: row.sourceLabel, type: "text" },
+    { column: "report_label", value: row.reportLabel, type: "text" },
+    { column: "level_1", value: row.level1, type: "text" }, { column: "level_2", value: row.level2, type: "text" },
+    { column: "level_3", value: row.level3, type: "text" }, { column: "level_4", value: row.level4, type: "text" },
+    { column: "column_text", value: row.columnText, type: "text" },
+    { column: "quantity", value: row.quantity, type: "numeric" }, { column: "unit", value: row.unit, type: "text" },
+    { column: "dataset_id", value: row.datasetId, type: "text" }, { column: "factor_id", value: row.factorId, type: "text" },
+    { column: "calculated_tco2e", value: row.calculatedTco2e, type: "numeric" },
+    { column: "review_status", value: row.reviewStatus, type: "text" },
+    // Carried from v7 (decision 7): the import is the act of record, never a console reviewer.
+    { column: "reviewed_row_version", value: row.reviewStatus === "pending" ? null : 1, type: "integer", compare: false },
+    { column: "reviewed_by", value: row.reviewStatus === "pending" ? null : IMPORT_ACTOR, type: "text", compare: false },
+    { column: "reviewed_at", value: row.reviewStatus === "pending" ? null : new Date().toISOString(), type: "timestamptz", compare: false },
+    { column: "reviewer_note", value: row.reviewStatus === "rejected" ? "Rejected in v7; carried by the import." : null, type: "text", compare: false },
+    { column: "enabled", value: row.enabled, type: "boolean" },
+    { column: "apply_pct", value: row.applyPct, type: "numeric" },
+    { column: "data_confidence", value: row.dataConfidence, type: "text" },
+    { column: "site_id", value: row.siteId, type: "text" },
+    { column: "is_auto_generated", value: row.isAutoGenerated, type: "boolean" },
+    { column: "auto_pair_kind", value: row.autoPairKind, type: "text" },
+    { column: "linked_row_id", value: row.linkedRowId, type: "text" },
+    { column: "provenance_json", value: row.provenance, type: "jsonb" },
+    { column: "lineage_json", value: row.lineage, type: "jsonb" },
+    { column: "origin", value: "migrated", type: "text" },
+    { column: "migrated_record", value: row.migratedRecord, type: "jsonb" },
+  ];
+}
+
+const sameParticulars =(stored: LegacyReportParticulars | null, planned: LegacyReportParticulars): boolean =>
   JSON.stringify(sortKeys(stored ?? {})) === JSON.stringify(sortKeys(planned));
 const sortKeys = (value: object) => Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined).sort(([a], [b]) => a.localeCompare(b)));
 
