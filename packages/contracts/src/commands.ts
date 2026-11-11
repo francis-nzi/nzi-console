@@ -30,6 +30,7 @@ import { bankIssues, normaliseBank, normaliseProfile, ORGANISATION_BANK_FIELDS, 
 import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRIPTION_MAX, JOB_TYPE_HOURS_MAX, JOB_TYPE_NAME_MAX, JOB_TYPE_PRICE_MAX, type JobTypeFields } from "./adminJobTypes";
 import { jobDateIssues } from "./jobDates";
 import { v7ReingestActorIssues, v7ReingestPlanIssues, type V7ReingestJobInput, type V7ReingestRevertInput } from "./v7Reingest";
+import { v7ImportSummaryIssues, type V7ImportSummary } from "./v7ImportSummary";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
 import type { AssistRecord } from "./aiAssist";
@@ -76,6 +77,7 @@ export type CommandKey =
   | "job.datasets.autoSelect"
   | "v7.reingest.job"
   | "v7.reingest.revert"
+  | "import.summary.upload"
   | "job.datasets.update"
   | "job.site.setInclusion"
   | "job.seedFromTemplate"
@@ -799,6 +801,12 @@ export type CommandInputMap = {
   "v7.reingest.job": V7ReingestJobInput;
   /** Undo a completed re-ingest before the job is snapshotted: the v7 rows switched back on, the live rows switched off. */
   "v7.reingest.revert": V7ReingestRevertInput;
+  /**
+   * The import workbench, Phase 1 (BRIEF-v7-import-workbench-phase1): store one job's reconciliation summary, made on the
+   * operator's machine from a one-job extract (diff-at-the-edge). Ids, codes, statuses and tCO2e only; writes nothing to the
+   * job's rows. `import.manage`; the system principal or an admin.
+   */
+  "import.summary.upload": { jobId: string; summary: V7ImportSummary };
   /**
    * DATASET-CURRENCY §3 — move a job's fallback editions to the reporting year's now-published ones and recalculate the rows
    * on them. `series`: the fallback datasets to move (from the banner). `expected`: every row the preview showed moving or
@@ -2211,6 +2219,14 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   // need the job (already selected, no window, no edition) are the command's, where the job is locked.
   "job.datasets.autoSelect": { key: "job.datasets.autoSelect", label: "Select a job's automatic datasets", permission: "job.manage", reasonRequired: true, transaction: "fill-blank-only automatic dataset selection + audit + outbox + idempotency", auditAction: "job_datasets_auto_selected", validate: (input, context) => { const issues = baseIssues(context, true); required(issues, "jobId", input.jobId); return issues; } },
   "v7.reingest.job": { key: "v7.reingest.job", label: "Re-ingest an imported job", permission: "job.manage", reasonRequired: true, transaction: "vintage selections + carried factors + live rows (each through scope.row.create/calculate) + the original rows switched off + post-conditions + run record + audit + outbox + idempotency", auditAction: "v7_job_reingested", validate: (input, context) => [...baseIssues(context, true), ...v7ReingestActorIssues(context), ...v7ReingestPlanIssues(input)] },
+  // The import workbench, Phase 1: one job's reconciliation summary, stored and shown — never applied to the job's rows.
+  "import.summary.upload": { key: "import.summary.upload", label: "Upload an import summary", permission: "import.manage", reasonRequired: false, transaction: "import session + its rows + audit + outbox + idempotency", auditAction: "import.summary.uploaded", validate: (input, context) => {
+    const issues = baseIssues(context, false);
+    required(issues, "jobId", input.jobId);
+    issues.push(...v7ImportSummaryIssues(input.summary));
+    if (issues.length === 0 && input.summary.jobId !== input.jobId) issues.push({ field: "summary.jobId", code: "JOB_MISMATCH", message: "The summary is of another job; one job's summary is uploaded to that job." });
+    return issues;
+  } },
   "v7.reingest.revert": { key: "v7.reingest.revert", label: "Revert a re-ingest", permission: "job.manage", reasonRequired: true, transaction: "live rows switched off + the original rows switched back on + run marked reverted + audit + outbox + idempotency", auditAction: "v7_job_reingest_reverted", validate: (input, context) => { const issues = [...baseIssues(context, true), ...v7ReingestActorIssues(context)]; required(issues, "jobId", input.jobId); if (!/^v7-reingest-[0-9a-f-]{36}$/.test(input.runId ?? "")) issues.push({ field: "runId", code: "INVALID", message: "The run id is `v7-reingest-` and a UUID." }); return issues; } },
   // DATASET-CURRENCY §3 (ruled): scoperow.edit — the swap is the rule's own derived pick, coupled to a recalculation, so the
   // people who calculate rows are the ones who move them. A reason is required by the handler when the job has an issued

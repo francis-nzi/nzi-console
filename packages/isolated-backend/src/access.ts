@@ -56,6 +56,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "job.datasets.autoSelect": job,
   "v7.reingest.job": job,
   "v7.reingest.revert": job,
+  // The import workbench, Phase 1: a summary is uploaded to one job, resolved in the caller's organisation (import.manage).
+  "import.summary.upload": job,
   "job.datasets.update": job,
   "job.site.setInclusion": job,
   "job.seedFromTemplate": job,

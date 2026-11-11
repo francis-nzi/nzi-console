@@ -70,6 +70,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         description: "Whether each category's add-entry drawer opens on Activity or Spend — PG&S on Spend and the rest on Activity unless set here. A client's own last choice overrides it for them." },
       { id: "master-templates", label: "Master templates", icon: "doc", href: "/admin/master-templates", capability: "admin.lookups",
         description: "The starting templates a new client's job is seeded from — Master · Default, Construction and Office: the scopes, categories and activities, never a quantity. Versioned on every save, archived rather than deleted." },
+      { id: "import", label: "Import reconciliation", icon: "list", href: "/admin/import", capability: "import.manage",
+        description: "Each imported job's state against the previous system's records now — matched, changed, new, withdrawn, needing a mapping or blocked on a pair — with Σ per scope on each side. View-only: it changes nothing on a job." },
       { id: "factor-library", label: "Factor library", icon: "atom", href: "/admin/factor-library", phase: "G",
         description: "The emission-factor library — already imported — gains curation, dataset archiving and factor-variant management." },
       { id: "custom-factors", label: "Custom factors", icon: "sliders", href: "/admin/custom-factors", phase: "G",

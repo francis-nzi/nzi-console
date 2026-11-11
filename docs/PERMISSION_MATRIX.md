@@ -75,6 +75,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `time.log` (log, edit and void one's **own** time on a job) ⚑ | ✓ | ⚑ own | ✓ | ✓ | ✓ |
 | `time.view` (read other people's time — hours; money only with `finance.view`) ⚑ | ✓ | ⚑ own | R | ✓ | — |
 | `task.manage` (keep CRM tasks: create, edit, reassign, reschedule, complete, reopen — only one's own or one's assigned) ⚑ | ✓ | ✓ | ✓ | ✓ | — |
+| `import.manage` (upload a job's import reconciliation summary and open the import view — view-only in Phase 1) ⚑ | ✓ | — | — | — | — |
 
 ### Conditional notes (⚑)
 
@@ -142,6 +143,11 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   is refused. **Own tasks only:** a task is created for oneself or assigned to an active colleague, and is edited, reassigned,
   rescheduled, completed or reopened only by its **assignee or its creator** — Admin included; the capability is the right to
   keep a to-do list, not to work anyone else's. Done, never deleted. Every change is versioned and audited by the task's id.
+- **Import workbench, Phase 1 (matrix v14, 0227; BRIEF-v7-import-workbench-phase1, provisional R-C).** `import.manage` (all)
+  is held by **Admin only**. It uploads a job's import reconciliation summary (the summary-upload command, 0226) — the system
+  principal `policy:v7-import` from the operator's script, or an admin — and opens Admin → Import reconciliation. **View-only:**
+  the summary is stored and shown, never applied; nothing writes a job's rows. The summary carries ids, codes, statuses and
+  tCO2e only (diff-at-the-edge, provisional R-A). A CRM's view of their own jobs is Phase 2.
 
 ## Naming convention
 

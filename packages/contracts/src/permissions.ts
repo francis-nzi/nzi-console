@@ -94,6 +94,10 @@ export const capabilities = [
   // its creator (access.ts) — the capability is the right to keep a to-do list, not to work anyone else's. Every role that
   // does work holds it; the Viewer, who changes nothing, does not.
   "task.manage",
+  // ── The import workbench (matrix v14, 0227; BRIEF-v7-import-workbench-phase1, provisional R-C) ──
+  // Upload a job's import reconciliation summary and open the import view. Phase 1 is view-only: it stores and shows a
+  // disposable summary and writes nothing to a job's rows. Admin only; a CRM's view is Phase 2.
+  "import.manage",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 
@@ -108,7 +112,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 13;
+export const PERMISSION_MATRIX_VERSION = 14;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 

@@ -37,6 +37,8 @@ const matrixMigrationV11 = readFileSync(resolve(here, "../migrations/0204_permis
 // v12 — Consultant gains snapshot.review and report.publish: a consultant CRM approves the snapshot and releases the report (0216).
 const matrixMigrationV12 = readFileSync(resolve(here, "../migrations/0216_permission_matrix_v12.sql"), "utf8");
 const matrixMigrationV13 = readFileSync(resolve(here, "../migrations/0224_permission_matrix_v13.sql"), "utf8");
+// v14 — Admin gains import.manage: the import workbench, Phase 1 (0227).
+const matrixMigrationV14 = readFileSync(resolve(here, "../migrations/0227_permission_matrix_v14.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -49,7 +51,8 @@ const matrixMigrationV13 = readFileSync(resolve(here, "../migrations/0224_permis
 const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3}\n${matrixMigrationV4}\n${matrixMigrationV5}\n${matrixMigrationV6}\n${matrixMigrationV7}\n${matrixMigrationV8}\n${matrixMigrationV9}\n${matrixMigrationV10}
 ${matrixMigrationV11}
 ${matrixMigrationV12}
-${matrixMigrationV13}`;
+${matrixMigrationV13}
+${matrixMigrationV14}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 
@@ -333,8 +336,8 @@ describe("the consultant's release capabilities (matrix v12)", () => {
     assert.equal(SELF_APPROVAL_CAPABILITY, "report.publish");
     assert.deepEqual([...separationOfDutiesCapabilities], ["snapshot.review", "report.publish"], "both are separation-of-duties capabilities: holding them is not an exemption");
   });
-  it("the version is 13 and the consultant's full capability set is pinned", () => {
-    assert.equal(PERMISSION_MATRIX_VERSION, 13);
+  it("the version is 14 and the consultant's full capability set is pinned", () => {
+    assert.equal(PERMISSION_MATRIX_VERSION, 14);
     assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.consultant).sort(), [
       "audit.view", "baseline.rebaseline", "category.visibility", "clientfactor.manage", "client.create", "client.edit", "client.view", "contact.manage", "finance.view",
       "job.manage", "knowledge.approve", "knowledge.capture", "portal.admin", "report.edit", "report.publish", "report.view", "scoperow.edit", "site.manage", "snapshot.review",
@@ -356,5 +359,21 @@ describe("matrix v13: CRM tasks (BRIEF-crm-control-room-p3-tasks)", () => {
     const added = rows(matrixMigrationV13, 13).filter((row) => !rows(matrixMigrationV12, 12).includes(row));
     assert.deepEqual(added, ["admin task.manage all", "consultant task.manage all", "finance task.manage all", "reviewer task.manage all"]);
     assert.deepEqual(rows(matrixMigrationV12, 12).filter((row) => !rows(matrixMigrationV13, 13).includes(row)), [], "nothing is taken away");
+  });
+});
+
+describe("matrix v14: the import workbench, Phase 1 (BRIEF-v7-import-workbench-phase1)", () => {
+  it("import.manage is held by Admin alone", () => {
+    assert.equal(ROLE_CAPABILITY_MATRIX.admin["import.manage"], "all");
+    for (const role of ["consultant", "reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.manage"], undefined, role);
+  });
+  it("unlocks exactly the summary upload, a staff command", () => {
+    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.manage").map((definition) => definition.key), ["import.summary.upload"]);
+    assert.notEqual((commandDefinitions["import.summary.upload"] as { principal?: string }).principal, "portal");
+  });
+  it("v14 adds import.manage for Admin and changes nothing else from v13", () => {
+    const rows = (sql: string, version: number) => [...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`).sort();
+    assert.deepEqual(rows(matrixMigrationV14, 14).filter((row) => !rows(matrixMigrationV13, 13).includes(row)), ["admin import.manage all"]);
+    assert.deepEqual(rows(matrixMigrationV13, 13).filter((row) => !rows(matrixMigrationV14, 14).includes(row)), [], "nothing is taken away");
   });
 });
