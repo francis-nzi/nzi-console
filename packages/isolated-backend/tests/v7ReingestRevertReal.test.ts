@@ -12,6 +12,7 @@ import { insert, migratedRowCols } from "../src/v7ClientLoad";
 import { reingestV7JobInTransaction, revertV7ReingestInTransaction } from "../src/v7Reingest";
 import { runV7ReingestRevert } from "../src/v7ReingestRevertRun";
 import { resyncV7JobInTransaction, revertV7ResyncInTransaction, V7_RESYNC_ACTOR, type V7ResyncContext } from "../src/v7Resync";
+import { rehearseV7Resync } from "../src/v7ResyncRehearsal";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -405,5 +406,103 @@ describe("the v7 re-sync supersedes a changed job's v7 rows, and every reader le
       [[{ rowId: "v7-row-1001", replacedBy: "v7-row-1001-r2" }, { rowId: "v7-row-1004", replacedBy: "v7-row-1004-r1" }], [], ["v7-row-1003"]]);
     assert.deepEqual((await current()).map((row) => [row.id, row.enabled]),
       [["v7-row-1001-r2", true], ["v7-row-1002", true], ["v7-row-1003", false], ["v7-row-1004-r1", true]]);
+  });
+});
+
+/**
+ * The rehearsal (src/v7ResyncRehearsal.ts): revert the standing re-ingest → re-sync → re-plan → re-ingest, in one transaction that
+ * is always rolled back. It must report what the routine would do and write nothing — proved here against a fingerprint of every
+ * table in the console's schema, taken before and after.
+ */
+describe("the v7 re-sync rehearsal runs the whole routine in one transaction, and writes nothing", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  const RH_ORG = "v7-rehearse";
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
+  const rehearse = (rows: readonly PlannedRow[], plan: Omit<V7ReingestJobInput, "runId">) => rehearseV7Resync(database.pool, {
+    organisationId: RH_ORG, jobId: JOB_A, reason: "rehearsal (test)", resyncRunId: `v7-resync-${randomUUID()}`, extractSha256: "e".repeat(64),
+    rows, plan, reingestRunId: `v7-reingest-${randomUUID()}` });
+  /** Every table of the console's schema, row for row: equal before and after means nothing was written. */
+  const fingerprint = async () => {
+    const tables = (await db.query<{ t: string }>(`SELECT tablename AS t FROM pg_tables WHERE schemaname = 'nzi_console' ORDER BY tablename`)).rows.map((row) => row.t);
+    const prints: Record<string, string> = {};
+    for (const table of tables) prints[table] = (await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) AS p FROM nzi_console.${table} t`)).rows[0]!.p;
+    return prints;
+  };
+  let standing = "";
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7rehearse"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [RH_ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [RH_ORG]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [RH_ORG]);
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'c1','Rehearsal Test','active')`, [RH_ORG]);
+    await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+      VALUES ($1,$2,'c1',901,'crp','CRP','open','Data entry',2025,'2025-01-01','2025-12-31','nzi-pro-v7','901','J000901')`, [RH_ORG, JOB_A]);
+    await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [RH_ORG, JOB_A]);
+    await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                    VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [RH_ORG]);
+    for (const [id, label, unit, kg, scope] of [["gas", "Natural gas", "kWh", 0.2, "1"], ["water", "Water supply", "m3", 0.15, "3"]] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6])`,
+        [RH_ORG, id, label, unit, kg, scope]);
+    }
+    for (const row of BEFORE) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: RH_ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(JOB_A, row)]);
+    // The job as J000669 stands: re-ingested on its old v7 figures, a completed run in the way of the re-sync.
+    standing = `v7-reingest-${randomUUID()}`;
+    await withTenantWrite(database.pool, RH_ORG, (client) => reingestV7JobInTransaction(client, { ...PLAN_BEFORE(standing) },
+      { organisationId: RH_ORG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+        reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", RH_ORG, V7_REINGEST_ACTOR) }));
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("reports every step — revert, re-sync, re-plan — and the re-ingest's own refusal of a row the crosswalk does not cover", async () => {
+    const before = await fingerprint();
+    const report = await rehearse(NOW, withoutRun(PLAN_BEFORE("x")));
+    assert.deepEqual(report.revert, { runId: standing, liveRowsSwitchedOff: 3, v7RowsSwitchedOn: 3 });
+    assert.deepEqual(report.resync, { unchanged: 1, superseded: [{ rowId: "v7-row-1001", replacedBy: "v7-row-1001-r1" }], added: ["v7-row-1004"], withdrawn: ["v7-row-1003"] });
+    assert.deepEqual(report.v7ScopeTotals, { "1": { rows: 2, v7: 0.34 }, "3": { rows: 1, v7: 0.0015 } }, "Σ v7 over the current rows");
+    assert.deepEqual([report.replan!.carried, report.replan!.unchanged, report.replan!.dropped, report.replan!.needsCrosswalk],
+      [[{ from: "v7-row-1001", to: "v7-row-1001-r1" }], 1, ["v7-row-1003"], [{ rowId: "v7-row-1004", why: "new in v7: crosswalk v1 has no row for it" }]]);
+    assert.equal(report.reingest, null);
+    assert.equal(report.refusal?.stage, "reingest");
+    assert.ok(report.refusal!.issues.some((issue) => issue.code === "PLAN_INCOMPLETE"), JSON.stringify(report.refusal));
+    assert.equal(report.rolledBack, true);
+    assert.deepEqual(await fingerprint(), before, "nothing written — not the revert, not the re-sync, not the re-ingest");
+  });
+
+  it("carries a superseded row onto its replacement at v7's current figures, and reconciles Σ live = Σ v7 per scope through the re-ingest's D7", async () => {
+    const before = await fingerprint();
+    // The crosswalk covers every current record: the re-plan moves the amended gas row to its replacement and its new figures.
+    const plan = withoutRun(planFor("x", [["v7-row-1001", GAS], ["v7-row-1002", WATER], ["v7-row-1004", GAS_SITE_2]]));
+    const report = await rehearse(NOW, plan);
+    assert.equal(report.refusal, null, JSON.stringify(report.refusal));
+    const carried = report.replan!.rows.find((row) => row.v7RowId === "v7-row-1001-r1")!;
+    assert.deepEqual([carried.v7Tco2e, carried.quantity, carried.categoryCode, carried.factorId], [0.24, 1200, "1.natural-gas", "gas"], "v7's current figures, the crosswalk's mapping");
+    assert.deepEqual(report.reingest!.scopeTotals, { "1": { v7: 0.34, native: 0.34 }, "3": { v7: 0.0015, native: 0.0015 } });
+    assert.equal(report.reingest!.v7TotalTco2e, report.reingest!.nativeTotalTco2e);
+    assert.deepEqual(await fingerprint(), before, "a re-ingest that would commit is still rolled back");
+    assert.equal((await db.query(`SELECT status FROM nzi_console.v7_reingest_runs WHERE run_id=$1`, [standing])).rows[0]!.status, "completed", "the standing run stands");
+  });
+
+  it("never guesses: a row whose factor v7 changed needs the crosswalk, and the re-ingest refuses", async () => {
+    const before = await fingerprint();
+    const moved = plannedRow(GAS_NOW);
+    const now = [{ ...moved, migratedRecord: { ...(moved.migratedRecord as unknown as Record<string, unknown>), original_id: "7_other" } as unknown as PlannedRow["migratedRecord"] }, ...NOW.slice(1)];
+    const report = await rehearse(now, withoutRun(planFor("x", [["v7-row-1001", GAS], ["v7-row-1002", WATER], ["v7-row-1004", GAS_SITE_2]])));
+    assert.deepEqual(report.replan!.needsCrosswalk, [{ rowId: "v7-row-1001-r1", why: "v7 changed its original_id (was v7-row-1001)" }]);
+    assert.equal(report.replan!.carried.length, 0);
+    assert.equal(report.refusal?.stage, "reingest");
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("stops at the first step that refuses, and still writes nothing — the revert it ran included", async () => {
+    const before = await fingerprint();
+    const report = await rehearse(BEFORE, withoutRun(PLAN_BEFORE("x")));
+    assert.deepEqual([report.revert?.runId, report.refusal?.stage, report.refusal?.issues.map((issue) => issue.code)], [standing, "resync", ["NOTHING_TO_RESYNC"]]);
+    assert.deepEqual([report.replan, report.reingest], [null, null]);
+    assert.deepEqual(await fingerprint(), before);
   });
 });
