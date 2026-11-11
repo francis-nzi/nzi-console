@@ -13,8 +13,7 @@ export default function ReportsPage() {
     <TopBar crumbs={crumbTrail(workspaceCrumbs("Reports", "/reports"))} />
     <div className="nz-head"><div className="nz-job-titleline"><div><div className="nz-eyebrow">Verified reporting</div><h1>Publication studio</h1><div className="sub">Create, verify and release decision-grade carbon reports</div></div><Link className="nz-btn pri" href="/report-preview">Prepare report version</Link></div></div>
     <div className="nz-body" style={{ paddingTop: 18 }}>
-      <section className="nz-report-hero"><div><span className="nz-eyebrow light">One governed publishing system</span><h2>From reviewed evidence to a board-ready report.</h2><p>Every publication is assembled from an immutable snapshot, validated against the shared chart manifest and released as an exact, traceable version.</p></div><div className="nz-report-flow"><span><i>1</i>Freeze evidence</span><b>→</b><span><i>2</i>Validate output</span><b>→</b><span><i>3</i>Release to client</span></div></section>
-      <div className="nz-section-intro"><div><span className="nz-eyebrow">Report pipeline</span><h2>Every CRP job, at its stage</h2><p>Derived from the records themselves — snapshot review, validation, publication and the client's response. Jobs with no report yet show where they are, never as nothing.</p></div></div>
+      <div className="nz-section-intro"><div><span className="nz-eyebrow">Report pipeline</span><h2>Every CRP job, at its stage</h2></div></div>
       <ReportStatusBoard/>
       <div className="nz-section-intro"><div><span className="nz-eyebrow">Publication register</span><h2>Controlled report versions</h2><p>Live status across preparation, validation, release and client verification.</p></div><Link className="nz-btn" href="/charts">Open chart library</Link></div>
       <LiveReportRegister/>

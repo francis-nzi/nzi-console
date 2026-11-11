@@ -30,7 +30,7 @@ export default async function ReportVersionPage({params}:{params:Promise<{versio
   }
   return <ScreenState result={result}>{data=>data.report
     ?<ReportVersion version={data.report}/>
-    :<main className="report-canvas"><section className="nz-empty"><h1>Live report version unavailable</h1><p>Connect this console to the isolated backend to open immutable report evidence.</p><a className="nz-btn" href="/reports">Return to publication studio</a></section></main>}</ScreenState>;
+    :<main className="report-canvas"><section className="nz-empty"><h1>Live report version unavailable</h1><p>This report version can't be opened right now. Try again shortly.</p><a className="nz-btn" href="/reports">Return to publication studio</a></section></main>}</ScreenState>;
 }
 
 const SOURCE_PILL={default:"Default template",ai:"AI-drafted","client-edited":"Edited by client"} as const;

@@ -43,8 +43,8 @@ export function reportEligibilityOf(facts: ReportNavFacts): ReportEligibility {
   return facts.v7Record ? "v7-awaiting" : "no-evidence";
 }
 export const reportEligibilityLabels: Record<ReportEligibility, string> = {
-  "compose-eligible": "Compose-eligible",
-  "v7-awaiting": "Earlier record · awaiting re-compose",
+  "compose-eligible": "Ready to compose",
+  "v7-awaiting": "Imported",
   "no-evidence": "No evidence yet",
 };
 

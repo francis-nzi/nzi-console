@@ -47,7 +47,8 @@ describe("the composed report's layout is versioned, and composed@1 is pinned (F
   it("refuses to draw a layout it does not carry, rather than drawing the report differently", async () => {
     const composition = JSON.parse(fixture("composition-pre-f-whole.json")) as ReportComposition;
     const html = await render({ ...composition, renderer: "composed@99" });
-    assert.match(html, /issued with a layout \(composed@99\) this console does not carry/);
+    assert.match(html, /issued with a layout \(composed@99\) that is no longer available/);
+    assert.doesNotMatch(html, /console/i, "no internal term in user-facing copy");
     assert.doesNotMatch(html, /nzr-sechd|Emissions by scope|nzr-cover/, "no section is drawn under a layout it was not issued with");
   });
 

@@ -18,7 +18,7 @@ export { GatedNavLink } from "./GatedNavLink";
 export { DrawerEditor } from "./admin/DrawerEditor";
 export { DateTimeField, FieldRow, NumberField, SelectField, Switch, TextAreaField, TextField, type SelectOption } from "./admin/Fields";
 export { AuditLine, CapabilityChip, EnvBadge, ProvenanceBadge, StatusBadge, type Provenance } from "./admin/Governance";
-export { DataList, type DataListColumn, type DataListFilter, type DataListOption, type DataListPaging, type DataListProps, type DataListSort } from "./DataList";
+export { DataList, DataListPager, type DataListColumn, type DataListFilter, type DataListOption, type DataListPaging, type DataListProps, type DataListSort } from "./DataList";
 
 export type IconName =
   | "home" | "users" | "jobs" | "chart" | "database" | "file" | "layers"

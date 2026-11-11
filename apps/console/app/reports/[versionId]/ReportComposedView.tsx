@@ -429,7 +429,7 @@ function ComposedV1({ composition, charts, issuerLogoSrc, v3 }: { composition: R
 function UnknownRenderer({ renderer }: { renderer: string }) {
   return <main className="nzr-doc"><section className="nzr-page">
     <p className="nzr-gap">
-      This report was issued with a layout ({renderer}) this console does not carry, so it is not drawn here rather than
+      This report was issued with a layout ({renderer}) that is no longer available, so it is not drawn here rather than
       drawn differently from how it was issued. Its frozen figures are unchanged.
     </p>
   </section></main>;

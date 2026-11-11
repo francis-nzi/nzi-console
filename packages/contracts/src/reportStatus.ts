@@ -20,7 +20,7 @@ export const reportStageLabels: Record<ReportStage, string> = {
   "changes-requested": "Changes requested",
   "awaiting-final-approval": "Awaiting final approval",
   "client-approved": "Client approved",
-  "v7-record": "Issued before the console",
+  "v7-record": "Previously issued",
 };
 
 /** What the platform knows about one CRP job's report, as read. */
