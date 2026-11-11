@@ -58,6 +58,7 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   report_section_versions: { periodBound: true, why: "a report's section history" },
   legacy_report_versions: { periodBound: true, why: "the previous system's reports for the period" },
   v7_reingest_runs: { periodBound: true, why: "a re-ingest reconciled to the previous system's figures for the period (0166)" },
+  v7_resync_runs: { periodBound: true, why: "a re-sync brought the job's rows level with the previous system's records for the period (0225)" },
   portal_report_approvals: { periodBound: true, why: "a client's approval of the period's report" },
   portal_report_comments: { periodBound: true, why: "a client's comments on the period's report" },
   portal_tracker_actions: { periodBound: true, why: "actions tracked against the period's report" },

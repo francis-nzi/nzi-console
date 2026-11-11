@@ -25,6 +25,13 @@
  * computed in the same snapshot with the London operating day substituted for CURRENT_DATE (ruled A1), for the
  * backfill's parity check.
  *
+ * **One job: `--job J000669`** (the re-sync of one named job, RULING-v7-resync-job R5). The same script, narrowed to that
+ * job and its own client: `jobs` is the one job, every job-scoped table follows it, and the configuration tables are taken
+ * whole. Before any `\copy`, the job must be exactly one in-scope v7 job, or nothing is extracted. Build the manifest with
+ * the same `--job`: it records the job, and only the re-sync of that job will read the extract.
+ *   node packages/isolated-backend/scripts/v7-extract-sql.mjs --out C:/v7-extract --file C:/v7-extract/extract.sql --job J000669
+ *   node packages/isolated-backend/scripts/v7-extract-manifest.mjs C:/v7-extract --job J000669
+ *
  * **An optional column v7 does not have.** v7 adds columns on first use, so a deployment may lack an optional one. psql
  * then stops at that table (`ON_ERROR_STOP`) with "column … does not exist": re-generate with
  * `--omit <table>.<column>` (repeatable, or comma-separated) and run again. A required column cannot be omitted — the
@@ -37,10 +44,23 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 export const CONTRACT = JSON.parse(readFileSync(resolve(here, "../src/v7ExtractContract.json"), "utf8"));
 
-/** Decision 8, and the jobs of those clients: every query's prelude, one line (a `\copy` query is a single line). */
-export const PRELUDE =
-  "WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived,false)), " +
-  "aj AS (SELECT j.job_id FROM jobs j JOIN ac ON ac.db_id = j.client_db_id)";
+/** A v7 job number, as `--job` takes it: checked before it reaches the SQL. */
+export const JOB_NUMBER = /^J\d{6}$/;
+
+/**
+ * Decision 8, and the jobs of those clients: every query's prelude, one line (a `\copy` query is a single line). With a
+ * job (`--job`, the re-sync of one named job), the same scope narrowed to that one job and its own client: the client is
+ * still one decision 8 keeps, so a job of a prospect or an archived client is not in scope here either.
+ */
+export function prelude(job = null) {
+  if (job !== null && !JOB_NUMBER.test(job)) throw new Error(`--job ${job}: expected one v7 job number, e.g. J000669`);
+  const active = "COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived,false)";
+  return job === null
+    ? `WITH ac AS (SELECT db_id FROM clients WHERE ${active}), aj AS (SELECT j.job_id FROM jobs j JOIN ac ON ac.db_id = j.client_db_id)`
+    : `WITH ac AS (SELECT db_id FROM clients WHERE ${active} AND db_id IN (SELECT client_db_id FROM jobs WHERE job_number = '${job}')), ` +
+      `aj AS (SELECT j.job_id FROM jobs j JOIN ac ON ac.db_id = j.client_db_id WHERE j.job_number = '${job}')`;
+}
+export const PRELUDE = prelude();
 
 /** How long one query may run, and how long the transaction may sit idle between `\copy` calls. */
 export const STATEMENT_TIMEOUT = "30min";
@@ -87,18 +107,23 @@ export function columnsFor(table, omit = new Set()) {
   return [...entry.required, ...entry.optional].filter((column) => !omit.has(`${table}.${column}`));
 }
 
-/** One table's SELECT, as the text inside `\copy ( … )`. */
-export function selectFor(table, omit = new Set()) {
+/**
+ * One table's SELECT, as the text inside `\copy ( … )`. With a job, `jobs` itself is that one job — its client's other
+ * jobs stay behind — and every job-scoped table follows the prelude to it; the configuration tables are taken whole.
+ */
+export function selectFor(table, omit = new Set(), job = null) {
   const entry = CONTRACT[table];
   const columns = columnsFor(table, omit);
   const key = entry.required[0];
+  const head = prelude(job);
   if (entry.filter === "job-with-reference") {
     const list = columns.map((column) => REFERENCE_SELECT[column] ?? `r.${column}`).join(", ");
-    return `${PRELUDE} SELECT ${list} FROM ${table} r JOIN aj USING (job_id) ${REFERENCE_JOIN} ORDER BY r.${key}`;
+    return `${head} SELECT ${list} FROM ${table} r JOIN aj USING (job_id) ${REFERENCE_JOIN} ORDER BY r.${key}`;
   }
   const filter = FILTERS[entry.filter];
   if (!filter) throw new Error(`${table}: unknown filter "${entry.filter}" in the contract`);
-  return `${PRELUDE} SELECT ${columns.map((column) => `t.${column}`).join(", ")} ${filter(table, entry)} ORDER BY t.${key}`;
+  const oneJob = job !== null && table === "jobs" ? ` AND t.job_id ${inJobs}` : "";
+  return `${head} SELECT ${columns.map((column) => `t.${column}`).join(", ")} ${filter(table, entry)}${oneJob} ORDER BY t.${key}`;
 }
 
 /** Check `--omit` entries: real tables, real optional columns, never a required one. */
@@ -180,9 +205,9 @@ export const PARITY_FILE = "v7_client_risk";
  * reports is a real rule difference, not a timezone artefact. `operating_day` is written on every row: the backfill
  * judges the console's Risk against the same day.
  */
-export function v7ClientRiskSql() {
+export function v7ClientRiskSql(job = null) {
   const riskCase = V7_RISK_CASE_SQL.replaceAll("CURRENT_DATE", "od.d").replace(/\s+/g, " ").trim();
-  return `${PRELUDE}, od AS (SELECT (now() AT TIME ZONE 'Europe/London')::date AS d) ` +
+  return `${prelude(job)}, od AS (SELECT (now() AT TIME ZONE 'Europe/London')::date AS d) ` +
     `SELECT c.db_id AS client_db_id, od.d AS operating_day, ${riskCase} AS v7_milestone_status ` +
     "FROM ac c CROSS JOIN od LEFT JOIN jobs j ON j.client_db_id = c.db_id LEFT JOIN job_plan jp ON jp.job_id = j.job_id " +
     "GROUP BY c.db_id, od.d ORDER BY c.db_id";
@@ -212,8 +237,18 @@ export function preflightSql(omit = new Set(), tables = Object.keys(CONTRACT)) {
     ") m; IF missing IS NOT NULL THEN RAISE EXCEPTION 'v7 schema drift: % item(s) the extract reads are missing: %. Nothing was extracted. Required columns are a contract change; an absent optional column can be left out with --omit <table>.<column>.', count, missing; END IF; END $preflight$;";
 }
 
+/**
+ * `--job`: before any \copy, the named job must be exactly one in-scope v7 job — so a mistyped number, or a job of a client
+ * decision 8 leaves behind, stops the script instead of writing a set of empty files that look like a job with no data.
+ */
+export function oneJobSql(job) {
+  return `DO $job$ BEGIN IF (SELECT count(*) FROM (${prelude(job)} SELECT job_id FROM aj) s) <> 1 THEN ` +
+    `RAISE EXCEPTION '${job} is not exactly one in-scope v7 job (an Active or Portfolio Owner client, not archived). Nothing was extracted.'; END IF; END $job$;`;
+}
+
 /** The whole psql script. */
-export function extractSql({ out = ".", omit = new Set(), tables = Object.keys(CONTRACT), generatedAt = new Date().toISOString().slice(0, 10) } = {}) {
+export function extractSql({ out = ".", omit = new Set(), tables = Object.keys(CONTRACT), job = null, generatedAt = new Date().toISOString().slice(0, 10) } = {}) {
+  prelude(job);
   const directory = out.replace(/\\/g, "/").replace(/\/+$/, "") || ".";
   const quoted = (path) => `'${path.replace(/'/g, "''")}'`;
   const lines = [
@@ -223,6 +258,7 @@ export function extractSql({ out = ".", omit = new Set(), tables = Object.keys(C
     `-- Output: ${directory}/<table>.csv. Then: node packages/isolated-backend/scripts/v7-extract-manifest.mjs ${directory}`,
     ...(omit.size ? [`-- Omitted optional columns (absent from this v7): ${[...omit].sort().join(", ")}`] : []),
     ...(tables.length < Object.keys(CONTRACT).length ? [`-- A subset (--tables): ${tables.join(", ")}. Build the manifest with the same --tables.`] : []),
+    ...(job ? [`-- One job (--job): ${job} and its own client only; the configuration tables are taken whole. Build the manifest with the same --job.`] : []),
     "\\set ON_ERROR_STOP on",
     "\\encoding UTF8",
     // Belt and braces: the session refuses writes, and so does the one transaction every \copy runs inside. Repeatable
@@ -235,15 +271,16 @@ export function extractSql({ out = ".", omit = new Set(), tables = Object.keys(C
     "",
     "\\echo preflight: every column the extract reads, checked against this v7 before anything is copied",
     preflightSql(omit, tables),
+    ...(job ? [`\\echo one job: ${job} must be exactly one in-scope v7 job`, oneJobSql(job)] : []),
     "",
   ];
   for (const table of tables) {
     lines.push(`\\echo ${table}`);
-    lines.push(`\\copy (${selectFor(table, omit)}) TO ${quoted(`${directory}/${table}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
+    lines.push(`\\copy (${selectFor(table, omit, job)}) TO ${quoted(`${directory}/${table}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
   }
   if (tables.includes("job_plan")) {
     lines.push(`\\echo ${PARITY_FILE} (the client Risk v7 itself computes on the London operating day, for the parity check)`);
-    lines.push(`\\copy (${v7ClientRiskSql()}) TO ${quoted(`${directory}/${PARITY_FILE}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
+    lines.push(`\\copy (${v7ClientRiskSql(job)}) TO ${quoted(`${directory}/${PARITY_FILE}.csv`)} WITH (FORMAT csv, HEADER true, ENCODING 'UTF8')`);
   }
   lines.push("", "COMMIT;");
   return lines.join("\n") + "\n";
@@ -269,8 +306,10 @@ export function writeExtractSql(path, text) {
 function main(argv) {
   const values = (flag) => argv.flatMap((item, index) => (item === flag && argv[index + 1] ? [argv[index + 1]] : []));
   const out = values("--out")[0];
-  if (!out) throw new Error("Usage: v7-extract-sql.mjs --out <directory for the CSVs> [--file <path for the script>] [--tables <table>[,…]] [--omit <table>.<column>]…");
-  const text = extractSql({ out, omit: parseOmit(values("--omit")), tables: parseTables(values("--tables")) });
+  if (!out) throw new Error("Usage: v7-extract-sql.mjs --out <directory for the CSVs> [--file <path for the script>] [--tables <table>[,…]] [--omit <table>.<column>]… [--job <J number>]");
+  const jobs = values("--job");
+  if (jobs.length > 1) throw new Error("--job: one job per extract (the re-sync is one named job at a time)");
+  const text = extractSql({ out, omit: parseOmit(values("--omit")), tables: parseTables(values("--tables")), job: jobs[0] ?? null });
   const file = values("--file")[0];
   if (!file) { process.stdout.write(text); return; }
   writeExtractSql(file, text);

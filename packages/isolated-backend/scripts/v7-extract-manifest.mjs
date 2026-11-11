@@ -15,6 +15,10 @@
  * `subset` — a reader then knows the extract is whole *for those tables* and nothing more. When `job_plan` is in the
  * extract, v7's own client Risk (`v7_client_risk.csv`, the parity check) is required too, and recorded under `derived`.
  *
+ * **One job** (`--job J000669`, the re-sync): the manifest records `job`, and `jobs.csv` must hold exactly that one job.
+ * The importer's reader then refuses the extract to every caller but the re-sync of that job — so a one-job extract is
+ * never loaded as if it were the client's whole record.
+ *
  * Read-only on the files; it writes only `manifest.json` beside them.
  */
 import { createHash } from "node:crypto";
@@ -61,7 +65,8 @@ export function countCsv(text) {
 const PARITY_FILE = "v7_client_risk";
 const PARITY_COLUMNS = ["client_db_id", "operating_day", "v7_milestone_status"];
 
-export function buildManifest(directory, { extractedAt = new Date().toISOString().slice(0, 10), only = Object.keys(CONTRACT) } = {}) {
+export function buildManifest(directory, { extractedAt = new Date().toISOString().slice(0, 10), only = Object.keys(CONTRACT), job = null } = {}) {
+  if (job !== null && !/^J\d{6}$/.test(job)) throw new Error(`--job ${job}: expected one v7 job number, e.g. J000669`);
   const problems = [];
   const tables = {};
   for (const [table, entry] of Object.entries(CONTRACT)) {
@@ -90,7 +95,9 @@ export function buildManifest(directory, { extractedAt = new Date().toISOString(
       derived = { [PARITY_FILE]: { file, rows, sha256: createHash("sha256").update(bytes).digest("hex") } };
     }
   }
-  return { manifest: { extractedAt, ...(subset ? { subset } : {}), tables, ...(derived ? { derived } : {}) }, problems };
+  // A one-job extract holds that job and nothing else: anything but one jobs record is not the extract --job asked for.
+  if (job !== null && tables.jobs && tables.jobs.rows !== 1) problems.push(`jobs.csv: ${tables.jobs.rows} rows — a one-job extract (--job ${job}) holds exactly one`);
+  return { manifest: { extractedAt, ...(subset ? { subset } : {}), ...(job ? { job } : {}), tables, ...(derived ? { derived } : {}) }, problems };
 }
 
 /** `--tables`, as the SQL generator reads it: contract tables in contract order; none means every table. */
@@ -103,16 +110,21 @@ export function parseTables(values) {
 
 function main(argv) {
   const directory = argv[0];
-  if (!directory || directory.startsWith("--")) throw new Error("Usage: v7-extract-manifest.mjs <extract directory> [--tables <table>[,…]]");
+  if (!directory || directory.startsWith("--")) throw new Error("Usage: v7-extract-manifest.mjs <extract directory> [--tables <table>[,…]] [--job <J number>]");
   const only = parseTables(argv.flatMap((item, index) => (item === "--tables" && argv[index + 1] ? [argv[index + 1]] : [])));
-  const { manifest, problems } = buildManifest(directory, { only });
+  const jobs = argv.flatMap((item, index) => (item === "--job" && argv[index + 1] ? [argv[index + 1]] : []));
+  if (jobs.length > 1) throw new Error("--job: one job per extract");
+  const { manifest, problems } = buildManifest(directory, { only, job: jobs[0] ?? null });
   if (problems.length) throw new Error(`no manifest written:\n  ${problems.join("\n  ")}`);
   const text = JSON.stringify(manifest, null, 2) + "\n";
   writeFileSync(join(directory, "manifest.json"), text, "utf8");
   for (const [table, entry] of [...Object.entries(manifest.tables), ...Object.entries(manifest.derived ?? {})]) process.stdout.write(`  ${table.padEnd(22)} ${String(entry.rows).padStart(7)} rows  ${entry.sha256.slice(0, 16)}…\n`);
   if (manifest.subset) process.stdout.write(`  (a subset: ${manifest.subset.join(", ")})\n`);
+  if (manifest.job) process.stdout.write(`  (one job: ${manifest.job})\n`);
   process.stdout.write(`\nmanifest.json written — extract sha256 ${createHash("sha256").update(text).digest("hex")}\n`);
-  process.stdout.write(`Compare the row counts with psql's COPY n lines. Next: npm run ${manifest.subset?.includes("job_plan") ? "load:v7-milestones" : "load:v7-clients"} -- <directory> (a dry run).\n`);
+  const next = manifest.job ? `v7:resync -w @nzi/isolated-backend -- --extract <directory> --job ${manifest.job} --reason "<why>"`
+    : `${manifest.subset?.includes("job_plan") ? "load:v7-milestones" : "load:v7-clients"} -- <directory>`;
+  process.stdout.write(`Compare the row counts with psql's COPY n lines. Next: npm run ${next} (a dry run).\n`);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {

@@ -6,8 +6,9 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { EXTRACT_CONTRACT, parseV7Csv, readV7Extract, V7_TABLES } from "../src/v7ClientExtract";
+import { planV7ClientImport } from "../src/v7ClientImport";
 // @ts-expect-error — plain .mjs, deliberately untyped: it must run with no toolchain on the extracting machine.
-import { assertOutsideRepository, columnsFor, extractSql, parseOmit, parseTables, PARITY_FILE, preflightColumns, QUERY_COLUMNS, REFERENCE_COLUMNS, REPOSITORY_ROOT, V7_RISK_CASE_SQL, v7ClientRiskSql, writeExtractSql } from "../scripts/v7-extract-sql.mjs";
+import { assertOutsideRepository, columnsFor, extractSql, oneJobSql, parseOmit, parseTables, PARITY_FILE, preflightColumns, QUERY_COLUMNS, REFERENCE_COLUMNS, REPOSITORY_ROOT, V7_RISK_CASE_SQL, v7ClientRiskSql, writeExtractSql } from "../scripts/v7-extract-sql.mjs";
 // @ts-expect-error — as above.
 import { buildManifest, countCsv } from "../scripts/v7-extract-manifest.mjs";
 import { syntheticRows, writeSyntheticExtract } from "./support/v7SyntheticExtract";
@@ -171,6 +172,74 @@ describe("a subset extract — job_plan alone, for the milestone backfill (ruled
       assert.throws(() => parseOmit([`job_plan.${kind}_due`]), /required/);
       assert.throws(() => parseOmit([`job_plan.${kind}_completed_at`]), /required/);
       assert.doesNotThrow(() => parseOmit([`job_plan.${kind}_completed_by`]));
+    }
+  });
+});
+
+describe("a one-job extract — --job, for the re-sync of one named job (RULING-v7-resync-job R5)", () => {
+  const one: string = extractSql({ out: "C:/v7-extract", job: "J000669" });
+  const copies = one.split("\n").filter((line) => line.startsWith("\\copy"));
+
+  it("narrows every query's scope to that job and its own client, still decision 8's", () => {
+    assert.equal(copies.length, V7_TABLES.length + 1, "the same files as a whole extract");
+    for (const line of copies) {
+      assert.ok(line.includes("WITH ac AS (SELECT db_id FROM clients WHERE COALESCE(status,'Active') IN ('Active','Portfolio Owner') AND NOT COALESCE(archived,false) " +
+        "AND db_id IN (SELECT client_db_id FROM jobs WHERE job_number = 'J000669')), aj AS (SELECT j.job_id FROM jobs j JOIN ac ON ac.db_id = j.client_db_id WHERE j.job_number = 'J000669')"), line.slice(0, 80));
+    }
+    const jobs = copies[V7_TABLES.indexOf("jobs")]!;
+    assert.match(jobs, /FROM jobs t WHERE t\.client_db_id IN \(SELECT db_id FROM ac\) AND t\.job_id IN \(SELECT job_id FROM aj\) ORDER BY/, "jobs is the one job, not its client's every job");
+    const clients = copies[V7_TABLES.indexOf("clients")]!;
+    assert.doesNotMatch(clients, /AND t\.job_id/, "only jobs takes the job filter");
+  });
+
+  it("checks the job is exactly one in-scope v7 job after the preflight and before the first \\copy, inside the read-only transaction", () => {
+    const lines = one.split("\n");
+    const guard = lines.indexOf(oneJobSql("J000669"));
+    assert.ok(guard > lines.findIndex((line) => line.startsWith("DO $preflight$")));
+    assert.ok(guard < lines.findIndex((line) => line.startsWith("\\copy")));
+    assert.ok(guard > lines.indexOf("SET TRANSACTION READ ONLY;"));
+    assert.match(one, /^-- One job \(--job\): J000669 and its own client only/m);
+  });
+
+  it("takes only a v7 job number, so nothing else can reach the SQL", () => {
+    for (const job of ["J000669' OR '1'='1", "J00669", "j000669", "669", ""]) assert.throws(() => extractSql({ out: "x", job }), /expected one v7 job number/, job);
+    assert.doesNotMatch(extractSql({ out: "x" }), /job_number = /, "without --job, the whole extract as before");
+  });
+
+  it("records the job in the manifest, and holds exactly one jobs record", () => {
+    const directory = mkdtempSync(join(tmpdir(), "v7-manifest-"));
+    try {
+      writeSyntheticExtract(directory);
+      assert.match(buildManifest(directory, { job: "J000612" }).problems.join(), /jobs\.csv: 8 rows — a one-job extract \(--job J000612\) holds exactly one/);
+      const rows = syntheticRows();
+      writeSyntheticExtract(directory, { ...rows, jobs: rows.jobs.filter((row) => row.job_number === "J000612") });
+      const { manifest, problems } = buildManifest(directory, { extractedAt: "synthetic", job: "J000612" });
+      assert.deepEqual(problems, []);
+      assert.equal(manifest.job, "J000612");
+      assert.throws(() => buildManifest(directory, { job: "J0612" }), /expected one v7 job number/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("is read only by the re-sync of that job: every other reader refuses it, and the re-sync refuses any other extract", () => {
+    const directory = mkdtempSync(join(tmpdir(), "v7-manifest-"));
+    try {
+      const rows = syntheticRows();
+      writeSyntheticExtract(directory, { ...rows, jobs: rows.jobs.filter((row) => row.job_number === "J000612") });
+      const whole = buildManifest(directory, { extractedAt: "synthetic" }).manifest;
+      writeFileSync(join(directory, "manifest.json"), JSON.stringify(whole, null, 2));
+      assert.match(readV7Extract(directory, { job: "J000612" }).problems.join(), /not a one-job extract of J000612: take it with --job J000612/, "a whole extract is not the re-sync's");
+
+      writeFileSync(join(directory, "manifest.json"), JSON.stringify(buildManifest(directory, { extractedAt: "synthetic", job: "J000612" }).manifest, null, 2));
+      assert.deepEqual(readV7Extract(directory, { job: "J000612" }).problems, []);
+      assert.match(readV7Extract(directory).problems.join(), /one job \(J000612\) only: only the re-sync of J000612 reads it/, "the client load refuses it");
+      assert.match(readV7Extract(directory, { tables: ["job_plan"] }).problems.join(), /one job \(J000612\) only/, "and so does every table loader");
+      assert.match(readV7Extract(directory, { job: "J000613" }).problems.join(), /one job \(J000612\) only, not J000613/, "another job's extract");
+      const plan = planV7ClientImport({ ...(({ extract, headers, extractSha256, problems }) => ({ extract, headers, extractSha256, extractProblems: problems }))(readV7Extract(directory)) });
+      assert.ok(plan.refusals.some((finding) => finding.code === "extract-manifest"), "and the plan carries it as a refusal");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
     }
   });
 });

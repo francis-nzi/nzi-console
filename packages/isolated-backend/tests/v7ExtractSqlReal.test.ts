@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
-import { EXTRACT_CONTRACT, V7_TABLES, type V7Table } from "../src/v7ClientExtract";
+import { EXTRACT_CONTRACT, V7_TABLES, type V7Extract, type V7Row, type V7Table } from "../src/v7ClientExtract";
+import { planV7ClientImport } from "../src/v7ClientImport";
 // @ts-expect-error — plain .mjs, deliberately untyped: it must run with no toolchain on the extracting machine.
-import { extractSql, preflightSql, v7ClientRiskSql } from "../scripts/v7-extract-sql.mjs";
+import { extractSql, oneJobSql, preflightSql, v7ClientRiskSql } from "../scripts/v7-extract-sql.mjs";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { syntheticRows } from "./support/v7SyntheticExtract";
 
@@ -185,5 +186,61 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
     assert.deepEqual(reference("1006"), ["5", "tCO2e"], "the token in the notes, in the row's dataset — unit trimmed");
     assert.deepEqual(reference("1000"), ["0.18", "kgCO2e"], "no token: the row's original_id, any dataset");
     assert.deepEqual(reference("1003"), [null, null], "nothing to find: both NULL, which the importer reads as known-absent");
+  });
+
+  describe("--job: one named job and its own client (the re-sync's extract)", () => {
+    // Every value as v7 writes it to CSV — text — so the files the importer would read are what the plan reads here.
+    const raw = { getTypeParser: () => (value: string) => value };
+    const take = async (job: string | null) => {
+      const lines = (extractSql({ out: "unused", job }) as string).split("\n").filter((line) => line.startsWith("\\copy"));
+      const extract = {} as Record<V7Table, V7Row[]>;
+      const headers = {} as Record<V7Table, string[]>;
+      for (const [index, table] of V7_TABLES.entries()) {
+        const result = await db.query({ text: COPY_LINE.exec(lines[index]!)![1]!, types: raw });
+        headers[table] = result.fields.map((field) => field.name);
+        extract[table] = result.rows;
+      }
+      return { extract: extract as V7Extract, headers };
+    };
+
+    it("takes that job, its own client and what they reference; every configuration table whole", async () => {
+      const whole = await take(null);
+      const one = await take("J000612");
+      assert.deepEqual(one.extract.clients.map((row) => row.db_id), ["1"]);
+      assert.deepEqual(one.extract.jobs.map((row) => row.job_number), ["J000612"], "its client's other jobs stay behind");
+      for (const table of V7_TABLES) {
+        const filter = EXTRACT_CONTRACT[table].filter;
+        const expected = table === "jobs" ? whole.extract.jobs.filter((row) => row.job_id === "100")
+          : filter === "client" ? whole.extract[table].filter((row) => row.client_db_id === "1")
+          : filter === "active-clients" ? whole.extract[table].filter((row) => row.db_id === "1")
+          : filter === "job" || filter === "job-with-reference" ? whole.extract[table].filter((row) => row.job_id === "100")
+          : filter === "referenced-datasets" ? null
+          : whole.extract[table];
+        if (expected) assert.deepEqual(one.extract[table], expected, `${table} (${filter})`);
+      }
+      assert.ok(one.extract.job_scope_rows.length > 0, "the job's own scope rows are taken");
+      assert.ok(one.extract.datasets.every((row) => whole.extract.datasets.some((other) => other.dataset_id === row.dataset_id)));
+      const risk = (await db.query<{ client_db_id: string }>(v7ClientRiskSql("J000612"))).rows;
+      assert.deepEqual(risk.map((row) => row.client_db_id), ["1"], "v7's own client Risk, for that client only");
+    });
+
+    it("plans the job exactly as a whole extract plans it, with no refusal", async () => {
+      const plan = (taken: Awaited<ReturnType<typeof take>>) =>
+        planV7ClientImport({ extract: taken.extract, headers: taken.headers, extractSha256: "0".repeat(64) });
+      const whole = plan(await take(null));
+      const one = plan(await take("J000612"));
+      assert.deepEqual(one.refusals, []);
+      assert.deepEqual(one.clients.map((client) => client.jobs.map((job) => job.legacyJobNumber)), [["J000612"]]);
+      const job = (of: typeof whole) => of.clients.flatMap((client) => client.jobs).find((planned) => planned.legacyJobNumber === "J000612");
+      assert.deepEqual(job(one), job(whole), "the same planned job, rows and all");
+    });
+
+    it("stops before any \\copy unless the job is exactly one in-scope v7 job", async () => {
+      await assert.doesNotReject(db.query(oneJobSql("J000612")));
+      await assert.rejects(db.query(oneJobSql("J000701")), /J000701 is not exactly one in-scope v7 job.*Nothing was extracted/, "a prospect's job");
+      await assert.rejects(db.query(oneJobSql("J009999")), /J009999 is not exactly one in-scope v7 job/, "no such job");
+      const lines = (extractSql({ out: "unused", job: "J000612" }) as string).split("\n");
+      assert.ok(lines.indexOf(oneJobSql("J000612")) < lines.findIndex((line) => line.startsWith("\\copy")), "checked before the first \\copy");
+    });
   });
 });
