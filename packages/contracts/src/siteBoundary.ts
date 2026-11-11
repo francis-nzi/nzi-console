@@ -6,6 +6,12 @@
  * comparison.
  */
 
+/**
+ * The site selection that means "rows with no site". A job's site tabs and the reads behind them take a site id, `null`
+ * (all sites), or this — never a real site's id — and it narrows to `site_id IS NULL`.
+ */
+export const UNASSIGNED_SITE_ID = "unassigned";
+
 /** A job's reporting period — its financial year, inclusive at both ends. */
 export type ReportingPeriod = { from: string; to: string };
 

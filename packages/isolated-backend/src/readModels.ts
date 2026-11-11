@@ -1098,12 +1098,15 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
 // empty ("No data yet"), never left out (JW-10: a job with no rows or datasets otherwise had no sections at all, and
 // one with no Scope 1 rows had no Scope 1). For the portal, the top-level scopes present in the job's active
 // selected-dataset factors, unioned with any scope that already has a row — narrowed again to its grants below.
-export async function listJobApplicableCategories(db:Queryable,jobId:string,audience:"crm"|"portal"):Promise<import("@nzi/contracts").JobApplicableCategories>{
-  const {emissionCategoryTaxonomy}=await import("@nzi/contracts");
+// `siteId` (CRM site tabs) narrows each category's entries, tCO₂e and completeness to one site — or, as UNASSIGNED_SITE_ID, to
+// the rows with no site — so the category list agrees with the totals band above it. The categories offered never change.
+export async function listJobApplicableCategories(db:Queryable,jobId:string,audience:"crm"|"portal",siteId:string|null=null):Promise<import("@nzi/contracts").JobApplicableCategories>{
+  const {emissionCategoryTaxonomy,UNASSIGNED_SITE_ID}=await import("@nzi/contracts");
+  const site=siteId===null?{clause:"",values:[]}:siteId===UNASSIGNED_SITE_ID?{clause:" AND site_id IS NULL",values:[]}:{clause:" AND site_id=$2",values:[siteId]};
   const ALL_SCOPES=["1","2","3"] as const;
   const scopeRows=audience==="crm"?null:await db.query<{scope:string}>(`SELECT DISTINCT scope FROM (SELECT split_part(unnest(f.scopes),'.',1) AS scope FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factors f ON (f.organisation_id,f.dataset_id)=(s.organisation_id,s.dataset_id) WHERE s.job_id=$1 AND f.active=true UNION ALL SELECT split_part(r.scope,'.',1) FROM nzi_console.job_scope_rows r WHERE r.job_id=$1) x WHERE scope<>''`,[jobId]);
   const includedScopes=scopeRows===null?[...ALL_SCOPES]:ALL_SCOPES.filter(scope=>scopeRows.rows.some(row=>row.scope===scope));
-  const metrics=await db.query<{code:string;entry_count:string;tco2e:string;complete_count:string}>(`SELECT coalesce(nullif(category_code,''),scope) AS code,count(*) FILTER (WHERE enabled)::text AS entry_count,coalesce(sum(coalesce(override_tco2e,calculated_tco2e,0)) FILTER (WHERE enabled),0)::text AS tco2e,count(*) FILTER (WHERE enabled AND review_status='approved' AND (calculated_tco2e IS NOT NULL OR override_tco2e IS NOT NULL) AND quality_tier IS NOT NULL)::text AS complete_count FROM nzi_console.job_scope_rows WHERE job_id=$1 GROUP BY 1`,[jobId]);
+  const metrics=await db.query<{code:string;entry_count:string;tco2e:string;complete_count:string}>(`SELECT coalesce(nullif(category_code,''),scope) AS code,count(*) FILTER (WHERE enabled)::text AS entry_count,coalesce(sum(coalesce(override_tco2e,calculated_tco2e,0)) FILTER (WHERE enabled),0)::text AS tco2e,count(*) FILTER (WHERE enabled AND review_status='approved' AND (calculated_tco2e IS NOT NULL OR override_tco2e IS NOT NULL) AND quality_tier IS NOT NULL)::text AS complete_count FROM nzi_console.job_scope_rows WHERE job_id=$1${site.clause} GROUP BY 1`,[jobId,...site.values]);
   const byCode=new Map(metrics.rows.map(row=>[row.code,row]));
   let authorisedCodes:Set<string>|null=null;
   if(audience==="portal"){

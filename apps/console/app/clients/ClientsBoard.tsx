@@ -98,8 +98,9 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
   const router = useRouter();
   const nav = useListNavigation(clientListSpec, query, "/clients");
   const me = useStaffMe(query.filters.crm !== undefined);
-  const [selectedId, setSelectedIdRaw] = useState<string>(page.rows[0]?.id ?? "");
-  const [panelOpen, setPanelOpen] = useState(true);
+  // Nothing is selected on load, so no panel opens until a row is chosen.
+  const [selectedId, setSelectedIdRaw] = useState<string | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
   // A selected row opens its panel; the panel's close (x, Escape) closes it until a row is chosen again.
   const setSelectedId = (id: string) => { setSelectedIdRaw(id); setPanelOpen(true); };
   const rail = <StaffRail activeId="clients" />;
@@ -108,7 +109,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
   // No clients at all is a different state from none matching the filters, and keeps its own call to action.
   if (page.unfilteredTotal === 0) return <AppShell rail={rail}>{topBar}<div className="nz-head"><div className="nz-eyebrow">Client intelligence</div><h1>Client portfolio</h1><div className="sub">Relationships, delivery health and reporting readiness</div></div><div className="nz-body nz-client-zero"><section><i>0</i><div><h2>No client records yet</h2><p>Create the first tenant-scoped client before opening jobs, portal access, or reporting workflows.</p><Link className="nz-btn pri" href="/clients/new">Add first client</Link></div></section></div></AppShell>;
 
-  const selected = page.rows.find((c) => c.id === selectedId) ?? page.rows[0];
+  const selected = page.rows.find((c) => c.id === selectedId);
   const { summary } = page;
   // `?crm=` — "My clients" from the Control Room. Where the page is, like a Jobs list's client scope: Clear filters keeps it.
   const crm = query.filters.crm?.[0] ?? null;

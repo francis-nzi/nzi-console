@@ -1,4 +1,4 @@
-import type { ScopeRowReadModel } from "@nzi/contracts";
+import { UNASSIGNED_SITE_ID, type ScopeRowReadModel } from "@nzi/contracts";
 
 export type ScopeRegisterFilter = "attention" | "calculation" | "quality" | "review" | "rejected" | "all";
 
@@ -35,13 +35,14 @@ export function resolveSelectedScopeRow(
  *
  * `null` is "all sites" and shows everything. A row with no site is only ever shown under all sites —
  * it belongs to the job rather than to a place, and putting it under a particular site would claim
- * something about it that nobody recorded.
+ * something about it that nobody recorded. "Unassigned" (UNASSIGNED_SITE_ID) shows exactly those rows.
  */
 export function filterRowsBySite(
   rows: ScopeRowReadModel[],
   siteId: string | null,
 ): ScopeRowReadModel[] {
   if (siteId === null) return rows;
+  if (siteId === UNASSIGNED_SITE_ID) return rows.filter((row) => row.siteId === null);
   return rows.filter((row) => row.siteId === siteId);
 }
 

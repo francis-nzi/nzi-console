@@ -6,7 +6,7 @@
 // slot where its typed adapter (spend / import / commuting / vehicle) is re-homed.
 // Reads `listJobApplicableCategories(…, "crm")` for the completeness view — every
 // taxonomy category for an included scope, empties shown neutrally.
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { ApplicableCategory, JobApplicableCategories, ScopeRowReadModel, ScopeRowWriteFields } from "@nzi/contracts";
 import { emissionCategoryTaxonomy } from "@nzi/contracts";
 import {
@@ -122,19 +122,25 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
   const [showSwitchedOff, setShowSwitchedOff] = useState(false);
 
 
+  // Only the latest read lands: switching site tabs quickly must not leave an earlier tab's figures on screen.
+  const latest = useRef(0);
   const load = useCallback(async () => {
     if (given) { setApplicable(given); setState("ready"); return; }
+    const request = ++latest.current;
     setState("loading");
     try {
-      const response = await fetch(`/api/isolated/jobs/${jobId}/applicable-categories`, { cache: "no-store" });
+      // The site tab in force narrows each category's figures, so the list agrees with the totals band above it.
+      const site = siteId ? `?siteId=${encodeURIComponent(siteId)}` : "";
+      const response = await fetch(`/api/isolated/jobs/${jobId}/applicable-categories${site}`, { cache: "no-store" });
       const body = await response.json();
+      if (request !== latest.current) return;
       if (!response.ok || !Array.isArray(body.categories)) throw new Error();
       setApplicable(body as JobApplicableCategories);
       setState("ready");
     } catch {
-      setState("failed");
+      if (request === latest.current) setState("failed");
     }
-  }, [jobId, given]);
+  }, [jobId, given, siteId]);
   useEffect(() => { void load(); }, [load]);
   // E: open what holds the row being revealed, then scroll to it once it is drawn.
   useEffect(() => {
@@ -148,7 +154,8 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [revealRowId, applicable, rows]);
 
-  if (state === "loading") return <div className="nz-panel" style={{ padding: 16 }} role="status">Loading the category view…</div>;
+  // A site switch re-reads with the previous figures still drawn; only the first read shows the placeholder.
+  if (state === "loading" && !applicable) return <div className="nz-panel" style={{ padding: 16 }} role="status">Loading the category view…</div>;
   if (state === "failed" || !applicable) {
     return (
       <div className="nz-banner warn" role="alert" style={{ margin: 0 }}>

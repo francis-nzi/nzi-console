@@ -1,3 +1,4 @@
+import { UNASSIGNED_SITE_ID } from "@nzi/contracts";
 import { withTenantRead, type PoolLike, type Queryable } from "./postgres";
 
 /**
@@ -117,9 +118,12 @@ export async function aggregateJobEmissions(
   const rows = input.rowIds === undefined ? null : [...input.rowIds];
   const base = [input.organisationId, input.jobId, ...(rows ? [rows] : [])];
   const rowClause = rows ? " AND scope_row_id = ANY($3::text[])" : "";
+  // UNASSIGNED_SITE_ID narrows to the rows with no site — the site tabs' "Unassigned".
   const narrowed = siteId === null
     ? { clause: rowClause, values: base }
-    : { clause: `${rowClause} AND site_id = $${base.length + 1}`, values: [...base, siteId] };
+    : siteId === UNASSIGNED_SITE_ID
+      ? { clause: `${rowClause} AND site_id IS NULL`, values: base }
+      : { clause: `${rowClause} AND site_id = $${base.length + 1}`, values: [...base, siteId] };
 
   const where = `WHERE organisation_id = $1 AND job_id = $2 AND enabled = true${narrowed.clause}`;
 

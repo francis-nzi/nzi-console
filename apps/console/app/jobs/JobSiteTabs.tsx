@@ -1,5 +1,6 @@
 "use client";
 
+import { UNASSIGNED_SITE_ID } from "@nzi/contracts";
 import type { JobEmissions } from "@nzi/isolated-backend";
 
 /**
@@ -20,9 +21,14 @@ import type { JobEmissions } from "@nzi/isolated-backend";
 
 export type JobSite = { id: string; name: string };
 
+/**
+ * `unassigned` (the CRM): an "Unassigned" tab after the sites, with its count, that narrows the surface to the rows with no
+ * site (UNASSIGNED_SITE_ID). Offered whenever the job has sites, like an empty site — it is somewhere to look and to enter.
+ * Without it (the portal) the older note-tab stays as it was.
+ */
 export function JobSiteTabs(
-  { sites, emissions, selected, onSelect }:
-  { sites: readonly JobSite[]; emissions: JobEmissions; selected: string | null; onSelect: (siteId: string | null) => void },
+  { sites, emissions, selected, onSelect, unassigned = false }:
+  { sites: readonly JobSite[]; emissions: JobEmissions; selected: string | null; onSelect: (siteId: string | null) => void; unassigned?: boolean },
 ) {
   const countFor = (siteId: string | null): number =>
     emissions.bySite
@@ -62,14 +68,17 @@ export function JobSiteTabs(
     <div className="nz-site-tabs" role="tablist" aria-label="Sites">
       {tab("all", null, "All sites", allEntries)}
       {sites.map((site) => tab(site.id, site.id, site.name, countFor(site.id)))}
-      {/* Only when there are any: an empty "Unassigned" tab would be a category of nothing. */}
-      {unplaced > 0 && selected !== null
-        ? tab("unplaced-note", null, "Unassigned", unplaced)
-        : null}
+      {unassigned
+        ? sites.length > 0 ? tab("unassigned", UNASSIGNED_SITE_ID, "Unassigned", unplaced) : null
+        // Only when there are any: an empty "Unassigned" tab would be a category of nothing.
+        : unplaced > 0 && selected !== null
+          ? tab("unplaced-note", null, "Unassigned", unplaced)
+          : null}
     </div>
   );
 }
 
 /** The label for the strip's eyebrow, so the strip and the tabs never name the selection differently. */
 export const siteLabelFor = (sites: readonly JobSite[], selected: string | null): string =>
-  selected === null ? "All sites" : sites.find((site) => site.id === selected)?.name ?? "Selected site";
+  selected === null ? "All sites" : selected === UNASSIGNED_SITE_ID ? "Unassigned"
+    : sites.find((site) => site.id === selected)?.name ?? "Selected site";
