@@ -82,6 +82,8 @@ export type ExtractManifest = {
   extractedAt?: string;
   /** Present when the extract took only some tables (`--tables`, ruled R2): whole for these, and nothing else. */
   subset?: V7Table[];
+  /** Present when the extract took one named job and its own client (`--job`, the re-sync): that job, and nothing else. */
+  job?: string;
   tables: Partial<Record<V7Table, { file: string; rows: number; sha256: string }>>;
   /** Files derived in the same snapshot rather than copied from a table — v7's own client Risk, for the parity check. */
   derived?: Partial<Record<"v7_client_risk", { file: string; rows: number; sha256: string }>>;
@@ -106,11 +108,20 @@ const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).di
  *
  * `tables` reads only those (the milestone backfill reads `job_plan`); a manifest that says it is a subset is refused
  * for any table outside it, so a reader can never mistake a partial extract for a whole one.
+ *
+ * `job` reads a one-job extract (`--job`, the re-sync of that job). Without it a one-job extract is refused, and with it
+ * only a one-job extract of that same job is read: the client load can never take one job's extract for a client's whole
+ * record, and the re-sync never runs on the wrong job's.
  */
-export function readV7Extract(directory: string, options: { tables?: readonly V7Table[] } = {}): ReadExtract {
+export function readV7Extract(directory: string, options: { tables?: readonly V7Table[]; job?: string } = {}): ReadExtract {
   const manifestBytes = readFileSync(join(directory, "manifest.json"));
   const manifest = JSON.parse(manifestBytes.toString("utf8")) as ExtractManifest;
   const problems: string[] = [];
+  if ((manifest.job ?? null) !== (options.job ?? null)) {
+    problems.push(manifest.job === undefined
+      ? `the extract is not a one-job extract of ${options.job}: take it with --job ${options.job}`
+      : `the extract is one job (${manifest.job}) only${options.job ? `, not ${options.job}` : ""}: only the re-sync of ${manifest.job} reads it`);
+  }
   const headers: Partial<Record<V7Table, string[]>> = {};
   const extract = {} as Record<V7Table, V7Row[]>;
   for (const table of V7_TABLES) extract[table] = [];

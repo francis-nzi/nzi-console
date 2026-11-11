@@ -4,8 +4,9 @@
  *   npm run v7:resync -w @nzi/isolated-backend -- --extract <dir> --job J000669 --reason "<why>" [--organisation <id>] [--commit]
  *   npm run v7:resync -w @nzi/isolated-backend -- --revert <runId> --job J000669 --reason "<why>" [--organisation <id>] [--commit]
  *
- * `--extract` is a current live-v7 extract (scripts/v7-extract-sql.mjs + v7-extract-manifest.mjs), planned by the importer exactly
- * as the client load plans it; only the named job's rows are taken (R5: one job, named by its J number). A dry run unless
+ * `--extract` is a current live-v7 extract of this one job (scripts/v7-extract-sql.mjs and v7-extract-manifest.mjs, each with the
+ * same `--job`), planned by the importer exactly as the client load plans it (R5: one job, named by its J number). Any other
+ * extract — a whole one, or another job's — is refused before anything is planned. A dry run unless
  * `--commit`, and a dry run is the whole re-sync, its post-condition included, rolled back. Afterwards the job's existing
  * re-ingest is re-planned from the refreshed rows and re-run. Fail-closed on the boundary; verified TLS off-machine. Prints row
  * ids and counts only — no figures, no client data.
@@ -54,7 +55,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const read = readV7Extract(extract!);
+  // A one-job extract of this job only (v7-extract-sql.mjs --job): any other extract is refused before anything is planned.
+  const read = readV7Extract(extract!, { job: jobNumber });
   const plan = planV7ClientImport({ extract: read.extract, headers: read.headers, extractSha256: read.extractSha256, organisationId, extractProblems: read.problems });
   if (plan.refusals.length) {
     log(`\nThe extract's plan carries ${plan.refusals.length} refusal(s); nothing runs:`);
