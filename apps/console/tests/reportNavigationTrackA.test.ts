@@ -85,6 +85,9 @@ describe("Track A: report navigation", () => {
     assert.match(read("apps/console/app/jobs/CrpReleaseControl.tsx"), /\{!snapshot&&!importedPeriod&&<div className="nz-hint">/, "an imported period shows no release note");
     const view = read("apps/console/app/reports/ReportRegisterView.tsx");
     assert.match(view, /reportEligibilityLabels\[eligibility\]/, "every row is badged by eligibility");
-    assert.match(view, /v7RecordLine\(job\.v7Report\)/, "the record of account from its unsealed metadata");
+    // Demo tidy (11 Nov): the record-of-account disclosure duplicated the stage — an imported row carries one badge (under the
+    // job, from its eligibility) and no action.
+    assert.match(view, /\{link\.href\n\s+\? <Link[^\n]+\n(\s+\/\/[^\n]+\n)+\s+: null\}<\/td>/, "an imported job has no action");
+    assert.doesNotMatch(view, /record of account|re-ingested/i, "no record-of-account or re-ingest copy on the row");
   });
 });

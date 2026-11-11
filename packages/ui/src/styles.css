@@ -2464,6 +2464,7 @@ details.nz-job-report-link{white-space:normal}
 .nz-v7-record-line{font-size:12px!important}
 @media (max-width:760px){.nz-pipeline-table .nz-tbl th:nth-child(4),.nz-pipeline-table .nz-tbl td:nth-child(4){display:none}}
 .nz-reportreg-filters>.nz-filters{flex:0 0 auto}
+.nz-reportreg-filters .nz-smart-chosen{display:none}
 @media (max-width:760px){
   .nz-reportreg-filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   .nz-reportreg-filters>.nz-filters,.nz-reportreg-filters label:has(input[type="search"]){grid-column:1/-1}

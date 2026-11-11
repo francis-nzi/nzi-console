@@ -5,10 +5,13 @@ import { useEffect, useMemo, useState } from "react";
 import {
   countReportStages, defaultReportRegisterQuery, filterReportRegister, filterReportRegisterExceptStage, parseReportRegisterQuery,
   REPORT_STAGES, reportEligibilityLabels, reportEligibilityOf, reportLinkFor, reportRegisterQueryString, reportStageLabels,
-  v7RecordLine, type ReportRegisterQuery, type ReportStage,
+  PAGE_SIZES, type ReportRegisterQuery, type ReportStage,
 } from "@nzi/contracts";
 import type { ReportStatusRow } from "@nzi/isolated-backend";
+import { DataListPager, SmartSearch, type SmartSearchOption } from "@nzi/ui";
 import { reportFeatureEnabled } from "../lib/reportFlags";
+
+const ALL_CLIENTS: SmartSearchOption = { id: "", label: "All clients" };
 
 const STAGES: ReportStage[] = [...REPORT_STAGES, "v7-record"];
 const STAGE_SET = new Set<string>(STAGES);
@@ -34,8 +37,9 @@ const tone: Record<ReportStage, string> = {
  * - **Filters (A3)**, in the URL so a view can be shared: My clients (the default — the clients you own, a view, not a
  *   permission) or all; client; lead consultant; report stage (the counters, a funnel over the other filters); year;
  *   compose-eligibility; search over job number, v7 number, client and title. Imported jobs are badged, never hidden.
- * - **The row (A2, A5)**: job, client, year, stage, lead consultant, eligibility badge, and one action from the job's state. An
- *   imported job's v7 report is its record of account, shown from its unsealed metadata — never opened (Q1 (b)).
+ * - **The row (A2, A5)**: job, client, year, stage, lead consultant (labelled "CRM"), eligibility badge, and one action from the
+ *   job's state. An imported job is badged under the job and has no action — its sealed v7 report is never opened (Q1 (b)).
+ * - **Paged** like the Clients list (rows per page + page nav); a changed filter returns to page 1.
  * - **Honest states**: a read that fails says so and shows no counts; "no live jobs" and "nothing matches these filters" are
  *   different messages.
  */
@@ -44,15 +48,18 @@ export function ReportRegisterView({ mode }: { mode: "pipeline" | "picker" }) {
   const [viewer, setViewer] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [query, setQuery] = useState<ReportRegisterQuery>(defaultReportRegisterQuery);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(PAGE_SIZES[0]);
 
   // The URL is the filter's state: read once on arrival, rewritten (without a navigation) on every change.
   useEffect(() => { setQuery(parseReportRegisterQuery(new URLSearchParams(window.location.search), STAGES)); }, []);
-  const update = (patch: Partial<ReportRegisterQuery>) => setQuery((current) => {
+  // A changed filter starts the list again from its first page.
+  const update = (patch: Partial<ReportRegisterQuery>) => { setPage(1); setQuery((current) => {
     const next = { ...current, ...patch };
     const url = `${window.location.pathname}${reportRegisterQueryString(next)}${mode === "picker" ? "" : window.location.hash}`;
     window.history.replaceState(null, "", url);
     return next;
-  });
+  }); };
 
   useEffect(() => {
     fetch("/api/isolated/report-status", { cache: "no-store" })
@@ -69,7 +76,8 @@ export function ReportRegisterView({ mode }: { mode: "pipeline" | "picker" }) {
     const rows = jobs ?? [];
     const unique = <T,>(values: T[]) => [...new Set(values)];
     return {
-      clients: unique(rows.map((row) => `${row.clientId}\u0000${row.client}`)).map((pair) => pair.split("\u0000") as [string, string]).sort((a, b) => a[1].localeCompare(b[1])),
+      // A typeahead, not a dropdown: there are hundreds of clients. "All clients" is its first option, so a choice can be undone.
+      clients: [ALL_CLIENTS, ...unique(rows.map((row) => `${row.clientId}\u0000${row.client}`)).map((pair) => pair.split("\u0000") as [string, string]).sort((a, b) => a[1].localeCompare(b[1])).map(([id, label]) => ({ id, label }))],
       leads: unique(rows.map((row) => row.leadConsultant).filter((name): name is string => !!name)).sort((a, b) => a.localeCompare(b)),
       years: unique(rows.map((row) => row.reportingYear).filter((year): year is number => year !== null)).sort((a, b) => b - a),
     };
@@ -83,6 +91,9 @@ export function ReportRegisterView({ mode }: { mode: "pipeline" | "picker" }) {
   const scoped = filterReportRegisterExceptStage(jobs, effective, viewer);
   const counts = countReportStages(scoped);
   const visible = filterReportRegister(jobs, effective, viewer);
+  const pageCount = Math.max(1, Math.ceil(visible.length / pageSize));
+  const current = Math.min(page, pageCount);
+  const shown = visible.slice((current - 1) * pageSize, current * pageSize);
   const filtered = effective.clientId !== null || effective.leadConsultant !== null || effective.year !== null || effective.eligibility !== "all" || effective.search.trim() !== "" || effective.stage !== "all";
 
   return <section className="nz-report-pipeline" aria-label={mode === "picker" ? "Choose a CRP job" : "Report pipeline"}>
@@ -92,8 +103,8 @@ export function ReportRegisterView({ mode }: { mode: "pipeline" | "picker" }) {
         <button type="button" aria-pressed={effective.whose === "all"} className={effective.whose === "all" ? "on" : undefined} onClick={() => update({ whose: "all" })}>All clients</button>
       </div>
       <label><span>Search</span><input type="search" value={query.search} placeholder="Job number, client or plan title…" onChange={(event) => update({ search: event.target.value })} /></label>
-      <label><span>Client</span><select value={query.clientId ?? ""} onChange={(event) => update({ clientId: event.target.value || null })}><option value="">All</option>{options.clients.map(([id, name]) => <option key={id} value={id}>{name}</option>)}</select></label>
-      <label><span>Lead consultant</span><select value={query.leadConsultant ?? ""} onChange={(event) => update({ leadConsultant: event.target.value || null })}><option value="">All</option>{options.leads.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+      <label htmlFor="report-register-client"><span>Client</span><SmartSearch id="report-register-client" label="Client" options={options.clients} value={query.clientId ?? ""} placeholder="Type a client…" onChange={(id) => update({ clientId: id || null })} /></label>
+      <label><span>CRM</span><select value={query.leadConsultant ?? ""} onChange={(event) => update({ leadConsultant: event.target.value || null })}><option value="">All</option>{options.leads.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
       <label><span>Year</span><select value={query.year ?? ""} onChange={(event) => update({ year: event.target.value ? Number(event.target.value) : null })}><option value="">All</option>{options.years.map((year) => <option key={year} value={year}>{year}</option>)}</select></label>
       <label><span>Report</span><select value={query.eligibility} onChange={(event) => update({ eligibility: event.target.value as ReportRegisterQuery["eligibility"] })}><option value="all">All</option>{(Object.keys(reportEligibilityLabels) as Array<keyof typeof reportEligibilityLabels>).map((key) => <option key={key} value={key}>{reportEligibilityLabels[key]}</option>)}</select></label>
     </div>
@@ -107,9 +118,11 @@ export function ReportRegisterView({ mode }: { mode: "pipeline" | "picker" }) {
         : filtered || effective.whose === "mine"
           ? <><b>No jobs match these filters</b><span>{effective.whose === "mine" && !filtered ? "You own no client with a live CRP job — choose All clients to see the rest." : "Clear a filter, or choose All clients, to widen the list."}</span></>
           : <><b>No live CRP jobs</b><span>Jobs appear here from the moment they are created.</span></>}</div></div>
-      : <div className="nz-panel nz-pipeline-table"><table className="nz-tbl"><thead><tr><th>Job / client</th><th>Year</th><th>Stage</th><th>Lead consultant</th><th><span className="nz-sr-only">Report</span></th></tr></thead><tbody>
-        {visible.map((job) => <ReportRegisterRow key={job.jobId} job={job} />)}
-      </tbody></table></div>}
+      : <><div className="nz-panel nz-pipeline-table"><table className="nz-tbl"><thead><tr><th>Job / client</th><th>Year</th><th>Stage</th><th>CRM</th><th><span className="nz-sr-only">Report</span></th></tr></thead><tbody>
+        {shown.map((job) => <ReportRegisterRow key={job.jobId} job={job} />)}
+      </tbody></table></div>
+      <DataListPager label="CRP jobs" paging={{ page: current, pageCount, pageSize, pageSizes: PAGE_SIZES, total: visible.length }}
+        onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} /></>}
   </section>;
 }
 
@@ -131,6 +144,8 @@ function ReportRegisterRow({ job }: { job: ReportStatusRow }) {
     <td>{job.leadConsultant ?? <span className="muted">Not set</span>}</td>
     <td>{link.href
       ? <Link className={`nz-btn${link.kind === "prepare" ? " pri" : ""}`} href={link.href}>{link.label}</Link>
-      : <details className="nz-v7-record"><summary>{link.label}</summary><p>{v7RecordLine(job.v7Report)} Its content is kept sealed as issued; this period will be composed in the console once it is re-ingested.</p></details>}</td>
+      // An imported period has no action: its "Imported" badge sits under the job, its stage says it was issued earlier, and
+      // its sealed content is not opened.
+      : null}</td>
   </tr>;
 }

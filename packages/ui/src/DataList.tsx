@@ -152,15 +152,20 @@ export function DataList<Row>(props: DataListProps<Row>) {
       {rows.length === 0 ? <div className="nz-list-empty">{noMatches}</div> : null}
     </div>
 
-    <nav className="nz-datalist-pager" aria-label={`${label} pages`}>
-      <label className="nz-fl nz-datalist-size">Rows per page
-        <select className="nz-sel" value={paging.pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
-          {paging.pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}
-        </select>
-      </label>
-      <button type="button" className="nz-btn" disabled={paging.page <= 1} onClick={() => onPage(paging.page - 1)}>Prev</button>
-      <span className="nz-datalist-page">Page {countFormat.format(paging.page)} of {countFormat.format(paging.pageCount)}</span>
-      <button type="button" className="nz-btn" disabled={paging.page >= paging.pageCount} onClick={() => onPage(paging.page + 1)}>Next</button>
-    </nav>
+    <DataListPager label={label} paging={paging} onPage={onPage} onPageSize={onPageSize} />
   </div>;
+}
+
+/** The list's rows-per-page and page nav, on its own — for a list that draws its own table but pages like the others. */
+export function DataListPager({ label, paging, onPage, onPageSize }: { label: string; paging: DataListPaging; onPage: (page: number) => void; onPageSize: (size: number) => void }) {
+  return <nav className="nz-datalist-pager" aria-label={`${label} pages`}>
+    <label className="nz-fl nz-datalist-size">Rows per page
+      <select className="nz-sel" value={paging.pageSize} onChange={(event) => onPageSize(Number(event.target.value))}>
+        {paging.pageSizes.map((size) => <option key={size} value={size}>{size}</option>)}
+      </select>
+    </label>
+    <button type="button" className="nz-btn" disabled={paging.page <= 1} onClick={() => onPage(paging.page - 1)}>Prev</button>
+    <span className="nz-datalist-page">Page {countFormat.format(paging.page)} of {countFormat.format(paging.pageCount)}</span>
+    <button type="button" className="nz-btn" disabled={paging.page >= paging.pageCount} onClick={() => onPage(paging.page + 1)}>Next</button>
+  </nav>;
 }
