@@ -143,6 +143,7 @@ export * from "./dataSubjects";
 export * from "./entryProvenance";
 export * from "./aiAssist";
 export * from "./v7Reingest";
+export * from "./v7ImportSummary";
 export * from "./activityDistribution";
 export * from "./reportLabelResolution";
 export * from "./listQuery";

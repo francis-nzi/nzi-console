@@ -54,7 +54,7 @@ export type V7Replan = {
 };
 
 /** What the crosswalk keyed a row on: if v7 changed any of it, the row's category and factor are no longer known. */
-const CROSSWALK_KEYS = ["uom", "dataset", "factor_db_id", "original_id", "ghg_unit", "factor"] as const;
+export const CROSSWALK_KEYS = ["uom", "dataset", "factor_db_id", "original_id", "ghg_unit", "factor"] as const;
 type Current = { scope_row_id: string; scope: string; enabled: boolean; record: Record<string, unknown> };
 
 async function currentRows(db: Queryable, organisationId: string, jobId: string): Promise<Current[]> {
