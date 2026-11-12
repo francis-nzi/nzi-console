@@ -31,6 +31,7 @@ import { isJobTypeFamily, isTwoDecimalAmount, JOB_TYPE_CODE_MAX, JOB_TYPE_DESCRI
 import { jobDateIssues } from "./jobDates";
 import { v7ReingestActorIssues, v7ReingestPlanIssues, type V7ReingestJobInput, type V7ReingestRevertInput } from "./v7Reingest";
 import { v7ImportSummaryIssues, type V7ImportSummary } from "./v7ImportSummary";
+import { v7ImportDecisionClearIssues, v7ImportDecisionSetIssues, type V7ImportDecisionClearInput, type V7ImportDecisionSetInput } from "./v7ImportDecision";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
 import type { AssistRecord } from "./aiAssist";
@@ -78,6 +79,8 @@ export type CommandKey =
   | "v7.reingest.job"
   | "v7.reingest.revert"
   | "import.summary.upload"
+  | "import.decision.set"
+  | "import.decision.clear"
   | "job.datasets.update"
   | "job.site.setInclusion"
   | "job.seedFromTemplate"
@@ -807,6 +810,15 @@ export type CommandInputMap = {
    * job's rows. `import.manage`; the system principal or an admin.
    */
   "import.summary.upload": { jobId: string; summary: V7ImportSummary };
+  /**
+   * The import workbench, Phase 2 (BRIEF-v7-import-workbench-phase2): resolve one row of a job's latest summary — map a new or
+   * needs-mapping row to a category and factor, or confirm a withdrawn row goes off. Kept against the job, keyed on the row's
+   * import identity (the in-system crosswalk, 0228); the decision it replaces is superseded, never deleted. Ids, codes and its
+   * kind only; writes nothing to the job's rows. `import.manage`.
+   */
+  "import.decision.set": V7ImportDecisionSetInput;
+  /** Return a row to unresolved: its current decision is superseded, and kept. `import.manage`. */
+  "import.decision.clear": V7ImportDecisionClearInput;
   /**
    * DATASET-CURRENCY §3 — move a job's fallback editions to the reporting year's now-published ones and recalculate the rows
    * on them. `series`: the fallback datasets to move (from the banner). `expected`: every row the preview showed moving or
@@ -2227,6 +2239,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (issues.length === 0 && input.summary.jobId !== input.jobId) issues.push({ field: "summary.jobId", code: "JOB_MISMATCH", message: "The summary is of another job; one job's summary is uploaded to that job." });
     return issues;
   } },
+  // The import workbench, Phase 2: a person's resolution of one row, kept as the in-system crosswalk — never applied to the job's rows.
+  "import.decision.set": { key: "import.decision.set", label: "Resolve an imported row", permission: "import.manage", reasonRequired: false, transaction: "decision (the one it replaces superseded) + audit + outbox + idempotency", auditAction: "import.decision.set", validate: (input, context) => [...baseIssues(context, false), ...v7ImportDecisionSetIssues(input)] },
+  "import.decision.clear": { key: "import.decision.clear", label: "Clear an imported row's resolution", permission: "import.manage", reasonRequired: false, transaction: "decision superseded + audit + outbox + idempotency", auditAction: "import.decision.cleared", validate: (input, context) => [...baseIssues(context, false), ...v7ImportDecisionClearIssues(input)] },
   "v7.reingest.revert": { key: "v7.reingest.revert", label: "Revert a re-ingest", permission: "job.manage", reasonRequired: true, transaction: "live rows switched off + the original rows switched back on + run marked reverted + audit + outbox + idempotency", auditAction: "v7_job_reingest_reverted", validate: (input, context) => { const issues = [...baseIssues(context, true), ...v7ReingestActorIssues(context)]; required(issues, "jobId", input.jobId); if (!/^v7-reingest-[0-9a-f-]{36}$/.test(input.runId ?? "")) issues.push({ field: "runId", code: "INVALID", message: "The run id is `v7-reingest-` and a UUID." }); return issues; } },
   // DATASET-CURRENCY §3 (ruled): scoperow.edit — the swap is the rule's own derived pick, coupled to a recalculation, so the
   // people who calculate rows are the ones who move them. A reason is required by the handler when the job has an issued

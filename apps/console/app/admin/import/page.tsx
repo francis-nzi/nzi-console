@@ -1,4 +1,4 @@
-import { listV7ImportSessions, readV7ImportView, withTenantRead, type V7ImportSessionSummary, type V7ImportView } from "@nzi/isolated-backend";
+import { listV7ImportWorkbench, readV7ImportWorkbench, withTenantRead, type V7ImportWorkbenchSession, type V7ImportWorkbenchView } from "@nzi/isolated-backend";
 import { CapabilityChip } from "@nzi/ui";
 import { isolatedPool } from "../../lib/isolatedDatabase";
 import { adminAccess, holds } from "../adminAccess";
@@ -7,9 +7,10 @@ import { ImportJobView, ImportSessionsList } from "./ImportReconciliation";
 export const dynamic = "force-dynamic";
 
 /**
- * Import reconciliation (import workbench, Phase 1; BRIEF-v7-import-workbench-phase1): each imported job's uploaded summary —
- * what the console holds of the previous system's records against what that system holds now. `import.manage` only
- * (provisional R-C: Admin; a CRM's view is Phase 2). View-only: nothing here writes, and no mapping or ingest is offered.
+ * Import reconciliation (import workbench, Phases 1–2; BRIEF-v7-import-workbench-phase1/-phase2): each imported job's uploaded
+ * summary — what the console holds of the previous system's records against what that system holds now — and a person's
+ * resolution of each row that needs one. `import.manage` only (R-C default: Admin). Decisions are kept against the job;
+ * nothing here changes a job's rows, and there is no ingest (Phase 3).
  */
 export default async function ImportReconciliationPage({ searchParams }: { searchParams: Promise<{ job?: string }> }) {
   const access = await adminAccess();
@@ -19,10 +20,10 @@ export default async function ImportReconciliationPage({ searchParams }: { searc
   }
 
   const { job } = await searchParams;
-  let data: { sessions: V7ImportSessionSummary[]; view: V7ImportView | null } | null = null;
+  let data: { sessions: V7ImportWorkbenchSession[]; view: V7ImportWorkbenchView | null } | null = null;
   try {
     data = await withTenantRead(isolatedPool(), access.organisationId, async (db) => ({
-      sessions: await listV7ImportSessions(db), view: job ? await readV7ImportView(db, job) : null }));
+      sessions: await listV7ImportWorkbench(db, access.organisationId), view: job ? await readV7ImportWorkbench(db, access.organisationId, job) : null }));
   } catch {
     data = null;
   }
@@ -34,7 +35,7 @@ export default async function ImportReconciliationPage({ searchParams }: { searc
       <div>
         <div className="nz-a-eyebrow">Carbon data</div>
         <h1>Import reconciliation</h1>
-        <p>Each imported job against the previous system&rsquo;s records now: which rows match, which moved, which are new or withdrawn, which need a mapping and which are blocked on a linked pair — with Σ per scope on each side. The summary is made on the operator&rsquo;s machine; only ids, codes, statuses and tCO2e reach the console. View-only.</p>
+        <p>Each imported job against the previous system&rsquo;s records now: which rows match, which moved, which are new or withdrawn, which need a mapping and which are blocked on a linked pair — with Σ per scope on each side. Map each new or moved row to a category and factor, and confirm each withdrawn one; the job is ready to ingest once every row that differs is resolved. The summary is made on the operator&rsquo;s machine; only ids, codes, statuses and tCO2e reach the console.</p>
       </div>
       <div className="nz-a-head-actions"><CapabilityChip capability="import.manage" /></div>
     </div>

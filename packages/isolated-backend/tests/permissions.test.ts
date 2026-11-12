@@ -367,9 +367,10 @@ describe("matrix v14: the import workbench, Phase 1 (BRIEF-v7-import-workbench-p
     assert.equal(ROLE_CAPABILITY_MATRIX.admin["import.manage"], "all");
     for (const role of ["consultant", "reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.manage"], undefined, role);
   });
-  it("unlocks exactly the summary upload, a staff command", () => {
-    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.manage").map((definition) => definition.key), ["import.summary.upload"]);
-    assert.notEqual((commandDefinitions["import.summary.upload"] as { principal?: string }).principal, "portal");
+  it("unlocks exactly the summary upload and, in Phase 2, a row's resolution set and clear — staff commands", () => {
+    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.manage").map((definition) => definition.key), ["import.summary.upload", "import.decision.set", "import.decision.clear"]);
+    for (const key of ["import.summary.upload", "import.decision.set", "import.decision.clear"] as const)
+      assert.notEqual((commandDefinitions[key] as { principal?: string }).principal, "portal", key);
   });
   it("v14 adds import.manage for Admin and changes nothing else from v13", () => {
     const rows = (sql: string, version: number) => [...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`).sort();

@@ -10,7 +10,11 @@ import type { CommandIssue } from "./commands";
  * is refused, not trimmed. It carries no client name, contact, address or activity row: ids, codes, statuses and tCO2e only.
  */
 
-export const V7_IMPORT_SUMMARY_FORMAT = "nzi.import-summary/1";
+/**
+ * /2 (RULING-v7-import-pair-carry): each row of a linked pair also names its pair group and whether the group's T&D quantity equals
+ * its parents' in the extract. A /1 summary is not accepted any more; one already stored is shown, and its pairs wait on a /2 one.
+ */
+export const V7_IMPORT_SUMMARY_FORMAT = "nzi.import-summary/2";
 export const V7_IMPORT_SOURCE_SYSTEM = "nzi-pro-v7";
 
 /**
@@ -63,9 +67,16 @@ export type V7ImportSummaryRow = {
   pairRef: string | null;
   /** The compared columns that differ — names only. */
   changedFields: string[];
+  /**
+   * /2: the pair group a row of an auto-generated pair belongs to — the shared T&D row's id (`v7-row-…`) — or null outside a pair.
+   * Every member of one group carries the same key, so one carry decision covers the group.
+   */
+  pairGroup: string | null;
+  /** /2: whether the group's T&D quantity equals the apportioned sum of its enabled parents in the extract; null outside a pair. */
+  pairQuantityConsistent: boolean | null;
 };
 export const V7_IMPORT_SUMMARY_ROW_KEYS = ["sourceSystem", "legacyDbId", "status", "code", "scope", "consoleScope", "v7Figure", "consoleFigure",
-  "v7Enabled", "consoleEnabled", "consoleRowId", "pairRef", "changedFields"] as const;
+  "v7Enabled", "consoleEnabled", "consoleRowId", "pairRef", "changedFields", "pairGroup", "pairQuantityConsistent"] as const;
 
 export type V7ImportCounts = { matched: number; changed: number; needsMapping: number; new: number; withdrawn: number; linkedPairChanged: number };
 export type V7ImportScopeTotals = Record<V7ImportScope, { consoleRows: number; consoleTco2e: number; v7Rows: number; v7Tco2e: number }>;
@@ -137,7 +148,10 @@ function rowIssues(row: unknown, at: number): CommandIssue[] {
   if (!scopeOf(row.scope) || !(row.consoleScope === null || scopeOf(row.consoleScope))) return bad("A scope is 1, 2 or 3.");
   if (!nullableFigure(row.v7Figure) || !nullableFigure(row.consoleFigure)) return bad("A figure is a number of tCO2e, or none.");
   if (!nullableBoolean(row.v7Enabled) || !nullableBoolean(row.consoleEnabled)) return bad("Enabled is true, false or none.");
-  if (!nullableMatch(row.consoleRowId, ROW_ID) || !nullableMatch(row.pairRef, ROW_ID)) return bad("A row reference is a console row id, or none.");
+  if (!nullableMatch(row.consoleRowId, ROW_ID) || !nullableMatch(row.pairRef, ROW_ID) || !nullableMatch(row.pairGroup, ROW_ID)) return bad("A row reference is a console row id, or none.");
+  if (!nullableBoolean(row.pairQuantityConsistent)) return bad("The pair's quantity check is true, false or none.");
+  // A row is in a pair or not: its partner, its group and the group's quantity check go together.
+  if ((row.pairRef === null) !== (row.pairGroup === null) || (row.pairGroup === null) !== (row.pairQuantityConsistent === null)) return bad("A paired row names its partner, its group and the group's quantity check; an unpaired row none of them.");
   if (!Array.isArray(row.changedFields) || row.changedFields.length > V7_IMPORT_CHANGED_FIELDS.length
     || row.changedFields.some((name) => !(V7_IMPORT_CHANGED_FIELDS as readonly unknown[]).includes(name))) return bad("Changed fields are compared column names.");
   const v7Side = row.v7Figure !== null && row.v7Enabled !== null;
@@ -176,6 +190,13 @@ export function v7ImportSummaryIssues(summary: unknown): CommandIssue[] {
   const ids = typed.map((row) => row.legacyDbId);
   const repeated = ids.filter((id, at) => ids.indexOf(id) !== at);
   if (repeated.length) return [{ field: "summary.rows", code: "ROW_REPEATED", message: `${new Set(repeated).size} record id(s) appear more than once.` }];
+  // One group, one quantity check.
+  const checks = new Map<string, boolean>();
+  for (const row of typed) if (row.pairGroup !== null) {
+    if (checks.has(row.pairGroup) && checks.get(row.pairGroup) !== row.pairQuantityConsistent)
+      return [{ field: "summary.rows", code: "PAIR_GROUP_DISAGREES", message: "The members of one pair group disagree on its quantity check." }];
+    checks.set(row.pairGroup, row.pairQuantityConsistent!);
+  }
   const derived = deriveV7ImportTotals(typed);
   const same = (a: unknown, b: unknown) => stable(a) === stable(b);
   if (!isRecord(summary.counts) || !same(Object.fromEntries(Object.keys(derived.counts).map((key) => [key, (summary.counts as Record<string, unknown>)[key]])), derived.counts)

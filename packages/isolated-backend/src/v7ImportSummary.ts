@@ -71,6 +71,27 @@ export async function summariseV7JobForImport(db: Queryable, input: {
   // The re-sync's pairing rule: a row names its partner, or is named by one.
   const pointedAt = new Map(ofJob.filter((row) => row.linked_row_id !== null).map((row) => [row.linked_row_id!, row.scope_row_id]));
   const pairOf = (row: ConsoleRow) => row.linked_row_id ?? pointedAt.get(row.scope_row_id) ?? null;
+  // /2 (RULING-v7-import-pair-carry): the pair group is the shared T&D row a parent points to (the previous system's own model,
+  // many parents → one T&D row), on either side; the T&D row is its own group's key. Read from the extract and the console alike,
+  // so a pair new in the extract is grouped too.
+  const extractParents = new Map<string, PlannedRow[]>();
+  for (const planned of input.rows) if (planned.linkedRowId !== null) extractParents.set(planned.linkedRowId, [...(extractParents.get(planned.linkedRowId) ?? []), planned]);
+  const groupOfPlanned = (planned: PlannedRow, was: ConsoleRow | undefined) => planned.linkedRowId
+    ?? (extractParents.has(planned.scopeRowId) ? planned.scopeRowId : null) ?? (was ? was.linked_row_id ?? (pointedAt.has(was.scope_row_id) ? was.scope_row_id : null) : null);
+  const groupOfConsole = (row: ConsoleRow) => row.linked_row_id ?? (pointedAt.has(row.scope_row_id) || extractParents.has(row.scope_row_id) ? row.scope_row_id : null);
+  // The group's T&D quantity against its enabled parents' apportioned quantities, in the extract (the previous system's own sum,
+  // `_recompute_td_row_totals`). Computed here, on the operator's machine; only the boolean leaves it.
+  const plannedById = new Map(input.rows.map((planned) => [planned.scopeRowId, planned]));
+  const qtyOf = (planned: PlannedRow) => Number((planned.migratedRecord as unknown as Record<string, unknown>).qty ?? 0);
+  const pctOf = (planned: PlannedRow) => { const raw = (planned.migratedRecord as unknown as Record<string, unknown>).apply_pct; return raw === null || raw === undefined ? 100 : Number(raw); };
+  const consistent = (group: string) => {
+    const head = plannedById.get(group);
+    const sum = (extractParents.get(group) ?? []).filter((parent) => parent.enabled).reduce((total, parent) => total + qtyOf(parent) * pctOf(parent) / 100, 0);
+    const held = head && head.enabled ? qtyOf(head) : 0;
+    return Math.abs(held - sum) <= Math.max(1e-6, Math.abs(sum) * 1e-6);
+  };
+  const paired = (group: string | null, partner: string | null, self: string) => group === null ? { pairRef: null, pairGroup: null, pairQuantityConsistent: null }
+    : { pairRef: partner ?? (group !== self ? group : extractParents.get(group)?.[0]?.scopeRowId ?? pointedAt.get(group) ?? group), pairGroup: group, pairQuantityConsistent: consistent(group) };
 
   const rows: V7ImportSummaryRow[] = [];
   const consoleSide = (row: ConsoleRow) => ({ consoleScope: topScope(row.scope), consoleFigure: figure(row.record.reported_tco2e), consoleEnabled: row.enabled, consoleRowId: row.scope_row_id });
@@ -78,28 +99,28 @@ export async function summariseV7JobForImport(db: Queryable, input: {
     const record = planned.migratedRecord as unknown as Record<string, unknown>;
     const v7Side = { code: codeOf(record), scope: planned.scope, v7Figure: figure(record.reported_tco2e), v7Enabled: planned.enabled };
     const was = byIdentity.get(planned.legacyDbId);
+    const pair = paired(groupOfPlanned(planned, was), planned.linkedRowId ?? (was ? pairOf(was) : null), planned.scopeRowId);
     if (!was) {
-      rows.push({ sourceSystem: V7_IMPORT_SOURCE_SYSTEM, legacyDbId: planned.legacyDbId, status: planned.linkedRowId !== null ? "linked-pair-changed" : "new",
-        ...v7Side, consoleScope: null, consoleFigure: null, consoleEnabled: null, consoleRowId: null, pairRef: planned.linkedRowId, changedFields: [] });
+      rows.push({ sourceSystem: V7_IMPORT_SOURCE_SYSTEM, legacyDbId: planned.legacyDbId, status: pair.pairGroup !== null ? "linked-pair-changed" : "new",
+        ...v7Side, consoleScope: null, consoleFigure: null, consoleEnabled: null, consoleRowId: null, changedFields: [], ...pair });
       continue;
     }
     const found = (await differs(db, "job_scope_rows", "organisation_id=$1 AND scope_row_id=$2", [org, was.scope_row_id], migratedRowCols(input.jobId, planned))) ?? [];
     const keyed = [...(topScope(was.scope) === planned.scope ? [] : ["scope"]),
       ...CROSSWALK_KEYS.filter((key) => stable(was.record[key]) !== stable(record[key])).map((key) => `migrated_record.${key}`)];
-    const pairRef = planned.linkedRowId ?? pairOf(was);
     const status: V7ImportRowStatus = found.length === 0 ? "matched"
-      : pairRef !== null ? "linked-pair-changed"
+      : pair.pairGroup !== null ? "linked-pair-changed"
         : keyed.length ? "needs-mapping" : "changed";
-    rows.push({ sourceSystem: V7_IMPORT_SOURCE_SYSTEM, legacyDbId: planned.legacyDbId, status, ...v7Side, ...consoleSide(was), pairRef,
-      changedFields: found.length ? [...new Set([...found, ...keyed])].sort() : [] });
+    rows.push({ sourceSystem: V7_IMPORT_SOURCE_SYSTEM, legacyDbId: planned.legacyDbId, status, ...v7Side, ...consoleSide(was),
+      changedFields: found.length ? [...new Set([...found, ...keyed])].sort() : [], ...pair });
   }
   // Gone from v7: a row still on in the console. One already off has nothing to change (as the re-sync).
   const given = new Set(ids);
   for (const row of ofJob) {
     if (given.has(row.legacy_db_id) || !row.enabled) continue;
-    const pairRef = pairOf(row);
-    rows.push({ sourceSystem: V7_IMPORT_SOURCE_SYSTEM, legacyDbId: row.legacy_db_id, status: pairRef !== null ? "linked-pair-changed" : "withdrawn",
-      code: null, scope: topScope(row.scope), v7Figure: null, v7Enabled: null, ...consoleSide(row), pairRef, changedFields: [] });
+    const pair = paired(groupOfConsole(row), pairOf(row), row.scope_row_id);
+    rows.push({ sourceSystem: V7_IMPORT_SOURCE_SYSTEM, legacyDbId: row.legacy_db_id, status: pair.pairGroup !== null ? "linked-pair-changed" : "withdrawn",
+      code: null, scope: topScope(row.scope), v7Figure: null, v7Enabled: null, ...consoleSide(row), changedFields: [], ...pair });
   }
   return { format: V7_IMPORT_SUMMARY_FORMAT, jobId: input.jobId, legacyJobNumber: input.legacyJobNumber, extractSha256: input.extractSha256,
     generatedAt: input.generatedAt ?? new Date().toISOString(), rows, ...deriveV7ImportTotals(rows) };
@@ -127,23 +148,26 @@ export function uploadV7ImportSummary(pool: PoolLike, input: CommandInputMap["im
     await db.query(
       `INSERT INTO nzi_console.v7_import_sessions (organisation_id, session_id, job_id, legacy_job_number, extract_sha256, summary_sha256, generated_at,
          rows_matched, rows_changed, rows_needs_mapping, rows_new, rows_withdrawn, rows_linked_pair_changed,
-         console_scope1_tco2e, console_scope2_tco2e, console_scope3_tco2e, v7_scope1_tco2e, v7_scope2_tco2e, v7_scope3_tco2e, verdict, created_by, correlation_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::timestamptz,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+         console_scope1_tco2e, console_scope2_tco2e, console_scope3_tco2e, v7_scope1_tco2e, v7_scope2_tco2e, v7_scope3_tco2e, verdict, created_by, correlation_id, summary_format)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::timestamptz,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
       [org, sessionId, input.jobId, summary.legacyJobNumber, summary.extractSha256, summarySha, summary.generatedAt,
         counts.matched, counts.changed, counts.needsMapping, counts.new, counts.withdrawn, counts.linkedPairChanged,
         scopeTotals["1"].consoleTco2e, scopeTotals["2"].consoleTco2e, scopeTotals["3"].consoleTco2e, scopeTotals["1"].v7Tco2e, scopeTotals["2"].v7Tco2e, scopeTotals["3"].v7Tco2e,
-        verdict, context.actorId, context.correlationId]);
+        verdict, context.actorId, context.correlationId, summary.format]);
     await db.query(
       `INSERT INTO nzi_console.v7_import_rows (organisation_id, session_id, ordinal, source_system, legacy_db_id, status, code, scope, console_scope,
-         v7_tco2e, console_tco2e, v7_enabled, console_enabled, console_row_id, pair_ref, changed_fields)
+         v7_tco2e, console_tco2e, v7_enabled, console_enabled, console_row_id, pair_ref, changed_fields, pair_group, pair_quantity_consistent)
        SELECT $1, $2, r.ordinal, r.source_system, r.legacy_db_id, r.status, r.code, r.scope, r.console_scope,
-              r.v7_tco2e, r.console_tco2e, r.v7_enabled, r.console_enabled, r.console_row_id, r.pair_ref, ARRAY(SELECT jsonb_array_elements_text(r.changed_fields))
+              r.v7_tco2e, r.console_tco2e, r.v7_enabled, r.console_enabled, r.console_row_id, r.pair_ref, ARRAY(SELECT jsonb_array_elements_text(r.changed_fields)),
+              r.pair_group, r.pair_quantity_consistent
          FROM jsonb_to_recordset($3::jsonb) AS r(ordinal integer, source_system text, legacy_db_id text, status text, code text, scope text, console_scope text,
-              v7_tco2e numeric, console_tco2e numeric, v7_enabled boolean, console_enabled boolean, console_row_id text, pair_ref text, changed_fields jsonb)`,
+              v7_tco2e numeric, console_tco2e numeric, v7_enabled boolean, console_enabled boolean, console_row_id text, pair_ref text, changed_fields jsonb,
+              pair_group text, pair_quantity_consistent boolean)`,
       [org, sessionId, JSON.stringify(summary.rows.map((row, ordinal) => ({
         ordinal, source_system: row.sourceSystem, legacy_db_id: row.legacyDbId, status: row.status, code: row.code, scope: row.scope, console_scope: row.consoleScope,
         v7_tco2e: row.v7Figure, console_tco2e: row.consoleFigure, v7_enabled: row.v7Enabled, console_enabled: row.consoleEnabled,
-        console_row_id: row.consoleRowId, pair_ref: row.pairRef, changed_fields: row.changedFields })))]);
+        console_row_id: row.consoleRowId, pair_ref: row.pairRef, changed_fields: row.changedFields,
+        pair_group: row.pairGroup, pair_quantity_consistent: row.pairQuantityConsistent })))]);
     return { data: { sessionId, jobId: input.jobId, rows: summary.rows.length, counts, verdict }, entityType: "job", entityId: input.jobId, topic: "import.summary.uploaded" };
   });
 }
@@ -153,6 +177,8 @@ export function uploadV7ImportSummary(pool: PoolLike, input: CommandInputMap["im
 export type V7ImportSessionSummary = {
   sessionId: string; jobId: string; jobNumber: string; legacyJobNumber: string; extractSha256: string; generatedAt: string;
   uploadedAt: string; uploadedBy: string; counts: V7ImportCounts; scopeTotals: V7ImportScopeTotals; verdict: V7ImportVerdict;
+  /** The summary's format: a /1 one, stored before /2, has no pair groups — its pairs wait on a fresh summary. */
+  format: string;
 };
 export type V7ImportView = { session: V7ImportSessionSummary; rows: V7ImportSummaryRow[]; earlierSessions: number };
 
@@ -160,11 +186,11 @@ type SessionRow = {
   session_id: string; job_id: string; job_number: string; legacy_job_number: string; extract_sha256: string; generated_at: Date; created_at: Date; created_by: string;
   rows_matched: number; rows_changed: number; rows_needs_mapping: number; rows_new: number; rows_withdrawn: number; rows_linked_pair_changed: number;
   console_scope1_tco2e: string; console_scope2_tco2e: string; console_scope3_tco2e: string; v7_scope1_tco2e: string; v7_scope2_tco2e: string; v7_scope3_tco2e: string;
-  verdict: V7ImportVerdict; console_rows_1: number; console_rows_2: number; console_rows_3: number; v7_rows_1: number; v7_rows_2: number; v7_rows_3: number;
+  verdict: V7ImportVerdict; summary_format: string; console_rows_1: number; console_rows_2: number; console_rows_3: number; v7_rows_1: number; v7_rows_2: number; v7_rows_3: number;
 };
 const SESSION_SELECT = `SELECT s.session_id, s.job_id, j.job_number, s.legacy_job_number, s.extract_sha256, s.generated_at, s.created_at, s.created_by,
     s.rows_matched, s.rows_changed, s.rows_needs_mapping, s.rows_new, s.rows_withdrawn, s.rows_linked_pair_changed,
-    s.console_scope1_tco2e, s.console_scope2_tco2e, s.console_scope3_tco2e, s.v7_scope1_tco2e, s.v7_scope2_tco2e, s.v7_scope3_tco2e, s.verdict,
+    s.console_scope1_tco2e, s.console_scope2_tco2e, s.console_scope3_tco2e, s.v7_scope1_tco2e, s.v7_scope2_tco2e, s.v7_scope3_tco2e, s.verdict, s.summary_format,
     ${V7_IMPORT_SCOPES.map((scope) => `(SELECT count(*)::int FROM nzi_console.v7_import_rows r WHERE (r.organisation_id, r.session_id) = (s.organisation_id, s.session_id) AND r.console_enabled AND r.console_scope = '${scope}') AS console_rows_${scope},
     (SELECT count(*)::int FROM nzi_console.v7_import_rows r WHERE (r.organisation_id, r.session_id) = (s.organisation_id, s.session_id) AND r.v7_enabled AND r.scope = '${scope}') AS v7_rows_${scope}`).join(",\n    ")}
   FROM nzi_console.v7_import_sessions s JOIN nzi_console.jobs j ON (j.organisation_id, j.job_id) = (s.organisation_id, s.job_id)`;
@@ -178,7 +204,7 @@ const sessionOf = (row: SessionRow): V7ImportSessionSummary => ({
     "2": { consoleRows: row.console_rows_2, consoleTco2e: Number(row.console_scope2_tco2e), v7Rows: row.v7_rows_2, v7Tco2e: Number(row.v7_scope2_tco2e) },
     "3": { consoleRows: row.console_rows_3, consoleTco2e: Number(row.console_scope3_tco2e), v7Rows: row.v7_rows_3, v7Tco2e: Number(row.v7_scope3_tco2e) },
   },
-  verdict: row.verdict,
+  verdict: row.verdict, format: row.summary_format,
 });
 
 /** Every job with a summary: its latest one, newest first. */
@@ -195,13 +221,15 @@ export async function readV7ImportView(db: Queryable, jobId: string): Promise<V7
   if (!latest) return null;
   const rows = (await db.query<{ source_system: typeof V7_IMPORT_SOURCE_SYSTEM; legacy_db_id: string; status: V7ImportRowStatus; code: string | null; scope: V7ImportScope;
     console_scope: V7ImportScope | null; v7_tco2e: string | null; console_tco2e: string | null; v7_enabled: boolean | null; console_enabled: boolean | null;
-    console_row_id: string | null; pair_ref: string | null; changed_fields: string[] }>(
-    `SELECT source_system, legacy_db_id, status, code, scope, console_scope, v7_tco2e, console_tco2e, v7_enabled, console_enabled, console_row_id, pair_ref, changed_fields
+    console_row_id: string | null; pair_ref: string | null; changed_fields: string[]; pair_group: string | null; pair_quantity_consistent: boolean | null }>(
+    `SELECT source_system, legacy_db_id, status, code, scope, console_scope, v7_tco2e, console_tco2e, v7_enabled, console_enabled, console_row_id, pair_ref, changed_fields,
+            pair_group, pair_quantity_consistent
        FROM nzi_console.v7_import_rows WHERE session_id = $1 ORDER BY ordinal`, [latest.session_id])).rows;
   return {
     session: sessionOf(latest), earlierSessions: sessions.length - 1,
     rows: rows.map((row) => ({ sourceSystem: row.source_system, legacyDbId: row.legacy_db_id, status: row.status, code: row.code, scope: row.scope, consoleScope: row.console_scope,
       v7Figure: row.v7_tco2e === null ? null : Number(row.v7_tco2e), consoleFigure: row.console_tco2e === null ? null : Number(row.console_tco2e),
-      v7Enabled: row.v7_enabled, consoleEnabled: row.console_enabled, consoleRowId: row.console_row_id, pairRef: row.pair_ref, changedFields: row.changed_fields })),
+      v7Enabled: row.v7_enabled, consoleEnabled: row.console_enabled, consoleRowId: row.console_row_id, pairRef: row.pair_ref, changedFields: row.changed_fields,
+      pairGroup: row.pair_group, pairQuantityConsistent: row.pair_quantity_consistent })),
   };
 }

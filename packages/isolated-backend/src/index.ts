@@ -315,3 +315,7 @@ export {
   listV7ImportSessions, readV7ImportView, uploadV7ImportSummary,
   type V7ImportSessionSummary, type V7ImportUploadResult, type V7ImportView,
 } from "./v7ImportSummary";
+export {
+  clearV7ImportDecision, invalidV7ImportMappings, listV7ImportFactorOptions, listV7ImportWorkbench, readV7ImportWorkbench, setV7ImportDecision,
+  type V7ImportDecisionResult, type V7ImportWorkbenchSession, type V7ImportWorkbenchView,
+} from "./v7ImportDecision";
