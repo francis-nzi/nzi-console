@@ -75,7 +75,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `time.log` (log, edit and void one's **own** time on a job) ⚑ | ✓ | ⚑ own | ✓ | ✓ | ✓ |
 | `time.view` (read other people's time — hours; money only with `finance.view`) ⚑ | ✓ | ⚑ own | R | ✓ | — |
 | `task.manage` (keep CRM tasks: create, edit, reassign, reschedule, complete, reopen — only one's own or one's assigned) ⚑ | ✓ | ✓ | ✓ | ✓ | — |
-| `import.manage` (upload a job's import reconciliation summary and open the import view — view-only in Phase 1) ⚑ | ✓ | — | — | — | — |
+| `import.manage` (upload a job's import reconciliation summary, open the import view, and resolve its flagged rows — Phase 2; no ingest) ⚑ | ✓ | — | — | — | — |
 
 ### Conditional notes (⚑)
 
@@ -148,6 +148,12 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   principal `policy:v7-import` from the operator's script, or an admin — and opens Admin → Import reconciliation. **View-only:**
   the summary is stored and shown, never applied; nothing writes a job's rows. The summary carries ids, codes, statuses and
   tCO2e only (diff-at-the-edge, provisional R-A). A CRM's view of their own jobs is Phase 2.
+- **Import workbench, Phase 2 (0228; BRIEF-v7-import-workbench-phase2, R-C default kept).** No matrix change: the same
+  `import.manage`, still **Admin only**, also resolves a job's flagged rows — maps a new or needs-mapping row to a category and
+  factor, confirms a withdrawn row goes off, carries a linked pair that moved (RULING-v7-import-pair-carry: A, carry both,
+  unlinked), or clears any of them (the decision-set and decision-clear commands). Decisions are kept
+  against the job as the in-system crosswalk and never write a job's rows; there is no ingest. Widening resolve to a CRM on their
+  own clients would be a matrix bump, for ruling.
 
 ## Naming convention
 
