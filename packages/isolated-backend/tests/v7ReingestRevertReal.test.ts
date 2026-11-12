@@ -16,6 +16,7 @@ import { resyncV7JobInTransaction, revertV7ResyncInTransaction, V7_RESYNC_ACTOR,
 import { rehearseV7Resync } from "../src/v7ResyncRehearsal";
 import { listV7ImportSessions, readV7ImportView, summariseV7JobForImport, uploadV7ImportSummary, V7_IMPORT_ACTOR } from "../src/v7ImportSummary";
 import { clearV7ImportDecision, listV7ImportFactorOptions, listV7ImportWorkbench, readV7ImportWorkbench, setV7ImportDecision } from "../src/v7ImportDecision";
+import { ingestV7ImportJob, readV7ImportIngestState, recordV7ImportRehearsal, rehearseV7ImportIngest, summariseV7JobAsTheChainSees, v7ImportDecisionsSha256 } from "../src/v7ImportIngest";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -944,5 +945,194 @@ describe("the import workbench's decisions: keyed on the import identity, valida
     await assert.rejects(withTenantWrite(database.pool, DX_ORG, (client) => client.query(`TRUNCATE nzi_console.v7_import_decisions`)), /permission denied/);
     await assert.rejects(write(`UPDATE nzi_console.v7_import_decisions SET factor_id = 'f-lpg' WHERE decision_id = $1`), /permission denied/);
     await assert.rejects(write(`UPDATE nzi_console.v7_import_decisions SET superseded_at = now(), superseded_by = 'x' WHERE decision_id = $1`, confirmed), /already superseded/);
+  });
+});
+
+/**
+ * The import workbench, Phase 3 (BRIEF-v7-import-workbench-phase3; 0229): ingest one job from its resolved decisions. The plan is
+ * the committed plan re-planned onto v7's current records and completed from each `map`; a `withdraw` is the re-sync switching
+ * the row off; a `carry` lets its pair through the re-sync. Revert → re-sync → re-plan → re-ingest, D7 the hard floor — rehearsed
+ * first in one rolled-back transaction, then kept. Refused unless the job is ready to ingest.
+ */
+describe("the import workbench's ingest: decisions drive revert → re-sync → re-plan → re-ingest, D7 the floor, refused unless ready", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  const IG_ORG = "v7-ingest", JOB_P = "v7-job-p";
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  const context = (role: "admin" | "consultant" = "admin", actorId = V7_IMPORT_ACTOR, reason?: string): CommandContext => {
+    keys += 1;
+    return { organisationId: IG_ORG, actorId, principal: actorId.startsWith("policy:") ? "system" : "staff", idempotencyKey: `ig-${keys}`, correlationId: `ig-corr-${keys}`,
+      ...(reason ? { reason } : {}), grant: commandGrantForRole(role, IG_ORG, actorId) };
+  };
+  const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+  const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
+  const run = (over: Partial<Parameters<typeof rehearseV7ImportIngest>[1]> = {}) => ({ organisationId: IG_ORG, jobId: JOB_A, legacyJobNumber: "J000901",
+    reason: "ingest J000901 from its decisions (test)", extractSha256: "e".repeat(64), rows: NOW, basePlan: withoutRun(PLAN_BEFORE("x")), ...over });
+  const identity = (legacyDbId: string) => ({ jobId: JOB_A, sourceSystem: "nzi-pro-v7" as const, legacyDbId });
+  const decide = (input: Record<string, unknown>) => setV7ImportDecision(database.pool, { ...identity(String(input.legacyDbId)), ...input } as never, context("admin", "staff-admin"));
+  const decisionsSha = async () => v7ImportDecisionsSha256((await withTenantRead(database.pool, IG_ORG, (client) =>
+    client.query<{ decision_id: string }>(`SELECT decision_id FROM nzi_console.v7_import_decisions WHERE job_id = $1 AND superseded_at IS NULL`, [JOB_A]))).rows.map((row) => ({ decisionId: row.decision_id }) as never));
+  const fingerprint = async () => {
+    const tables = (await db.query<{ t: string }>(`SELECT tablename AS t FROM pg_tables WHERE schemaname = 'nzi_console' ORDER BY tablename`)).rows.map((row) => row.t);
+    const prints: Record<string, string> = {};
+    for (const table of tables) prints[table] = (await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) AS p FROM nzi_console.${table} t`)).rows[0]!.p;
+    return prints;
+  };
+  let sessionId = "", standing = "";
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7ingest"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [IG_ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [IG_ORG]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [IG_ORG]);
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'c1','Ingest Test','active')`, [IG_ORG]);
+    for (const [jobId, sequence] of [[JOB_A, 901], [JOB_P, 905]] as const) {
+      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+        VALUES ($1,$2,'c1',$3,'crp','CRP','open','Data entry',2025,'2025-01-01','2025-12-31','nzi-pro-v7',$4,$5)`, [IG_ORG, jobId, sequence, String(sequence), `J000${sequence}`]);
+      await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [IG_ORG, jobId]);
+    }
+    await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                    VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [IG_ORG]);
+    // gas and lpg are members of their categories by the DESNZ family map (0210); lpg is priced per litre.
+    for (const [id, label, unit, kg, scope, levels] of [["gas", "Natural gas", "kWh", 0.2, "1", ["Fuels", "Gaseous fuels", "Natural gas"]], ["water", "Water supply", "m3", 0.15, "3", []],
+      ["lpg", "LPG", "litres", 0.2, "1", ["Fuels", "Gaseous fuels", "LPG"]]] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
+        [IG_ORG, id, label, unit, kg, scope, levels]);
+    }
+    for (const row of BEFORE) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: IG_ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(JOB_A, row)]);
+    // The job as J000669 stands: re-ingested on its old figures, a completed run the chain must revert first.
+    standing = `v7-reingest-${randomUUID()}`;
+    await withTenantWrite(database.pool, IG_ORG, (client) => reingestV7JobInTransaction(client, { ...PLAN_BEFORE(standing) },
+      { organisationId: IG_ORG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+        reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", IG_ORG, V7_REINGEST_ACTOR) }));
+    // v7 now: 1001 changed (figures only), 1002 matched, 1004 new, 1003 withdrawn — summarised and uploaded.
+    // Summarised as the chain sees it: the standing run reverted under a savepoint, rolled back.
+    const before = await fingerprint();
+    const summary = await withTenantWrite(database.pool, IG_ORG, (client) => summariseV7JobAsTheChainSees(client,
+      { organisationId: IG_ORG, jobId: JOB_A, legacyJobNumber: "J000901", extractSha256: "e".repeat(64), rows: NOW, generatedAt: "2026-11-12T09:00:00.000Z" }));
+    assert.deepEqual(await fingerprint(), before, "summarising as the chain sees it keeps nothing");
+    assert.deepEqual(summary.rows.map((row) => [row.legacyDbId, row.status]), [["1001", "changed"], ["1002", "matched"], ["1004", "new"], ["1003", "withdrawn"]],
+      "the re-ingest's switch-off is not read as v7 moving");
+    const plain = await withTenantRead(database.pool, IG_ORG, (client) => summariseV7JobForImport(client,
+      { organisationId: IG_ORG, jobId: JOB_A, legacyJobNumber: "J000901", extractSha256: "e".repeat(64), rows: NOW, generatedAt: "2026-11-12T09:00:00.000Z" }));
+    assert.ok(!plain.rows.some((row) => row.status === "withdrawn"), "a plain comparison of a re-ingested job misses the withdrawal: why the chain's view is used");
+    sessionId = (await uploadV7ImportSummary(database.pool, { jobId: JOB_A, summary }, context())).data.sessionId;
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("refused unless ready to ingest: with rows unresolved the rehearsal stops before anything runs, and the ingest is refused — nothing written", async () => {
+    const before = await fingerprint();
+    const { report, record } = await rehearseV7ImportIngest(database.pool, run());
+    assert.deepEqual([report.refusal?.stage, report.refusal?.issues.map((issue) => issue.code), report.revert, record], ["ready", ["NOT_READY_TO_INGEST"], null, null]);
+    await assert.rejects(ingestV7ImportJob(database.pool, { jobId: JOB_A, sessionId, extractSha256: "e".repeat(64), decisionsSha256: await decisionsSha() }, run(),
+      context("admin", V7_IMPORT_ACTOR, "ingest (test)")), (error) => codes(error).includes("NOT_READY_TO_INGEST"));
+    // Another extract than the summary's is refused too: decisions are for what was summarised.
+    const other = await rehearseV7ImportIngest(database.pool, run({ extractSha256: "f".repeat(64) }));
+    assert.deepEqual(other.report.refusal?.issues.map((issue) => issue.code), ["EXTRACT_NOT_SUMMARISED"]);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  let mapped = "";
+  it("D7 is the hard floor: a valid mapping that does not reconcile to v7 is refused at the re-ingest, in the rehearsal and the ingest alike", async () => {
+    await decide({ legacyDbId: "1003", kind: "withdraw" });
+    // LPG is a legitimate Other Stationary Fuels factor — saved — but it is priced per litre and v7 recorded kWh.
+    mapped = (await decide({ legacyDbId: "1004", kind: "map", categoryCode: "1.other-stationary-fuels", datasetId: "v7-vintage-2025", factorId: "lpg" })).data.decisionId!;
+    const before = await fingerprint();
+    const { report, record } = await rehearseV7ImportIngest(database.pool, run());
+    assert.equal(report.refusal?.stage, "reingest", JSON.stringify(report.refusal));
+    assert.deepEqual([record?.outcome, record?.refusedStage, record?.scopeTotals], ["refused", "reingest", null]);
+    assert.deepEqual(await fingerprint(), before, "the rehearsal writes nothing");
+    await assert.rejects(ingestV7ImportJob(database.pool, { jobId: JOB_A, sessionId, extractSha256: "e".repeat(64), decisionsSha256: await decisionsSha() }, run(),
+      context("admin", V7_IMPORT_ACTOR, "ingest (test)")), (error) => error instanceof CommandValidationError);
+    assert.deepEqual(await fingerprint(), before, "the refused ingest writes nothing");
+  });
+
+  let rehearsed: Awaited<ReturnType<typeof rehearseV7ImportIngest>>["record"] = null;
+  it("the rehearsal: the committed plan carries what it covers, each map fills what it cannot, and Σ live = Σ v7 per scope — rolled back, then recorded", async () => {
+    mapped = (await decide({ legacyDbId: "1004", kind: "map", categoryCode: "1.natural-gas", datasetId: "v7-vintage-2025", factorId: "gas", expectedDecisionId: mapped })).data.decisionId!;
+    const before = await fingerprint();
+    const { report, record } = await rehearseV7ImportIngest(database.pool, run());
+    assert.equal(report.refusal, null, JSON.stringify(report.refusal));
+    assert.deepEqual(report.revert?.runId, standing, "the standing re-ingest reverted first");
+    assert.deepEqual(report.resync, { unchanged: 1, superseded: [{ rowId: "v7-row-1001", replacedBy: "v7-row-1001-r1" }], added: ["v7-row-1004"], withdrawn: ["v7-row-1003"] });
+    assert.deepEqual(record?.counts, { resync: { unchanged: 1, superseded: 1, added: 1, withdrawn: 1 }, plan: { committed: 2, decided: 1 } });
+    assert.deepEqual(record?.scopeTotals, { "1": { v7Tco2e: 0.34, liveTco2e: 0.34 }, "2": { v7Tco2e: 0, liveTco2e: 0 }, "3": { v7Tco2e: 0.0015, liveTco2e: 0.0015 } });
+    assert.equal(record?.outcome, "would-commit");
+    assert.deepEqual(await fingerprint(), before, "the rehearsal writes nothing");
+    rehearsed = record;
+    // Recorded for the view; a consultant (no import.manage) may not record one.
+    await assert.rejects(recordV7ImportRehearsal(database.pool, { jobId: JOB_A, rehearsal: record! }, context("consultant", "staff-consultant")),
+      (error) => error instanceof AuthorizationError && error.permission === "import.manage");
+    await assert.rejects(recordV7ImportRehearsal(database.pool, { jobId: JOB_A, rehearsal: { ...record!, sourceLabel: "Natural gas (site 2)" } as never }, context()),
+      (error) => codes(error).includes("UNKNOWN_FIELD"), "closed, as the summary is");
+    const stored = await recordV7ImportRehearsal(database.pool, { jobId: JOB_A, rehearsal: record! }, context());
+    const state = await withTenantRead(database.pool, IG_ORG, (client) => readV7ImportIngestState(client, JOB_A, { sessionId, decisionsSha256: record!.decisionsSha256 }));
+    assert.deepEqual([state.rehearsal?.ingestId, state.rehearsal?.outcome, state.rehearsal?.current, state.rehearsal?.scopeTotals, state.ingest],
+      [stored.data.ingestId, "would-commit", true, record!.scopeTotals, null]);
+  });
+
+  it("the ingest refuses a stale run: another summary or decisions than the rehearsal's, and a caller without import.manage", async () => {
+    const input = { jobId: JOB_A, sessionId, extractSha256: "e".repeat(64), decisionsSha256: rehearsed!.decisionsSha256 };
+    await assert.rejects(ingestV7ImportJob(database.pool, { ...input, decisionsSha256: "0".repeat(64) }, run(), context("admin", V7_IMPORT_ACTOR, "ingest (test)")),
+      (error) => codes(error).includes("DECISIONS_MOVED"));
+    await assert.rejects(ingestV7ImportJob(database.pool, { ...input, sessionId: `v7-import-${randomUUID()}` }, run(), context("admin", V7_IMPORT_ACTOR, "ingest (test)")),
+      (error) => codes(error).includes("SUMMARY_MOVED"));
+    await assert.rejects(ingestV7ImportJob(database.pool, input, run(), context("consultant", "staff-consultant", "ingest (test)")),
+      (error) => error instanceof AuthorizationError && error.permission === "import.manage");
+    await assert.rejects(ingestV7ImportJob(database.pool, input, run(), context()), (error) => codes(error).includes("REASON_REQUIRED") || codes(error).includes("REQUIRED"), "a reason is required");
+  });
+
+  it("the ingest commits the chain: the standing run reverted, the job re-synced, re-ingested from the decisions and reconciled — audited without figures", async () => {
+    const outcome = await ingestV7ImportJob(database.pool, { jobId: JOB_A, sessionId, extractSha256: "e".repeat(64), decisionsSha256: rehearsed!.decisionsSha256 }, run(),
+      context("admin", V7_IMPORT_ACTOR, "ingest J000901 from its decisions (test)"));
+    const { reingestRunId, resyncRunId } = outcome.data;
+    assert.deepEqual([outcome.data.resync, outcome.data.plan], [{ unchanged: 1, superseded: 1, added: 1, withdrawn: 1 }, { committed: 2, decided: 1 }]);
+    const runs = (await db.query(`SELECT run_id, status, crosswalk_version FROM nzi_console.v7_reingest_runs WHERE job_id = $1 ORDER BY created_at`, [JOB_A])).rows;
+    assert.deepEqual(runs.map((row) => [row.run_id, row.status]), [[standing, "reverted"], [reingestRunId, "completed"]]);
+    assert.equal(runs[1]!.crosswalk_version, "v1+workbench");
+    assert.equal((await db.query(`SELECT status FROM nzi_console.v7_resync_runs WHERE run_id = $1`, [resyncRunId])).rows[0]!.status, "completed");
+    // A map drives the category and factor; the withdrawn row is off; the live rows reproduce v7 per scope.
+    const live = (await db.query<{ from: string; category_code: string; factor_id: string | null; tco2e: string }>(
+      `SELECT reingested_from_row_id AS from, category_code, factor_id, calculated_tco2e::text AS tco2e FROM nzi_console.job_scope_rows
+        WHERE job_id = $1 AND origin = 'live' AND enabled ORDER BY reingested_from_row_id`, [JOB_A])).rows;
+    assert.deepEqual(live.map((row) => [row.from, row.category_code, row.factor_id]),
+      [["v7-row-1001-r1", "1.natural-gas", "gas"], ["v7-row-1002", "3.5", "water"], ["v7-row-1004", "1.natural-gas", "gas"]]);
+    assert.equal((await db.query(`SELECT enabled FROM nzi_console.job_scope_rows WHERE scope_row_id = 'v7-row-1003'`)).rows[0]!.enabled, false, "withdrawn: off");
+    const lineage = (await db.query<{ lineage: string }>(`SELECT lineage_json::text AS lineage FROM nzi_console.job_scope_rows WHERE reingested_from_row_id = 'v7-row-1004' AND enabled`)).rows[0]!.lineage;
+    assert.ok(lineage.includes(`workbench:${mapped}`), "the live row's lineage names the decision that placed it");
+    const audit = (await db.query<{ after_json: unknown }>(`SELECT after_json FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.ingested' AND entity_id = $2`, [IG_ORG, JOB_A])).rows;
+    assert.equal(audit.length, 1);
+    for (const figure of ["0.34", "0.24", "0.1", "1200", "500"]) assert.ok(!JSON.stringify(audit[0]!.after_json).replace(/v7-[a-z]+-[0-9a-f-]{36}/g, "").includes(figure), `no figure (${figure}) in the audit`);
+    const state = await withTenantRead(database.pool, IG_ORG, (client) => readV7ImportIngestState(client, JOB_A, null));
+    assert.deepEqual([state.ingest?.reingestRunId, state.ingest?.runStatus, state.ingest?.outcome, state.ingest?.rowsPending, state.ingest?.scopeTotals],
+      [reingestRunId, "completed", "committed", 3, rehearsed!.scopeTotals], "ingested, awaiting a reviewer's attest");
+  });
+
+  it("the store keeps its record: no update, no delete for the app", async () => {
+    const write = (sql: string) => withTenantWrite(database.pool, IG_ORG, (client) => client.query(sql));
+    await assert.rejects(write(`UPDATE nzi_console.v7_import_ingests SET outcome = 'refused'`), /permission denied/);
+    await assert.rejects(write(`DELETE FROM nzi_console.v7_import_ingests`), /permission denied/);
+  });
+
+  it("a carried pair goes through the re-sync (RULING-v7-import-pair-carry, A); an uncarried one is still refused by name", async () => {
+    const PAIR_A: PlannedRow = { ...plannedRow({ id: "5001", scope: "1", label: "Grid electricity", qty: 100, unit: "kWh", reported: 0.25 }), linkedRowId: "v7-row-5002", isAutoGenerated: false };
+    const PAIR_B: PlannedRow = { ...plannedRow({ id: "5002", scope: "3", label: "T&D losses", qty: 100, unit: "kWh", reported: 0.02 }), isAutoGenerated: true };
+    for (const row of [PAIR_B, PAIR_A]) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: IG_ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(JOB_P, row)]);
+    const moved = [{ ...PAIR_A, quantity: 120, calculatedTco2e: 0.3,
+      migratedRecord: { ...(PAIR_A.migratedRecord as unknown as Record<string, unknown>), qty: 120, reported_tco2e: 0.3 } as unknown as PlannedRow["migratedRecord"] }, PAIR_B];
+    const resyncP = (carriedPairGroups?: string[]) => withTenantWrite(database.pool, IG_ORG, (client) => resyncV7JobInTransaction(client,
+      { jobId: JOB_P, runId: `v7-resync-${randomUUID()}`, extractSha256: "c".repeat(64), rows: moved, ...(carriedPairGroups ? { carriedPairGroups } : {}) },
+      { organisationId: IG_ORG, actorId: V7_RESYNC_ACTOR, principal: "system", reason: "carry (test)" }));
+    await assert.rejects(resyncP(), (error) => codes(error).includes("V7_LINKED_ROW_CHANGED"));
+    await assert.rejects(resyncP(["v7-row-9999"]), (error) => codes(error).includes("V7_LINKED_ROW_CHANGED"), "another group's carry does not carry this one");
+    const done = await resyncP(["v7-row-5002"]);
+    assert.deepEqual(done.superseded, [{ rowId: "v7-row-5001", replacedBy: "v7-row-5001-r1" }]);
+    const replacement = (await db.query(`SELECT linked_row_id FROM nzi_console.job_scope_rows WHERE scope_row_id = 'v7-row-5001-r1'`)).rows[0]!;
+    assert.equal(replacement.linked_row_id, "v7-row-5002", "the migrated copy stays the previous system's record, link and all; the live rows carry none");
   });
 });

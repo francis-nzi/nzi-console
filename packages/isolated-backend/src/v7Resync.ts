@@ -49,6 +49,11 @@ export type V7ResyncInput = {
   extractSha256: string;
   /** The importer's planned rows for this job, from a current v7 extract (`planV7ClientImport`). */
   rows: readonly PlannedRow[];
+  /**
+   * The pair groups (each its shared T&D row's id) a person has decided to carry both, unlinked (the import workbench's carry,
+   * RULING-v7-import-pair-carry). Only the workbench's ingest passes them; without them every paired change is refused.
+   */
+  carriedPairGroups?: readonly string[];
 };
 /** Ids and counts only (R2: no figures). */
 export type V7ResyncResult = {
@@ -155,10 +160,19 @@ export async function resyncV7JobInTransaction(db: Queryable, input: V7ResyncInp
   // pointing at history.
   const pairedTo = new Set(ofJob.map((row) => row.linked_row_id).filter((id): id is string => id !== null));
   const isPaired = (row: CurrentRow) => row.linked_row_id !== null || pairedTo.has(row.scope_row_id);
+  // RULING-v7-import-pair-carry (A): a pair group a person has decided to carry both, unlinked, is not refused. Its group is
+  // the shared T&D row a parent points to, or the T&D row itself; its members are superseded and added as any row is, each
+  // still the previous system's record (the link included) — the re-ingest writes them as independent live rows.
+  const carried = new Set(input.carriedPairGroups ?? []);
+  const plannedTo = new Set(input.rows.map((planned) => planned.linkedRowId).filter((id): id is string => id !== null));
+  const groupOf = (row: CurrentRow) => row.linked_row_id ?? (pairedTo.has(row.scope_row_id) || plannedTo.has(row.scope_row_id) ? row.scope_row_id : null);
+  const plannedGroup = (planned: PlannedRow, was?: CurrentRow) =>
+    planned.linkedRowId ?? (plannedTo.has(planned.scopeRowId) ? planned.scopeRowId : null) ?? (was ? groupOf(was) : null);
+  const held = (group: string | null) => group === null || !carried.has(group);
   const paired = [
-    ...changed.filter(({ planned, was }) => planned.linkedRowId !== null || isPaired(was)).map(({ was }) => was.scope_row_id),
-    ...added.filter((planned) => planned.linkedRowId !== null).map((planned) => planned.scopeRowId),
-    ...withdrawn.filter(isPaired).map((row) => row.scope_row_id),
+    ...changed.filter(({ planned, was }) => (planned.linkedRowId !== null || isPaired(was)) && held(plannedGroup(planned, was))).map(({ was }) => was.scope_row_id),
+    ...added.filter((planned) => planned.linkedRowId !== null && held(plannedGroup(planned))).map((planned) => planned.scopeRowId),
+    ...withdrawn.filter((row) => isPaired(row) && held(groupOf(row))).map((row) => row.scope_row_id),
   ];
   if (paired.length)
     fail("V7_LINKED_ROW_CHANGED", `${paired.length} changed, added or withdrawn v7 row(s) are paired with another row (${paired.slice(0, 5).join(", ")}); a person decides how the pair carries.`);

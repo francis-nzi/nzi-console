@@ -32,6 +32,7 @@ import { jobDateIssues } from "./jobDates";
 import { v7ReingestActorIssues, v7ReingestPlanIssues, type V7ReingestJobInput, type V7ReingestRevertInput } from "./v7Reingest";
 import { v7ImportSummaryIssues, type V7ImportSummary } from "./v7ImportSummary";
 import { v7ImportDecisionClearIssues, v7ImportDecisionSetIssues, type V7ImportDecisionClearInput, type V7ImportDecisionSetInput } from "./v7ImportDecision";
+import { v7ImportIngestIssues, v7ImportRehearsalRecordIssues, type V7ImportIngestInput, type V7ImportRehearsalRecordInput } from "./v7ImportIngest";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
 import type { AssistRecord } from "./aiAssist";
@@ -81,6 +82,8 @@ export type CommandKey =
   | "import.summary.upload"
   | "import.decision.set"
   | "import.decision.clear"
+  | "import.rehearsal.record"
+  | "import.ingest"
   | "job.datasets.update"
   | "job.site.setInclusion"
   | "job.seedFromTemplate"
@@ -819,6 +822,17 @@ export type CommandInputMap = {
   "import.decision.set": V7ImportDecisionSetInput;
   /** Return a row to unresolved: its current decision is superseded, and kept. `import.manage`. */
   "import.decision.clear": V7ImportDecisionClearInput;
+  /**
+   * The import workbench, Phase 3 (BRIEF-v7-import-workbench-phase3): record one rehearsal of a job's ingest — run on the
+   * operator's machine, always rolled back — as ids, counts, refusal codes and Σ tCO2e per scope. `import.manage`.
+   */
+  "import.rehearsal.record": V7ImportRehearsalRecordInput;
+  /**
+   * Ingest one job from its resolved decisions: revert → re-sync → re-plan → re-ingest, kept, with D7 the hard floor; refused
+   * unless the job is ready to ingest. Run on the operator's machine (the extract's rows travel beside it, never in the input).
+   * `import.manage`; a reason is required.
+   */
+  "import.ingest": V7ImportIngestInput;
   /**
    * DATASET-CURRENCY §3 — move a job's fallback editions to the reporting year's now-published ones and recalculate the rows
    * on them. `series`: the fallback datasets to move (from the banner). `expected`: every row the preview showed moving or
@@ -2242,7 +2256,9 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   // The import workbench, Phase 2: a person's resolution of one row, kept as the in-system crosswalk — never applied to the job's rows.
   "import.decision.set": { key: "import.decision.set", label: "Resolve an imported row", permission: "import.manage", reasonRequired: false, transaction: "decision (the one it replaces superseded) + audit + outbox + idempotency", auditAction: "import.decision.set", validate: (input, context) => [...baseIssues(context, false), ...v7ImportDecisionSetIssues(input)] },
   "import.decision.clear": { key: "import.decision.clear", label: "Clear an imported row's resolution", permission: "import.manage", reasonRequired: false, transaction: "decision superseded + audit + outbox + idempotency", auditAction: "import.decision.cleared", validate: (input, context) => [...baseIssues(context, false), ...v7ImportDecisionClearIssues(input)] },
-  "v7.reingest.revert": { key: "v7.reingest.revert", label: "Revert a re-ingest", permission: "job.manage", reasonRequired: true, transaction: "live rows switched off + the original rows switched back on + run marked reverted + audit + outbox + idempotency", auditAction: "v7_job_reingest_reverted", validate: (input, context) => { const issues = [...baseIssues(context, true), ...v7ReingestActorIssues(context)]; required(issues, "jobId", input.jobId); if (!/^v7-reingest-[0-9a-f-]{36}$/.test(input.runId ?? "")) issues.push({ field: "runId", code: "INVALID", message: "The run id is `v7-reingest-` and a UUID." }); return issues; } },
+  // The import workbench, Phase 3: a rehearsal recorded, and the ingest itself — the decisions driving the existing chain, D7 the floor.
+  "import.rehearsal.record": { key: "import.rehearsal.record", label: "Record an ingest rehearsal", permission: "import.manage", reasonRequired: false, transaction: "rehearsal record + audit + outbox + idempotency", auditAction: "import.rehearsal.recorded", validate: (input, context) => [...baseIssues(context, false), ...v7ImportRehearsalRecordIssues(input)] },
+  "import.ingest": { key: "import.ingest", label: "Ingest an imported job", permission: "import.manage", reasonRequired: true, transaction: "revert + re-sync + re-ingest (each its own governed step) + ingest record + audit + outbox + idempotency", auditAction: "import.ingested", validate: (input, context) => [...baseIssues(context, true), ...v7ImportIngestIssues(input)] },  "v7.reingest.revert": { key: "v7.reingest.revert", label: "Revert a re-ingest", permission: "job.manage", reasonRequired: true, transaction: "live rows switched off + the original rows switched back on + run marked reverted + audit + outbox + idempotency", auditAction: "v7_job_reingest_reverted", validate: (input, context) => { const issues = [...baseIssues(context, true), ...v7ReingestActorIssues(context)]; required(issues, "jobId", input.jobId); if (!/^v7-reingest-[0-9a-f-]{36}$/.test(input.runId ?? "")) issues.push({ field: "runId", code: "INVALID", message: "The run id is `v7-reingest-` and a UUID." }); return issues; } },
   // DATASET-CURRENCY §3 (ruled): scoperow.edit — the swap is the rule's own derived pick, coupled to a recalculation, so the
   // people who calculate rows are the ones who move them. A reason is required by the handler when the job has an issued
   // snapshot or a published report (ruling 6), never otherwise.

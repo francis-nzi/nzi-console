@@ -20,7 +20,8 @@ import { reingestV7JobInTransaction, revertV7ReingestInTransaction, type V7Reing
 import { v7ReingestRevertContext } from "./v7ReingestRevertRun";
 import { resyncV7JobInTransaction, v7ResyncContext, type V7ResyncResult } from "./v7Resync";
 
-export type V7RehearsalStage = "revert" | "resync" | "replan" | "reingest";
+/** "ready": the import workbench's readiness check, before anything else runs. */
+export type V7RehearsalStage = "ready" | "revert" | "resync" | "replan" | "reingest";
 export type V7RehearsalInput = {
   organisationId: string; jobId: string; reason: string;
   /** The re-sync's input: v7's current records of this job, from a one-job extract, and that extract's sha256. */
@@ -124,12 +125,25 @@ async function v7ScopeTotals(db: Queryable, organisationId: string, jobId: strin
 class RehearsalRollback extends Error {}
 
 /**
- * The rehearsal. One transaction, rolled back on every route: the report is read inside it, before the rollback. A step that
- * refuses (a CommandValidationError) is recorded and the steps after it do not run; any other error rolls back and is thrown.
+ * How the import workbench's ingest drives the same chain (BRIEF-v7-import-workbench-phase3): the pair groups a person carried
+ * (passed to the re-sync), and the plan completed from the person's decisions once the committed plan is re-planned onto the
+ * current rows. Without them the chain is the rehearsal's own, exactly.
  */
-export async function rehearseV7Resync(pool: PoolLike, input: V7RehearsalInput): Promise<V7RehearsalReport> {
+export type V7ChainOptions = {
+  carriedPairGroups?: readonly string[];
+  /** The re-planned plan, completed — rows the crosswalk does not cover filled from the decisions; its identity may change. */
+  completePlan?: (db: Queryable, replan: V7Replan, superseded: V7ResyncResult["superseded"]) => Promise<Omit<V7ReingestJobInput, "runId">>;
+  /** The re-ingest's reason suffix: the rehearsal says it is rolled back; a committed ingest says nothing. */
+  reingestReasonSuffix?: string;
+};
+
+/**
+ * The chain — revert the standing re-ingest, re-sync, re-plan, re-ingest — inside the caller's transaction, filling `report` as
+ * it goes. A step that refuses (a CommandValidationError) is recorded and the steps after it do not run; it returns whether the
+ * re-ingest went through in the transaction. Whether the transaction is kept is the caller's: the rehearsal always rolls it back.
+ */
+export async function runV7ResyncChain(db: Queryable, input: V7RehearsalInput, report: V7RehearsalReport, options: V7ChainOptions = {}): Promise<boolean> {
   const org = input.organisationId;
-  const report: V7RehearsalReport = { jobId: input.jobId, rolledBack: true, revert: null, resync: null, replan: null, v7ScopeTotals: null, reingest: null, refusal: null };
   const step = async <T>(stage: V7RehearsalStage, work: () => Promise<T>): Promise<T | null> => {
     try { return await work(); } catch (error) {
       if (!(error instanceof CommandValidationError)) throw error;
@@ -137,34 +151,54 @@ export async function rehearseV7Resync(pool: PoolLike, input: V7RehearsalInput):
       return null;
     }
   };
+  // 1. The standing re-ingest, reverted as its own runner reverts it. None standing: nothing to revert.
+  const standing = (await db.query<{ run_id: string }>(
+    `SELECT run_id FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND status = 'completed'`, [org, input.jobId])).rows[0]?.run_id;
+  if (standing) {
+    const outcome = await step("revert", () => revertV7ReingestInTransaction(db, { jobId: input.jobId, runId: standing }, v7ReingestRevertContext(org, standing, input.reason)));
+    if (!outcome) return false;
+    report.revert = { runId: standing, liveRowsSwitchedOff: outcome.data.liveRowsSwitchedOff, v7RowsSwitchedOn: outcome.data.v7RowsSwitchedOn };
+  }
+  // 2. The re-sync, as its runner calls it.
+  const resync = await step("resync", () => resyncV7JobInTransaction(db,
+    { jobId: input.jobId, runId: input.resyncRunId, extractSha256: input.extractSha256, rows: input.rows,
+      ...(options.carriedPairGroups ? { carriedPairGroups: options.carriedPairGroups } : {}) }, v7ResyncContext(org, input.reason)));
+  if (!resync) return false;
+  report.resync = { unchanged: resync.unchanged, superseded: resync.superseded, added: resync.added, withdrawn: resync.withdrawn };
+  report.v7ScopeTotals = await v7ScopeTotals(db, org, input.jobId);
+  // 3. The re-plan onto the current rows (reads only), completed from the decisions when the workbench drives it.
+  const replan = await replanOntoCurrentRows(db, org, input.jobId, input.plan, resync.superseded);
+  report.replan = replan;
+  const completed = options.completePlan ? await step("replan", () => options.completePlan!(db, replan, resync.superseded)) : { ...input.plan, rows: replan.rows };
+  if (!completed) return false;
+  // 4. The re-ingest, as its runner calls it — its own D7 gates decide; a row needing the crosswalk is its PLAN_INCOMPLETE.
+  const plan: V7ReingestJobInput = { ...completed, runId: input.reingestRunId };
+  const context = { organisationId: org, actorId: V7_REINGEST_ACTOR, principal: "system" as const, idempotencyKey: input.reingestRunId,
+    correlationId: input.reingestRunId, reason: `${input.reason}${options.reingestReasonSuffix ?? " — rehearsal, rolled back"}`, grant: commandGrantForRole("admin", org, V7_REINGEST_ACTOR) };
+  const outcome = await step("reingest", () => reingestV7JobInTransaction(db, plan, context));
+  if (!outcome) return false;
+  const { v7TotalTco2e, nativeTotalTco2e, scopeTotals, rowsByDisposition, v7RowsSwitchedOff } = outcome.data;
+  report.reingest = { v7TotalTco2e, nativeTotalTco2e, scopeTotals, rowsByDisposition, v7RowsSwitchedOff };
+  return true;
+}
+
+export const emptyRehearsalReport = (jobId: string): V7RehearsalReport =>
+  ({ jobId, rolledBack: true, revert: null, resync: null, replan: null, v7ScopeTotals: null, reingest: null, refusal: null });
+
+/**
+ * The rehearsal. One transaction, rolled back on every route: the report is read inside it, before the rollback. A step that
+ * refuses (a CommandValidationError) is recorded and the steps after it do not run; any other error rolls back and is thrown.
+ * `before` runs first inside the same transaction (the workbench's readiness check): it returns the chain's options, or null
+ * when it refused (and recorded why) — then nothing else runs.
+ */
+export async function rehearseV7Resync(pool: PoolLike, input: V7RehearsalInput, options: V7ChainOptions & {
+  before?: (db: Queryable, report: V7RehearsalReport) => Promise<V7ChainOptions | null>;
+} = {}): Promise<V7RehearsalReport> {
+  const report = emptyRehearsalReport(input.jobId);
   try {
-    await withTenantWrite(pool, org, async (db) => {
-      // 1. The standing re-ingest, reverted as its own runner reverts it. None standing: nothing to revert.
-      const standing = (await db.query<{ run_id: string }>(
-        `SELECT run_id FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND status = 'completed'`, [org, input.jobId])).rows[0]?.run_id;
-      if (standing) {
-        const outcome = await step("revert", () => revertV7ReingestInTransaction(db, { jobId: input.jobId, runId: standing }, v7ReingestRevertContext(org, standing, input.reason)));
-        if (!outcome) throw new RehearsalRollback();
-        report.revert = { runId: standing, liveRowsSwitchedOff: outcome.data.liveRowsSwitchedOff, v7RowsSwitchedOn: outcome.data.v7RowsSwitchedOn };
-      }
-      // 2. The re-sync, as its runner calls it.
-      const resync = await step("resync", () => resyncV7JobInTransaction(db,
-        { jobId: input.jobId, runId: input.resyncRunId, extractSha256: input.extractSha256, rows: input.rows }, v7ResyncContext(org, input.reason)));
-      if (!resync) throw new RehearsalRollback();
-      report.resync = { unchanged: resync.unchanged, superseded: resync.superseded, added: resync.added, withdrawn: resync.withdrawn };
-      report.v7ScopeTotals = await v7ScopeTotals(db, org, input.jobId);
-      // 3. The re-plan onto the current rows (reads only).
-      const replan = await replanOntoCurrentRows(db, org, input.jobId, input.plan, resync.superseded);
-      report.replan = replan;
-      // 4. The re-ingest, as its runner calls it — its own D7 gates decide; a row needing the crosswalk is its PLAN_INCOMPLETE.
-      const plan: V7ReingestJobInput = { ...input.plan, runId: input.reingestRunId, rows: replan.rows };
-      const context = { organisationId: org, actorId: V7_REINGEST_ACTOR, principal: "system" as const, idempotencyKey: input.reingestRunId,
-        correlationId: input.reingestRunId, reason: `${input.reason} — rehearsal, rolled back`, grant: commandGrantForRole("admin", org, V7_REINGEST_ACTOR) };
-      const outcome = await step("reingest", () => reingestV7JobInTransaction(db, plan, context));
-      if (outcome) {
-        const { v7TotalTco2e, nativeTotalTco2e, scopeTotals, rowsByDisposition, v7RowsSwitchedOff } = outcome.data;
-        report.reingest = { v7TotalTco2e, nativeTotalTco2e, scopeTotals, rowsByDisposition, v7RowsSwitchedOff };
-      }
+    await withTenantWrite(pool, input.organisationId, async (db) => {
+      const extra = options.before ? await options.before(db, report) : {};
+      if (extra) await runV7ResyncChain(db, input, report, { ...options, ...extra });
       throw new RehearsalRollback();
     });
   } catch (error) {

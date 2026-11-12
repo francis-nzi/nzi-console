@@ -368,8 +368,8 @@ describe("matrix v14: the import workbench, Phase 1 (BRIEF-v7-import-workbench-p
     for (const role of ["consultant", "reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.manage"], undefined, role);
   });
   it("unlocks exactly the summary upload and, in Phase 2, a row's resolution set and clear — staff commands", () => {
-    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.manage").map((definition) => definition.key), ["import.summary.upload", "import.decision.set", "import.decision.clear"]);
-    for (const key of ["import.summary.upload", "import.decision.set", "import.decision.clear"] as const)
+    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.manage").map((definition) => definition.key), ["import.summary.upload", "import.decision.set", "import.decision.clear", "import.rehearsal.record", "import.ingest"]);
+    for (const key of ["import.summary.upload", "import.decision.set", "import.decision.clear", "import.rehearsal.record", "import.ingest"] as const)
       assert.notEqual((commandDefinitions[key] as { principal?: string }).principal, "portal", key);
   });
   it("v14 adds import.manage for Admin and changes nothing else from v13", () => {

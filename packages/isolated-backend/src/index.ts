@@ -319,3 +319,4 @@ export {
   clearV7ImportDecision, invalidV7ImportMappings, listV7ImportFactorOptions, listV7ImportWorkbench, readV7ImportWorkbench, setV7ImportDecision,
   type V7ImportDecisionResult, type V7ImportWorkbenchSession, type V7ImportWorkbenchView,
 } from "./v7ImportDecision";
+export { readV7ImportIngestState, v7ImportDecisionsSha256, type V7ImportIngestEntry, type V7ImportIngestState } from "./v7ImportIngest";

@@ -154,6 +154,11 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   unlinked), or clears any of them (the decision-set and decision-clear commands). Decisions are kept
   against the job as the in-system crosswalk and never write a job's rows; there is no ingest. Widening resolve to a CRM on their
   own clients would be a matrix bump, for ruling.
+- **Import workbench, Phase 3 (0229; BRIEF-v7-import-workbench-phase3).** No matrix change: the same `import.manage` also
+  records an ingest rehearsal and ingests a job from its resolved decisions (the rehearsal-record and ingest commands; the ingest
+  needs a reason). Both are run by the operator's script as the system principal `policy:v7-import`, where the one-job extract
+  is (R-A option 1); the ingest's steps run under their own principals (the re-sync's and the re-ingest's), with D7 the floor.
+  The workbench shows the rehearsal and the ingested state; it has no ingest button (R-A′ option 2 is deferred).
 
 ## Naming convention
 
