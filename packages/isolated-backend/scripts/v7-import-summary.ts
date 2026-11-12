@@ -5,7 +5,8 @@
  *   npm run v7:import-summary -w @nzi/isolated-backend -- --extract <one-job extract dir> --job J000669 --out <summary.json> \
  *       [--upload] [--organisation <id>]
  *
- * Without --upload it reads the console (read-only, in a transaction that is rolled back) and writes the summary file. With
+ * Without --upload it reads the console and writes the summary file. A job already re-ingested is compared as the ingest will see
+ * it — its standing run reverted under a savepoint that is rolled back — so nothing of the console is kept. With
  * --upload it also stores that summary through `import.summary.upload` as the system principal `policy:v7-import`, so the
  * import view shows it. It never writes a job's rows. Fail-closed on the boundary; verified TLS off-machine. Prints counts and
  * the verdict only.
@@ -16,10 +17,11 @@ import { Pool } from "pg";
 import { commandGrantForRole, v7ImportSummaryIssues } from "@nzi/contracts";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
 import { verifiedTlsConfig } from "../src/databaseTls";
-import { withTenantRead } from "../src/postgres";
+import { withTenantWrite } from "../src/postgres";
 import { readV7Extract } from "../src/v7ClientExtract";
 import { DEFAULT_ORGANISATION, planV7ClientImport } from "../src/v7ClientImport";
-import { summariseV7JobForImport, uploadV7ImportSummary, V7_IMPORT_ACTOR } from "../src/v7ImportSummary";
+import { summariseV7JobAsTheChainSees } from "../src/v7ImportIngest";
+import { uploadV7ImportSummary, V7_IMPORT_ACTOR } from "../src/v7ImportSummary";
 
 const log = (line = "") => process.stdout.write(`${line}\n`);
 const argument = (name: string) => { const at = process.argv.indexOf(name); return at > 0 ? process.argv[at + 1] : undefined; };
@@ -52,7 +54,8 @@ async function main(): Promise<void> {
   log(`  extract sha256 ${read.extractSha256} · ${job.rows.length} row(s) in the previous system now`);
   const pool = new Pool({ connectionString: tls.connectionString, ssl: tls.ssl, max: 2, application_name: "nzi-v7-import-summary" });
   try {
-    const summary = await withTenantRead(pool, organisationId, (db) => summariseV7JobForImport(db, {
+    // As the ingest will see it: a standing re-ingest reverted first, under a savepoint rolled back — nothing is kept.
+    const summary = await withTenantWrite(pool, organisationId, (db) => summariseV7JobAsTheChainSees(db, {
       organisationId, jobId: job.jobId, legacyJobNumber: jobNumber, extractSha256: read.extractSha256, rows: job.rows }));
     const issues = v7ImportSummaryIssues(summary);
     if (issues.length) throw new Error(`The summary is not well formed: ${JSON.stringify(issues)}`);

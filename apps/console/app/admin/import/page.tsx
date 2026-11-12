@@ -1,16 +1,20 @@
-import { listV7ImportWorkbench, readV7ImportWorkbench, withTenantRead, type V7ImportWorkbenchSession, type V7ImportWorkbenchView } from "@nzi/isolated-backend";
+import {
+  listV7ImportWorkbench, readV7ImportIngestState, readV7ImportWorkbench, v7ImportDecisionsSha256, withTenantRead,
+  type V7ImportIngestState, type V7ImportWorkbenchSession, type V7ImportWorkbenchView,
+} from "@nzi/isolated-backend";
 import { CapabilityChip } from "@nzi/ui";
 import { isolatedPool } from "../../lib/isolatedDatabase";
 import { adminAccess, holds } from "../adminAccess";
+import { ImportIngestPanel } from "./ImportIngestPanel";
 import { ImportJobView, ImportSessionsList } from "./ImportReconciliation";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Import reconciliation (import workbench, Phases 1–2; BRIEF-v7-import-workbench-phase1/-phase2): each imported job's uploaded
- * summary — what the console holds of the previous system's records against what that system holds now — and a person's
- * resolution of each row that needs one. `import.manage` only (R-C default: Admin). Decisions are kept against the job;
- * nothing here changes a job's rows, and there is no ingest (Phase 3).
+ * Import reconciliation (import workbench, Phases 1–3; BRIEF-v7-import-workbench-phase1/-phase2/-phase3): each imported job's
+ * uploaded summary — what the console holds of the previous system's records against what that system holds now — a person's
+ * resolution of each row that needs one, and the ingest: its latest rehearsal and the ingested state. `import.manage` only (R-C
+ * default: Admin). Nothing here changes a job's rows: the ingest runs on the operator's machine (R-A option 1), with no button.
  */
 export default async function ImportReconciliationPage({ searchParams }: { searchParams: Promise<{ job?: string }> }) {
   const access = await adminAccess();
@@ -20,10 +24,13 @@ export default async function ImportReconciliationPage({ searchParams }: { searc
   }
 
   const { job } = await searchParams;
-  let data: { sessions: V7ImportWorkbenchSession[]; view: V7ImportWorkbenchView | null } | null = null;
+  let data: { sessions: V7ImportWorkbenchSession[]; view: V7ImportWorkbenchView | null; ingest: V7ImportIngestState | null } | null = null;
   try {
-    data = await withTenantRead(isolatedPool(), access.organisationId, async (db) => ({
-      sessions: await listV7ImportWorkbench(db, access.organisationId), view: job ? await readV7ImportWorkbench(db, access.organisationId, job) : null }));
+    data = await withTenantRead(isolatedPool(), access.organisationId, async (db) => {
+      const view = job ? await readV7ImportWorkbench(db, access.organisationId, job) : null;
+      return { sessions: await listV7ImportWorkbench(db, access.organisationId), view,
+        ingest: view ? await readV7ImportIngestState(db, view.session.jobId, { sessionId: view.session.sessionId, decisionsSha256: v7ImportDecisionsSha256(view.decisions) }) : null };
+    });
   } catch {
     data = null;
   }
@@ -41,6 +48,7 @@ export default async function ImportReconciliationPage({ searchParams }: { searc
     </div>
     <div className="nz-a-grid">
       {job && !data.view ? <div className="nz-a-hint-strip warn" role="status"><span>i</span><div>That job has no import summary yet.</div></div> : null}
+      {data.view && data.ingest ? <ImportIngestPanel state={data.ingest} verdict={data.view.resolvedVerdict} /> : null}
       {data.view ? <ImportJobView view={data.view} /> : null}
       <ImportSessionsList sessions={data.sessions} selected={job ?? null} />
     </div>

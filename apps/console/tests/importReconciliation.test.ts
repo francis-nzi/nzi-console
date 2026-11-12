@@ -135,3 +135,44 @@ describe("the import view (import workbench, Phases 1–2)", () => {
       assert.ok(!/(?<![\w.-])v7(?![\w-])/i.test(markup.replace(/v7-(row|import|decision)-[\w-]+/g, "")));
   });
 });
+
+describe("the ingest panel (import workbench, Phase 3): the rehearsal and the ingested state, read-only — no ingest button", () => {
+  let ImportIngestPanel: typeof import("../app/admin/import/ImportIngestPanel").ImportIngestPanel;
+  before(async () => ({ ImportIngestPanel } = await import("../app/admin/import/ImportIngestPanel")));
+  const totals = { "1": { v7Tco2e: 0.34, liveTco2e: 0.34 }, "2": { v7Tco2e: 0, liveTco2e: 0 }, "3": { v7Tco2e: 0.0015, liveTco2e: 0.0015 } };
+  const entry = { ingestId: "v7-ingest-00000000-0000-0000-0000-000000000001", sessionId: SESSION.sessionId, decisionsSha256: "a".repeat(64),
+    resync: { unchanged: 1, superseded: 1, added: 1, withdrawn: 1 }, plan: { committed: 2, decided: 1 }, resyncRunId: null, reingestRunId: null,
+    createdAt: "2026-11-12T11:00:00.000Z", createdBy: "policy:v7-import" };
+  const panel = (state: Parameters<typeof ImportIngestPanel>[0]["state"], verdict: Parameters<typeof ImportIngestPanel>[0]["verdict"] = "ready-to-ingest") =>
+    renderToStaticMarkup(createElement(ImportIngestPanel, { state, verdict }));
+  const noControls = (markup: string) => assert.ok(!/<(form|button|input|select|textarea)\b/.test(markup), "read-only");
+
+  it("shows a rehearsal that would commit with its Σ per scope, and says when it is out of date", () => {
+    const html = panel({ rehearsal: { ...entry, kind: "rehearsal", outcome: "would-commit", refusedStage: null, refusalCodes: [], scopeTotals: totals, current: true }, ingest: null });
+    assert.ok(html.includes("Would commit — D7 met") && html.includes(`data-table="rehearsal-totals"`) && html.includes("1 superseded") && html.includes("2 committed + 1 decided"));
+    assert.ok(!html.includes(`data-rehearsal-current="false"`));
+    noControls(html);
+    const stale = panel({ rehearsal: { ...entry, kind: "rehearsal", outcome: "would-commit", refusedStage: null, refusalCodes: [], scopeTotals: totals, current: false }, ingest: null });
+    assert.ok(stale.includes(`data-rehearsal-current="false"`) && stale.includes("rehearse again"));
+  });
+
+  it("shows a refused rehearsal by its step and codes, with no totals", () => {
+    const html = panel({ rehearsal: { ...entry, kind: "rehearsal", outcome: "refused", refusedStage: "reingest", refusalCodes: ["PLAN_QUANTITY_MISMATCH"], scopeTotals: null, current: true }, ingest: null });
+    assert.ok(html.includes("Refused at the re-ingest (D7)") && html.includes("PLAN_QUANTITY_MISMATCH") && !html.includes(`data-table="rehearsal-totals"`));
+    noControls(html);
+  });
+
+  it("shows the ingested state: the run, its reconciliation, and how much a reviewer has attested", () => {
+    const html = panel({ rehearsal: null, ingest: { ...entry, kind: "ingest", outcome: "committed", refusedStage: null, refusalCodes: [], scopeTotals: totals,
+      resyncRunId: "v7-resync-00000000-0000-0000-0000-000000000002", reingestRunId: "v7-reingest-00000000-0000-0000-0000-000000000003", runStatus: "completed", rowsApproved: 0, rowsPending: 3 } });
+    assert.ok(html.includes(">Ingested<") && html.includes("attested 0 of 3") && html.includes("a reviewer attests") && html.includes(`data-table="ingest-totals"`));
+    noControls(html);
+  });
+
+  it("when ready, says the operator runs the ingest — and offers no button for it", () => {
+    const html = panel({ rehearsal: null, ingest: null });
+    assert.ok(html.includes(`data-ingest="ready"`) && html.includes("import-ingest script"));
+    noControls(html);
+    assert.ok(!/(?<![\w.-])v7(?![\w-])/i.test(html.replace(/v7-[a-z]+-[\w-]+/g, "")), "never the internal name");
+  });
+});

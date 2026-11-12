@@ -278,7 +278,7 @@ export function clearV7ImportDecision(pool: PoolLike, input: CommandInputMap["im
 // ── The reads behind the view ─────────────────────────────────────────────────────────────────────────────────────
 
 /** Every job's current decisions (or one job's), keyed by job. */
-async function currentDecisions(db: Queryable, jobId: string | null): Promise<Map<string, V7ImportDecision[]>> {
+export async function currentDecisions(db: Queryable, jobId: string | null): Promise<Map<string, V7ImportDecision[]>> {
   const rows = (await db.query<DecisionRow>(
     `SELECT ${DECISION_COLUMNS} FROM nzi_console.v7_import_decisions WHERE superseded_at IS NULL AND ($1::text IS NULL OR job_id = $1) ORDER BY job_id, legacy_db_id, kind`, [jobId])).rows;
   const byJob = new Map<string, V7ImportDecision[]>();
@@ -287,7 +287,7 @@ async function currentDecisions(db: Queryable, jobId: string | null): Promise<Ma
 }
 
 /** The applied mappings that no longer validate, by decision id. */
-async function invalidApplied(db: Queryable, organisationId: string, decisions: readonly V7ImportDecision[]): Promise<Map<string, string>> {
+export async function invalidApplied(db: Queryable, organisationId: string, decisions: readonly V7ImportDecision[]): Promise<Map<string, string>> {
   const mappings = decisions.filter((decision) => decision.kind === "map")
     .map((decision) => ({ key: decision.decisionId, scope: decision.forScope, categoryCode: decision.categoryCode!, datasetId: decision.datasetId!, factorId: decision.factorId! }));
   return new Map([...(await invalidV7ImportMappings(db, organisationId, mappings))].map(([key, issue]) => [key, issue.message]));

@@ -61,6 +61,9 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   // Phase 2: a row of one job's summary is resolved, in the caller's organisation (import.manage, Admin — R-C default).
   "import.decision.set": job,
   "import.decision.clear": job,
+  // Phase 3: a rehearsal recorded and the ingest, each of one job (import.manage, Admin; run by the operator's script).
+  "import.rehearsal.record": job,
+  "import.ingest": job,
   "job.datasets.update": job,
   "job.site.setInclusion": job,
   "job.seedFromTemplate": job,
