@@ -14,6 +14,7 @@ platform. Read this first, then the `docs/` set below before making changes.
   `docs/BRAND.md`); if it isn't to hand, stop and get it, don't approximate. The same goes for the palette,
   scope colours and components: load the real source, don't reconstruct it.
 - **Confirm scope before building anything new.** When in doubt, do less and ask.
+- **Keep replies to Francis short:** direct answers, clear direction, and questions only. No explanations unless he asks to "expand."
 
 ## Operating model & delivery (holds — do not drift to an older process)
 
@@ -74,7 +75,7 @@ packages/charts/     @nzi/charts — SVG-first chart engine (EmissionsScopeDonut
 docs/                the design docs above + BRAND, DEPLOYMENT, FIRST_GATE
 ```
 
-npm workspaces + Turborepo. Node 22.23.4.
+npm workspaces + Turborepo. Node 20.18.0.
 
 ## Conventions (locked — see DECISIONS.md)
 
