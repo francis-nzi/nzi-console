@@ -102,6 +102,13 @@ zero) · one term one meaning · reuse canonical Client/Quote/Job/Report service
 SQL) · migration-owned schema, **no request-time DDL** · atomic + idempotent commands · tenant safety by
 construction · AI grounded & advisory only · isolation (never production creds/data in this repo/service).
 
+**The one carve-out from isolation (ruled 13 Nov 2026, BRIEF-v7-import-server-side R-2):** the service may hold
+`NZI_V7_VIEW_URL`, the previous system's Supabase project as the role `cc_import_view`, which has SELECT on the
+import view set (schema `v7_import`, `packages/isolated-backend/v7-source/v7_import_views.sql`) and **nothing else**:
+no table, no other schema, no write, no fallback URL. The views are non-PII by construction (ids, codes, numbers, and
+labels through the R-1 rule), and the reader refuses any view column its contract does not name. The isolation intent
+holds: no other production credential, and no production data beyond that projection, ever reaches this repo or service.
+
 ## Dev commands
 
 ```bash

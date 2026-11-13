@@ -29,6 +29,8 @@ FuelCap services.
 | `NZI_DEMO_ORGANISATION_ID` | `demo-nzi-console` |
 | `NZI_ISOLATED_API_URL` | `https://nzi-pro-api-prod.onrender.com` |
 | `NZI_ISOLATED_DATABASE_URL` | Secret non-production Supabase session-pooler URL; Render only |
+| `NZI_V7_VIEW_URL` | Secret. The previous system's Supabase project, as the role `cc_import_view`: SELECT on the import view set (`v7_import`) and nothing else (`packages/isolated-backend/v7-source/v7_import_views.sql`; CLAUDE.md's isolation carve-out). Read-only and non-PII by construction; the reader refuses if a view's columns differ from its contract, and refuses a URL naming the console's own database. No fallback to any other URL. Unset = the server-side import read is unavailable. |
+| `NZI_V7_VIEW_CA_CERT` | The CA (PEM, or a path) that verifies `NZI_V7_VIEW_URL`'s TLS — or put `sslrootcert` on the URL. |
 | `NZI_PORTAL_AUTH_ENABLED` | Set to `true` when independent client portal sign-in is enabled |
 | `NZI_PORTAL_SESSION_SECRET` | Dedicated random secret of at least 32 bytes; never reuse the staff session secret |
 | `NZI_PORTAL_IDLE_LIMIT_MINUTES` | Optional. Idle auto-logout window for portal sessions (server-enforced); default `30`. The client warning countdown reads this via `/api/portal/auth/me`. |
