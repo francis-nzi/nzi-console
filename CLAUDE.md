@@ -14,6 +14,7 @@ platform. Read this first, then the `docs/` set below before making changes.
   `docs/BRAND.md`); if it isn't to hand, stop and get it, don't approximate. The same goes for the palette,
   scope colours and components: load the real source, don't reconstruct it.
 - **Confirm scope before building anything new.** When in doubt, do less and ask.
+- **Keep replies to Francis short:** direct answers, clear direction, and questions only. No explanations unless he asks to "expand."
 
 ## Operating model & delivery (holds — do not drift to an older process)
 
@@ -74,7 +75,7 @@ packages/charts/     @nzi/charts — SVG-first chart engine (EmissionsScopeDonut
 docs/                the design docs above + BRAND, DEPLOYMENT, FIRST_GATE
 ```
 
-npm workspaces + Turborepo. Node 22.23.4.
+npm workspaces + Turborepo. Node 20.18.0.
 
 ## Conventions (locked — see DECISIONS.md)
 
@@ -100,6 +101,13 @@ Truth before apparent availability (distinct empty/loading/degraded/failed/succe
 zero) · one term one meaning · reuse canonical Client/Quote/Job/Report services (don't re-implement their
 SQL) · migration-owned schema, **no request-time DDL** · atomic + idempotent commands · tenant safety by
 construction · AI grounded & advisory only · isolation (never production creds/data in this repo/service).
+
+**The one carve-out from isolation (ruled 13 Nov 2026, BRIEF-v7-import-server-side R-2):** the service may hold
+`NZI_V7_VIEW_URL`, the previous system's Supabase project as the role `cc_import_view`, which has SELECT on the
+import view set (schema `v7_import`, `packages/isolated-backend/v7-source/v7_import_views.sql`) and **nothing else**:
+no table, no other schema, no write, no fallback URL. The views are non-PII by construction (ids, codes, numbers, and
+labels through the R-1 rule), and the reader refuses any view column its contract does not name. The isolation intent
+holds: no other production credential, and no production data beyond that projection, ever reaches this repo or service.
 
 ## Dev commands
 

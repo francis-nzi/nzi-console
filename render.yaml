@@ -85,6 +85,13 @@ services:
       # Non-production Supabase only — never commit this value.
       - key: NZI_ISOLATED_DATABASE_URL
         sync: false
+      # The previous system's import view set, read as cc_import_view (SELECT on schema v7_import only;
+      # packages/isolated-backend/v7-source/v7_import_views.sql). The isolation carve-out in CLAUDE.md: read-only,
+      # non-PII, nothing else. Never commit either value.
+      - key: NZI_V7_VIEW_URL
+        sync: false
+      - key: NZI_V7_VIEW_CA_CERT
+        sync: false
       # Reconciled to the live dashboard values, 16 Sep 2026 — /api/health reports
       # authentication enabled and required, and this file previously said "false".
       #

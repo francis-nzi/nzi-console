@@ -26,7 +26,22 @@ export const V7_IMPORT_SESSION_PATTERN = /^v7-import-[0-9a-f-]{36}$/;
 
 const fail = (field: string, code: string, message: string): never => { throw new CommandValidationError([{ field, code, message }]); };
 
-type ConsoleRow = { scope_row_id: string; job_id: string; legacy_db_id: string; scope: string; enabled: boolean; linked_row_id: string | null; record: Record<string, unknown> };
+type ConsoleRow = { scope_row_id: string; job_id: string; legacy_db_id: string; scope: string; enabled: boolean; linked_row_id: string | null; record: Record<string, unknown> }
+  & Partial<Record<(typeof LABEL_COLUMNS)[number], string | null>>;
+
+/** The row's label columns: what the server-side read (R-1) compares through the label rule. */
+const LABEL_COLUMNS = ["source_label", "report_label", "level_1", "level_2", "level_3", "level_4", "column_text"] as const;
+const PLANNED_LABEL: Record<(typeof LABEL_COLUMNS)[number], (row: PlannedRow) => string | null> = {
+  source_label: (row) => row.sourceLabel, report_label: (row) => row.reportLabel, level_1: (row) => row.level1, level_2: (row) => row.level2,
+  level_3: (row) => row.level3, level_4: (row) => row.level4, column_text: (row) => row.columnText,
+};
+
+/**
+ * The server-side read (BRIEF-v7-import-server-side, R-1): the previous system's labels arrive through the label rule, so the
+ * console's own stored label is compared both as it is and as the rule makes it — a label that would come out the same is the
+ * same. Given only by the view reader (`summariseV7JobFromViews`); without it, every column compares as it always has.
+ */
+export type V7ImportLabelComparison = { sanitise: (legacyDbId: string, value: string | null) => string | null };
 
 /** JSON with keys in order: jsonb reorders an object's keys, so a stored record and a planned one compare by content. */
 const stable = (value: unknown): string => Array.isArray(value) ? `[${value.map(stable).join(",")}]`
@@ -49,6 +64,7 @@ const codeOf = (record: Record<string, unknown>) => {
  */
 export async function summariseV7JobForImport(db: Queryable, input: {
   organisationId: string; jobId: string; legacyJobNumber: string; extractSha256: string; rows: readonly PlannedRow[]; generatedAt?: string;
+  labels?: V7ImportLabelComparison;
 }): Promise<V7ImportSummary> {
   const org = input.organisationId;
   const job = (await db.query<{ source_system: string | null; legacy_job_number: string | null }>(
@@ -61,7 +77,7 @@ export async function summariseV7JobForImport(db: Queryable, input: {
   if (repeated.length) fail("rows", "ROW_REPEATED", `${new Set(repeated).size} record(s) are given more than once.`);
 
   // The job's current migrated rows, and any current row carrying one of these identities on another job (R5 of the re-sync).
-  const select = `SELECT scope_row_id, job_id, legacy_db_id, scope, enabled, linked_row_id, migrated_record AS record FROM nzi_console.job_scope_rows`;
+  const select = `SELECT scope_row_id, job_id, legacy_db_id, scope, enabled, linked_row_id, migrated_record AS record${input.labels ? `, ${LABEL_COLUMNS.join(", ")}` : ""} FROM nzi_console.job_scope_rows`;
   const ofJob = (await db.query<ConsoleRow>(`${select} WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' AND superseded_by_row_id IS NULL ORDER BY scope_row_id`,
     [org, input.jobId])).rows;
   const elsewhere = (await db.query<ConsoleRow>(`${select} WHERE organisation_id = $1 AND source_system = $2 AND legacy_db_id = ANY($3::text[]) AND superseded_by_row_id IS NULL AND job_id <> $4`,
@@ -105,7 +121,15 @@ export async function summariseV7JobForImport(db: Queryable, input: {
         ...v7Side, consoleScope: null, consoleFigure: null, consoleEnabled: null, consoleRowId: null, changedFields: [], ...pair });
       continue;
     }
-    const found = (await differs(db, "job_scope_rows", "organisation_id=$1 AND scope_row_id=$2", [org, was.scope_row_id], migratedRowCols(input.jobId, planned))) ?? [];
+    const labels = input.labels;
+    const cols = migratedRowCols(input.jobId, planned).map((col) => labels && (LABEL_COLUMNS as readonly string[]).includes(col.column) ? { ...col, compare: false } : col);
+    const found = (await differs(db, "job_scope_rows", "organisation_id=$1 AND scope_row_id=$2", [org, was.scope_row_id], cols)) ?? [];
+    if (labels) {
+      for (const column of LABEL_COLUMNS) {
+        const held = was[column] ?? null, now = PLANNED_LABEL[column](planned);
+        if (held !== now && labels.sanitise(planned.legacyDbId, held) !== now) found.push(column);
+      }
+    }
     const keyed = [...(topScope(was.scope) === planned.scope ? [] : ["scope"]),
       ...CROSSWALK_KEYS.filter((key) => stable(was.record[key]) !== stable(record[key])).map((key) => `migrated_record.${key}`)];
     const status: V7ImportRowStatus = found.length === 0 ? "matched"

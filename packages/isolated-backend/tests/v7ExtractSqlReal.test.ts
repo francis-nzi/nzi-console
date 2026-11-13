@@ -5,8 +5,19 @@ import { EXTRACT_CONTRACT, V7_TABLES, type V7Extract, type V7Row, type V7Table }
 import { planV7ClientImport } from "../src/v7ClientImport";
 // @ts-expect-error — plain .mjs, deliberately untyped: it must run with no toolchain on the extracting machine.
 import { extractSql, oneJobSql, preflightSql, v7ClientRiskSql } from "../scripts/v7-extract-sql.mjs";
-import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
-import { syntheticRows } from "./support/v7SyntheticExtract";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadV7ClientPlan } from "../src/v7ClientLoad";
+import { withTenantWrite } from "../src/postgres";
+import { CommandValidationError } from "../src/postgresCommands";
+import { summariseV7JobAsTheChainSees } from "../src/v7ImportIngest";
+import { sanitiseV7ImportLabel, v7ImportLabelHasPii } from "../src/v7ImportLabel";
+import { guardV7ImportViews, planV7JobFromViews, readV7JobFromViews, summariseV7JobFromViews, V7_IMPORT_VIEW_CONTRACT, withV7ViewSnapshot } from "../src/v7ImportView";
+import { checkV7ImportViews } from "../scripts/v7-import-view-check";
+import { createDisposableDatabase, ensureDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
+import { LABEL_FIXTURES, PII_FIXTURES } from "./support/v7ImportLabelFixtures";
+import { SENTINELS, syntheticRows } from "./support/v7SyntheticExtract";
 
 /**
  * The generated extract queries, run against a v7-shaped schema holding the synthetic v7 rows: every query parses,
@@ -242,5 +253,210 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       const lines = (extractSql({ out: "unused", job: "J000612" }) as string).split("\n");
       assert.ok(lines.indexOf(oneJobSql("J000612")) < lines.findIndex((line) => line.startsWith("\\copy")), "checked before the first \\copy");
     });
+  });
+});
+
+/**
+ * The import, server-side — Phase A (BRIEF-v7-import-server-side; NOTE-v7-import-server-side-phase-a, ruled 13 Nov 2026). The
+ * view set (`v7-source/v7_import_views.sql`) applied to a v7-shaped database of synthetic rows — v7's own free text beside the
+ * contract's columns — and read as cc_import_view: non-PII by construction, guarded, the label rule identical in SQL and
+ * TypeScript, and the server-side diff off it equal to the extract-based summary of the same job. Read and diff only.
+ */
+describe("the import's view set, server-side: non-PII, guarded, and the extract's own summary", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  const VIEW_SQL = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "..", "v7-source", "v7_import_views.sql"), "utf8")
+    .split("\n").filter((line) => !line.startsWith("\\")).join("\n");
+  const ORG = "net-zero-international", JOB = "J000612", JOB_ID = "v7-job-100", AT = "2026-11-13T09:00:00.000Z";
+  const raw = { getTypeParser: () => (value: string) => value };
+  /** What must never leave the source through a view: the synthetic rows' names, plate, postcode, account and places. */
+  const NEVER = [...SENTINELS, "ZZ12 ABC", "LS1 4AB", "Smith", "12345678", "Leeds", "Synthetic Alpha", "Head Office", "Example Street", "example.invalid", "Casey Owner", "CRP 2023"];
+  let sourceUrl: string;
+  let source: pg.Client;
+  let viewPool: pg.Pool;
+  let target: DisposableDatabase;
+
+  const takeExtract = async (job: string | null) => {
+    const lines = (extractSql({ out: "unused", job }) as string).split("\n").filter((line) => line.startsWith("\\copy"));
+    const extract = {} as Record<V7Table, V7Row[]>;
+    const headers = {} as Record<V7Table, string[]>;
+    for (const [index, table] of V7_TABLES.entries()) {
+      const result = await source.query({ text: COPY_LINE.exec(lines[index]!)![1]!, types: raw });
+      headers[table] = result.fields.map((field) => field.name);
+      extract[table] = result.rows;
+    }
+    return { extract: extract as V7Extract, headers };
+  };
+  const extractJob = async () => {
+    const taken = await takeExtract(JOB);
+    const plan = planV7ClientImport({ extract: taken.extract, headers: taken.headers, extractSha256: "e".repeat(64), organisationId: ORG });
+    assert.deepEqual(plan.refusals, []);
+    return plan.clients.flatMap((client) => client.jobs).find((job) => job.legacyJobNumber === JOB)!;
+  };
+  const fromExtract = async () => {
+    const job = await extractJob();
+    return withTenantWrite(target.pool, ORG, (db) => summariseV7JobAsTheChainSees(db, { organisationId: ORG, jobId: JOB_ID, legacyJobNumber: JOB, extractSha256: "e".repeat(64), rows: job.rows, generatedAt: AT }));
+  };
+  const fromViews = () => withTenantWrite(target.pool, ORG, (db) => summariseV7JobFromViews(db, viewPool, { organisationId: ORG, legacyJobNumber: JOB, generatedAt: AT }));
+  const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+  const consolePrint = async () => (await target.pool.query<{ p: string }>(
+    `SELECT md5(string_agg(t::text, '|' ORDER BY t::text)) AS p FROM nzi_console.job_scope_rows t`)).rows[0]!.p;
+
+  before(async () => {
+    sourceUrl = (await ensureDisposableDatabase("v7viewsrc"))!;
+    source = new pg.Client({ connectionString: sourceUrl });
+    await source.connect();
+    const rows = syntheticRows();
+    // A row a user typed by hand (a plate, a titled name, a postcode, an account number, a person) and a grey-fleet row.
+    rows.job_scope_rows.push(
+      { row_id: "1008", job_id: "100", scope: "Scope 1", original_id: "7_400_4001_5_1", qty: "40", uom: "litres", factor: "2.5", ghg_unit: "kgCO2e", enabled: "t",
+        site_id: "11", factor_db_id: "552", dataset_id: "7", category: "Company vehicles", level_1: "Fuels", level_2: "Liquid fuels", level_3: "Van ZZ12 ABC for Mr Smith",
+        column_text: "Leeds depot, LS1 4AB", report_label: `Fuel card 12345678 — ${SENTINELS[0]} Person`, data_source: "Company Data", is_custom_entry: "t" },
+      { row_id: "1009", job_id: "100", scope: "Scope 3", original_id: "7_430_4300_2_1", qty: "120", uom: "km", factor: "0.1", ghg_unit: "kgCO2e", enabled: "t",
+        site_id: "11", factor_db_id: "570", dataset_id: "7", level_1: "Grey fleet", level_2: "Cars (by size)", report_label: `${SENTINELS[0]} Person's own car`, data_source: "Company Data" });
+    for (const table of V7_TABLES) {
+      const contract = [...EXTRACT_CONTRACT[table].required, ...EXTRACT_CONTRACT[table].optional].filter((column) => !(table === "job_scope_rows" && column.startsWith("reference_")));
+      // v7's own free text beside the contract's columns — names, notes, descriptions — so a view that reached for it would show.
+      const extra = [...new Set(rows[table].flatMap((row) => Object.keys(row)))].filter((column) => !contract.includes(column));
+      const columns = [...contract, ...extra];
+      await source.query(`CREATE TABLE public.${table} (${columns.map((column) =>
+        `${column} ${(table === "job_plan" && JOB_PLAN_TYPE(column)) || (BOOLEAN.has(column) ? "boolean" : INTEGER.has(column) ? "integer" : "text")}`).join(", ")})`);
+      for (const row of rows[table]) {
+        const present = columns.filter((column) => row[column] !== undefined);
+        await source.query(`INSERT INTO public.${table} (${present.join(",")}) VALUES (${present.map((_, index) => `$${index + 1}`).join(",")})`, present.map((column) => row[column]));
+      }
+    }
+    await source.query(`CREATE TABLE public.factor_lookup (db_id integer, dataset_id text, scope text, original_id text, factor numeric, ghg_unit text,
+      level_1 text, level_2 text, level_3 text, column_text text)`);
+    await source.query(`INSERT INTO public.factor_lookup VALUES (1,'7','Scope 1','7_400_4000_5_1',0.18,'kgCO2e',NULL,NULL,NULL,NULL), (2,'7','Scope 1','TOKEN-1',5,' tCO2e ',NULL,NULL,NULL,NULL),
+      (551,'7','Scope 1','TAX-551',0.18,'kgCO2e','Fuels','Gaseous fuels','Natural gas',NULL), (552,'7','Scope 1','TAX-552',2.5,'kgCO2e','Fuels','Liquid fuels','Diesel',NULL),
+      (555,'7','Scope 2','TAX-555',0.2,'kgCO2e','UK electricity','Electricity generated','Electricity: UK',NULL), (560,'7','Scope 3','TAX-560',0.3,'kgCO2e','Spend','Land transport',NULL,NULL),
+      (570,'7','Scope 3','TAX-570',0.1,'kgCO2e','Business travel- land','Cars (by size)','Average car',NULL), (580,'7','Scope 3','TAX-580',0.15,'kgCO2e','Business travel- land','Rail','National rail',NULL)`);
+    await source.query(VIEW_SQL);
+    await source.query(`ALTER ROLE cc_import_view PASSWORD 'test-only-view'`);
+    const viewUrl = new URL(sourceUrl);
+    viewUrl.username = "cc_import_view";
+    viewUrl.password = "test-only-view";
+    viewPool = new pg.Pool({ connectionString: viewUrl.toString(), max: 2 });
+
+    // The job as the import loaded it from an extract; then v7 moves on: a figure changes, a row goes, a row arrives.
+    target = (await createDisposableDatabase("v7viewcon"))!;
+    const whole = await takeExtract(null);
+    const plan = planV7ClientImport({ extract: whole.extract, headers: whole.headers, extractSha256: "0".repeat(64), organisationId: ORG });
+    assert.deepEqual(plan.refusals, []);
+    await loadV7ClientPlan(target.pool, plan, { commit: true, runId: "view-load" });
+    await source.query(`UPDATE public.job_scope_rows SET qty = '12000' WHERE row_id = '1000'`);
+    await source.query(`DELETE FROM public.job_scope_rows WHERE row_id = '1006'`);
+    await source.query(`INSERT INTO public.job_scope_rows (row_id, job_id, scope, original_id, qty, uom, factor, ghg_unit, enabled, site_id, dataset_id, factor_db_id,
+      level_1, level_2, report_label, data_source) VALUES ('1010','100','Scope 1','7_400_4000_5_1','500','kWh','0.18','kgCO2e',true,'11','7','551','Fuels','Gaseous fuels','Natural gas','Company Data')`);
+  });
+  after(async () => { await viewPool?.end(); await source?.end(); await target?.end(); });
+
+  it("applies idempotently, and cc_import_view reads the view set — and nothing else, and writes nothing", async () => {
+    await source.query(VIEW_SQL);
+    const client = await viewPool.connect();
+    try {
+      assert.ok(Number((await client.query(`SELECT count(*) AS n FROM v7_import.scope_rows`)).rows[0].n) > 0);
+      await guardV7ImportViews(client);
+      await assert.rejects(client.query(`SELECT client_name FROM public.clients`), /permission denied/);
+      await assert.rejects(client.query(`SELECT notes FROM public.job_scope_rows`), /permission denied/);
+      await assert.rejects(client.query(`UPDATE v7_import.datasets SET version = 'x'`), /read-only transaction|permission denied/);
+      assert.equal((await client.query(`SHOW default_transaction_read_only`)).rows[0].default_transaction_read_only, "on");
+    } finally {
+      client.release();
+    }
+  });
+
+  it("the label rule: SQL and TypeScript give the same output on every shared fixture", async () => {
+    for (const fixture of LABEL_FIXTURES) {
+      const { context } = fixture;
+      const sql = (await source.query(`SELECT v7_import.sanitise_label($1, $2, $3, $4, $5, $6) AS s`,
+        [fixture.value, fixture.allowed, context.personLinked, context.factorLabel, context.base, context.siteId])).rows[0].s;
+      assert.equal(sql, sanitiseV7ImportLabel(fixture.value, fixture.allowed, context), fixture.why);
+      assert.equal(sql, fixture.expected, fixture.why);
+    }
+    for (const { value } of PII_FIXTURES) {
+      assert.equal((await source.query(`SELECT v7_import.label_has_pii($1) AS p`, [value])).rows[0].p, v7ImportLabelHasPii(value), value);
+    }
+  });
+
+  it("no PII leaves: no view, no row, no column carries it — and the count-only check passes", async () => {
+    const client = await viewPool.connect();
+    try {
+      for (const view of Object.keys(V7_IMPORT_VIEW_CONTRACT)) {
+        const text = (await client.query(`SELECT t::text AS row FROM v7_import.${view} t`)).rows.map((row) => row.row as string).join("\n");
+        for (const never of NEVER) assert.ok(!text.includes(never), `v7_import.${view} carries "${never}"`);
+      }
+      const labels = Object.fromEntries((await client.query(`SELECT row_id, category, level_1, level_3, column_text, report_label FROM v7_import.scope_rows WHERE row_id IN ('1005','1008','1009')`)).rows
+        .map((row) => [row.row_id, [row.category, row.level_1, row.level_3, row.column_text, row.report_label]]));
+      assert.deepEqual(labels["1008"], ["Fuels — site 11", "Fuels", "Fuels — site 11", "Fuels — site 11", "Fuels — site 11"], "free text replaced by <category> — site <id>");
+      assert.deepEqual(labels["1009"], [null, "Average car", null, null, "Average car"], "grey fleet: the factor's own text, not the person");
+      assert.deepEqual(labels["1005"], [null, "Business travel- land", null, null, "Average car"], "commuting: the factor's own text");
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const check = await checkV7ImportViews(client);
+      await client.query("ROLLBACK");
+      assert.equal(check.passed, true);
+      assert.ok(Object.values(check.piiHits).every((count) => count === 0));
+      assert.equal(check.labels.unexplained, 0);
+      assert.equal(check.grantsOutsideTheSet, 0);
+      assert.ok(check.labels.generalised >= 3 && check.labels.scrubbedToSite >= 1 && check.labels.allowListed >= 1, JSON.stringify(check.labels));
+    } finally {
+      client.release();
+    }
+  });
+
+  it("the guard refuses a column, a view or a gap the contract does not name — before anything is read", async () => {
+    await source.query("BEGIN");
+    try {
+      const refused = async (change: string, expected: RegExp) => {
+        await source.query("SAVEPOINT g");
+        await source.query(change);
+        await assert.rejects(guardV7ImportViews(source), (error: unknown) => {
+          assert.deepEqual(codes(error), ["VIEW_NOT_AS_CONTRACTED"]);
+          assert.match((error as CommandValidationError).issues[0]!.message, expected);
+          return true;
+        });
+        await assert.rejects(readV7JobFromViews(source, JOB), (error: unknown) => codes(error)[0] === "VIEW_NOT_AS_CONTRACTED");
+        await source.query("ROLLBACK TO SAVEPOINT g");
+      };
+      await refused(`CREATE OR REPLACE VIEW v7_import.clients AS SELECT c.db_id, c.status, c.archived, c.client_name FROM public.clients c`, /clients\.client_name \(not in the contract\)/);
+      await refused(`CREATE VIEW v7_import.contacts AS SELECT full_name, email FROM public.client_contacts`, /contacts \(not in the contract\)/);
+      await refused(`DROP VIEW v7_import.datasets`, /datasets \(missing\)/);
+      await guardV7ImportViews(source);
+    } finally {
+      await source.query("ROLLBACK");
+    }
+  });
+
+  it("plans the job off the views exactly as off the extract — the labels the rule replaced aside", async () => {
+    const viewJob = await withV7ViewSnapshot(viewPool, async (db) => planV7JobFromViews(await readV7JobFromViews(db, JOB), JOB, ORG));
+    const extracted = await extractJob();
+    const unlabelled = (rows: typeof viewJob.rows) => rows.map((row) => ({ ...row, sourceLabel: null, reportLabel: null, level1: null, level2: null, level3: null, level4: null, columnText: null }));
+    assert.deepEqual(unlabelled(viewJob.rows), unlabelled(extracted.rows), "every figure, code, flag, evidence id and lineage the same");
+    const label = (rows: typeof viewJob.rows, id: string) => rows.find((row) => row.legacyDbId === id)!.reportLabel;
+    assert.equal(label(viewJob.rows, "1000"), label(extracted.rows, "1000"), "taxonomy text crosses as it is");
+    assert.equal(label(viewJob.rows, "1008"), "Fuels — site 11");
+    await assert.rejects(withV7ViewSnapshot(viewPool, (db) => readV7JobFromViews(db, "J000701")), (error: unknown) => codes(error)[0] === "NOT_ONE_JOB", "a prospect's job is not in the view set");
+  });
+
+  it("the server-side diff off the views equals the extract-based summary, and writes nothing on either side", async () => {
+    const before = await consolePrint();
+    const extracted = await fromExtract();
+    const viewed = await fromViews();
+    assert.deepEqual({ ...viewed, extractSha256: "-" }, { ...extracted, extractSha256: "-" }, "the same rows, statuses, figures, Σ per scope and verdict");
+    assert.match(viewed.extractSha256, /^[0-9a-f]{64}$/);
+    const status = Object.fromEntries(viewed.rows.map((row) => [row.legacyDbId, row.status]));
+    assert.deepEqual([status["1000"], status["1006"], status["1010"], status["1008"], status["1009"], status["source:5001"]], ["changed", "withdrawn", "new", "matched", "matched", "matched"]);
+    assert.equal(await consolePrint(), before, "the console's rows untouched");
+  });
+
+  it("a label changed only inside free text reads as unchanged off the views — the rule's stated cost", async () => {
+    await source.query(`UPDATE public.job_scope_rows SET report_label = 'Fuel card — another person' WHERE row_id = '1008'`);
+    try {
+      const extracted = await fromExtract();
+      const viewed = await fromViews();
+      const of = (summary: typeof viewed) => summary.rows.find((row) => row.legacyDbId === "1008")!.status;
+      assert.deepEqual([of(extracted), of(viewed)], ["changed", "matched"]);
+    } finally {
+      await source.query(`UPDATE public.job_scope_rows SET report_label = $1 WHERE row_id = '1008'`, [`Fuel card 12345678 — ${SENTINELS[0]} Person`]);
+    }
   });
 });
