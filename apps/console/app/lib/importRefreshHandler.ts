@@ -1,6 +1,7 @@
-import { V7ImportViewConnectionRefused, type commitV7ImportRefresh, type previewV7ImportRefresh, type StaffPrincipal, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "@nzi/isolated-backend";
+import { V7ImportViewConnectionRefused, type commitV7ImportRefresh, type previewV7ImportRefresh, type refreshV7ImportFastPath, type StaffPrincipal, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "@nzi/isolated-backend";
 import type { CommandContext, CommandInputMap } from "@nzi/contracts";
 import { PlanDirectoryMissing } from "./importRefreshPlan";
+import type { FastPathOutcome } from "../jobs/importRefreshView";
 
 /**
  * POST /api/isolated/jobs/[jobId]/import-refresh — `import.refresh` from the console (BRIEF-v7-import-server-side-phase-c §2).
@@ -14,7 +15,8 @@ import { PlanDirectoryMissing } from "./importRefreshPlan";
  *      project, no TLS), or no plan directory, and the command never runs — 503, nothing read, nothing written. The detail goes
  *      to the server log, not the screen.
  *   4. The command: `preview` (rolled back; its result is the reply) or `commit` (a reason, and the two fingerprints the
- *      preview showed — the command refuses SUMMARY_MOVED / DECISIONS_MOVED, and the Admin gate when the policy is set).
+ *      preview showed — the command refuses SUMMARY_MOVED / DECISIONS_MOVED, and the Admin gate when the policy is set) — or
+ *      `auto` (Phase D): the preview, then the commit with the system reason only when the job is fast-path eligible.
  */
 export type ImportRefreshDeps = {
   principal: (request: Request) => Promise<StaffPrincipal>;
@@ -25,6 +27,8 @@ export type ImportRefreshDeps = {
   options: (jobId: string, principal: StaffPrincipal) => Promise<V7ImportRefreshOptions>;
   preview: typeof previewV7ImportRefresh;
   commit: typeof commitV7ImportRefresh;
+  /** Phase D: the preview, and the commit with the system reason when the job is eligible (`refreshV7ImportFastPath`). */
+  fastPath: typeof refreshV7ImportFastPath;
   success: (outcome: { data: Record<string, unknown>; auditEventId: string; correlationId: string; replayed: boolean }) => Response;
   failure: (error: unknown) => Response;
   log?: (message: string, error: unknown) => void;
@@ -55,6 +59,15 @@ export async function handleImportRefresh(request: Request, jobId: string, deps:
     if (rest.mode === "commit") {
       const input = { ...rest, jobId } as Extract<CommandInputMap["import.refresh"], { mode: "commit" }>;
       return deps.success(await deps.commit(deps.pool(), source, input, context, options));
+    }
+    // Phase D: one action. `auto` is the route's, never the command's — the command still sees a preview, then (eligible) a
+    // commit, each with its own unchanged input. A body that names anything else alongside it is refused, not ignored.
+    if (rest.mode === "auto") {
+      if (Object.keys(rest).length !== 1) return invalid("UNKNOWN_FIELD", "A refresh in one action names the job only.");
+      const result = await deps.fastPath(deps.pool(), source, jobId, context, options);
+      const data: FastPathOutcome = result; // the panel reads exactly what the backend returns
+      return Response.json({ data, ...(result.fastPath === "refreshed" ? { auditEventId: result.auditEventId, correlationId: result.correlationId } : {}) },
+        { status: result.fastPath === "refreshed" && !result.replayed ? 201 : 200, headers: { "Cache-Control": "private, no-store" } });
     }
     // Anything that is not a commit is validated as a preview: an unknown mode or key is the command's own refusal.
     const input = { ...rest, jobId } as Extract<CommandInputMap["import.refresh"], { mode: "preview" }>;

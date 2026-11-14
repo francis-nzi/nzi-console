@@ -324,4 +324,8 @@ export {
   commitV7ImportRefresh, committedV7CrosswalkPlan, previewV7ImportRefresh, v7ImportRefreshSummarySha256, v7ImportViewSource,
   type V7ImportRefreshOptions, type V7ImportRefreshSource,
 } from "./v7ImportRefresh";
+export {
+  readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON, v7ImportFastPathBlockers,
+  type V7ImportFastPathBlocker, type V7ImportFastPathResult, type V7ImportFastPathSignals,
+} from "./v7ImportFastPath";
 export { createV7ImportViewPool, summariseV7JobFromViews, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "./v7ImportView";

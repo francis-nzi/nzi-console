@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { V7ImportIngestStage, V7ImportRefreshException, V7ImportRefreshPreview, V7ImportScope } from "@nzi/contracts";
+import type { V7ImportIngestStage, V7ImportRefreshCommitted, V7ImportRefreshException, V7ImportRefreshPreview, V7ImportScope } from "@nzi/contracts";
 import { STATUS_LABEL, VERDICT_LABEL } from "../admin/import/ImportReconciliation";
 
 /**
@@ -42,6 +42,41 @@ const RESOLUTION_LABEL: Record<V7ImportRefreshException["resolution"], string> =
 };
 const t = (value: number) => (Math.round(value * 1e6) / 1e6).toLocaleString("en-GB", { maximumFractionDigits: 6 });
 
+function ScopeTotals({ totals }: { totals: Extract<ImportRefreshView, { kind: "ready" }>["totals"] }) {
+  return <div className="nz-table-wrap"><table className="nz-tbl">
+    <thead><tr><th>Scope</th><th>Previous system (tCO2e)</th><th>Live (tCO2e)</th></tr></thead>
+    <tbody>{totals.map((row) => <tr key={row.scope} data-scope={row.scope}><td>Scope {row.scope}</td><td>{t(row.previous)}</td><td>{t(row.live)}</td></tr>)}</tbody>
+  </table></div>;
+}
+
+/** Phase D (R-4): what one action did. `refreshed` — committed with the system reason; `deliberate` — Phase C's flow, and why. */
+export type FastPathBlocker = "issued-report" | "manual-edits" | "flagged" | "admin-commits";
+export type FastPathOutcome =
+  | { fastPath: "refreshed"; preview: V7ImportRefreshPreview; committed: V7ImportRefreshCommitted; auditEventId: string }
+  | { fastPath: "deliberate"; preview: V7ImportRefreshPreview; because: FastPathBlocker[]; flagged: number };
+
+export const REFRESHED_AUTOMATICALLY = "Refreshed automatically";
+
+/** The one line saying why a refresh was not automatic; null when there is nothing to say (a clean job: nothing to refresh). */
+export function notAutomaticLine(outcome: Extract<FastPathOutcome, { fastPath: "deliberate" }>): string | null {
+  if (refreshViewOf(outcome.preview).kind === "nothing") return null;
+  const parts = outcome.because.map((blocker) => blocker === "issued-report" ? "issued report"
+    : blocker === "manual-edits" ? "manual edits"
+      : blocker === "admin-commits" ? "an Admin commits on this organisation"
+        : outcome.flagged > 0 ? `${outcome.flagged} flagged` : "it would not reconcile");
+  return parts.length ? `Not automatic: ${parts.join(" · ")}.` : null;
+}
+
+/** An eligible job, refreshed in one action: Σ previous system against Σ live per scope, and the audit id. */
+export function FastPathRefreshedView({ outcome }: { outcome: Extract<FastPathOutcome, { fastPath: "refreshed" }> }) {
+  const view = refreshViewOf(outcome.preview);
+  return <div data-refresh="refreshed">
+    <div className="nz-banner ok" role="status"><div><b>{REFRESHED_AUTOMATICALLY}.</b> No issued report, no manual edits, nothing flagged: the job&rsquo;s rows now match the previous system; the new rows wait for a reviewer&rsquo;s attest.</div></div>
+    {view.kind === "ready" ? <ScopeTotals totals={view.totals} /> : null}
+    <div className="sub">Audit {outcome.auditEventId}</div>
+  </div>;
+}
+
 /** What one preview shows. `resolve` (for a resolver) and `commit` (on a ready preview) are the panel's own controls. */
 export function ImportRefreshPreviewView({ preview, resolve, commit }: { preview: V7ImportRefreshPreview; resolve?: ReactNode; commit?: ReactNode }) {
   const view = refreshViewOf(preview);
@@ -70,10 +105,7 @@ export function ImportRefreshPreviewView({ preview, resolve, commit }: { preview
   }
   return <div data-refresh="ready">
     <div className="nz-banner ok" role="status"><div>Ready: the live rows reconcile to the previous system in every scope. Nothing has been written yet.</div></div>
-    <div className="nz-table-wrap"><table className="nz-tbl">
-      <thead><tr><th>Scope</th><th>Previous system (tCO2e)</th><th>Live (tCO2e)</th></tr></thead>
-      <tbody>{view.totals.map((row) => <tr key={row.scope} data-scope={row.scope}><td>Scope {row.scope}</td><td>{t(row.previous)}</td><td>{t(row.live)}</td></tr>)}</tbody>
-    </table></div>
+    <ScopeTotals totals={view.totals} />
     {preview.chain.resync ? <div className="sub">Re-sync: {preview.chain.resync.unchanged} unchanged · {preview.chain.resync.superseded} superseded · {preview.chain.resync.added} added · {preview.chain.resync.withdrawn} withdrawn{preview.chain.plan ? ` · plan: ${preview.chain.plan.committed} from the committed plan, ${preview.chain.plan.decided} from decisions` : ""}</div> : null}
     {commit}
   </div>;

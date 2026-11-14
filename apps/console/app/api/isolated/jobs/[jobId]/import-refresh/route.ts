@@ -1,4 +1,4 @@
-import { commitV7ImportRefresh, previewV7ImportRefresh, requireCapability, withTenantRead } from "@nzi/isolated-backend";
+import { commitV7ImportRefresh, previewV7ImportRefresh, refreshV7ImportFastPath, requireCapability, withTenantRead } from "@nzi/isolated-backend";
 import { authFailure } from "../../../../../lib/authResponse";
 import { requireCommandPrincipal } from "../../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../../lib/commandResponse";
@@ -31,6 +31,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
     options: async (id, principal) => importRefreshPlanOptions(id, await withTenantRead(isolatedPool(), principal.organisationId, async (db) =>
       (await db.query<{ legacy_job_number: string | null }>(`SELECT legacy_job_number FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`,
         [principal.organisationId, id])).rows[0]?.legacy_job_number ?? null)),
-    preview: previewV7ImportRefresh, commit: commitV7ImportRefresh, success: commandSuccess, failure: commandFailure,
+    preview: previewV7ImportRefresh, commit: commitV7ImportRefresh, fastPath: refreshV7ImportFastPath, success: commandSuccess, failure: commandFailure,
   });
 }

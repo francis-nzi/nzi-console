@@ -19,6 +19,7 @@ import { clearV7ImportDecision, listV7ImportFactorOptions, listV7ImportWorkbench
 import { ingestV7ImportJob, readV7ImportIngestState, recordV7ImportRehearsal, rehearseV7ImportIngest, summariseV7JobAsTheChainSees, v7ImportDecisionsSha256 } from "../src/v7ImportIngest";
 import { commitV7ImportRefresh, previewV7ImportRefresh, v7ImportRefreshSummarySha256, type V7ImportRefreshSource } from "../src/v7ImportRefresh";
 import { readImportPolicy, setOrganisationImportPolicy } from "../src/organisationSettings";
+import { readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON } from "../src/v7ImportFastPath";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -1289,6 +1290,15 @@ describe("the import refresh, server-side: one command, a rolled-back preview an
     assert.deepEqual(audit.map((row) => [row.before_json, row.after_json.refreshCommitRequiresAdmin]), [[{ refreshCommitRequiresAdmin: false }, true], [{ refreshCommitRequiresAdmin: true }, false]]);
   });
 
+  it("Phase D: a job with decisions is not fast-path — manual edits — even though it would commit; the fast path falls back and writes nothing", async () => {
+    const before = await fingerprint();
+    const result = await refreshV7ImportFastPath(database.pool, source, JOB_A, context("consultant"), options);
+    assert.equal(result.fastPath, "deliberate");
+    if (result.fastPath !== "deliberate") return;
+    assert.deepEqual([result.because, result.preview.outcome, result.preview.exceptions], [["manual-edits"], "would-commit", []]);
+    assert.deepEqual(await fingerprint(), before, "the deliberate fallback is a preview: nothing written");
+  });
+
   it("the CRM commits: the standing run reverted, the job re-synced and re-ingested from its decisions, equal to the previous system per scope — recorded, audited without figures", async () => {
     const outcome = await commit({ summarySha256: shown.summarySha256, decisionsSha256: shown.decisionsSha256 });
     const { reingestRunId, resyncRunId, sessionId, ingestId } = outcome.data;
@@ -1323,5 +1333,160 @@ describe("the import refresh, server-side: one command, a rolled-back preview an
       counts: { matched: 0, changed: 0, needsMapping: 0, new: 0, withdrawn: 0, linkedPairChanged: 0 }, scopeTotals: {}, verdict: "clean" } as unknown as V7ImportSummary;
     assert.equal(v7ImportRefreshSummarySha256(base), v7ImportRefreshSummarySha256({ ...base, generatedAt: "2026-11-14T09:00:00.000Z" }));
     assert.notEqual(v7ImportRefreshSummarySha256(base), v7ImportRefreshSummarySha256({ ...base, extractSha256: "f".repeat(64) }));
+  });
+});
+
+/**
+ * Phase D (BRIEF-v7-import-server-side-phase-d; R-4): the fast path. Each organisation holds one J000901 as J000669 stood —
+ * migrated, re-ingested by the system — and the previous system now has the gas figures amended (auto-accepted: no decision
+ * needed), water and refrigerant unchanged. So it would commit with zero exceptions; each test takes one eligibility away.
+ */
+describe("the import refresh's fast path: eligible jobs refresh in one action, every other one falls back to the deliberate flow", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  const context = (org: string, role: "admin" | "consultant" = "consultant", actorId = `staff-${role}`, reason?: string): CommandContext => {
+    keys += 1;
+    return { organisationId: org, actorId, principal: "staff", idempotencyKey: `fp-${keys}`, correlationId: `fp-corr-${keys}`, ...(reason ? { reason } : {}),
+      grant: commandGrantForRole(role, org, actorId) };
+  };
+  const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+  const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
+  const FP_NOW = [GAS_NOW, WATER, REFRIGERANT].map(plannedRow);
+  const source: V7ImportRefreshSource = async () => ({ sourceSha256: "e".repeat(64), rows: FP_NOW });
+  const options = { basePlan: withoutRun(PLAN_BEFORE("x")) };
+  const fast = (org: string, ctx = context(org), opts: Parameters<typeof refreshV7ImportFastPath>[4] = options) => refreshV7ImportFastPath(database.pool, source, JOB_A, ctx, opts);
+  const fingerprint = async () => {
+    const tables = (await db.query<{ t: string }>(`SELECT tablename AS t FROM pg_tables WHERE schemaname = 'nzi_console' ORDER BY tablename`)).rows.map((row) => row.t);
+    const prints: Record<string, string> = {};
+    for (const table of tables) prints[table] = (await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) AS p FROM nzi_console.${table} t`)).rows[0]!.p;
+    return prints;
+  };
+  const refreshedEvents = async (org: string) => (await db.query<{ actor_id: string; reason: string; after_json: unknown }>(
+    `SELECT actor_id, reason, after_json FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.refreshed' AND entity_id = $2`, [org, JOB_A])).rows;
+  /** A person's edit of one of the job's rows, as any scope-row command audits it (staff principal, entity scope_row). */
+  const personEdits = (client: { query: pg.Client["query"] }, org: string) => client.query(
+    `INSERT INTO nzi_console.audit_events (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, reason, after_json)
+     SELECT $1, $2, 'staff-consultant', 'staff', 'scopeRow.update', 'scope_row', scope_row_id, $2, 'a correction (test)', '{}'::jsonb
+       FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $3 AND origin = 'live' AND enabled LIMIT 1`, [org, randomUUID(), JOB_A]);
+  const ORGS = ["fp-eligible", "fp-issued", "fp-edited", "fp-gated", "fp-d7", "fp-race"] as const;
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7fastpath"))!;
+    db = await database.admin();
+    for (const [at, org] of ORGS.entries()) {
+      await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [org]);
+      await db.query(`SELECT nzi_console.provision_organisation($1)`, [org]);
+      await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [org]);
+      await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'c1','Fast Path Test','active')`, [org]);
+      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+        VALUES ($1,$2,'c1',$3,'crp','CRP','open','Data entry',2025,'2025-01-01','2025-12-31','nzi-pro-v7','901','J000901')`, [org, JOB_A, 9100 + at]);
+      await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [org, JOB_A]);
+      await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                      VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [org]);
+      for (const [id, label, unit, kg, scope, levels] of [["gas", "Natural gas", "kWh", 0.2, "1", ["Fuels", "Gaseous fuels", "Natural gas"]], ["water", "Water supply", "m3", 0.15, "3", []],
+        ["lpg", "LPG", "litres", 0.2, "1", ["Fuels", "Gaseous fuels", "LPG"]]] as const) {
+        await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
+          [org, id, label, unit, kg, scope, levels]);
+      }
+      for (const row of BEFORE) await insert(db, "job_scope_rows", [
+        { column: "organisation_id", value: org, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+        { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(JOB_A, row)]);
+      const standing = `v7-reingest-${randomUUID()}`;
+      await withTenantWrite(database.pool, org, (client) => reingestV7JobInTransaction(client, { ...PLAN_BEFORE(standing) },
+        { organisationId: org, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+          reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", org, V7_REINGEST_ACTOR) }));
+    }
+    await db.query(`SELECT set_config('app.organisation_id', 'fp-issued', false)`);
+    // The previous system issued a report for the job (0135): kept as a sealed record of account.
+    await db.query(`INSERT INTO nzi_console.legacy_report_versions (organisation_id, legacy_report_id, job_id, kind, source_system, legacy_db_id, version_number, legacy_status,
+      finalized_at, content_key_wrapped, imported_by) VALUES ('fp-issued', 'lr-1', $1, 'report', 'nzi-pro-v7', '77', 1, 'final', now(), '{"ciphertext":"x","iv":"y","tag":"z"}'::jsonb, 'policy:v7-import')`, [JOB_A]);
+    await db.query(`SELECT set_config('app.organisation_id', 'fp-edited', false)`);
+    await personEdits(db, "fp-edited");
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("the signals, read as the job stands: nothing issued and nothing edited on a job only the import has written; each fixture moves one", async () => {
+    const signals = (org: string) => withTenantRead(database.pool, org, (client) => readV7ImportFastPathSignals(client, org, JOB_A));
+    assert.deepEqual(await signals("fp-eligible"), { issuedReport: false, manualEdits: false }, "the re-ingest's own rows — its reported-total override included — are not a person's");
+    assert.deepEqual(await signals("fp-issued"), { issuedReport: true, manualEdits: false });
+    assert.deepEqual(await signals("fp-edited"), { issuedReport: false, manualEdits: true });
+  });
+
+  it("an eligible job auto-commits: one action, the system reason audited, Σ live = Σ previous system per scope — no human step", async () => {
+    const result = await fast("fp-eligible");
+    assert.equal(result.fastPath, "refreshed", JSON.stringify(result.fastPath === "deliberate" ? [result.because, result.preview.refusal] : null));
+    if (result.fastPath !== "refreshed") return;
+    assert.deepEqual([result.preview.outcome, result.preview.exceptions, result.committed.mode], ["would-commit", [], "commit"]);
+    assert.deepEqual(result.preview.scopeTotals, { "1": { v7Tco2e: 2.43, liveTco2e: 2.43 }, "2": { v7Tco2e: 0, liveTco2e: 0 }, "3": { v7Tco2e: 0.0015, liveTco2e: 0.0015 } });
+    const live = (await db.query<{ scope: string; t: string }>(`SELECT split_part(scope, '.', 1) AS scope, sum(coalesce(override_tco2e, calculated_tco2e))::text AS t FROM nzi_console.job_scope_rows
+      WHERE organisation_id = 'fp-eligible' AND job_id = $1 AND origin = 'live' AND enabled GROUP BY 1 ORDER BY 1`, [JOB_A])).rows.map((row) => [row.scope, Math.round(Number(row.t) * 1e6) / 1e6]);
+    assert.deepEqual(live, [["1", 2.43], ["3", 0.0015]]);
+    const audit = await refreshedEvents("fp-eligible");
+    assert.equal(audit.length, 1, "one commit, audited once — the preview left nothing");
+    assert.deepEqual([audit[0]!.actor_id, audit[0]!.reason], ["staff-consultant", V7_IMPORT_FAST_PATH_REASON], "the same actor, the fixed system reason");
+    assert.ok(result.auditEventId, "the audit id, for the panel");
+    const record = (await db.query(`SELECT outcome, created_by FROM nzi_console.v7_import_ingests WHERE ingest_id = $1`, [result.committed.ingestId])).rows[0]!;
+    assert.deepEqual(record, { outcome: "committed", created_by: "staff-consultant" }, "recorded in 0229 as any commit is");
+  });
+
+  it("once refreshed, the next action finds nothing to do: deliberate, nothing flagged, nothing written", async () => {
+    const before = await fingerprint();
+    const again = await fast("fp-eligible");
+    assert.equal(again.fastPath, "deliberate");
+    if (again.fastPath !== "deliberate") return;
+    assert.deepEqual([again.preview.verdict, again.preview.refusal?.stage, again.flagged], ["clean", "ready", 0]);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("D-ELIG-1 alone — an issued report: falls back to the deliberate flow and auto-commits nothing", async () => {
+    const before = await fingerprint();
+    const result = await fast("fp-issued");
+    assert.equal(result.fastPath, "deliberate");
+    if (result.fastPath !== "deliberate") return;
+    assert.deepEqual([result.because, result.preview.outcome], [["issued-report"], "would-commit"], "it would commit; only the issued report stops it");
+    assert.deepEqual(await fingerprint(), before);
+    assert.equal((await refreshedEvents("fp-issued")).length, 0);
+  });
+
+  it("D-ELIG-2 alone — a person's edit of one of the job's rows: falls back and auto-commits nothing", async () => {
+    const before = await fingerprint();
+    const result = await fast("fp-edited");
+    assert.equal(result.fastPath, "deliberate");
+    if (result.fastPath !== "deliberate") return;
+    assert.deepEqual([result.because, result.preview.outcome], [["manual-edits"], "would-commit"]);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("D-ELIG-3 — D7 refuses an otherwise-eligible job (water planned on a per-litre factor): refused, nothing written, the reason 'flagged'", async () => {
+    const before = await fingerprint();
+    const wrong = withoutRun(PLAN_BEFORE("x"));
+    const plan = { ...wrong, rows: wrong.rows.map((row) => row.v7RowId === "v7-row-1002" ? { ...row, factorId: "lpg" } : row) };
+    const result = await fast("fp-d7", context("fp-d7"), { basePlan: plan });
+    assert.equal(result.fastPath, "deliberate");
+    if (result.fastPath !== "deliberate") return;
+    assert.deepEqual([result.because, result.flagged, result.preview.outcome, result.preview.refusal?.stage, result.preview.exceptions], [["flagged"], 0, "refused", "reingest", []]);
+    assert.deepEqual(await fingerprint(), before);
+    assert.equal((await refreshedEvents("fp-d7")).length, 0);
+  });
+
+  it("the Admin-commit gate wins: set, a CRM's eligible job does not auto-commit; an Admin's does", async () => {
+    await setOrganisationImportPolicy(database.pool, { refreshCommitRequiresAdmin: true, expectedVersion: 0 }, context("fp-gated", "admin", "staff-admin", "Admins commit (test)"));
+    const before = await fingerprint();
+    const crm = await fast("fp-gated");
+    assert.equal(crm.fastPath, "deliberate");
+    if (crm.fastPath !== "deliberate") return;
+    assert.deepEqual([crm.because, crm.preview.outcome], [["admin-commits"], "would-commit"]);
+    assert.deepEqual(await fingerprint(), before, "the CRM's action wrote nothing");
+    const admin = await fast("fp-gated", context("fp-gated", "admin"));
+    assert.equal(admin.fastPath, "refreshed");
+    assert.deepEqual((await refreshedEvents("fp-gated")).map((row) => [row.actor_id, row.reason]), [["staff-admin", V7_IMPORT_FAST_PATH_REASON]]);
+  });
+
+  it("re-checked in the commit's own transaction: an edit landing after the preview refuses FAST_PATH_INELIGIBLE, and nothing is written — the edit's own row included", async () => {
+    const before = await fingerprint();
+    await assert.rejects(fast("fp-race", context("fp-race"), { ...options, within: async (client, at) => { if (at === "commit") await personEdits(client as never, "fp-race"); } }),
+      (error) => codes(error).includes("FAST_PATH_INELIGIBLE"));
+    assert.deepEqual(await fingerprint(), before);
   });
 });
