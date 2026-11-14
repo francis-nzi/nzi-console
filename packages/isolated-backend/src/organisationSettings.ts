@@ -404,3 +404,48 @@ export function setOrganisationApprovalPolicy(pool: PoolLike, input: CommandInpu
       entityType: "organisation", entityId: org, topic: "organisation.approvalPolicy.set", before: { requireIndependentApproval: before } };
   });
 }
+
+export type ImportPolicy = { refreshCommitRequiresAdmin: boolean; version: number; updatedBy: string | null; updatedAt: string | null };
+
+/**
+ * The organisation's import policy (0231), inside the caller's tenant transaction. No row = off (the ruled default: a CRM holding
+ * import.refresh commits). Throws if it cannot be read, so the refresh commit fails closed.
+ */
+export async function readImportPolicy(db: Queryable, organisationId: string): Promise<ImportPolicy> {
+  const { rows: [row] } = await db.query<{ refresh_commit_requires_admin: boolean; version: number; updated_by: string; updated_at: Date | string }>(
+    `SELECT refresh_commit_requires_admin, version, updated_by, updated_at FROM nzi_console.organisation_import_policy WHERE organisation_id = $1`, [organisationId]);
+  if (!row) return { refreshCommitRequiresAdmin: false, version: 0, updatedBy: null, updatedAt: null };
+  return { refreshCommitRequiresAdmin: row.refresh_commit_requires_admin, version: row.version, updatedBy: row.updated_by,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : String(row.updated_at) };
+}
+
+/**
+ * `organisation.importPolicy.set` (0231) — an Admin (`admin.settings`) says whether committing an import refresh needs an Admin,
+ * with the reason. 0215's pattern: the first write is `expectedVersion: 0` and creates the row, then it is pinned to the row's
+ * version; the audit event carries the old and new answer and the reason.
+ */
+export function setOrganisationImportPolicy(pool: PoolLike, input: CommandInputMap["organisation.importPolicy.set"], context: CommandContext): Promise<StoredOutcome<OrganisationResult & { refreshCommitRequiresAdmin: boolean }>> {
+  return runPostgresCommand(pool, "organisation.importPolicy.set", input, context, async (db) => {
+    const org = context.organisationId;
+    const { rows: [row] } = await db.query<{ refresh_commit_requires_admin: boolean; version: number }>(
+      `SELECT refresh_commit_requires_admin, version FROM nzi_console.organisation_import_policy WHERE organisation_id = $1 FOR UPDATE`, [org]);
+    const currentVersion = row?.version ?? 0;
+    if (currentVersion !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, currentVersion);
+    const before = row ? row.refresh_commit_requires_admin : false;
+    if (before === input.refreshCommitRequiresAdmin) throw new CommandValidationError([{ field: "refreshCommitRequiresAdmin", code: "NO_CHANGE", message: "The policy already says that." }]);
+    let version: number;
+    if (row) {
+      version = (await db.query<{ version: number }>(
+        `UPDATE nzi_console.organisation_import_policy SET refresh_commit_requires_admin = $2, version = version + 1, updated_at = now(), updated_by = $3
+          WHERE organisation_id = $1 RETURNING version`, [org, input.refreshCommitRequiresAdmin, context.actorId])).rows[0]!.version;
+    } else {
+      const inserted = await db.query<{ version: number }>(
+        `INSERT INTO nzi_console.organisation_import_policy (organisation_id, refresh_commit_requires_admin, updated_by) VALUES ($1, $2, $3)
+         ON CONFLICT (organisation_id) DO NOTHING RETURNING version`, [org, input.refreshCommitRequiresAdmin, context.actorId]);
+      if (!inserted.rows[0]) throw new VersionConflictError(input.expectedVersion, 1);
+      version = inserted.rows[0].version;
+    }
+    return { data: { organisationId: org, version, changed: ["importPolicy"], refreshCommitRequiresAdmin: input.refreshCommitRequiresAdmin },
+      entityType: "organisation", entityId: org, topic: "organisation.importPolicy.set", before: { refreshCommitRequiresAdmin: before } };
+  });
+}

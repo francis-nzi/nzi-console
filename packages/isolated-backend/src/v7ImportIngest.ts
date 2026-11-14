@@ -65,7 +65,7 @@ export type V7ImportIngestRun = {
   basePlan: Omit<V7ReingestJobInput, "runId">;
 };
 
-type Ready = { sessionId: string; decisionsSha256: string; decisions: V7ImportDecision[]; carriedPairGroups: string[] };
+export type Ready = { sessionId: string; decisionsSha256: string; decisions: V7ImportDecision[]; carriedPairGroups: string[] };
 
 /**
  * Ready to ingest, now: the job's latest summary is of this extract and of the current format, it still describes the job's rows
@@ -93,14 +93,14 @@ async function readiness(db: Queryable, run: V7ImportIngestRun): Promise<Ready> 
 const tierFor = (unit: string | null, dataSource: unknown): ScopeQualityTier =>
   unit && isCurrencyUnit(unit) ? "spend-based" : typeof dataSource === "string" && /commuting/i.test(dataSource) ? "survey" : "measured";
 
-type PlanCounts = { committed: number; decided: number };
+export type PlanCounts = { committed: number; decided: number };
 
 /**
  * The plan, completed from the decisions: the committed plan re-planned onto the current rows, and each row the re-plan cannot
  * cover planned from its `map` — v7's current record (its label, quantity, unit, apportionment, figure) under the decision's
  * category and factor. A row with no `map`, or a `map` the re-plan would ignore, refuses: nothing is guessed.
  */
-async function completeFromDecisions(db: Queryable, run: V7ImportIngestRun, ready: Ready, replan: V7Replan, superseded: V7ResyncResult["superseded"], counts: PlanCounts):
+async function completeFromDecisions(db: Queryable, run: V7ImportIngestRun, ready: Pick<Ready, "decisions">, replan: V7Replan, superseded: V7ResyncResult["superseded"], counts: PlanCounts):
   Promise<Omit<V7ReingestJobInput, "runId">> {
   const org = run.organisationId;
   const maps = new Map(ready.decisions.filter((decision) => decision.kind === "map").map((decision) => [decision.legacyDbId, decision]));
@@ -149,18 +149,18 @@ async function completeFromDecisions(db: Queryable, run: V7ImportIngestRun, read
     vintageDatasetIds: [...new Set([...run.basePlan.vintageDatasetIds, ...used.map(({ decision }) => decision.datasetId!)])], rows };
 }
 
-/** The chain's options for this run: its carried pairs, and the plan completed from its decisions. */
-const chainOptions = (run: V7ImportIngestRun, ready: Ready, counts: PlanCounts): V7ChainOptions => ({
+/** The chain's options for this run: its carried pairs, and the plan completed from its decisions. Shared with the refresh. */
+export const chainOptions = (run: V7ImportIngestRun, ready: Pick<Ready, "decisions" | "carriedPairGroups">, counts: PlanCounts): V7ChainOptions => ({
   carriedPairGroups: ready.carriedPairGroups,
   completePlan: (db, replan, superseded) => completeFromDecisions(db, run, ready, replan, superseded, counts),
 });
-const chainInput = (run: V7ImportIngestRun): V7RehearsalInput => ({ organisationId: run.organisationId, jobId: run.jobId, reason: run.reason,
+export const chainInput = (run: V7ImportIngestRun): V7RehearsalInput => ({ organisationId: run.organisationId, jobId: run.jobId, reason: run.reason,
   resyncRunId: `v7-resync-${randomUUID()}`, extractSha256: run.extractSha256, rows: run.rows, plan: run.basePlan, reingestRunId: `v7-reingest-${randomUUID()}` });
 
-const totalsOf = (report: V7RehearsalReport): V7ImportIngestTotals | null => report.reingest
+export const totalsOf = (report: V7RehearsalReport): V7ImportIngestTotals | null => report.reingest
   ? Object.fromEntries(V7_IMPORT_SCOPES.map((scope) => [scope, { v7Tco2e: report.reingest!.scopeTotals[scope]?.v7 ?? 0, liveTco2e: report.reingest!.scopeTotals[scope]?.native ?? 0 }])) as V7ImportIngestTotals
   : null;
-const countsOf = (report: V7RehearsalReport, plan: PlanCounts | null) => ({
+export const countsOf = (report: V7RehearsalReport, plan: PlanCounts | null) => ({
   resync: report.resync ? { unchanged: report.resync.unchanged, superseded: report.resync.superseded.length, added: report.resync.added.length, withdrawn: report.resync.withdrawn.length } : null,
   plan: report.replan && plan && (plan.committed || plan.decided) ? { ...plan } : report.replan ? { committed: report.replan.rows.length, decided: 0 } : null,
 });
@@ -195,7 +195,7 @@ export async function rehearseV7ImportIngest(pool: PoolLike, run: V7ImportIngest
     counts: countsOf(report, counts), scopeTotals: refused ? null : totalsOf(report) } };
 }
 
-const insertIngest = (db: Queryable, context: CommandContext, jobId: string, kind: "rehearsal" | "ingest", record: V7ImportRehearsalRecord | (Omit<V7ImportRehearsalRecord, "outcome"> & { outcome: "committed" }),
+export const insertIngest = (db: Queryable, context: CommandContext, jobId: string, kind: "rehearsal" | "ingest", record: V7ImportRehearsalRecord | (Omit<V7ImportRehearsalRecord, "outcome"> & { outcome: "committed" }),
   runs: { resync: string; reingest: string } | null) => {
   const ingestId = `v7-ingest-${randomUUID()}`;
   const t = record.scopeTotals;

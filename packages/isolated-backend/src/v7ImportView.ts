@@ -19,9 +19,10 @@ import { verifiedTlsConfig, type TlsPoolConfig } from "./databaseTls";
 import type { Queryable } from "./postgres";
 import { CommandValidationError } from "./postgresCommands";
 import type { V7Extract, V7Row, V7Table } from "./v7ClientExtract";
-import { DEFAULT_ORGANISATION, planV7ClientImport, type PlannedJob } from "./v7ClientImport";
+import { DEFAULT_ORGANISATION, planV7ClientImport, type PlannedJob, type PlannedRow } from "./v7ClientImport";
 import { btrimV7ImportLabel, sanitiseV7ImportLabel, type V7ImportLabelContext } from "./v7ImportLabel";
 import { summariseV7JobAsTheChainSees } from "./v7ImportIngest";
+import { V7_IMPORT_LABEL_FIELDS, type V7ImportLabelComparison } from "./v7ImportSummary";
 
 export const V7_IMPORT_VIEW_SCHEMA = "v7_import";
 
@@ -186,38 +187,95 @@ export async function summariseV7JobFromViews(consoleDb: Queryable, source: Pick
   return withV7ViewSnapshot(source, async (db) => {
     const viewRead = await readV7JobFromViews(db, input.legacyJobNumber);
     const job = planV7JobFromViews(viewRead, input.legacyJobNumber, input.organisationId);
-    // The console's own labels on the job, and which of them the source's allow-list holds — the rule's one lookup.
-    const held = await consoleDb.query<Record<string, string | null>>(
-      `SELECT source_label, report_label, level_1, level_2, level_3, level_4, column_text FROM nzi_console.job_scope_rows
-        WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' AND superseded_by_row_id IS NULL`, [input.organisationId, job.jobId]);
-    const values = [...new Set(held.rows.flatMap((row) => Object.values(row)).filter((value): value is string => value !== null).map(btrimV7ImportLabel))];
-    const allowed = new Set((await read(db, `SELECT label FROM ${V7_IMPORT_VIEW_SCHEMA}.factor_labels WHERE label = ANY($1::text[])`, [values])).map((row) => row.label!));
     return summariseV7JobAsTheChainSees(consoleDb, {
       organisationId: input.organisationId, jobId: job.jobId, legacyJobNumber: input.legacyJobNumber, extractSha256: viewRead.sourceSha256,
-      rows: job.rows, generatedAt: input.generatedAt,
-      labels: { sanitise: (legacyDbId, value) => {
-        const context = viewRead.labelContexts.get(legacyDbId);
-        return context && value !== null ? sanitiseV7ImportLabel(value, allowed.has(btrimV7ImportLabel(value)), context) : value;
-      } },
+      rows: job.rows, generatedAt: input.generatedAt, labels: await labelComparison(consoleDb, db, viewRead, input.organisationId, job.jobId),
     });
+  });
+}
+
+/** The console's own labels on the job, and which of them the source's allow-list holds — the rule's one lookup. */
+async function labelComparison(consoleDb: Queryable, db: Source, viewRead: V7ImportViewRead, organisationId: string, jobId: string): Promise<V7ImportLabelComparison> {
+  const held = await consoleDb.query<Record<string, string | null>>(
+    `SELECT source_label, report_label, level_1, level_2, level_3, level_4, column_text FROM nzi_console.job_scope_rows
+      WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' AND superseded_by_row_id IS NULL`, [organisationId, jobId]);
+  const values = [...new Set(held.rows.flatMap((row) => Object.values(row)).filter((value): value is string => value !== null).map(btrimV7ImportLabel))];
+  const allowed = new Set((await read(db, `SELECT label FROM ${V7_IMPORT_VIEW_SCHEMA}.factor_labels WHERE label = ANY($1::text[])`, [values])).map((row) => row.label!));
+  return { sanitise: (legacyDbId, value) => {
+    const context = viewRead.labelContexts.get(legacyDbId);
+    return context && value !== null ? sanitiseV7ImportLabel(value, allowed.has(btrimV7ImportLabel(value)), context) : value;
+  } };
+}
+
+/**
+ * The job's rows for the chain (Phase B, `import.refresh`): read from the view set in one snapshot and planned, exactly as the
+ * summary above — and then each label the rule explains carried as the console already holds it. The re-sync compares every
+ * label column, so without this a label the rule rewrote would read as v7 moving, and the re-sync would supersede (or, in a
+ * pair, refuse) a row the summary calls matched. With it, the chain and the summary agree row for row: the summary of these
+ * rows, compared plainly, is the server-side summary (`summariseV7JobFromViews`). A label that really changed in the previous
+ * system still arrives as the rule makes it. Nothing new enters the console: a carried label is the console's own.
+ */
+export async function readV7JobRowsFromViews(consoleDb: Queryable, source: Pick<Pool, "connect">, input: { organisationId: string; jobId: string; legacyJobNumber: string }):
+  Promise<{ sourceSha256: string; rows: PlannedRow[] }> {
+  return withV7ViewSnapshot(source, async (db) => {
+    const viewRead = await readV7JobFromViews(db, input.legacyJobNumber);
+    const job = planV7JobFromViews(viewRead, input.legacyJobNumber, input.organisationId);
+    if (job.jobId !== input.jobId) refuse("JOB_MISMATCH", `${input.legacyJobNumber} is another job in the previous system than this one.`);
+    const labels = await labelComparison(consoleDb, db, viewRead, input.organisationId, job.jobId);
+    const held = new Map((await consoleDb.query<Record<string, string | null> & { legacy_db_id: string }>(
+      `SELECT legacy_db_id, ${Object.keys(V7_IMPORT_LABEL_FIELDS).join(", ")} FROM nzi_console.job_scope_rows
+        WHERE organisation_id = $1 AND job_id = $2 AND origin = 'migrated' AND superseded_by_row_id IS NULL`, [input.organisationId, job.jobId])).rows.map((row) => [row.legacy_db_id, row]));
+    const rows = job.rows.map((planned) => {
+      const was = held.get(planned.legacyDbId);
+      if (!was) return planned;
+      const carried: Partial<PlannedRow> = {};
+      for (const [column, field] of Object.entries(V7_IMPORT_LABEL_FIELDS) as Array<[keyof typeof V7_IMPORT_LABEL_FIELDS, (typeof V7_IMPORT_LABEL_FIELDS)[keyof typeof V7_IMPORT_LABEL_FIELDS]]>) {
+        const mine = was[column] ?? null, now = planned[field];
+        if (mine !== null && mine !== now && labels.sanitise(planned.legacyDbId, mine) === now) (carried as Record<string, string>)[field] = mine;
+      }
+      return Object.keys(carried).length ? { ...planned, ...carried } : planned;
+    });
+    return { sourceSha256: viewRead.sourceSha256, rows };
   });
 }
 
 export class V7ImportViewConnectionRefused extends Error {}
 
 /**
+ * A Supabase URL's project ref: the host's (`db.<ref>.supabase.co`, `<ref>.supabase.co`) or, through the shared pooler
+ * (`*.pooler.supabase.com`), the user name's suffix (`<role>.<ref>`). Null for any other URL.
+ */
+export function supabaseProjectRef(url: URL): string | null {
+  const host = url.hostname.toLowerCase();
+  const direct = /^(?:db\.)?([a-z0-9]+)\.supabase\.(?:co|com|in)$/.exec(host);
+  if (direct && !host.endsWith(".pooler.supabase.com")) return direct[1]!;
+  if (host.endsWith(".pooler.supabase.com")) {
+    const user = decodeURIComponent(url.username);
+    const at = user.lastIndexOf(".");
+    return at > 0 && at < user.length - 1 ? user.slice(at + 1).toLowerCase() : null;
+  }
+  return null;
+}
+
+/**
  * The service's one connection to the view set: NZI_V7_VIEW_URL (cc_import_view), verified TLS, no fallback to any other URL —
  * and never the console's own database. The CA is NZI_V7_VIEW_CA_CERT (or the URL's sslrootcert).
  */
-export function v7ImportViewPoolConfig(env: { NZI_V7_VIEW_URL?: string; NZI_V7_VIEW_CA_CERT?: string; NZI_ISOLATED_DATABASE_URL?: string } = process.env): PoolConfig & { description: TlsPoolConfig["description"] } {
+export function v7ImportViewPoolConfig(env: Readonly<Record<string, string | undefined>> = process.env): PoolConfig & { description: TlsPoolConfig["description"] } {
   const raw = env.NZI_V7_VIEW_URL?.trim();
   if (!raw) throw new V7ImportViewConnectionRefused("NZI_V7_VIEW_URL is not set: the import's view set is read through it alone.");
   let url: URL;
   try { url = new URL(raw); } catch { throw new V7ImportViewConnectionRefused("NZI_V7_VIEW_URL is not a database URL."); }
   if (!/^postgres(ql)?:$/.test(url.protocol)) throw new V7ImportViewConnectionRefused("NZI_V7_VIEW_URL is not a Postgres URL.");
+  // Same database = same Supabase project. Through the shared pooler every project has the same host, port and `/postgres`;
+  // only the project ref tells them apart. A URL with no ref (not Supabase) is compared by host, port and database instead.
   const same = (other: string | undefined) => {
     if (!other?.trim()) return false;
-    try { const o = new URL(other.trim()); return o.hostname === url.hostname && (o.port || "5432") === (url.port || "5432") && o.pathname === url.pathname; } catch { return false; }
+    let o: URL;
+    try { o = new URL(other.trim()); } catch { return false; }
+    const mine = supabaseProjectRef(url), theirs = supabaseProjectRef(o);
+    if (mine !== null || theirs !== null) return mine === theirs;
+    return o.hostname === url.hostname && (o.port || "5432") === (url.port || "5432") && o.pathname === url.pathname;
   };
   if (same(env.NZI_ISOLATED_DATABASE_URL)) throw new V7ImportViewConnectionRefused("NZI_V7_VIEW_URL names the console's own database; it must name the source's view set.");
   const tls = verifiedTlsConfig(url, { caCert: env.NZI_V7_VIEW_CA_CERT });

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { EXTRACT_CONTRACT, V7_TABLES, type V7Extract, type V7Row, type V7Table } from "../src/v7ClientExtract";
-import { planV7ClientImport } from "../src/v7ClientImport";
+import { planV7ClientImport, type PlannedRow } from "../src/v7ClientImport";
 // @ts-expect-error — plain .mjs, deliberately untyped: it must run with no toolchain on the extracting machine.
 import { extractSql, oneJobSql, preflightSql, v7ClientRiskSql } from "../scripts/v7-extract-sql.mjs";
 import { readFileSync } from "node:fs";
@@ -13,7 +13,11 @@ import { withTenantWrite } from "../src/postgres";
 import { CommandValidationError } from "../src/postgresCommands";
 import { summariseV7JobAsTheChainSees } from "../src/v7ImportIngest";
 import { sanitiseV7ImportLabel, v7ImportLabelHasPii } from "../src/v7ImportLabel";
-import { guardV7ImportViews, planV7JobFromViews, readV7JobFromViews, summariseV7JobFromViews, V7_IMPORT_VIEW_CONTRACT, withV7ViewSnapshot } from "../src/v7ImportView";
+import { guardV7ImportViews, planV7JobFromViews, readV7JobFromViews, readV7JobRowsFromViews, summariseV7JobFromViews, V7_IMPORT_VIEW_CONTRACT, withV7ViewSnapshot } from "../src/v7ImportView";
+import { previewV7ImportRefresh, v7ImportViewSource, type V7ImportRefreshSource } from "../src/v7ImportRefresh";
+import { resyncV7JobInTransaction, v7ResyncContext } from "../src/v7Resync";
+import { commandGrantForRole } from "@nzi/contracts";
+import { randomUUID } from "node:crypto";
 import { checkV7ImportViews } from "../scripts/v7-import-view-check";
 import { createDisposableDatabase, ensureDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 import { LABEL_FIXTURES, PII_FIXTURES } from "./support/v7ImportLabelFixtures";
@@ -457,6 +461,67 @@ describe("the import's view set, server-side: non-PII, guarded, and the extract'
       assert.deepEqual([of(extracted), of(viewed)], ["changed", "matched"]);
     } finally {
       await source.query(`UPDATE public.job_scope_rows SET report_label = $1 WHERE row_id = '1008'`, [`Fuel card 12345678 — ${SENTINELS[0]} Person`]);
+    }
+  });
+
+  // ── Phase B (BRIEF-v7-import-server-side-phase-b): the refresh's source is this view set ──────────────────────────────
+  class Rollback extends Error {}
+  /** The re-sync over these rows, as the chain runs it, in a transaction always rolled back: what it would supersede, add, withdraw. */
+  const resyncRolledBack = async (rows: readonly PlannedRow[], sourceSha256: string) => {
+    let seen: { superseded: string[]; added: string[]; withdrawn: string[] } | { refused: string[] } | null = null;
+    await withTenantWrite(target.pool, ORG, async (db) => {
+      try {
+        const done = await resyncV7JobInTransaction(db, { jobId: JOB_ID, runId: `v7-resync-${randomUUID()}`, extractSha256: sourceSha256, rows }, v7ResyncContext(ORG, "refresh source (test, rolled back)"));
+        seen = { superseded: done.superseded.map((pair) => pair.rowId).sort(), added: [...done.added].sort(), withdrawn: [...done.withdrawn].sort() };
+      } catch (error) {
+        if (!(error instanceof CommandValidationError)) throw error;
+        seen = { refused: [...new Set(codes(error))] };
+      }
+      throw new Rollback();
+    }).catch((error) => { if (!(error instanceof Rollback)) throw error; });
+    return seen!;
+  };
+
+  it("the refresh's rows off the views: compared plainly they are the server-side summary, and the re-sync moves exactly what that summary calls moved", async () => {
+    const before = await consolePrint();
+    const read = await withTenantWrite(target.pool, ORG, (db) => readV7JobRowsFromViews(db, viewPool, { organisationId: ORG, jobId: JOB_ID, legacyJobNumber: JOB }));
+    const plain = await withTenantWrite(target.pool, ORG, (db) => summariseV7JobAsTheChainSees(db,
+      { organisationId: ORG, jobId: JOB_ID, legacyJobNumber: JOB, extractSha256: read.sourceSha256, rows: read.rows, generatedAt: AT }));
+    assert.deepEqual(plain, await fromViews(), "the console's own label carried where the rule explains it: a plain comparison agrees with the rule's");
+    // The chain's re-sync over those rows supersedes the changed row only — not the rows whose labels the rule rewrote.
+    const carried = await resyncRolledBack(read.rows, read.sourceSha256);
+    assert.deepEqual(carried, { superseded: ["v7-row-1000"], added: ["v7-row-1010"], withdrawn: ["v7-row-1006"] });
+    // The control: the same rows with the rule's labels as they come off the views would move far more than the summary says.
+    const raw = await withV7ViewSnapshot(viewPool, async (db) => planV7JobFromViews(await readV7JobFromViews(db, JOB), JOB, ORG));
+    assert.deepEqual(await resyncRolledBack(raw.rows, read.sourceSha256), { ...carried, superseded: ["v7-row-1000", "v7-row-1001", "v7-row-1002", "v7-row-1003", "v7-row-1005",
+      "v7-row-1007", "v7-row-1008", "v7-row-1009", "v7-source-5001"] }, "without the carry, every rewritten label reads as the previous system moving: 9 rows superseded, not 1");
+    // A label that really changed still arrives, as the rule makes it.
+    const label = (rows: readonly PlannedRow[], id: string) => rows.find((row) => row.legacyDbId === id)!;
+    assert.equal(label(read.rows, "1010").reportLabel, "Natural gas");
+    assert.equal(await consolePrint(), before, "nothing kept on the console's side");
+    await assert.rejects(withTenantWrite(target.pool, ORG, (db) => readV7JobRowsFromViews(db, viewPool, { organisationId: ORG, jobId: "v7-job-other", legacyJobNumber: JOB })),
+      (error: unknown) => codes(error)[0] === "JOB_MISMATCH", "the J number names another job here than in the previous system");
+  });
+
+  it("a preview through import.refresh off the views is the preview off the extract's rows — the same verdict, exceptions and counts — and writes nothing", async () => {
+    const before = await consolePrint();
+    const context = (key: string) => ({ organisationId: ORG, actorId: "staff-crm", principal: "staff" as const, idempotencyKey: key, correlationId: key,
+      grant: commandGrantForRole("consultant", ORG, "staff-crm") });
+    const plan = { basePlan: { jobId: JOB_ID, crosswalkVersion: "none", crosswalkSha256: "0".repeat(64), vintageDatasetIds: [], rows: [] } };
+    const extractRows = (await extractJob()).rows;
+    const fromExtractRows: V7ImportRefreshSource = async () => ({ sourceSha256: "e".repeat(64), rows: extractRows });
+    const viewed = await previewV7ImportRefresh(target.pool, v7ImportViewSource(viewPool), { jobId: JOB_ID, mode: "preview" }, context("rf-view"), plan);
+    const extracted = await previewV7ImportRefresh(target.pool, fromExtractRows, { jobId: JOB_ID, mode: "preview" }, context("rf-extract"), plan);
+    assert.deepEqual({ ...viewed, summarySha256: "-" }, { ...extracted, summarySha256: "-" });
+    assert.deepEqual([viewed.outcome, viewed.verdict, viewed.refusal?.stage], ["refused", "needs-mapping", "ready"]);
+    assert.deepEqual(viewed.exceptions.map((row) => [row.legacyDbId, row.status]).sort(), [["1006", "withdrawn"], ["1010", "new"]]);
+    assert.equal(await consolePrint(), before);
+    const admin = await target.admin();
+    try {
+      assert.equal(Number((await admin.query(`SELECT count(*) AS n FROM nzi_console.audit_events WHERE action = 'import.refreshed'`)).rows[0].n), 0, "no audit left by a preview");
+      assert.equal(Number((await admin.query(`SELECT count(*) AS n FROM nzi_console.command_idempotency WHERE idempotency_key IN ('rf-view', 'rf-extract')`)).rows[0].n), 0, "nor an idempotency row");
+    } finally {
+      await admin.end();
     }
   });
 });

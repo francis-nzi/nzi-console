@@ -146,6 +146,7 @@ export * from "./v7Reingest";
 export * from "./v7ImportSummary";
 export * from "./v7ImportDecision";
 export * from "./v7ImportIngest";
+export * from "./v7ImportRefresh";
 export * from "./activityDistribution";
 export * from "./reportLabelResolution";
 export * from "./listQuery";

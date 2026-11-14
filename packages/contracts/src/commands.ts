@@ -33,6 +33,7 @@ import { v7ReingestActorIssues, v7ReingestPlanIssues, type V7ReingestJobInput, t
 import { v7ImportSummaryIssues, type V7ImportSummary } from "./v7ImportSummary";
 import { v7ImportDecisionClearIssues, v7ImportDecisionSetIssues, type V7ImportDecisionClearInput, type V7ImportDecisionSetInput } from "./v7ImportDecision";
 import { v7ImportIngestIssues, v7ImportRehearsalRecordIssues, type V7ImportIngestInput, type V7ImportRehearsalRecordInput } from "./v7ImportIngest";
+import { organisationImportPolicyIssues, v7ImportRefreshIssues, type OrganisationImportPolicyInput, type V7ImportRefreshInput } from "./v7ImportRefresh";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
 import type { AssistRecord } from "./aiAssist";
@@ -84,6 +85,7 @@ export type CommandKey =
   | "import.decision.clear"
   | "import.rehearsal.record"
   | "import.ingest"
+  | "import.refresh"
   | "job.datasets.update"
   | "job.site.setInclusion"
   | "job.seedFromTemplate"
@@ -233,6 +235,7 @@ export type CommandKey =
   | "organisation.logo.remove"
   | "organisation.bank.set"
   | "organisation.approvalPolicy.set"
+  | "organisation.importPolicy.set"
   | "organisation.intensityDefault.set"
   | "organisation.intensityDefault.deactivate"
   | "organisation.intensityDefaults.apply"
@@ -834,6 +837,12 @@ export type CommandInputMap = {
    */
   "import.ingest": V7ImportIngestInput;
   /**
+   * The import, server-side (BRIEF-v7-import-server-side-phase-b): the same chain run in the service, its rows read through the
+   * view set — `preview` rolled back (nothing written), `commit` kept, naming the summary and decisions the preview showed.
+   * `import.refresh` (CRM and Admin; an organisation may require Admin to commit); a commit needs a reason.
+   */
+  "import.refresh": V7ImportRefreshInput;
+  /**
    * DATASET-CURRENCY §3 — move a job's fallback editions to the reporting year's now-published ones and recalculate the rows
    * on them. `series`: the fallback datasets to move (from the banner). `expected`: every row the preview showed moving or
    * resolved, at the version it showed — the write refuses if the job changed since. `resolutions`: rows that cannot move
@@ -1167,6 +1176,8 @@ export type CommandInputMap = {
   "organisation.bank.set": OrganisationBankFields & { expectedVersion: number };
   // 0215: the in-app switch for NZC-022's separation of duties. expectedVersion 0 = no policy set yet (first write); always with a reason.
   "organisation.approvalPolicy.set": { requireIndependentApproval: boolean; expectedVersion: number };
+  // 0231: whether committing an import refresh needs an Admin (off until set). expectedVersion 0 = never set; always with a reason.
+  "organisation.importPolicy.set": OrganisationImportPolicyInput;
   "organisation.intensityDefault.set": { metricKey: string; label: string; unitWording: string; divider: number; iconKey: string; ordering?: number; expectedVersion: number; unitKind?: IntensityUnitKind };
   "organisation.intensityDefault.deactivate": { metricKey: string; expectedVersion: number };
   /** Q5: the defaults onto every client that has no intensity metric — the count the admin confirmed, or refused. */
@@ -2258,7 +2269,10 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   "import.decision.clear": { key: "import.decision.clear", label: "Clear an imported row's resolution", permission: "import.manage", reasonRequired: false, transaction: "decision superseded + audit + outbox + idempotency", auditAction: "import.decision.cleared", validate: (input, context) => [...baseIssues(context, false), ...v7ImportDecisionClearIssues(input)] },
   // The import workbench, Phase 3: a rehearsal recorded, and the ingest itself — the decisions driving the existing chain, D7 the floor.
   "import.rehearsal.record": { key: "import.rehearsal.record", label: "Record an ingest rehearsal", permission: "import.manage", reasonRequired: false, transaction: "rehearsal record + audit + outbox + idempotency", auditAction: "import.rehearsal.recorded", validate: (input, context) => [...baseIssues(context, false), ...v7ImportRehearsalRecordIssues(input)] },
-  "import.ingest": { key: "import.ingest", label: "Ingest an imported job", permission: "import.manage", reasonRequired: true, transaction: "revert + re-sync + re-ingest (each its own governed step) + ingest record + audit + outbox + idempotency", auditAction: "import.ingested", validate: (input, context) => [...baseIssues(context, true), ...v7ImportIngestIssues(input)] },  "v7.reingest.revert": { key: "v7.reingest.revert", label: "Revert a re-ingest", permission: "job.manage", reasonRequired: true, transaction: "live rows switched off + the original rows switched back on + run marked reverted + audit + outbox + idempotency", auditAction: "v7_job_reingest_reverted", validate: (input, context) => { const issues = [...baseIssues(context, true), ...v7ReingestActorIssues(context)]; required(issues, "jobId", input.jobId); if (!/^v7-reingest-[0-9a-f-]{36}$/.test(input.runId ?? "")) issues.push({ field: "runId", code: "INVALID", message: "The run id is `v7-reingest-` and a UUID." }); return issues; } },
+  "import.ingest": { key: "import.ingest", label: "Ingest an imported job", permission: "import.manage", reasonRequired: true, transaction: "revert + re-sync + re-ingest (each its own governed step) + ingest record + audit + outbox + idempotency", auditAction: "import.ingested", validate: (input, context) => [...baseIssues(context, true), ...v7ImportIngestIssues(input)] },
+  // The import, server-side, Phase B: the same chain run in the service from the view set and the decisions — a preview rolled
+  // back, or a commit with its reason. A preview writes nothing, so it needs no reason; a commit always does.
+  "import.refresh": { key: "import.refresh", label: "Refresh an imported job", permission: "import.refresh", reasonRequired: false, transaction: "preview: the whole chain, rolled back (nothing kept, audit included); commit: revert + re-sync + re-ingest (each its own governed step) + the summary it ran from + ingest record + audit + outbox + idempotency", auditAction: "import.refreshed", validate: (input, context) => [...baseIssues(context, (input as { mode?: unknown }).mode === "commit"), ...v7ImportRefreshIssues(input)] },  "v7.reingest.revert": { key: "v7.reingest.revert", label: "Revert a re-ingest", permission: "job.manage", reasonRequired: true, transaction: "live rows switched off + the original rows switched back on + run marked reverted + audit + outbox + idempotency", auditAction: "v7_job_reingest_reverted", validate: (input, context) => { const issues = [...baseIssues(context, true), ...v7ReingestActorIssues(context)]; required(issues, "jobId", input.jobId); if (!/^v7-reingest-[0-9a-f-]{36}$/.test(input.runId ?? "")) issues.push({ field: "runId", code: "INVALID", message: "The run id is `v7-reingest-` and a UUID." }); return issues; } },
   // DATASET-CURRENCY §3 (ruled): scoperow.edit — the swap is the rule's own derived pick, coupled to a recalculation, so the
   // people who calculate rows are the ones who move them. A reason is required by the handler when the job has an issued
   // snapshot or a published report (ruling 6), never otherwise.
@@ -3281,6 +3295,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (typeof input.expectedVersion !== "number" || !Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be 0 (not yet set) or positive." });
     return issues;
   } },
+  "organisation.importPolicy.set": { key: "organisation.importPolicy.set", label: "Set whether committing an import refresh needs an Admin", permission: "admin.settings", reasonRequired: true, transaction: "versioned import policy + audit (old→new, reason) + outbox + idempotency", auditAction: "organisation.importPolicy.set", validate: (input, context) => [...baseIssues(context, true), ...organisationImportPolicyIssues(input)] },
   "organisation.bank.set": { key: "organisation.bank.set", label: "Set the organisation's bank details", permission: "admin.settings", reasonRequired: true, transaction: "versioned bank details + audit (no values) + outbox + idempotency", auditAction: "organisation.bank.set", validate: (input, context) => {
     const issues = baseIssues(context, true);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });

@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { CONSOLIDATED_ON_READ, KNOWN_DATA_SOURCES } from "../src/v7ClientImport";
 import { sanitiseV7ImportLabel, V7_IMPORT_LABEL_DEFAULTS, V7_IMPORT_LABEL_PII_PATTERNS, v7ImportLabelHasPii } from "../src/v7ImportLabel";
-import { V7_IMPORT_VIEW_CONTRACT, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "../src/v7ImportView";
+import { supabaseProjectRef, V7_IMPORT_VIEW_CONTRACT, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "../src/v7ImportView";
 import { LABEL_FIXTURES, PII_FIXTURES } from "./support/v7ImportLabelFixtures";
 
 /** The import's label rule (R-1) and the view set's SQL, without a database: the TypeScript half, and the SQL's text. */
@@ -60,6 +60,19 @@ describe("the service's one connection to the view set", () => {
   it("refuses the console's own database", () => {
     assert.throws(() => v7ImportViewPoolConfig({ NZI_V7_VIEW_URL: URL, NZI_ISOLATED_DATABASE_URL: URL.replace("cc_import_view.ref", "postgres.ref"), NZI_V7_VIEW_CA_CERT: "-----BEGIN CERTIFICATE-----x" }),
       /console's own database/);
+  });
+  it("tells databases apart by Supabase project, not host: another project behind the same pooler is not the console's", () => {
+    const CA = "-----BEGIN CERTIFICATE-----x";
+    const v7 = "postgresql://cc_import_view.v7projectref0000000a:secret@aws-0-eu-west-2.pooler.supabase.com:5432/postgres";
+    const console = "postgresql://postgres.consoleref000000000b:secret@aws-0-eu-west-2.pooler.supabase.com:5432/postgres";
+    assert.doesNotThrow(() => v7ImportViewPoolConfig({ NZI_V7_VIEW_URL: v7, NZI_ISOLATED_DATABASE_URL: console, NZI_V7_VIEW_CA_CERT: CA }),
+      "same host, port and database name, different project: the reader is not blocked");
+    // The same project, reached directly in one and through the pooler in the other, is still refused.
+    assert.throws(() => v7ImportViewPoolConfig({ NZI_V7_VIEW_URL: v7, NZI_ISOLATED_DATABASE_URL: "postgresql://postgres:secret@db.v7projectref0000000a.supabase.co:5432/postgres", NZI_V7_VIEW_CA_CERT: CA }),
+      /console's own database/);
+    assert.equal(supabaseProjectRef(new globalThis.URL(v7)), "v7projectref0000000a");
+    assert.equal(supabaseProjectRef(new globalThis.URL("postgresql://postgres:x@db.abc123.supabase.co:5432/postgres")), "abc123");
+    assert.equal(supabaseProjectRef(new globalThis.URL("postgresql://postgres:x@dpg-x.oregon-postgres.render.com:5432/nzi")), null, "not Supabase: no ref, so host, port and database decide");
   });
   it("needs verified TLS off-machine, and is read-only on the wire", () => {
     assert.throws(() => v7ImportViewPoolConfig({ NZI_V7_VIEW_URL: URL }), /TLS|CA|certificate/i);
