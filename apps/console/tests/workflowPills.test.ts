@@ -63,14 +63,20 @@ describe("workflow doc mapping (keyed on category_code)", () => {
   });
 });
 
-// BRIEF-workflow-pill-docs: the 21 category docs are the banded diagrams, in the house chrome. The scope overviews are not (yet).
-describe("each category doc is a banded diagram in the house template", () => {
+// BRIEF-workflow-pill-docs: all 24 hosted docs (21 categories + 3 scope overviews) are the banded diagrams, in the house chrome.
+describe("each category and scope-overview doc is a banded diagram in the house template", () => {
   const logo = readFileSync(new URL("../public/brand/netzero-logo.png", import.meta.url));
   const categoryDocs = workflowCategoryCodes.map((code) => categoryWorkflowHref(code)!.replace("/workflows/", ""));
+  const scopeDocs = ["1", "2", "3"].map((scope) => scopeWorkflowHref(scope)!.replace("/workflows/", ""));
+  const allDocs = [...categoryDocs, ...scopeDocs];
 
-  it("covers all 21 category docs", () => assert.equal(new Set(categoryDocs).size, 21));
+  it("covers all 24 docs: 21 categories and 3 scope overviews", () => {
+    assert.equal(new Set(categoryDocs).size, 21);
+    assert.equal(new Set(scopeDocs).size, 3);
+    assert.equal(new Set(allDocs).size, 24);
+  });
 
-  for (const file of categoryDocs) {
+  for (const file of allDocs) {
     describe(file, () => {
       const html = readFileSync(new URL(file, docsDir), "utf8");
       it("carries the brand header and the real NZI logo, byte for byte", () => {
