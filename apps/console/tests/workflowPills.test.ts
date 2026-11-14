@@ -63,6 +63,44 @@ describe("workflow doc mapping (keyed on category_code)", () => {
   });
 });
 
+// BRIEF-workflow-pill-docs: the 21 category docs are the banded diagrams, in the house chrome. The scope overviews are not (yet).
+describe("each category doc is a banded diagram in the house template", () => {
+  const logo = readFileSync(new URL("../public/brand/netzero-logo.png", import.meta.url));
+  const categoryDocs = workflowCategoryCodes.map((code) => categoryWorkflowHref(code)!.replace("/workflows/", ""));
+
+  it("covers all 21 category docs", () => assert.equal(new Set(categoryDocs).size, 21));
+
+  for (const file of categoryDocs) {
+    describe(file, () => {
+      const html = readFileSync(new URL(file, docsDir), "utf8");
+      it("carries the brand header and the real NZI logo, byte for byte", () => {
+        assert.match(html, /<header class="nz-top">/);
+        const embedded = /src="data:image\/png;base64,([^"]+)"/.exec(html)?.[1] ?? "";
+        assert.ok(Buffer.from(embedded, "base64").equals(logo));
+      });
+      it("is the banded diagram: one figure of inline SVG, themed light and dark", () => {
+        assert.match(html, /<figure>\s*<svg [^>]*role="img"/);
+        assert.match(html, /prefers-color-scheme: dark/);
+        assert.doesNotMatch(html, /swimlane|class="board"/i, "the old three-role swimlane is gone");
+      });
+      it("is generic: no script, external link, hash, client data or status badge", () => {
+        assert.doesNotMatch(html, /<script/i);
+        assert.doesNotMatch(html, /https?:/i);
+        assert.doesNotMatch(html, /sha256/i);
+        assert.doesNotMatch(html, /[\w.+-]+@[\w-]+\.[\w.]+/);
+        assert.doesNotMatch(html, /\bJ0\d{5}\b/);
+        assert.doesNotMatch(html, /client_id|organisation_id/);
+        assert.doesNotMatch(html, /\bBuilt\b/i);
+      });
+    });
+  }
+
+  it("lands the employee-commuting pill on the new commuting diagram", () => {
+    assert.equal(categoryWorkflowHref("3.7"), "/workflows/WF-3.7-employee-commuting.html");
+    assert.match(readFileSync(new URL("WF-3.7-employee-commuting.html", docsDir), "utf8"), /<h1>Employee commuting — workflow<\/h1>/);
+  });
+});
+
 describe("the WF pill", () => {
   it("renders a new-tab link to the doc", () => {
     const html = renderToStaticMarkup(createElement(WorkflowPill, { href: "/workflows/WF-3.6-business-travel.html", label: "Business Travel" }));
