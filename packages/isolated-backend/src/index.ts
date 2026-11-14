@@ -324,3 +324,4 @@ export {
   commitV7ImportRefresh, committedV7CrosswalkPlan, previewV7ImportRefresh, v7ImportRefreshSummarySha256, v7ImportViewSource,
   type V7ImportRefreshOptions, type V7ImportRefreshSource,
 } from "./v7ImportRefresh";
+export { createV7ImportViewPool, summariseV7JobFromViews, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "./v7ImportView";

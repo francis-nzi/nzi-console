@@ -12,6 +12,7 @@ import { TrainingWorkspace } from "../training/TrainingWorkspace";
 import { jobModuleEnabled } from "../../lib/jobModuleFlags";
 import { JobMilestonesPanel } from "../JobMilestonesPanel";
 import { JobTimePanel } from "../JobTimePanel";
+import { ImportRefreshPanel } from "../ImportRefreshPanel";
 import { WithCurrencyDirectory } from "../../lib/currencyDirectory";
 import type { JobMilestonesView } from "@nzi/isolated-backend";
 import type { TrainingRunRecord, JobEmissions } from "@nzi/isolated-backend";
@@ -67,7 +68,8 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     if (!job) notFound();
     // Job → Time (TIME PR A) sits with the milestones, so every family's page carries it.
     const timePanel = <JobTimePanel jobId={job.header.id} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"} />;
-    const panels = <>{milestones}{timePanel}</>;
+    // Refresh from the previous system (import.refresh): shown only on a job imported from it, to someone who may refresh.
+    const panels = <>{milestones}{timePanel}<ImportRefreshPanel jobId={job.header.id} /></>;
     // Phase 2 job shell (`job-shell`): the two panels apart, and the milestones its Milestones button summarises —
     // null when the read failed, so the button says "unavailable" rather than "Not set".
     const milestoneStates = milestonesResult.state === "success" || milestonesResult.state === "degraded" ? milestonesResult.data.view?.milestones ?? [] : null;

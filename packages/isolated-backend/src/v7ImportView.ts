@@ -13,7 +13,7 @@
 // The guard: before every read, each view's columns are compared, by name and in order, with V7_IMPORT_VIEW_CONTRACT; any
 // view or column the contract does not name — a column that could carry PII — and the read is refused.
 import { createHash } from "node:crypto";
-import type { ClientBase, Pool, PoolConfig } from "pg";
+import { Pool, type ClientBase, type PoolConfig } from "pg";
 import type { V7ImportSummary } from "@nzi/contracts";
 import { verifiedTlsConfig, type TlsPoolConfig } from "./databaseTls";
 import type { Queryable } from "./postgres";
@@ -281,4 +281,10 @@ export function v7ImportViewPoolConfig(env: Readonly<Record<string, string | und
   const tls = verifiedTlsConfig(url, { caCert: env.NZI_V7_VIEW_CA_CERT });
   return { connectionString: tls.connectionString, ssl: tls.ssl, max: 2, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 10_000,
     application_name: "nzi-import-view", options: "-c default_transaction_read_only=on", description: tls.description };
+}
+
+/** The service's pool on the view set: `v7ImportViewPoolConfig`, so it refuses exactly what that refuses, before connecting. */
+export function createV7ImportViewPool(env: Readonly<Record<string, string | undefined>> = process.env): Pool {
+  const { description: _description, ...config } = v7ImportViewPoolConfig(env);
+  return new Pool(config);
 }
