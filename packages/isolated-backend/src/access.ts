@@ -64,6 +64,8 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   // Phase 3: a rehearsal recorded and the ingest, each of one job (import.manage, Admin; run by the operator's script).
   "import.rehearsal.record": job,
   "import.ingest": job,
+  // The import, server-side (Phase B): one job refreshed from the view set, in the caller's organisation (import.refresh).
+  "import.refresh": job,
   "job.datasets.update": job,
   "job.site.setInclusion": job,
   "job.seedFromTemplate": job,
@@ -235,6 +237,7 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "organisation.logo.remove": organisation,
   "organisation.bank.set": organisation,
   "organisation.approvalPolicy.set": organisation,
+  "organisation.importPolicy.set": organisation,
   "organisation.intensityDefault.set": organisation,
   "organisation.intensityDefault.deactivate": organisation,
   "organisation.intensityDefaults.apply": organisation,

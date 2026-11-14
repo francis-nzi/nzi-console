@@ -31,6 +31,10 @@ type ConsoleRow = { scope_row_id: string; job_id: string; legacy_db_id: string; 
 
 /** The row's label columns: what the server-side read (R-1) compares through the label rule. */
 const LABEL_COLUMNS = ["source_label", "report_label", "level_1", "level_2", "level_3", "level_4", "column_text"] as const;
+/** Each label column's planned field — so the refresh can carry the console's own label where the rule explains the difference. */
+export const V7_IMPORT_LABEL_FIELDS = {
+  source_label: "sourceLabel", report_label: "reportLabel", level_1: "level1", level_2: "level2", level_3: "level3", level_4: "level4", column_text: "columnText",
+} as const satisfies Record<(typeof LABEL_COLUMNS)[number], keyof PlannedRow>;
 const PLANNED_LABEL: Record<(typeof LABEL_COLUMNS)[number], (row: PlannedRow) => string | null> = {
   source_label: (row) => row.sourceLabel, report_label: (row) => row.reportLabel, level_1: (row) => row.level1, level_2: (row) => row.level2,
   level_3: (row) => row.level3, level_4: (row) => row.level4, column_text: (row) => row.columnText,
@@ -164,36 +168,47 @@ export function uploadV7ImportSummary(pool: PoolLike, input: CommandInputMap["im
     if (!job) fail("jobId", "NOT_FOUND", "That job was not found.");
     if (job!.source_system !== SOURCE_SYSTEM) fail("jobId", "NOT_A_V7_JOB", "Only a job imported from the previous system has an import summary.");
     if (job!.legacy_job_number !== summary.legacyJobNumber) fail("summary.legacyJobNumber", "JOB_MISMATCH", `The summary is of ${summary.legacyJobNumber}; this job is ${job!.legacy_job_number ?? "unnumbered"}.`);
-    const summarySha = v7ImportSummarySha256(summary);
-    if ((await db.query(`SELECT 1 FROM nzi_console.v7_import_sessions WHERE organisation_id = $1 AND job_id = $2 AND summary_sha256 = $3`, [org, input.jobId, summarySha])).rows.length)
-      fail("summary", "ALREADY_UPLOADED", "This summary is already stored for this job.");
-    const sessionId = `v7-import-${randomUUID()}`;
-    const { counts, scopeTotals, verdict } = summary;
-    await db.query(
-      `INSERT INTO nzi_console.v7_import_sessions (organisation_id, session_id, job_id, legacy_job_number, extract_sha256, summary_sha256, generated_at,
-         rows_matched, rows_changed, rows_needs_mapping, rows_new, rows_withdrawn, rows_linked_pair_changed,
-         console_scope1_tco2e, console_scope2_tco2e, console_scope3_tco2e, v7_scope1_tco2e, v7_scope2_tco2e, v7_scope3_tco2e, verdict, created_by, correlation_id, summary_format)
-       VALUES ($1,$2,$3,$4,$5,$6,$7::timestamptz,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
-      [org, sessionId, input.jobId, summary.legacyJobNumber, summary.extractSha256, summarySha, summary.generatedAt,
-        counts.matched, counts.changed, counts.needsMapping, counts.new, counts.withdrawn, counts.linkedPairChanged,
-        scopeTotals["1"].consoleTco2e, scopeTotals["2"].consoleTco2e, scopeTotals["3"].consoleTco2e, scopeTotals["1"].v7Tco2e, scopeTotals["2"].v7Tco2e, scopeTotals["3"].v7Tco2e,
-        verdict, context.actorId, context.correlationId, summary.format]);
-    await db.query(
-      `INSERT INTO nzi_console.v7_import_rows (organisation_id, session_id, ordinal, source_system, legacy_db_id, status, code, scope, console_scope,
-         v7_tco2e, console_tco2e, v7_enabled, console_enabled, console_row_id, pair_ref, changed_fields, pair_group, pair_quantity_consistent)
-       SELECT $1, $2, r.ordinal, r.source_system, r.legacy_db_id, r.status, r.code, r.scope, r.console_scope,
-              r.v7_tco2e, r.console_tco2e, r.v7_enabled, r.console_enabled, r.console_row_id, r.pair_ref, ARRAY(SELECT jsonb_array_elements_text(r.changed_fields)),
-              r.pair_group, r.pair_quantity_consistent
-         FROM jsonb_to_recordset($3::jsonb) AS r(ordinal integer, source_system text, legacy_db_id text, status text, code text, scope text, console_scope text,
-              v7_tco2e numeric, console_tco2e numeric, v7_enabled boolean, console_enabled boolean, console_row_id text, pair_ref text, changed_fields jsonb,
-              pair_group text, pair_quantity_consistent boolean)`,
-      [org, sessionId, JSON.stringify(summary.rows.map((row, ordinal) => ({
-        ordinal, source_system: row.sourceSystem, legacy_db_id: row.legacyDbId, status: row.status, code: row.code, scope: row.scope, console_scope: row.consoleScope,
-        v7_tco2e: row.v7Figure, console_tco2e: row.consoleFigure, v7_enabled: row.v7Enabled, console_enabled: row.consoleEnabled,
-        console_row_id: row.consoleRowId, pair_ref: row.pairRef, changed_fields: row.changedFields,
-        pair_group: row.pairGroup, pair_quantity_consistent: row.pairQuantityConsistent })))]);
+    const sessionId = await storeV7ImportSession(db, context, input.jobId, summary);
+    const { counts, verdict } = summary;
     return { data: { sessionId, jobId: input.jobId, rows: summary.rows.length, counts, verdict }, entityType: "job", entityId: input.jobId, topic: "import.summary.uploaded" };
   });
+}
+
+/**
+ * Store one job's summary and its rows, inside the caller's command transaction: the upload's, or a refresh commit's (the
+ * summary it ran from, read server-side). The same summary is stored once per job.
+ */
+export async function storeV7ImportSession(db: Queryable, context: CommandContext, jobId: string, summary: V7ImportSummary): Promise<string> {
+  const org = context.organisationId;
+  const summarySha = v7ImportSummarySha256(summary);
+  if ((await db.query(`SELECT 1 FROM nzi_console.v7_import_sessions WHERE organisation_id = $1 AND job_id = $2 AND summary_sha256 = $3`, [org, jobId, summarySha])).rows.length)
+    fail("summary", "ALREADY_UPLOADED", "This summary is already stored for this job.");
+  const sessionId = `v7-import-${randomUUID()}`;
+  const { counts, scopeTotals, verdict } = summary;
+  await db.query(
+    `INSERT INTO nzi_console.v7_import_sessions (organisation_id, session_id, job_id, legacy_job_number, extract_sha256, summary_sha256, generated_at,
+       rows_matched, rows_changed, rows_needs_mapping, rows_new, rows_withdrawn, rows_linked_pair_changed,
+       console_scope1_tco2e, console_scope2_tco2e, console_scope3_tco2e, v7_scope1_tco2e, v7_scope2_tco2e, v7_scope3_tco2e, verdict, created_by, correlation_id, summary_format)
+     VALUES ($1,$2,$3,$4,$5,$6,$7::timestamptz,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
+    [org, sessionId, jobId, summary.legacyJobNumber, summary.extractSha256, summarySha, summary.generatedAt,
+      counts.matched, counts.changed, counts.needsMapping, counts.new, counts.withdrawn, counts.linkedPairChanged,
+      scopeTotals["1"].consoleTco2e, scopeTotals["2"].consoleTco2e, scopeTotals["3"].consoleTco2e, scopeTotals["1"].v7Tco2e, scopeTotals["2"].v7Tco2e, scopeTotals["3"].v7Tco2e,
+      verdict, context.actorId, context.correlationId, summary.format]);
+  await db.query(
+    `INSERT INTO nzi_console.v7_import_rows (organisation_id, session_id, ordinal, source_system, legacy_db_id, status, code, scope, console_scope,
+       v7_tco2e, console_tco2e, v7_enabled, console_enabled, console_row_id, pair_ref, changed_fields, pair_group, pair_quantity_consistent)
+     SELECT $1, $2, r.ordinal, r.source_system, r.legacy_db_id, r.status, r.code, r.scope, r.console_scope,
+            r.v7_tco2e, r.console_tco2e, r.v7_enabled, r.console_enabled, r.console_row_id, r.pair_ref, ARRAY(SELECT jsonb_array_elements_text(r.changed_fields)),
+            r.pair_group, r.pair_quantity_consistent
+       FROM jsonb_to_recordset($3::jsonb) AS r(ordinal integer, source_system text, legacy_db_id text, status text, code text, scope text, console_scope text,
+            v7_tco2e numeric, console_tco2e numeric, v7_enabled boolean, console_enabled boolean, console_row_id text, pair_ref text, changed_fields jsonb,
+            pair_group text, pair_quantity_consistent boolean)`,
+    [org, sessionId, JSON.stringify(summary.rows.map((row, ordinal) => ({
+      ordinal, source_system: row.sourceSystem, legacy_db_id: row.legacyDbId, status: row.status, code: row.code, scope: row.scope, console_scope: row.consoleScope,
+      v7_tco2e: row.v7Figure, console_tco2e: row.consoleFigure, v7_enabled: row.v7Enabled, console_enabled: row.consoleEnabled,
+      console_row_id: row.consoleRowId, pair_ref: row.pairRef, changed_fields: row.changedFields,
+      pair_group: row.pairGroup, pair_quantity_consistent: row.pairQuantityConsistent })))]);
+  return sessionId;
 }
 
 // ── The reads behind the import view ──────────────────────────────────────────────────────────────────────────────

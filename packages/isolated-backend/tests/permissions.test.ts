@@ -39,6 +39,8 @@ const matrixMigrationV12 = readFileSync(resolve(here, "../migrations/0216_permis
 const matrixMigrationV13 = readFileSync(resolve(here, "../migrations/0224_permission_matrix_v13.sql"), "utf8");
 // v14 — Admin gains import.manage: the import workbench, Phase 1 (0227).
 const matrixMigrationV14 = readFileSync(resolve(here, "../migrations/0227_permission_matrix_v14.sql"), "utf8");
+// v15 — Admin and Consultant gain import.refresh: the import, server-side, Phase B (0230).
+const matrixMigrationV15 = readFileSync(resolve(here, "../migrations/0230_permission_matrix_v15.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -52,7 +54,8 @@ const matrixSql = `${matrixMigration}\n${matrixMigrationV2}\n${matrixMigrationV3
 ${matrixMigrationV11}
 ${matrixMigrationV12}
 ${matrixMigrationV13}
-${matrixMigrationV14}`;
+${matrixMigrationV14}
+${matrixMigrationV15}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 
@@ -336,11 +339,11 @@ describe("the consultant's release capabilities (matrix v12)", () => {
     assert.equal(SELF_APPROVAL_CAPABILITY, "report.publish");
     assert.deepEqual([...separationOfDutiesCapabilities], ["snapshot.review", "report.publish"], "both are separation-of-duties capabilities: holding them is not an exemption");
   });
-  it("the version is 14 and the consultant's full capability set is pinned", () => {
-    assert.equal(PERMISSION_MATRIX_VERSION, 14);
+  it("the version is 15 and the consultant's full capability set is pinned", () => {
+    assert.equal(PERMISSION_MATRIX_VERSION, 15);
     assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.consultant).sort(), [
       "audit.view", "baseline.rebaseline", "category.visibility", "clientfactor.manage", "client.create", "client.edit", "client.view", "contact.manage", "finance.view",
-      "job.manage", "knowledge.approve", "knowledge.capture", "portal.admin", "report.edit", "report.publish", "report.view", "scoperow.edit", "site.manage", "snapshot.review",
+      "import.refresh", "job.manage", "knowledge.approve", "knowledge.capture", "portal.admin", "report.edit", "report.publish", "report.view", "scoperow.edit", "site.manage", "snapshot.review",
       "srs.manage", "strategy.manage", "support.portal_impersonate", "target.edit", "task.manage", "time.log", "time.view", "training.entitlement.manage", "training.manage"].sort());
   });
 });
@@ -376,5 +379,24 @@ describe("matrix v14: the import workbench, Phase 1 (BRIEF-v7-import-workbench-p
     const rows = (sql: string, version: number) => [...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`).sort();
     assert.deepEqual(rows(matrixMigrationV14, 14).filter((row) => !rows(matrixMigrationV13, 13).includes(row)), ["admin import.manage all"]);
     assert.deepEqual(rows(matrixMigrationV13, 13).filter((row) => !rows(matrixMigrationV14, 14).includes(row)), [], "nothing is taken away");
+  });
+});
+
+describe("matrix v15: the import, server-side, Phase B (BRIEF-v7-import-server-side-phase-b, R-6)", () => {
+  const rows = (sql: string, version: number) => [...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`).sort();
+  it("import.refresh is CRM-operable: Admin and Consultant hold it, the other roles do not — and deciding rows stays Admin's", () => {
+    assert.equal(ROLE_CAPABILITY_MATRIX.admin["import.refresh"], "all");
+    assert.equal(ROLE_CAPABILITY_MATRIX.consultant["import.refresh"], "all");
+    for (const role of ["reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.refresh"], undefined, role);
+    assert.equal(ROLE_CAPABILITY_MATRIX.consultant["import.manage"], undefined, "a CRM refreshes; resolving a row is still import.manage");
+  });
+  it("unlocks exactly the refresh command, a staff command; the Admin gate on commit is admin.settings'", () => {
+    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.refresh").map((definition) => definition.key), ["import.refresh"]);
+    assert.notEqual((commandDefinitions["import.refresh"] as { principal?: string }).principal, "portal");
+    assert.equal(commandDefinitions["organisation.importPolicy.set"].permission, "admin.settings");
+  });
+  it("v15 adds import.refresh for Admin and Consultant and changes nothing else from v14", () => {
+    assert.deepEqual(rows(matrixMigrationV15, 15).filter((row) => !rows(matrixMigrationV14, 14).includes(row)), ["admin import.refresh all", "consultant import.refresh all"]);
+    assert.deepEqual(rows(matrixMigrationV14, 14).filter((row) => !rows(matrixMigrationV15, 15).includes(row)), [], "nothing is taken away");
   });
 });

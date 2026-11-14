@@ -76,6 +76,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `time.view` (read other people's time — hours; money only with `finance.view`) ⚑ | ✓ | ⚑ own | R | ✓ | — |
 | `task.manage` (keep CRM tasks: create, edit, reassign, reschedule, complete, reopen — only one's own or one's assigned) ⚑ | ✓ | ✓ | ✓ | ✓ | — |
 | `import.manage` (upload a job's import reconciliation summary, open the import view, and resolve its flagged rows — Phase 2; no ingest) ⚑ | ✓ | — | — | — | — |
+| `import.refresh` (refresh a job from the previous system in the service: preview the chain, or commit it with a reason — D7 the floor) ⚑ | ✓ | ✓ | — | — | — |
 
 ### Conditional notes (⚑)
 
@@ -159,6 +160,13 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   needs a reason). Both are run by the operator's script as the system principal `policy:v7-import`, where the one-job extract
   is (R-A option 1); the ingest's steps run under their own principals (the re-sync's and the re-ingest's), with D7 the floor.
   The workbench shows the rehearsal and the ingested state; it has no ingest button (R-A′ option 2 is deferred).
+- **Import, server-side, Phase B (matrix v15, 0230; 0231; BRIEF-v7-import-server-side-phase-b, R-6).** `import.refresh` (all)
+  is held by **Admin and Consultant** (the CRM): the refresh command reads the job's rows from the previous system through the
+  non-PII view set, in the service, and runs revert → re-sync → re-plan → re-ingest from the job's decisions in one transaction,
+  D7 the floor. A **preview** is the whole chain rolled back — nothing written, its audit included; a **commit** needs a reason
+  and names the summary and decisions its preview showed. The inner steps run under their own principals, as Phase 3's do.
+  **An organisation may require Admin to commit** (`organisation.importPolicy.set`, `admin.settings`, audited; 0231) — off
+  until set. Deciding rows stays `import.manage`. Audited by the job with run ids, counts and codes, no figures.
 
 ## Naming convention
 

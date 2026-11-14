@@ -111,7 +111,7 @@ type SummaryRow = {
 const ownStatusOf = (row: SummaryRow) => v7ImportOwnStatus({ status: row.status, consoleRowId: row.console_row_id, v7Figure: row.v7_tco2e === null ? null : Number(row.v7_tco2e), changedFields: row.changed_fields });
 
 /** The job, imported from the previous system, locked against a concurrent decision. */
-async function lockV7Job(db: Queryable, organisationId: string, jobId: string): Promise<void> {
+export async function lockV7Job(db: Queryable, organisationId: string, jobId: string): Promise<void> {
   const job = (await db.query<{ source_system: string | null }>(`SELECT source_system FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [organisationId, jobId])).rows[0];
   if (!job) fail("jobId", "NOT_FOUND", "That job was not found.");
   if (job!.source_system !== SOURCE_SYSTEM) fail("jobId", "NOT_A_V7_JOB", "Only a job imported from the previous system has rows to resolve.");

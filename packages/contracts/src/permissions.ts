@@ -98,6 +98,10 @@ export const capabilities = [
   // Upload a job's import reconciliation summary and open the import view. Phase 1 is view-only: it stores and shows a
   // disposable summary and writes nothing to a job's rows. Admin only; a CRM's view is Phase 2.
   "import.manage",
+  // ── The import, server-side (matrix v15, 0230; BRIEF-v7-import-server-side-phase-b, R-6) ──
+  // Refresh a job from the previous system in the service: preview the whole chain (rolled back), or commit it with a reason,
+  // D7 the floor. CRM-operable: the Consultant holds it, as Admin does; an organisation may require Admin to commit (0231).
+  "import.refresh",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 
@@ -112,7 +116,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 14;
+export const PERMISSION_MATRIX_VERSION = 15;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -144,6 +148,8 @@ export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability
     "time.view": "own_clients",
     // v13: a task is the holder's own list (assignee or creator, access.ts), not a client's record — so `all`, not own clients.
     "task.manage": "all",
+    // v15 (R-6): a CRM refreshes a job from the previous system — the same reach as job.manage, the rows' own edit.
+    "import.refresh": "all",
   },
   reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture", "time.log", "time.view", "task.manage"),
   // v10 (Time PR B): Finance reads everyone's hours — payroll and job cost need the whole team's time.
