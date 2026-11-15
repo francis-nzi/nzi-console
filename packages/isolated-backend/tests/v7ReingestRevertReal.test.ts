@@ -1397,10 +1397,17 @@ describe("the import refresh's fast path: eligible jobs refresh in one action, e
         { organisationId: org, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
           reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", org, V7_REINGEST_ACTOR) }));
     }
-    await db.query(`SELECT set_config('app.organisation_id', 'fp-issued', false)`);
-    // The previous system issued a report for the job (0135): kept as a sealed record of account.
+    // The eligible job carries a report the previous system issued (0135), as nearly every migrated job does: ruled, it does
+    // not count — only a report the console issued does.
+    await db.query(`SELECT set_config('app.organisation_id', 'fp-eligible', false)`);
     await db.query(`INSERT INTO nzi_console.legacy_report_versions (organisation_id, legacy_report_id, job_id, kind, source_system, legacy_db_id, version_number, legacy_status,
-      finalized_at, content_key_wrapped, imported_by) VALUES ('fp-issued', 'lr-1', $1, 'report', 'nzi-pro-v7', '77', 1, 'final', now(), '{"ciphertext":"x","iv":"y","tag":"z"}'::jsonb, 'policy:v7-import')`, [JOB_A]);
+      finalized_at, content_key_wrapped, imported_by) VALUES ('fp-eligible', 'lr-1', $1, 'report', 'nzi-pro-v7', '77', 1, 'final', now(), '{"ciphertext":"x","iv":"y","tag":"z"}'::jsonb, 'policy:v7-import')`, [JOB_A]);
+    // The console issued a report for this one: a published report version, on the reviewed snapshot it froze (the FK).
+    await db.query(`SELECT set_config('app.organisation_id', 'fp-issued', false)`);
+    await db.query(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by)
+      VALUES ('fp-issued', 'snap-1', $1, 1, 1, $2, '{}'::jsonb, 'staff-consultant')`, [JOB_A, `sha256:${"a".repeat(64)}`]);
+    await db.query(`INSERT INTO nzi_console.report_versions (organisation_id, report_version_id, job_id, status, manifest_version, reviewed_snapshot_id, data_hash, published_at)
+      VALUES ('fp-issued', 'rv-1', $1, 'published', 1, 'snap-1', $2, now())`, [JOB_A, `sha256:${"a".repeat(64)}`]);
     await db.query(`SELECT set_config('app.organisation_id', 'fp-edited', false)`);
     await personEdits(db, "fp-edited");
   });
@@ -1408,7 +1415,7 @@ describe("the import refresh's fast path: eligible jobs refresh in one action, e
 
   it("the signals, read as the job stands: nothing issued and nothing edited on a job only the import has written; each fixture moves one", async () => {
     const signals = (org: string) => withTenantRead(database.pool, org, (client) => readV7ImportFastPathSignals(client, org, JOB_A));
-    assert.deepEqual(await signals("fp-eligible"), { issuedReport: false, manualEdits: false }, "the re-ingest's own rows — its reported-total override included — are not a person's");
+    assert.deepEqual(await signals("fp-eligible"), { issuedReport: false, manualEdits: false }, "the re-ingest's own rows — its reported-total override included — are not a person's, and the previous system's report is not the console's");
     assert.deepEqual(await signals("fp-issued"), { issuedReport: true, manualEdits: false });
     assert.deepEqual(await signals("fp-edited"), { issuedReport: false, manualEdits: true });
   });
@@ -1439,12 +1446,11 @@ describe("the import refresh's fast path: eligible jobs refresh in one action, e
     assert.deepEqual(await fingerprint(), before);
   });
 
-  it("D-ELIG-1 alone — an issued report: falls back to the deliberate flow and auto-commits nothing", async () => {
+  it("D-ELIG-1 — a report the console issued: never auto-committed; the snapshot it froze refuses the refresh outright (R1), nothing written", async () => {
+    // A console report version needs its reviewed snapshot (the FK), and the chain already refuses a snapshotted job, so the
+    // refresh stops before any verdict; D-ELIG-1 (read true in the signals test) stands behind that refusal, not in front of it.
     const before = await fingerprint();
-    const result = await fast("fp-issued");
-    assert.equal(result.fastPath, "deliberate");
-    if (result.fastPath !== "deliberate") return;
-    assert.deepEqual([result.because, result.preview.outcome], [["issued-report"], "would-commit"], "it would commit; only the issued report stops it");
+    await assert.rejects(fast("fp-issued"), (error) => codes(error).includes("SNAPSHOT_EXISTS"));
     assert.deepEqual(await fingerprint(), before);
     assert.equal((await refreshedEvents("fp-issued")).length, 0);
   });

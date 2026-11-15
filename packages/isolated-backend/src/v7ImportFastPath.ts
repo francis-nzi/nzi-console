@@ -6,8 +6,9 @@
 //
 // Eligible = all three (D-ELIG-1..3), read inside the preview's transaction:
 //   1. no issued report   — `issuedReport`: a console report version past validated (sent to client review, approved,
-//                           published or superseded, or carrying `published_at`), a report composition (what an issued report
-//                           froze, 0077), or any report version of the previous system kept for the job (0135).
+//                           published or superseded, or carrying `published_at`), or a report composition (what an issued
+//                           report froze, 0077). Console-issued only, as ruled: a report the previous system made (0135) does
+//                           not count — almost every migrated job has one, and D7 already keeps the refresh in line with it.
 //   2. no manual edits    — `manualEdits`: any decision for the job in the decisions store (0228, superseded ones included);
 //                           any scope-row audit event by a person (staff or portal principal) on a row of the job — an edit,
 //                           an override, a review; or a live row of the job the import did not write (`reingested_from_row_id`
@@ -45,7 +46,6 @@ export async function readV7ImportFastPathSignals(db: Queryable, organisationId:
        EXISTS (SELECT 1 FROM nzi_console.report_versions v WHERE v.organisation_id = $1 AND v.job_id = $2
                 AND (v.status NOT IN ('draft', 'validated') OR v.published_at IS NOT NULL))
        OR EXISTS (SELECT 1 FROM nzi_console.report_compositions c WHERE c.organisation_id = $1 AND c.job_id = $2)
-       OR EXISTS (SELECT 1 FROM nzi_console.legacy_report_versions l WHERE l.organisation_id = $1 AND l.job_id = $2 AND l.kind = 'report')
          AS issued_report,
        EXISTS (SELECT 1 FROM nzi_console.v7_import_decisions d WHERE d.organisation_id = $1 AND d.job_id = $2)
        OR EXISTS (SELECT 1 FROM nzi_console.audit_events a JOIN nzi_console.job_scope_rows r
