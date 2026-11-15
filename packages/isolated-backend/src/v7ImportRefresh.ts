@@ -80,6 +80,11 @@ export function committedV7CrosswalkPlan(jobId: string, legacyJobNumber: string,
 export type V7ImportRefreshOptions = {
   /** The committed plan; by default the repository's (`committedV7CrosswalkPlan`). */
   basePlan?: Omit<V7ReingestJobInput, "runId">;
+  /**
+   * Run inside the command's transaction, after the job is locked and read (and, for a commit, its fingerprints checked) and
+   * before the chain. The fast path (Phase D) reads its eligibility here; a throw refuses as any step's refusal does.
+   */
+  within?: (db: Queryable, at: "preview" | "commit") => Promise<void>;
 };
 
 type Refresh = {
@@ -140,6 +145,7 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
     await withTenantWrite(pool, context.organisationId, async (db) => {
       const outcome = await runPostgresCommandInTransaction(db, "import.refresh", input, context, async (tx) => {
         const read = await readRefresh(tx, source, context.organisationId, input.jobId);
+        await options.within?.(tx, "preview");
         const base = { mode: "preview" as const, jobId: input.jobId, legacyJobNumber: read.legacyJobNumber, summarySha256: read.summarySha256,
           decisionsSha256: read.decisionsSha256, counts: read.summary.counts, verdict: read.resolved.verdict, exceptions: read.exceptions };
         let data: V7ImportRefreshPreview;
@@ -183,6 +189,7 @@ export function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSou
     if (read.summarySha256 !== input.summarySha256) fail("summarySha256", "SUMMARY_MOVED", "The job's rows have moved since the preview; preview again.");
     if (read.decisionsSha256 !== input.decisionsSha256) fail("decisionsSha256", "DECISIONS_MOVED", "The job's decisions changed since the preview; preview again.");
     if (read.resolved.verdict !== "ready-to-ingest") throw new CommandValidationError([notReady(read.resolved.verdict)]);
+    await options.within?.(db, "commit");
     const ran = await runChain(db, read, context.organisationId, input.jobId, context.reason!.trim(), " — import refresh",
       options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber));
     if (!ran.committed) throw new CommandValidationError(ran.report.refusal?.issues ?? [{ field: "jobId", code: "NOT_COMMITTED", message: "The re-ingest did not commit." }]);

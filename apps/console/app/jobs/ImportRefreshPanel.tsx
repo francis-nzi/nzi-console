@@ -4,11 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import type { V7ImportRefreshCommitted, V7ImportRefreshPreview } from "@nzi/contracts";
-import { ImportRefreshPreviewView, refreshViewOf, type ImportRefreshState } from "./importRefreshView";
+import { FastPathRefreshedView, ImportRefreshPreviewView, notAutomaticLine, refreshViewOf, type FastPathOutcome, type ImportRefreshState } from "./importRefreshView";
 
 /**
  * "Refresh from the previous system" on a job imported from it (BRIEF-v7-import-server-side-phase-c §3; `import.refresh`).
  *
+ *   0. Refresh is one action (Phase D, R-4): a job with no issued report, no manual edits and nothing flagged is refreshed there
+ *      and then — "Refreshed automatically", Σ per scope and the audit id. Any other job goes on to 1–3, with why in one line.
  *   1. Refresh → a preview: the whole chain rolled back, nothing written. It shows Σ per scope and the exceptions only.
  *   2. Exceptions are resolved with the Phase 2 controls, in Import reconciliation: a resolver (import.manage) stores the summary
  *      as the previous system gives it now, and works the rows there; then previews again here.
@@ -30,6 +32,8 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [done, setDone] = useState<V7ImportRefreshCommitted | null>(null);
+  const [auto, setAuto] = useState<Extract<FastPathOutcome, { fastPath: "refreshed" }> | null>(null);
+  const [notAutomatic, setNotAutomatic] = useState<string | null>(null);
   const commitKey = useRef<string | null>(null);
 
   useEffect(() => {
@@ -55,12 +59,15 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
 
   async function runPreview() {
     if (busy) return;
-    setBusy(true); setError(null); setDone(null);
+    setBusy(true); setError(null); setDone(null); setAuto(null); setNotAutomatic(null);
     try {
-      // Each preview is a new attempt: it writes nothing, so a fresh key never risks a double effect.
-      const result = await postBrowserCommand<V7ImportRefreshPreview>(path, { mode: "preview" }, crypto.randomUUID());
+      // One action (Phase D): an eligible job is refreshed there and then; any other comes back as a preview, and why. Each is
+      // a new attempt with its own key: a preview writes nothing, and an automatic commit is refused if the job moved.
+      const result = await postBrowserCommand<FastPathOutcome>(path, { mode: "auto" }, crypto.randomUUID());
       if (result.state !== "success") { setPreview(null); setError(failureText(result)); return; }
-      setPreview(result.data); commitKey.current = null;
+      commitKey.current = null;
+      if (result.data.fastPath === "refreshed") { setPreview(null); setAuto(result.data); router.refresh(); return; }
+      setPreview(result.data.preview); setNotAutomatic(notAutomaticLine(result.data));
     } finally { setBusy(false); }
   }
   async function storeAndResolve() {
@@ -80,7 +87,7 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
         { mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 }, commitKey.current ??= crypto.randomUUID(), reason.trim());
       // A refused commit is answered (the job or decisions moved, D7, the Admin gate): the next one is a new attempt.
       if (result.state !== "success") { if (result.state !== "failed" || !result.retryable) commitKey.current = null; setError(failureText(result)); return; }
-      setDone(result.data); setPreview(null); setReason(""); commitKey.current = null; router.refresh();
+      setDone(result.data); setPreview(null); setNotAutomatic(null); setReason(""); commitKey.current = null; router.refresh();
     } finally { setBusy(false); }
   }
 
@@ -107,6 +114,8 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
     {!state.writeEnabled ? <div className="sub">Refreshing is not enabled in this environment.</div> : null}
     {error ? <div className="nz-banner warn" role="alert"><div>{error}</div></div> : null}
     {done ? <div className="nz-banner ok" role="status"><div>Refreshed. The job&rsquo;s rows now match the previous system, re-synced {done.resync.superseded + done.resync.added + done.resync.withdrawn} row(s); the new rows wait for a reviewer&rsquo;s attest.</div></div> : null}
+    {auto ? <FastPathRefreshedView outcome={auto} /> : null}
+    {preview && notAutomatic ? <div className="sub" data-not-automatic>{notAutomatic}</div> : null}
     {preview ? <ImportRefreshPreviewView preview={preview} resolve={resolve} commit={commit} /> : null}
   </div></section>;
 }

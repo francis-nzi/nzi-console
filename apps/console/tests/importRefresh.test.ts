@@ -6,7 +6,7 @@ import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { AuthorizationError, CommandValidationError, createV7ImportViewPool, type StaffPrincipal } from "@nzi/isolated-backend";
+import { AuthorizationError, CommandValidationError, createV7ImportViewPool, v7ImportFastPathBlockers, type StaffPrincipal } from "@nzi/isolated-backend";
 import type { V7ImportRefreshPreview } from "@nzi/contracts";
 import { handleImportRefresh, IMPORT_SOURCE_UNAVAILABLE, type ImportRefreshDeps } from "../app/lib/importRefreshHandler";
 import { CROSSWALK_PLAN_PATH, findCrosswalkPlanDirectory, importRefreshPlanOptions, PlanDirectoryMissing } from "../app/lib/importRefreshPlan";
@@ -32,9 +32,9 @@ const PREVIEW_BASE: V7ImportRefreshPreview = {
   chain: { resync: null, plan: null }, scopeTotals: null,
 };
 
-type Calls = { source: number; options: number; preview: unknown[]; commit: unknown[]; failures: unknown[] };
+type Calls = { source: number; options: number; preview: unknown[]; commit: unknown[]; fastPath: unknown[]; failures: unknown[] };
 const harness = (over: Partial<ImportRefreshDeps> = {}) => {
-  const calls: Calls = { source: 0, options: 0, preview: [], commit: [], failures: [] };
+  const calls: Calls = { source: 0, options: 0, preview: [], commit: [], fastPath: [], failures: [] };
   const deps: ImportRefreshDeps = {
     principal: async () => PRINCIPAL,
     context: () => ({ organisationId: "org-a", actorId: "staff-crm", principal: "staff", idempotencyKey: "k", correlationId: "c", reason: "refresh it" }) as never,
@@ -43,6 +43,7 @@ const harness = (over: Partial<ImportRefreshDeps> = {}) => {
     options: async () => { calls.options += 1; return { basePlan: { jobId: "job-1", crosswalkVersion: "none", crosswalkSha256: "0".repeat(64), vintageDatasetIds: [], rows: [] } }; },
     preview: (async (...args: unknown[]) => { calls.preview.push(args); return PREVIEW_BASE; }) as never,
     commit: (async (...args: unknown[]) => { calls.commit.push(args); return { data: { mode: "commit", ingestId: "i" }, auditEventId: "a", correlationId: "c", replayed: false }; }) as never,
+    fastPath: (async (...args: unknown[]) => { calls.fastPath.push(args); return { fastPath: "deliberate", preview: PREVIEW_BASE, because: ["flagged"], flagged: 0 }; }) as never,
     success: (outcome) => Response.json({ data: outcome.data }, { status: 201 }),
     failure: (error) => { calls.failures.push(error); return Response.json({ code: "FAILED" }, { status: error instanceof AuthorizationError ? 403 : error instanceof CommandValidationError ? 422 : 500 }); },
     log: () => undefined,
@@ -105,6 +106,70 @@ describe("the refresh route: who, which job, a fail-closed source, then the comm
     assert.deepEqual((moved.calls.failures[0] as CommandValidationError).issues.map((issue) => issue.code), ["SUMMARY_MOVED"]);
     const gated = harness({ commit: (async () => { throw new AuthorizationError("import.refresh", "This organisation requires an Admin to commit a refresh."); }) as never });
     assert.equal((await handleImportRefresh(post({ mode: "commit", ...SHAS }), "job-1", gated.deps)).status, 403);
+  });
+});
+
+describe("Phase D: the fast path is one action at the route, over the unchanged command", () => {
+  const READY: V7ImportRefreshPreview = { ...PREVIEW_BASE, outcome: "would-commit", verdict: "ready-to-ingest", refusal: null,
+    chain: { resync: { unchanged: 2, superseded: 1, added: 0, withdrawn: 0 }, plan: { committed: 3, decided: 0 } },
+    scopeTotals: { "1": { v7Tco2e: 2.43, liveTco2e: 2.43 }, "2": { v7Tco2e: 0, liveTco2e: 0 }, "3": { v7Tco2e: 0.0015, liveTco2e: 0.0015 } } };
+  const COMMITTED = { mode: "commit" as const, jobId: "job-1", ingestId: "i", sessionId: "s", resyncRunId: "rs", reingestRunId: "ri",
+    resync: { unchanged: 2, superseded: 1, added: 0, withdrawn: 0 }, plan: { committed: 3, decided: 0 } };
+
+  it("`auto` runs the fast path with the live source, the explicit plan and the caller's context — neither the preview nor the commit directly", async () => {
+    const { deps, calls } = harness();
+    const response = await handleImportRefresh(post({ mode: "auto" }), "job-1", deps);
+    assert.equal(response.status, 200);
+    const [, source, jobId, context, options] = calls.fastPath[0] as [unknown, unknown, string, { actorId: string }, { basePlan?: unknown }];
+    assert.deepEqual([typeof source, jobId, context.actorId, Boolean(options.basePlan)], ["function", "job-1", "staff-crm", true]);
+    assert.deepEqual([calls.preview.length, calls.commit.length], [0, 0]);
+  });
+  it("`auto` keeps the route's order: a refused caller and a refused source stop it before it runs; extra keys are refused", async () => {
+    const refused = harness({ principal: async () => { throw new AuthorizationError("import.refresh"); } });
+    assert.equal((await handleImportRefresh(post({ mode: "auto" }), "job-1", refused.deps)).status, 403);
+    const closed = harness({ source: () => { createV7ImportViewPool({}); throw new Error("unreachable"); } });
+    assert.equal((await handleImportRefresh(post({ mode: "auto" }), "job-1", closed.deps)).status, 503);
+    const extra = harness();
+    const response = await handleImportRefresh(post({ mode: "auto", ...SHAS }), "job-1", extra.deps);
+    assert.equal(response.status, 422);
+    assert.deepEqual([refused.calls.fastPath.length, closed.calls.fastPath.length, extra.calls.fastPath.length], [0, 0, 0]);
+  });
+  it("refreshed → 201 with the outcome and its audit id; a refusal inside it (moved, D7, ineligible at commit) is answered as the command's", async () => {
+    const { deps } = harness({ fastPath: (async () => ({ fastPath: "refreshed", preview: READY, committed: COMMITTED, auditEventId: "audit-1", correlationId: "c", replayed: false })) as never });
+    const response = await handleImportRefresh(post({ mode: "auto" }), "job-1", deps);
+    assert.equal(response.status, 201);
+    const body = await response.json() as { data: { fastPath: string }; auditEventId: string };
+    assert.deepEqual([body.data.fastPath, body.auditEventId], ["refreshed", "audit-1"]);
+    const raced = harness({ fastPath: (async () => { throw new CommandValidationError([{ field: "jobId", code: "FAST_PATH_INELIGIBLE", message: "The job changed since its preview." }]); }) as never });
+    assert.equal((await handleImportRefresh(post({ mode: "auto" }), "job-1", raced.deps)).status, 422);
+  });
+  it("the verdict: the three gates and the Admin gate, each alone, in the brief's order", () => {
+    const clean = { issuedReport: false, manualEdits: false };
+    assert.deepEqual(v7ImportFastPathBlockers(READY, clean, false), [], "eligible");
+    assert.deepEqual(v7ImportFastPathBlockers(READY, { ...clean, issuedReport: true }, false), ["issued-report"]);
+    assert.deepEqual(v7ImportFastPathBlockers(READY, { ...clean, manualEdits: true }, false), ["manual-edits"]);
+    assert.deepEqual(v7ImportFastPathBlockers({ ...READY, exceptions: [{ legacyDbId: "1", status: "new", ownStatus: "new", resolution: "unresolved", carry: null, scope: "1", code: null, pairGroup: null }] }, clean, false), ["flagged"]);
+    assert.deepEqual(v7ImportFastPathBlockers({ ...READY, outcome: "refused", scopeTotals: null, refusal: { stage: "reingest", issues: [] } }, clean, false), ["flagged"], "D7 refusing is flagged");
+    assert.deepEqual(v7ImportFastPathBlockers(READY, clean, true), ["admin-commits"]);
+  });
+  it("the panel: 'Refreshed automatically' with Σ per scope and the audit id; otherwise why, in one line — and a clean job just has nothing to refresh", () => {
+    const out = renderToStaticMarkup(createElement(view.FastPathRefreshedView, { outcome: { fastPath: "refreshed", preview: READY, committed: COMMITTED, auditEventId: "audit-1" } }));
+    assert.ok(out.includes(view.REFRESHED_AUTOMATICALLY));
+    assert.deepEqual([...out.matchAll(/data-scope="(\d)"/g)].map((match) => match[1]), ["1", "2", "3"]);
+    assert.match(out, /2\.43<\/td><td>2\.43/);
+    assert.match(out, /audit-1/);
+    const line = (because: Array<"issued-report" | "manual-edits" | "flagged" | "admin-commits">, flagged = 0, preview: V7ImportRefreshPreview = READY) =>
+      view.notAutomaticLine({ fastPath: "deliberate", preview, because, flagged });
+    assert.equal(line(["issued-report"]), "Not automatic: issued report.");
+    assert.equal(line(["manual-edits", "flagged"], 3, { ...PREVIEW_BASE, verdict: "needs-mapping" }), "Not automatic: manual edits · 3 flagged.");
+    assert.equal(line(["admin-commits"]), "Not automatic: an Admin commits on this organisation.");
+    assert.equal(line(["flagged"], 0, PREVIEW_BASE), null, "a clean job: Nothing to refresh, no reason to give");
+  });
+  it("the panel's one action is `auto`; its Commit, on a fallback, is still Phase C's", () => {
+    const panel = read("jobs/ImportRefreshPanel.tsx");
+    assert.match(panel, /postBrowserCommand<FastPathOutcome>\(path, \{ mode: "auto" \}/);
+    assert.ok(!/mode: "preview"/.test(panel), "the panel no longer previews without the fast path");
+    assert.match(read("api/isolated/jobs/[jobId]/import-refresh/route.ts"), /fastPath: refreshV7ImportFastPath/);
   });
 });
 
