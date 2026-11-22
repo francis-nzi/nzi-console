@@ -41,6 +41,8 @@ const matrixMigrationV13 = readFileSync(resolve(here, "../migrations/0224_permis
 const matrixMigrationV14 = readFileSync(resolve(here, "../migrations/0227_permission_matrix_v14.sql"), "utf8");
 // v15 — Admin and Consultant gain import.refresh: the import, server-side, Phase B (0230).
 const matrixMigrationV15 = readFileSync(resolve(here, "../migrations/0230_permission_matrix_v15.sql"), "utf8");
+// v16 — Admin gains import.refresh_batch: the import, server-side, Phase E (0233).
+const matrixMigrationV16 = readFileSync(resolve(here, "../migrations/0233_permission_matrix_v16.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -55,7 +57,8 @@ ${matrixMigrationV11}
 ${matrixMigrationV12}
 ${matrixMigrationV13}
 ${matrixMigrationV14}
-${matrixMigrationV15}`;
+${matrixMigrationV15}
+${matrixMigrationV16}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 
@@ -339,8 +342,8 @@ describe("the consultant's release capabilities (matrix v12)", () => {
     assert.equal(SELF_APPROVAL_CAPABILITY, "report.publish");
     assert.deepEqual([...separationOfDutiesCapabilities], ["snapshot.review", "report.publish"], "both are separation-of-duties capabilities: holding them is not an exemption");
   });
-  it("the version is 15 and the consultant's full capability set is pinned", () => {
-    assert.equal(PERMISSION_MATRIX_VERSION, 15);
+  it("the version is 16 and the consultant's full capability set is pinned", () => {
+    assert.equal(PERMISSION_MATRIX_VERSION, 16);
     assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.consultant).sort(), [
       "audit.view", "baseline.rebaseline", "category.visibility", "clientfactor.manage", "client.create", "client.edit", "client.view", "contact.manage", "finance.view",
       "import.refresh", "job.manage", "knowledge.approve", "knowledge.capture", "portal.admin", "report.edit", "report.publish", "report.view", "scoperow.edit", "site.manage", "snapshot.review",
@@ -398,5 +401,22 @@ describe("matrix v15: the import, server-side, Phase B (BRIEF-v7-import-server-s
   it("v15 adds import.refresh for Admin and Consultant and changes nothing else from v14", () => {
     assert.deepEqual(rows(matrixMigrationV15, 15).filter((row) => !rows(matrixMigrationV14, 14).includes(row)), ["admin import.refresh all", "consultant import.refresh all"]);
     assert.deepEqual(rows(matrixMigrationV14, 14).filter((row) => !rows(matrixMigrationV15, 15).includes(row)), [], "nothing is taken away");
+  });
+});
+
+describe("matrix v16: the import, server-side, Phase E — the batch (BRIEF-v7-import-server-side-phase-e, R-5)", () => {
+  const rows = (sql: string, version: number) => [...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`).sort();
+  it("import.refresh_batch is Admin only: no other role holds it, the CRM included", () => {
+    assert.equal(ROLE_CAPABILITY_MATRIX.admin["import.refresh_batch"], "all");
+    for (const role of ["consultant", "reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.refresh_batch"], undefined, role);
+  });
+  it("unlocks exactly the batch's two commands, staff commands", () => {
+    assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.refresh_batch").map((definition) => definition.key).sort(),
+      ["import.refreshBatch.resume", "import.refreshBatch.start"]);
+    for (const key of ["import.refreshBatch.start", "import.refreshBatch.resume"] as const) assert.notEqual((commandDefinitions[key] as { principal?: string }).principal, "portal");
+  });
+  it("v16 adds import.refresh_batch for Admin and changes nothing else from v15", () => {
+    assert.deepEqual(rows(matrixMigrationV16, 16).filter((row) => !rows(matrixMigrationV15, 15).includes(row)), ["admin import.refresh_batch all"]);
+    assert.deepEqual(rows(matrixMigrationV15, 15).filter((row) => !rows(matrixMigrationV16, 16).includes(row)), [], "nothing is taken away");
   });
 });

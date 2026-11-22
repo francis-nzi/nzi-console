@@ -77,6 +77,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `task.manage` (keep CRM tasks: create, edit, reassign, reschedule, complete, reopen — only one's own or one's assigned) ⚑ | ✓ | ✓ | ✓ | ✓ | — |
 | `import.manage` (upload a job's import reconciliation summary, open the import view, and resolve its flagged rows — Phase 2; no ingest) ⚑ | ✓ | — | — | — | — |
 | `import.refresh` (refresh a job from the previous system in the service: preview the chain, or commit it with a reason — D7 the floor) ⚑ | ✓ | ✓ | — | — | — |
+| `import.refresh_batch` (refresh all of a client's imported jobs in one batch: the eligible auto-committed through the fast path, the rest queued for a person) ⚑ | ✓ | — | — | — | — |
 
 ### Conditional notes (⚑)
 
@@ -167,6 +168,12 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   and names the summary and decisions its preview showed. The inner steps run under their own principals, as Phase 3's do.
   **An organisation may require Admin to commit** (`organisation.importPolicy.set`, `admin.settings`, audited; 0231) — off
   until set. Deciding rows stays `import.manage`. Audited by the job with run ids, counts and codes, no figures.
+- **Import, server-side, Phase E (matrix v16, 0233; 0232; BRIEF-v7-import-server-side-phase-e, R-5).** `import.refresh_batch`
+  (all) is held by **Admin only**: start (`import.refreshBatch.start`) or resume (`import.refreshBatch.resume`) a batch over one
+  client's imported jobs. Each job goes through `import.refresh`'s fast path unchanged, run as the starting Admin with their grant
+  re-derived per job: the eligible auto-commit, the rest are queued for a person. The per-job Admin-commit gate (0231) still
+  applies. A skipped job is **already current locally** — the batch does not re-read it from the previous system. Audited by the
+  client with the run id and counts only.
 
 ## Naming convention
 

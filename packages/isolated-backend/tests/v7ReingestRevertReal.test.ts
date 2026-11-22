@@ -20,6 +20,8 @@ import { ingestV7ImportJob, readV7ImportIngestState, recordV7ImportRehearsal, re
 import { commitV7ImportRefresh, previewV7ImportRefresh, v7ImportRefreshSummarySha256, type V7ImportRefreshSource } from "../src/v7ImportRefresh";
 import { readImportPolicy, setOrganisationImportPolicy } from "../src/organisationSettings";
 import { readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON } from "../src/v7ImportFastPath";
+import { resumeV7ImportBatch, startV7ImportBatch } from "../src/v7ImportBatchCommands";
+import { readV7ImportBatch, runV7ImportBatch, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome } from "../src/v7ImportBatch";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -1494,5 +1496,259 @@ describe("the import refresh's fast path: eligible jobs refresh in one action, e
     await assert.rejects(fast("fp-race", context("fp-race"), { ...options, within: async (client, at) => { if (at === "commit") await personEdits(client as never, "fp-race"); } }),
       (error) => codes(error).includes("FAST_PATH_INELIGIBLE"));
     assert.deepEqual(await fingerprint(), before);
+  });
+});
+
+/**
+ * Phase E (BRIEF-v7-import-server-side-phase-e, R-5; RULING-v7-import-phase-e-infra): the batch. Every job here stands as Phase D's
+ * J000901 does — migrated, re-ingested by the system — each with its own rows, under one client per scenario. The batch runs the
+ * fast path per job, unchanged: these tests are about the orchestration (which jobs, in what order, recorded how, resumed how).
+ */
+describe("the import refresh batch: one client's jobs through the fast path, the eligible auto-committed and the rest queued", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  const ORG = "batch", GATED = "batch-gated";
+  const context = (org: string, role: "admin" | "consultant" = "admin", actorId = `staff-${role}`, reason?: string): CommandContext => {
+    keys += 1;
+    return { organisationId: org, actorId, principal: "staff", idempotencyKey: `bt-${keys}`, correlationId: `bt-corr-${keys}`, ...(reason ? { reason } : {}),
+      grant: commandGrantForRole(role, org, actorId) };
+  };
+  const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+  const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
+  /** Job k: its own three rows (ids k001..k003), gas amended in the previous system now. */
+  const job = (k: number) => {
+    const at = (base: V7Fixture, n: string): V7Fixture => ({ ...base, id: `${k}${n}` });
+    const gas = at(GAS, "001"), water = at(WATER, "002"), refrigerant = at(REFRIGERANT, "003");
+    const jobId = `batch-job-${k}`;
+    const plan = (runId: string): V7ReingestJobInput => ({ ...planFor(runId, [[`v7-row-${gas.id}`, gas], [`v7-row-${water.id}`, water], [`v7-row-${refrigerant.id}`, refrigerant]]), jobId });
+    return { jobId, k, plan, before: [gas, water, refrigerant].map(plannedRow), now: [{ ...gas, qty: 1200, reported: 0.24 }, water, refrigerant].map(plannedRow) };
+  };
+  type Job = ReturnType<typeof job>;
+  const ELIGIBLE = job(1), EDITED = job(2), D7 = job(3), CLEAN = job(4), TIMEOUT = job(5), ISSUED = job(6);
+  const CRASHED = job(7), AFTER_CRASH = job(8), CRASHED_EARLY = job(9), GATE_1 = job(10), GATE_2 = job(11), DEMOTED = job(12);
+  // What the previous system holds for each job now; a test may change it. A job named in `timingOut` times out on every read.
+  const holds = new Map<string, PlannedRow[]>();
+  const timingOut = new Set<string>();
+  const reads: string[] = [];
+  const source: V7ImportRefreshSource = async (_db, { jobId }) => {
+    reads.push(jobId);
+    if (timingOut.has(jobId)) throw Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    return { sourceSha256: "e".repeat(64), rows: holds.get(jobId)! };
+  };
+  const ALL = [ELIGIBLE, EDITED, D7, CLEAN, TIMEOUT, ISSUED, CRASHED, AFTER_CRASH, CRASHED_EARLY, GATE_1, GATE_2, DEMOTED];
+  const byId = new Map(ALL.map((entry) => [entry.jobId, entry]));
+  const optionsFor = (jobId: string) => {
+    const plan = withoutRun(byId.get(jobId)!.plan("x"));
+    // D7's job: water planned on a per-litre factor, so the re-ingest cannot reconcile (Phase D's D-ELIG-3 case).
+    return { basePlan: jobId === D7.jobId ? { ...plan, rows: plan.rows.map((row) => row.v7RowId === `v7-row-${D7.k}002` ? { ...row, factorId: "lpg" } : row) } : plan };
+  };
+  const runner = { source, optionsFor };
+  const results = async (org: string, runId: string) => Object.fromEntries((await db.query<{ job_id: string; status: string; because: string[]; flagged: number; refusal_codes: string[];
+    failure_class: string | null; attempts: number; ingest_id: string | null; audit_event_id: string | null }>(
+    `SELECT job_id, status, because, flagged, refusal_codes, failure_class, attempts, ingest_id, audit_event_id FROM nzi_console.v7_import_batch_results
+      WHERE organisation_id = $1 AND run_id = $2 ORDER BY position`, [org, runId])).rows.map((row) => [row.job_id, row]));
+  const refreshedEvents = async (org: string, jobId: string) => (await db.query<{ actor_id: string; reason: string; correlation_id: string }>(
+    `SELECT actor_id, reason, correlation_id FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.refreshed' AND entity_id = $2`, [org, jobId])).rows;
+  const ingests = async (org: string, jobId: string) => (await db.query<{ ingest_id: string }>(
+    `SELECT ingest_id FROM nzi_console.v7_import_ingests WHERE organisation_id = $1 AND job_id = $2 AND kind = 'ingest'`, [org, jobId])).rows.map((row) => row.ingest_id);
+  const runCorrelation = async (org: string, runId: string) => (await db.query<{ correlation_id: string }>(
+    `SELECT correlation_id FROM nzi_console.v7_import_batch_runs WHERE organisation_id = $1 AND run_id = $2`, [org, runId])).rows[0]!.correlation_id;
+
+  const seedJob = async (org: string, client: string, entry: Job) => {
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [org]);
+    await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+      VALUES ($1,$2,$3,$4,'crp','CRP','open','Data entry',2025,'2025-01-01','2025-12-31','nzi-pro-v7',$5,$6)`, [org, entry.jobId, client, 9300 + entry.k, `9${entry.k}`, `J${String(900 + entry.k).padStart(6, "0")}`]);
+    await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [org, entry.jobId]);
+    for (const row of entry.before) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: org, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(entry.jobId, row)]);
+    const standing = `v7-reingest-${randomUUID()}`;
+    await withTenantWrite(database.pool, org, (client) => reingestV7JobInTransaction(client, { ...entry.plan(standing) },
+      { organisationId: org, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+        reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", org, V7_REINGEST_ACTOR) }));
+    holds.set(entry.jobId, entry.now);
+  };
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7batch"))!;
+    db = await database.admin();
+    for (const org of [ORG, GATED]) {
+      await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [org]);
+      await db.query(`SELECT nzi_console.provision_organisation($1)`, [org]);
+      await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [org]);
+      for (const client of ["c1", "c2", "c3", "c4", "c-empty"]) await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,$2,'Batch Test','active')`, [org, client]);
+      // A second Admin, so the demotion test may demote the first (an organisation keeps one active Admin).
+      for (const [user, role] of [["staff-admin", "admin"], ["staff-admin-2", "admin"], ["staff-consultant", "consultant"]]) {
+        await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [org, user, role]);
+      }
+      await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                      VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [org]);
+      for (const [id, label, unit, kg, scope, levels] of [["gas", "Natural gas", "kWh", 0.2, "1", ["Fuels", "Gaseous fuels", "Natural gas"]], ["water", "Water supply", "m3", 0.15, "3", []],
+        ["lpg", "LPG", "litres", 0.2, "1", ["Fuels", "Gaseous fuels", "LPG"]]] as const) {
+        await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
+          [org, id, label, unit, kg, scope, levels]);
+      }
+    }
+    // c1, the mixed client, in job-number order: eligible · edited by a person · D7 refuses · clean · times out · a console-issued report.
+    for (const entry of [ELIGIBLE, EDITED, D7, CLEAN, TIMEOUT, ISSUED]) await seedJob(ORG, "c1", entry);
+    holds.set(CLEAN.jobId, CLEAN.before); // the previous system still holds what the job holds: nothing to refresh
+    timingOut.add(TIMEOUT.jobId);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
+    await db.query(`INSERT INTO nzi_console.audit_events (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, reason, after_json)
+      SELECT $1, $2, 'staff-consultant', 'staff', 'scopeRow.update', 'scope_row', scope_row_id, $2, 'a correction (test)', '{}'::jsonb
+        FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $3 AND origin = 'live' AND enabled LIMIT 1`, [ORG, randomUUID(), EDITED.jobId]);
+    await db.query(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by)
+      VALUES ($1, 'snap-1', $2, 1, 1, $3, '{}'::jsonb, 'staff-consultant')`, [ORG, ISSUED.jobId, `sha256:${"a".repeat(64)}`]);
+    await db.query(`INSERT INTO nzi_console.report_versions (organisation_id, report_version_id, job_id, status, manifest_version, reviewed_snapshot_id, data_hash, published_at)
+      VALUES ($1, 'rv-1', $2, 'published', 1, 'snap-1', $3, now())`, [ORG, ISSUED.jobId, `sha256:${"a".repeat(64)}`]);
+    // c2 and c3: the crash cases. GATED: the Admin-commit gate set, c1 two eligible jobs, c2 one for the demoted starter.
+    for (const entry of [CRASHED, AFTER_CRASH]) await seedJob(ORG, "c2", entry);
+    await seedJob(ORG, "c3", CRASHED_EARLY);
+    for (const entry of [GATE_1, GATE_2]) await seedJob(GATED, "c1", entry);
+    await seedJob(GATED, "c2", DEMOTED);
+    await setOrganisationImportPolicy(database.pool, { refreshCommitRequiresAdmin: true, expectedVersion: 0 }, context(GATED, "admin", "staff-admin", "Admins commit (test)"));
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  let mixedRun = "";
+  let crashRun = "";
+  it("a batch over a mixed client auto-commits exactly the eligible job and queues the rest with the fast path's own reasons; a failing job does not stop it", async () => {
+    const started = await startV7ImportBatch(database.pool, { clientId: "c1" }, context(ORG));
+    mixedRun = started.data.runId;
+    assert.deepEqual([started.data.jobs, started.data.clientId], [6, "c1"]);
+    reads.length = 0;
+    const run = await runV7ImportBatch(database.pool, ORG, mixedRun, runner);
+    assert.deepEqual(run, { claimed: true, processed: 7, status: "completed" }, "six jobs, the timed-out one read twice");
+    // One at a time, in job order; a refreshed job reads twice (its preview, then its commit's own read); one retry for the timeout.
+    assert.deepEqual(reads, [ELIGIBLE, ELIGIBLE, EDITED, D7, CLEAN, TIMEOUT, TIMEOUT, ISSUED].map((entry) => entry.jobId));
+    const rows = await results(ORG, mixedRun);
+    assert.deepEqual(Object.values(rows).map((row) => [row.status, row.because, row.flagged, row.refusal_codes, row.failure_class, row.attempts]), [
+      ["refreshed", [], 0, [], null, 0],
+      ["queued", ["manual-edits"], 0, [], null, 0],
+      ["queued", ["flagged"], 0, [], null, 0],
+      ["current", [], 0, [], null, 0],
+      ["failed", [], 0, [], "view-timeout", 1],
+      ["refused", [], 0, ["SNAPSHOT_EXISTS"], null, 0],
+    ]);
+    assert.deepEqual(rows[ELIGIBLE.jobId]!.ingest_id, (await ingests(ORG, ELIGIBLE.jobId))[0]);
+    // The commit is the fast path's, as a person's one action makes it: the starter as actor, the fixed reason, the run's correlation.
+    assert.deepEqual((await refreshedEvents(ORG, ELIGIBLE.jobId)).map((row) => [row.actor_id, row.reason, row.correlation_id]),
+      [["staff-admin", V7_IMPORT_FAST_PATH_REASON, await runCorrelation(ORG, mixedRun)]]);
+    for (const other of [EDITED, D7, CLEAN, TIMEOUT, ISSUED]) assert.deepEqual([await refreshedEvents(ORG, other.jobId), await ingests(ORG, other.jobId)], [[], []], other.jobId);
+    const view = await withTenantRead(database.pool, ORG, (client) => readV7ImportBatch(client, ORG, "c1"));
+    assert.deepEqual(view.run?.tally, { total: 6, refreshed: 1, exceptions: 3, failed: 1, current: 1, skipped: 0, pending: 0 });
+    assert.deepEqual(view.run?.queue.map((item) => [item.jobNumber, item.status, item.because, item.refusalCodes, item.failureClass]), [
+      ["J009302", "queued", ["manual-edits"], [], null], ["J009303", "queued", ["flagged"], [], null],
+      ["J009305", "failed", [], [], "view-timeout"], ["J009306", "refused", [], ["SNAPSHOT_EXISTS"], null]]);
+    assert.deepEqual([view.importedJobs, view.run?.status, view.run?.stopped], [6, "completed", false]);
+    const events = (await db.query<{ action: string; after_json: Record<string, unknown> }>(`SELECT action, after_json FROM nzi_console.audit_events
+      WHERE organisation_id = $1 AND action LIKE 'import.refreshBatch.%' AND entity_id = 'c1' ORDER BY occurred_at, action`, [ORG])).rows;
+    assert.deepEqual(events.map((row) => row.action), ["import.refreshBatch.started", "import.refreshBatch.finished"]);
+    assert.deepEqual(events[1]!.after_json, { runId: mixedRun, total: 6, refreshed: 1, exceptions: 3, failed: 1, current: 1, skipped: 0, pending: 0 }, "counts only");
+  });
+
+  it("a re-run skips the committed job without reading it, re-attempts the exceptions and the failure, and shows a job a person resolved since as current locally", async () => {
+    // A person works the edited job through the deliberate flow; the source recovers for the one that timed out.
+    const preview = await previewV7ImportRefresh(database.pool, source, { jobId: EDITED.jobId, mode: "preview" }, context(ORG, "consultant"), optionsFor(EDITED.jobId));
+    assert.equal(preview.outcome, "would-commit");
+    await commitV7ImportRefresh(database.pool, source, { jobId: EDITED.jobId, mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 },
+      context(ORG, "consultant", "staff-consultant", "worked by hand (test)"), optionsFor(EDITED.jobId));
+    timingOut.delete(TIMEOUT.jobId);
+    const started = await startV7ImportBatch(database.pool, { clientId: "c1" }, context(ORG));
+    reads.length = 0;
+    assert.equal((await runV7ImportBatch(database.pool, ORG, started.data.runId, runner)).status, "completed");
+    assert.deepEqual(reads, [D7, CLEAN, TIMEOUT, TIMEOUT, ISSUED].map((entry) => entry.jobId), "the two committed jobs are not read again (the recovered one reads twice: preview, commit)");
+    assert.deepEqual(Object.values(await results(ORG, started.data.runId)).map((row) => row.status), ["skipped", "skipped", "queued", "current", "refreshed", "refused"]);
+    assert.equal((await refreshedEvents(ORG, ELIGIBLE.jobId)).length, 1, "never committed twice");
+    assert.equal((await refreshedEvents(ORG, TIMEOUT.jobId)).length, 1, "the job that failed last time refreshed now");
+    const view = await withTenantRead(database.pool, ORG, (client) => readV7ImportBatch(client, ORG, "c1"));
+    assert.deepEqual(view.run?.tally, { total: 6, refreshed: 1, exceptions: 2, failed: 0, current: 1, skipped: 2, pending: 0 });
+  });
+
+  it("one open run per client, and a client with nothing imported has nothing to run", async () => {
+    const open = await startV7ImportBatch(database.pool, { clientId: "c2" }, context(ORG));
+    await assert.rejects(startV7ImportBatch(database.pool, { clientId: "c2" }, context(ORG)), (error) => codes(error).includes("BATCH_OPEN"));
+    await assert.rejects(startV7ImportBatch(database.pool, { clientId: "c-empty" }, context(ORG)), (error) => codes(error).includes("NO_IMPORTED_JOBS"));
+    // c2's open run is the keystone test's.
+    crashRun = open.data.runId;
+  });
+
+  it("KEYSTONE — killed after a job's commit, before its result: Resume re-claims the job under the SAME key, the landed commit is recorded, nothing commits twice", async () => {
+    const correlation = await runCorrelation(ORG, crashRun);
+    const key = v7ImportBatchIdempotencyKey(crashRun, CRASHED.jobId, 0);
+    // The runner took the run and the first job, committed it under the job's key — and died before writing the result.
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
+    await db.query(`UPDATE nzi_console.v7_import_batch_runs SET status = 'running', started_at = now(), lease_holder = 'runner-dead', lease_until = now() + interval '10 minutes' WHERE run_id = $1`, [crashRun]);
+    await db.query(`UPDATE nzi_console.v7_import_batch_results SET status = 'running', lease_until = now() + interval '10 minutes' WHERE run_id = $1 AND job_id = $2`, [crashRun, CRASHED.jobId]);
+    const landed = await refreshV7ImportFastPath(database.pool, source, CRASHED.jobId,
+      { organisationId: ORG, actorId: "staff-admin", principal: "staff", grant: commandGrantForRole("admin", ORG, "staff-admin"), idempotencyKey: key, correlationId: correlation },
+      optionsFor(CRASHED.jobId));
+    assert.equal(landed.fastPath, "refreshed");
+    if (landed.fastPath !== "refreshed") return;
+    // While the dead runner's lease stands: no Resume, and no second runner.
+    await assert.rejects(resumeV7ImportBatch(database.pool, { clientId: "c2", runId: crashRun }, context(ORG)), (error) => codes(error).includes("BATCH_RUNNING"));
+    assert.deepEqual(await runV7ImportBatch(database.pool, ORG, crashRun, runner), { claimed: false, processed: 0, status: null });
+    // The lease runs out; an Admin resumes; a new runner carries on.
+    await db.query(`UPDATE nzi_console.v7_import_batch_runs SET lease_until = now() - interval '1 second' WHERE run_id = $1`, [crashRun]);
+    await db.query(`UPDATE nzi_console.v7_import_batch_results SET lease_until = now() - interval '1 second' WHERE run_id = $1 AND status = 'running'`, [crashRun]);
+    const resumed = await resumeV7ImportBatch(database.pool, { clientId: "c2", runId: crashRun }, context(ORG));
+    assert.equal(resumed.data.remaining, 2, "the job left running and the one not reached");
+    reads.length = 0;
+    assert.deepEqual(await runV7ImportBatch(database.pool, ORG, crashRun, runner), { claimed: true, processed: 2, status: "completed" });
+    assert.deepEqual(reads, [AFTER_CRASH.jobId, AFTER_CRASH.jobId], "the crashed job's commit is found by its key: it is not read, nor run, again");
+    const rows = await results(ORG, crashRun);
+    assert.deepEqual([rows[CRASHED.jobId]!.status, rows[CRASHED.jobId]!.ingest_id, rows[CRASHED.jobId]!.audit_event_id, rows[CRASHED.jobId]!.attempts],
+      ["refreshed", landed.committed.ingestId, landed.auditEventId, 0], "recorded as the commit that landed — no attempt bump on a crash-resume");
+    assert.deepEqual([(await refreshedEvents(ORG, CRASHED.jobId)).length, (await ingests(ORG, CRASHED.jobId)).length], [1, 1], "one commit, one 0229 record: never twice");
+    assert.equal(rows[AFTER_CRASH.jobId]!.status, "refreshed");
+    // And the stored outcome under that same key replays rather than commits — the key really is the one the commit used.
+    const replay = (await db.query<{ n: string }>(`SELECT count(*)::text AS n FROM nzi_console.command_idempotency WHERE organisation_id = $1 AND idempotency_key = $2`, [ORG, key])).rows[0]!.n;
+    assert.equal(replay, "1");
+  });
+
+  it("killed after claiming a job but before its commit: Resume runs it under the same key (attempt 0), once", async () => {
+    const started = await startV7ImportBatch(database.pool, { clientId: "c3" }, context(ORG));
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
+    await db.query(`UPDATE nzi_console.v7_import_batch_runs SET status = 'running', started_at = now(), lease_holder = 'runner-dead', lease_until = now() - interval '1 second' WHERE run_id = $1`, [started.data.runId]);
+    await db.query(`UPDATE nzi_console.v7_import_batch_results SET status = 'running', lease_until = now() - interval '1 second' WHERE run_id = $1`, [started.data.runId]);
+    await resumeV7ImportBatch(database.pool, { clientId: "c3", runId: started.data.runId }, context(ORG));
+    assert.equal((await runV7ImportBatch(database.pool, ORG, started.data.runId, runner)).status, "completed");
+    const row = (await results(ORG, started.data.runId))[CRASHED_EARLY.jobId]!;
+    assert.deepEqual([row.status, row.attempts], ["refreshed", 0]);
+    const stored = (await db.query<{ idempotency_key: string }>(`SELECT idempotency_key FROM nzi_console.command_idempotency WHERE organisation_id = $1 AND idempotency_key LIKE $2`,
+      [ORG, `v7-batch:${started.data.runId}:%`])).rows.map((entry) => entry.idempotency_key);
+    assert.deepEqual(stored, [v7ImportBatchIdempotencyKey(started.data.runId, CRASHED_EARLY.jobId, 0)]);
+    assert.equal((await refreshedEvents(ORG, CRASHED_EARLY.jobId)).length, 1);
+  });
+
+  it("Admin only: a CRM cannot start a batch (matrix v16) — and the orchestration under a CRM still honours the per-job Admin gate: every job queues admin-commits", async () => {
+    await assert.rejects(startV7ImportBatch(database.pool, { clientId: "c1" }, context(GATED, "consultant")),
+      (error) => error instanceof AuthorizationError && error.permission === "import.refresh_batch");
+    const started = await startV7ImportBatch(database.pool, { clientId: "c1" }, context(GATED));
+    const crm = commandGrantForRole("consultant", GATED, "staff-consultant");
+    for (const entry of [GATE_1, GATE_2]) {
+      const outcome = await v7ImportBatchJobOutcome(database.pool, GATED, started.data.runId, { correlation_id: "bt-crm" },
+        { jobId: entry.jobId, legacyJobNumber: `J${String(900 + entry.k).padStart(6, "0")}`, attempts: 0 }, crm, runner);
+      assert.deepEqual(outcome, { status: "queued", because: ["admin-commits"], flagged: 0 }, entry.jobId);
+      assert.equal((await refreshedEvents(GATED, entry.jobId)).length, 0, "nothing auto-commits for a CRM");
+    }
+    // The Admin who started it passes the gate: the run itself refreshes both.
+    assert.equal((await runV7ImportBatch(database.pool, GATED, started.data.runId, runner)).status, "completed");
+    assert.deepEqual(Object.values(await results(GATED, started.data.runId)).map((row) => row.status), ["refreshed", "refreshed"]);
+  });
+
+  it("the starter's grant is re-derived per job: no longer an Admin, the run stops cancelled, its jobs left pending and nothing run", async () => {
+    const started = await startV7ImportBatch(database.pool, { clientId: "c2" }, context(GATED));
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [GATED]);
+    await db.query(`UPDATE nzi_console.memberships SET role_id = 'consultant' WHERE organisation_id = $1 AND user_id = 'staff-admin'`, [GATED]);
+    try {
+      reads.length = 0;
+      assert.deepEqual(await runV7ImportBatch(database.pool, GATED, started.data.runId, runner), { claimed: true, processed: 0, status: "cancelled" });
+      assert.deepEqual([reads, Object.values(await results(GATED, started.data.runId)).map((row) => row.status)], [[], ["pending"]]);
+      assert.equal((await db.query(`SELECT 1 FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.refreshBatch.cancelled'`, [GATED])).rows.length, 1);
+    } finally {
+      await db.query(`UPDATE nzi_console.memberships SET role_id = 'admin' WHERE organisation_id = $1 AND user_id = 'staff-admin'`, [GATED]);
+    }
   });
 });

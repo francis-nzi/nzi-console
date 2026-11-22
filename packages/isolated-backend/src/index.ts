@@ -328,4 +328,10 @@ export {
   readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON, v7ImportFastPathBlockers,
   type V7ImportFastPathBlocker, type V7ImportFastPathResult, type V7ImportFastPathSignals,
 } from "./v7ImportFastPath";
+export { resumeV7ImportBatch, startV7ImportBatch, v7ImportBatchJobIds } from "./v7ImportBatchCommands";
+export {
+  readV7ImportBatch, runV7ImportBatch, v7ImportBatchFailureClass, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome, v7ImportBatchTally,
+  type V7ImportBatchJobOutcome,
+  type V7ImportBatchQueueItem, type V7ImportBatchRunnerOptions, type V7ImportBatchRunnerResult, type V7ImportBatchView,
+} from "./v7ImportBatch";
 export { createV7ImportViewPool, summariseV7JobFromViews, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "./v7ImportView";

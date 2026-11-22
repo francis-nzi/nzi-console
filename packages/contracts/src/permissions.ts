@@ -102,6 +102,10 @@ export const capabilities = [
   // Refresh a job from the previous system in the service: preview the whole chain (rolled back), or commit it with a reason,
   // D7 the floor. CRM-operable: the Consultant holds it, as Admin does; an organisation may require Admin to commit (0231).
   "import.refresh",
+  // ── The import, server-side, Phase E (matrix v16, 0233; BRIEF-v7-import-server-side-phase-e, R-5) ──
+  // Start (or resume) a batch: every imported job of one client through the fast path, the eligible auto-committed and the rest
+  // queued for a person. Admin only (settled 15 Nov); the per-job Admin-commit gate (0231) still applies on top.
+  "import.refresh_batch",
 ] as const;
 export type Capability = (typeof capabilities)[number];
 
@@ -116,7 +120,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 15;
+export const PERMISSION_MATRIX_VERSION = 16;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 

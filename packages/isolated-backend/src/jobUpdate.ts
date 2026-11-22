@@ -62,6 +62,9 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   v7_import_sessions: { periodBound: true, why: "an import summary compares the job's rows with the previous system's records for the period (0226)" },
   v7_import_ingests: { periodBound: true, why: "a rehearsal or ingest of the period's imported rows, reconciled per scope (0229)" },
   v7_import_decisions: { periodBound: true, why: "a person's resolution of the period's imported rows — the crosswalk Phase 3 ingests (0228)" },
+  // Not period-bound: a batch's per-job outcome (refreshed, queued, failed — ids, codes, counts) is the run's record, not data of the
+  // period. A refresh it caused is period-bound already, through its 0229 ingest.
+  v7_import_batch_results: { periodBound: false, why: "a batch run's outcome for the job — ids, codes and counts, no figures (0232)" },
   portal_report_approvals: { periodBound: true, why: "a client's approval of the period's report" },
   portal_report_comments: { periodBound: true, why: "a client's comments on the period's report" },
   portal_tracker_actions: { periodBound: true, why: "actions tracked against the period's report" },

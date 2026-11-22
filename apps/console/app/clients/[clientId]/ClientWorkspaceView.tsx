@@ -28,6 +28,7 @@ import { srsDrawerLabel, type SrsDrawerRequest } from "./srsDrawers";
 import { FinancialsHeldArea, UnavailableArea } from "./ClientAreaStates";
 import { HistoryArea } from "./HistoryArea";
 import { PortalManagementArea } from "./PortalManagementArea";
+import { ImportBatchPanel } from "./ImportBatchPanel";
 import { portalFeatureEnabled } from "../../lib/portalFlags";
 import { ContactForm } from "./ClientContacts";
 import { ClientLogoBadge, IdentityForm } from "./ClientIdentity";
@@ -169,6 +170,8 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
           {canManagePortal
             ? <PortalManagementArea clientId={client.id} clientOwnerUserId={client.ownerUserId ?? null} writeEnabled={writeEnabled} />
             : <section className="nz-panel" aria-labelledby="area-portal"><div className="nz-card-h"><h2 id="area-portal">Portal Management</h2></div><div className="nz-card-b"><p className="sub" role="status">Portal Management is not available here: it is not switched on yet, or your role does not include portal administration for this client.</p></div></section>}
+          {/* Phase E: refresh all of the client's imported jobs — shown only to whoever may (import.refresh_batch), on a client that has some. */}
+          <ImportBatchPanel clientId={client.id} />
           {canReadHistory ? <HistoryArea result={auditHistory} /> : null}
           <ActivityCard jobs={jobs} />
         </>;
