@@ -60,11 +60,16 @@ export const REFRESHED_AUTOMATICALLY = "Refreshed automatically";
 /** The one line saying why a refresh was not automatic; null when there is nothing to say (a clean job: nothing to refresh). */
 export function notAutomaticLine(outcome: Extract<FastPathOutcome, { fastPath: "deliberate" }>): string | null {
   if (refreshViewOf(outcome.preview).kind === "nothing") return null;
-  const parts = outcome.because.map((blocker) => blocker === "issued-report" ? "issued report"
+  const parts = blockerParts(outcome.because, outcome.flagged);
+  return parts.length ? `Not automatic: ${parts.join(" · ")}.` : null;
+}
+
+/** Each blocker in words — the job's one line and the batch's review queue (Phase E) say it the same way. */
+export function blockerParts(because: readonly FastPathBlocker[], flagged: number): string[] {
+  return because.map((blocker) => blocker === "issued-report" ? "issued report"
     : blocker === "manual-edits" ? "manual edits"
       : blocker === "admin-commits" ? "an Admin commits on this organisation"
-        : outcome.flagged > 0 ? `${outcome.flagged} flagged` : "it would not reconcile");
-  return parts.length ? `Not automatic: ${parts.join(" · ")}.` : null;
+        : flagged > 0 ? `${flagged} flagged` : "it would not reconcile");
 }
 
 /** An eligible job, refreshed in one action: Σ previous system against Σ live per scope, and the audit id. */

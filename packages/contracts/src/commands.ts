@@ -34,6 +34,7 @@ import { v7ImportSummaryIssues, type V7ImportSummary } from "./v7ImportSummary";
 import { v7ImportDecisionClearIssues, v7ImportDecisionSetIssues, type V7ImportDecisionClearInput, type V7ImportDecisionSetInput } from "./v7ImportDecision";
 import { v7ImportIngestIssues, v7ImportRehearsalRecordIssues, type V7ImportIngestInput, type V7ImportRehearsalRecordInput } from "./v7ImportIngest";
 import { organisationImportPolicyIssues, v7ImportRefreshIssues, type OrganisationImportPolicyInput, type V7ImportRefreshInput } from "./v7ImportRefresh";
+import { v7ImportBatchResumeIssues, v7ImportBatchStartIssues, type V7ImportBatchResumeInput, type V7ImportBatchStartInput } from "./v7ImportBatch";
 import { isActivityFrequency, type ActivityFrequency } from "./activityDistribution";
 import type { CapturedVia } from "./entryProvenance";
 import type { AssistRecord } from "./aiAssist";
@@ -86,6 +87,8 @@ export type CommandKey =
   | "import.rehearsal.record"
   | "import.ingest"
   | "import.refresh"
+  | "import.refreshBatch.start"
+  | "import.refreshBatch.resume"
   | "job.datasets.update"
   | "job.site.setInclusion"
   | "job.seedFromTemplate"
@@ -842,6 +845,13 @@ export type CommandInputMap = {
    * `import.refresh` (CRM and Admin; an organisation may require Admin to commit); a commit needs a reason.
    */
   "import.refresh": V7ImportRefreshInput;
+  /**
+   * The import, server-side, Phase E (BRIEF-v7-import-server-side-phase-e, R-5): a batch over one client's imported jobs — start
+   * freezes them into a run; resume picks up a run whose runner stopped. Each job goes through `import.refresh`'s fast path,
+   * unchanged. `import.refresh_batch` (Admin only).
+   */
+  "import.refreshBatch.start": V7ImportBatchStartInput;
+  "import.refreshBatch.resume": V7ImportBatchResumeInput;
   /**
    * DATASET-CURRENCY §3 — move a job's fallback editions to the reporting year's now-published ones and recalculate the rows
    * on them. `series`: the fallback datasets to move (from the banner). `expected`: every row the preview showed moving or
@@ -3295,6 +3305,10 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     if (typeof input.expectedVersion !== "number" || !Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be 0 (not yet set) or positive." });
     return issues;
   } },
+  // The import, server-side, Phase E: a batch over one client's imported jobs. Starting writes the run and its frozen job list;
+  // the commits are each job's own import.refresh (the fast path's fixed reason), so neither needs a reason of its own.
+  "import.refreshBatch.start": { key: "import.refreshBatch.start", label: "Refresh all of a client's jobs from the previous system", permission: "import.refresh_batch", reasonRequired: false, transaction: "batch run + its jobs, frozen in order (one open run per client) + audit + outbox + idempotency", auditAction: "import.refreshBatch.started", validate: (input, context) => [...baseIssues(context, false), ...v7ImportBatchStartIssues(input)] },
+  "import.refreshBatch.resume": { key: "import.refreshBatch.resume", label: "Resume a stopped batch refresh", permission: "import.refresh_batch", reasonRequired: false, transaction: "the stopped run's lease released for a new runner + audit + outbox + idempotency", auditAction: "import.refreshBatch.resumed", validate: (input, context) => [...baseIssues(context, false), ...v7ImportBatchResumeIssues(input)] },
   "organisation.importPolicy.set": { key: "organisation.importPolicy.set", label: "Set whether committing an import refresh needs an Admin", permission: "admin.settings", reasonRequired: true, transaction: "versioned import policy + audit (old→new, reason) + outbox + idempotency", auditAction: "organisation.importPolicy.set", validate: (input, context) => [...baseIssues(context, true), ...organisationImportPolicyIssues(input)] },
   "organisation.bank.set": { key: "organisation.bank.set", label: "Set the organisation's bank details", permission: "admin.settings", reasonRequired: true, transaction: "versioned bank details + audit (no values) + outbox + idempotency", auditAction: "organisation.bank.set", validate: (input, context) => {
     const issues = baseIssues(context, true);

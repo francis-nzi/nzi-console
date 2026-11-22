@@ -88,6 +88,25 @@ export async function resolveStaffPrincipal(pool: PoolLike, session: StaffSessio
   });
 }
 
+/**
+ * A member's grant as it stands now, without a session: the active membership's role, then that role's rows in the current
+ * matrix. For work that runs on a member's behalf after their request has ended (the Phase E batch re-derives it per job), so
+ * a role changed or a membership ended mid-run takes effect at the next job. Null when there is no active membership.
+ */
+export async function resolveMemberGrant(pool: PoolLike, organisationId: string, userId: string): Promise<CommandGrant | null> {
+  // The tenant's own read (the authentication role sees a membership only through a session; there is none here).
+  return withTenantRead(pool, organisationId, async (db: Queryable) => {
+    const role = (await db.query<{ role_id: string }>(`SELECT role_id FROM nzi_console.memberships WHERE organisation_id = $1 AND user_id = $2 AND status = 'active'`,
+      [organisationId, userId])).rows[0]?.role_id;
+    if (!isStaffRole(role)) return null;
+    const matrix = await db.query<{ matrix_version: number; capability: string; scope: string }>(`SELECT r.matrix_version, r.capability, r.scope
+      FROM nzi_console.staff_role_capabilities r
+      WHERE r.role_id=$1 AND r.matrix_version=(SELECT max(matrix_version) FROM nzi_console.staff_capability_matrix_versions)
+      ORDER BY r.capability`, [role]);
+    return { organisationId, userId, role, ...capabilitiesFromRows(matrix.rows) };
+  });
+}
+
 /** Rows naming a capability outside the enum are ignored (the enum is exhaustive), never widened. */
 export function capabilitiesFromRows(rows: ReadonlyArray<{ matrix_version: number; capability: string; scope: string }>): { matrixVersion: number; capabilities: CapabilityGrant[] } {
   const capabilities = rows

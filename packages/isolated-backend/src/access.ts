@@ -66,6 +66,9 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "import.ingest": job,
   // The import, server-side (Phase B): one job refreshed from the view set, in the caller's organisation (import.refresh).
   "import.refresh": job,
+  // Phase E: a batch is one client's (import.refresh_batch, Admin); resume names the client too, and the handler checks the run is its.
+  "import.refreshBatch.start": client,
+  "import.refreshBatch.resume": client,
   "job.datasets.update": job,
   "job.site.setInclusion": job,
   "job.seedFromTemplate": job,
