@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import net from "node:net";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import { commandGrantForRole, V7_IMPORT_SUMMARY_ROW_KEYS, V7_REINGEST_ACTOR, type CommandContext, type V7ImportSummary, type V7ReingestJobInput } from "@nzi/contracts";
@@ -17,11 +18,11 @@ import { rehearseV7Resync } from "../src/v7ResyncRehearsal";
 import { listV7ImportSessions, readV7ImportView, summariseV7JobForImport, uploadV7ImportSummary, V7_IMPORT_ACTOR } from "../src/v7ImportSummary";
 import { clearV7ImportDecision, listV7ImportFactorOptions, listV7ImportWorkbench, readV7ImportWorkbench, setV7ImportDecision } from "../src/v7ImportDecision";
 import { ingestV7ImportJob, readV7ImportIngestState, recordV7ImportRehearsal, rehearseV7ImportIngest, summariseV7JobAsTheChainSees, v7ImportDecisionsSha256 } from "../src/v7ImportIngest";
-import { commitV7ImportRefresh, previewV7ImportRefresh, v7ImportRefreshSummarySha256, type V7ImportRefreshSource } from "../src/v7ImportRefresh";
+import { commitV7ImportRefresh, previewV7ImportRefresh, v7ImportRefreshSummarySha256, v7ImportViewSource, type V7ImportRefreshSource } from "../src/v7ImportRefresh";
 import { readImportPolicy, setOrganisationImportPolicy } from "../src/organisationSettings";
 import { readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON } from "../src/v7ImportFastPath";
 import { resumeV7ImportBatch, startV7ImportBatch } from "../src/v7ImportBatchCommands";
-import { readV7ImportBatch, runV7ImportBatch, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome } from "../src/v7ImportBatch";
+import { readV7ImportBatch, runV7ImportBatch, V7_IMPORT_BATCH_PACING, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome, v7ImportBatchPauseAfter } from "../src/v7ImportBatch";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -1530,20 +1531,34 @@ describe("the import refresh batch: one client's jobs through the fast path, the
   // What the previous system holds for each job now; a test may change it. A job named in `timingOut` times out on every read.
   const holds = new Map<string, PlannedRow[]>();
   const timingOut = new Set<string>();
+  // The hardening's sources (BRIEF-v7-import-batch-hardening): a job read through a real pool to a source that never answers;
+  // a job whose source refuses connections; a job whose reads take (on the test's clock) 31s each.
+  const throughPool = new Map<string, V7ImportRefreshSource>();
+  const unreachable = new Set<string>();
+  const slow = new Set<string>();
+  let clock = 0;
   const reads: string[] = [];
-  const source: V7ImportRefreshSource = async (_db, { jobId }) => {
+  const source: V7ImportRefreshSource = async (db, job) => {
+    const { jobId } = job;
     reads.push(jobId);
     if (timingOut.has(jobId)) throw Object.assign(new Error("canceling statement due to statement timeout"), { code: "57014" });
+    if (throughPool.has(jobId)) return throughPool.get(jobId)!(db, job);
+    if (unreachable.has(jobId)) throw Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:5432"), { code: "ECONNREFUSED" });
+    if (slow.has(jobId)) clock += 31_000;
     return { sourceSha256: "e".repeat(64), rows: holds.get(jobId)! };
   };
-  const ALL = [ELIGIBLE, EDITED, D7, CLEAN, TIMEOUT, ISSUED, CRASHED, AFTER_CRASH, CRASHED_EARLY, GATE_1, GATE_2, DEMOTED];
+  const HUNG = job(13), SEVERED = job(14), BREAKER = [job(15), job(16), job(17), job(18)], SLOW = [job(19), job(20), job(21), job(22)];
+  const ALL = [ELIGIBLE, EDITED, D7, CLEAN, TIMEOUT, ISSUED, CRASHED, AFTER_CRASH, CRASHED_EARLY, GATE_1, GATE_2, DEMOTED, HUNG, SEVERED, ...BREAKER, ...SLOW];
+  const servers: net.Server[] = [];
+  const pools: pg.Pool[] = [];
   const byId = new Map(ALL.map((entry) => [entry.jobId, entry]));
   const optionsFor = (jobId: string) => {
     const plan = withoutRun(byId.get(jobId)!.plan("x"));
     // D7's job: water planned on a per-litre factor, so the re-ingest cannot reconcile (Phase D's D-ELIG-3 case).
     return { basePlan: jobId === D7.jobId ? { ...plan, rows: plan.rows.map((row) => row.v7RowId === `v7-row-${D7.k}002` ? { ...row, factorId: "lpg" } : row) } : plan };
   };
-  const runner = { source, optionsFor };
+  // No real waiting between jobs in these tests (the pacing tests below capture what the runner would wait instead).
+  const runner = { source, optionsFor, sleep: async () => undefined };
   const results = async (org: string, runId: string) => Object.fromEntries((await db.query<{ job_id: string; status: string; because: string[]; flagged: number; refusal_codes: string[];
     failure_class: string | null; attempts: number; ingest_id: string | null; audit_event_id: string | null }>(
     `SELECT job_id, status, because, flagged, refusal_codes, failure_class, attempts, ingest_id, audit_event_id FROM nzi_console.v7_import_batch_results
@@ -1577,7 +1592,7 @@ describe("the import refresh batch: one client's jobs through the fast path, the
       await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [org]);
       await db.query(`SELECT nzi_console.provision_organisation($1)`, [org]);
       await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [org]);
-      for (const client of ["c1", "c2", "c3", "c4", "c-empty"]) await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,$2,'Batch Test','active')`, [org, client]);
+      for (const client of ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c-empty"]) await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,$2,'Batch Test','active')`, [org, client]);
       // A second Admin, so the demotion test may demote the first (an organisation keeps one active Admin).
       for (const [user, role] of [["staff-admin", "admin"], ["staff-admin-2", "admin"], ["staff-consultant", "consultant"]]) {
         await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [org, user, role]);
@@ -1607,9 +1622,32 @@ describe("the import refresh batch: one client's jobs through the fast path, the
     await seedJob(ORG, "c3", CRASHED_EARLY);
     for (const entry of [GATE_1, GATE_2]) await seedJob(GATED, "c1", entry);
     await seedJob(GATED, "c2", DEMOTED);
+    // c5: the bounded reads — one job through a source that accepts and never answers, one through a source that cuts the line.
+    // c6: the breaker — four jobs, the source refusing. c7: slow reads — four eligible jobs, each read 31s on the test's clock.
+    for (const entry of [HUNG, SEVERED]) await seedJob(ORG, "c5", entry);
+    for (const entry of BREAKER) await seedJob(ORG, "c6", entry);
+    for (const entry of SLOW) await seedJob(ORG, "c7", entry);
+    const listen = (onSocket: (socket: net.Socket) => void) => new Promise<number>((resolve) => {
+      const server = net.createServer(onSocket);
+      servers.push(server);
+      server.listen(0, "127.0.0.1", () => resolve((server.address() as net.AddressInfo).port));
+    });
+    const silent = await listen(() => undefined);                      // accepts, then says nothing: a source gone quiet
+    const severing = await listen((socket) => socket.destroy());        // accepts, then drops the connection
+    // The real pool, with the bound the view pool carries — shortened here so the test does not take ten seconds a read.
+    for (const [entry, port] of [[HUNG, silent], [SEVERED, severing]] as const) {
+      const pool = new pg.Pool({ host: "127.0.0.1", port, user: "cc_import_view", database: "postgres", connectionTimeoutMillis: 300, query_timeout: 300 });
+      pool.on("error", () => undefined);
+      pools.push(pool);
+      throughPool.set(entry.jobId, v7ImportViewSource(pool));
+    }
     await setOrganisationImportPolicy(database.pool, { refreshCommitRequiresAdmin: true, expectedVersion: 0 }, context(GATED, "admin", "staff-admin", "Admins commit (test)"));
   });
-  after(async () => { await db?.end(); await database?.end(); });
+  after(async () => {
+    for (const pool of pools) await pool.end().catch(() => undefined);
+    for (const server of servers) server.close();
+    await db?.end(); await database?.end();
+  });
 
   let mixedRun = "";
   let crashRun = "";
@@ -1750,5 +1788,65 @@ describe("the import refresh batch: one client's jobs through the fast path, the
     } finally {
       await db.query(`UPDATE nzi_console.memberships SET role_id = 'admin' WHERE organisation_id = $1 AND user_id = 'staff-admin'`, [GATED]);
     }
+  });
+
+  // ── BRIEF-v7-import-batch-hardening (post-incident, 22 Nov): bounded reads, the pause, the breaker ──
+
+  it("HARDENING §2 — a source that never answers, or cuts the line: each job fails view-unavailable within the bound and the batch carries on", async () => {
+    const started = await startV7ImportBatch(database.pool, { clientId: "c5" }, context(ORG));
+    const pauses: number[] = [];
+    const at = Date.now();
+    const run = await runV7ImportBatch(database.pool, ORG, started.data.runId, { ...runner, sleep: async (ms) => { pauses.push(ms); } });
+    const took = Date.now() - at;
+    assert.deepEqual(run, { claimed: true, processed: 2, status: "completed" }, "two jobs: fewer than the breaker's three, so the run finishes");
+    assert.deepEqual(Object.values(await results(ORG, started.data.runId)).map((row) => [row.status, row.failure_class]),
+      [["failed", "view-unavailable"], ["failed", "view-unavailable"]]);
+    assert.ok(took < 5_000, `bounded: ${took}ms for two jobs at a 300ms connect cap — never the 600s lease`);
+    assert.deepEqual(pauses, [V7_IMPORT_BATCH_PACING.pauseMs, V7_IMPORT_BATCH_PACING.pauseMs], "the 2s floor between jobs, by default");
+  });
+
+  it("HARDENING §3 — the pause: 2s at least, twice a slow job's read time, 60s at most", () => {
+    assert.equal(V7_IMPORT_BATCH_PACING.pauseMs, 2_000);
+    assert.deepEqual([0, 400, 1_000, 5_000, 29_000, 45_000].map((ms) => v7ImportBatchPauseAfter(ms)), [2_000, 2_000, 2_000, 10_000, 58_000, 60_000]);
+    assert.equal(v7ImportBatchPauseAfter(100, 5_000), 5_000, "a higher floor, configured, holds");
+  });
+
+  it("HARDENING §4 — the breaker: three jobs in a row with the source not answering stop the run, nothing more is read; Resume, once it answers, finishes it", async () => {
+    for (const entry of BREAKER) unreachable.add(entry.jobId);
+    const started = await startV7ImportBatch(database.pool, { clientId: "c6" }, context(ORG));
+    reads.length = 0;
+    const paused = await runV7ImportBatch(database.pool, ORG, started.data.runId, runner);
+    assert.deepEqual(paused, { claimed: true, processed: 3, status: "paused" });
+    assert.deepEqual(reads, BREAKER.slice(0, 3).map((entry) => entry.jobId), "the fourth job is never read");
+    // The jobs the source failed are put back: the failure was the source's. Nothing was committed for any of them.
+    assert.deepEqual(Object.values(await results(ORG, started.data.runId)).map((row) => [row.status, row.failure_class]), BREAKER.map(() => ["pending", null]));
+    const view = await withTenantRead(database.pool, ORG, (client) => readV7ImportBatch(client, ORG, "c6"));
+    assert.deepEqual([view.run?.status, view.run?.stopped, view.run?.paused], ["running", true, "source-unresponsive"], "stopped, Resumable, and why");
+    const event = (await db.query<{ after_json: Record<string, unknown> }>(`SELECT after_json FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.refreshBatch.paused'`, [ORG])).rows;
+    assert.deepEqual(event.map((row) => row.after_json), [{ runId: started.data.runId, reason: "source-unresponsive", consecutive: 3, putBack: 3 }], "counts only");
+    // A second runner does not pick it up by itself: it waits for an Admin.
+    // (The run's lease is released, so it is the Admin's Resume — the governed command — that hands it to a runner.)
+    for (const entry of BREAKER) unreachable.delete(entry.jobId);
+    await resumeV7ImportBatch(database.pool, { clientId: "c6", runId: started.data.runId }, context(ORG));
+    reads.length = 0;
+    assert.deepEqual(await runV7ImportBatch(database.pool, ORG, started.data.runId, runner), { claimed: true, processed: 4, status: "completed" });
+    assert.deepEqual(Object.values(await results(ORG, started.data.runId)).map((row) => row.status), ["refreshed", "refreshed", "refreshed", "refreshed"]);
+    const after = await withTenantRead(database.pool, ORG, (client) => readV7ImportBatch(client, ORG, "c6"));
+    assert.deepEqual([after.run?.status, after.run?.stopped, after.run?.paused], ["completed", false, null]);
+  });
+
+  it("HARDENING §3/§4 — a source slowing: the pause lengthens with the read time, and three slow jobs in a row stop the run (their refreshes kept)", async () => {
+    for (const entry of SLOW) slow.add(entry.jobId);
+    const started = await startV7ImportBatch(database.pool, { clientId: "c7" }, context(ORG));
+    const pauses: number[] = [];
+    reads.length = 0;
+    const run = await runV7ImportBatch(database.pool, ORG, started.data.runId, { ...runner, now: () => clock, sleep: async (ms) => { pauses.push(ms); } });
+    assert.deepEqual(run, { claimed: true, processed: 3, status: "paused" });
+    // Each refresh read twice (preview, commit) at 31s a read: 62s, so the pause is at its 60s cap — and the third trips the breaker.
+    assert.deepEqual(pauses, [60_000, 60_000]);
+    assert.deepEqual(Object.values(await results(ORG, started.data.runId)).map((row) => row.status), ["refreshed", "refreshed", "refreshed", "pending"],
+      "a slow read that succeeded keeps its refresh; the fourth job is not read");
+    assert.ok(!reads.includes(SLOW[3]!.jobId));
+    for (const entry of SLOW) slow.delete(entry.jobId);
   });
 });

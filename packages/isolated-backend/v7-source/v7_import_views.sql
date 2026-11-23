@@ -109,14 +109,17 @@ CREATE VIEW v7_import.datasets AS
 
 -- ── Scope rows: the planner's inputs, labels through the rule, notes reduced to its two tokens ──
 CREATE VIEW v7_import.scope_rows AS
+  -- The allow-list, computed ONCE per query (BRIEF-v7-import-batch-hardening §1). Written inline, each membership test below was
+  -- its own subplan, and each rebuilt the whole list from factor_lookup: a full scan per test. Same list, same rule, same rows.
+  WITH allowed AS MATERIALIZED (SELECT label FROM v7_import.factor_labels)
   SELECT r.row_id, r.job_id, r.scope, r.original_id, r.qty, r.uom, r.factor, r.ghg_unit, r.enabled, r.site_id, r.dataset_id, r.factor_db_id,
-    v7_import.sanitise_label(r.category, btrim(r.category) IN (SELECT label FROM v7_import.factor_labels), c.person_linked, c.factor_label, c.base, r.site_id::text) AS category,
-    v7_import.sanitise_label(r.level_1, btrim(r.level_1) IN (SELECT label FROM v7_import.factor_labels), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_1,
-    v7_import.sanitise_label(r.level_2, btrim(r.level_2) IN (SELECT label FROM v7_import.factor_labels), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_2,
-    v7_import.sanitise_label(r.level_3, btrim(r.level_3) IN (SELECT label FROM v7_import.factor_labels), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_3,
-    v7_import.sanitise_label(r.level_4, btrim(r.level_4) IN (SELECT label FROM v7_import.factor_labels), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_4,
-    v7_import.sanitise_label(r.column_text, btrim(r.column_text) IN (SELECT label FROM v7_import.factor_labels), c.person_linked, c.factor_label, c.base, r.site_id::text) AS column_text,
-    v7_import.sanitise_label(r.report_label, btrim(r.report_label) IN (SELECT label FROM v7_import.factor_labels), c.person_linked, c.factor_label, c.base, r.site_id::text) AS report_label,
+    v7_import.sanitise_label(r.category, btrim(r.category) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS category,
+    v7_import.sanitise_label(r.level_1, btrim(r.level_1) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_1,
+    v7_import.sanitise_label(r.level_2, btrim(r.level_2) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_2,
+    v7_import.sanitise_label(r.level_3, btrim(r.level_3) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_3,
+    v7_import.sanitise_label(r.level_4, btrim(r.level_4) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_4,
+    v7_import.sanitise_label(r.column_text, btrim(r.column_text) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS column_text,
+    v7_import.sanitise_label(r.report_label, btrim(r.report_label) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS report_label,
     -- The only two things the import reads from notes (v7EmissionsFormula.ts): the tokens, never the text around them.
     substring(r.notes FROM '(?i)(?:^|[;( ])factor_original_id=([^;)\s]+)') AS factor_original_id,
     substring(r.notes FROM '(?i)(?:^|[;( ])storage_reason=([^;)\s]+)') AS storage_reason,
@@ -145,9 +148,9 @@ CREATE VIEW v7_import.scope_rows AS
     FROM public.factor_lookup f WHERE f.db_id::text = r.factor_db_id::text ORDER BY f.db_id LIMIT 1) own ON true
   CROSS JOIN LATERAL (SELECT
     concat_ws(' ', r.data_source, r.auto_pair_kind, r.category, r.level_1, r.level_2) ~* '(commut|home ?working|gr[ae]y ?fleet)' AS person_linked,
-    CASE WHEN own.label IS NOT NULL AND btrim(own.label) IN (SELECT label FROM v7_import.factor_labels) AND NOT v7_import.label_has_pii(own.label) THEN own.label END AS factor_label,
-    CASE WHEN btrim(r.category) IN (SELECT label FROM v7_import.factor_labels) AND NOT v7_import.label_has_pii(r.category) THEN btrim(r.category)
-      WHEN btrim(r.level_1) IN (SELECT label FROM v7_import.factor_labels) AND NOT v7_import.label_has_pii(r.level_1) THEN btrim(r.level_1)
+    CASE WHEN own.label IS NOT NULL AND btrim(own.label) IN (SELECT label FROM allowed) AND NOT v7_import.label_has_pii(own.label) THEN own.label END AS factor_label,
+    CASE WHEN btrim(r.category) IN (SELECT label FROM allowed) AND NOT v7_import.label_has_pii(r.category) THEN btrim(r.category)
+      WHEN btrim(r.level_1) IN (SELECT label FROM allowed) AND NOT v7_import.label_has_pii(r.level_1) THEN btrim(r.level_1)
       WHEN substring(r.scope FROM '[123]') IS NOT NULL THEN 'Scope ' || substring(r.scope FROM '[123]')
       ELSE 'Uncategorised' END AS base) c
   WHERE r.job_id IN (SELECT job_id FROM v7_import.jobs);
@@ -158,8 +161,11 @@ CREATE VIEW v7_import.emission_groups AS
 
 -- Register sources: codes and figures; the category (a register row's label) through the rule. No name, no free text.
 CREATE VIEW v7_import.emission_sources AS
+  -- The allow-list, computed ONCE per query (BRIEF-v7-import-batch-hardening §1). Written inline, each membership test below was
+  -- its own subplan, and each rebuilt the whole list from factor_lookup: a full scan per test. Same list, same rule, same rows.
+  WITH allowed AS MATERIALIZED (SELECT label FROM v7_import.factor_labels)
   SELECT s.source_id, s.job_id, s.scope, s.source_type, s.enabled, s.group_id, s.source_subtype, s.site_id,
-    v7_import.sanitise_label(s.category, btrim(s.category) IN (SELECT label FROM v7_import.factor_labels), c.person_linked, c.factor_label, c.base, s.site_id::text) AS category,
+    v7_import.sanitise_label(s.category, btrim(s.category) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, s.site_id::text) AS category,
     s.dataset_id, s.factor_db_id, s.original_id, s.qty, s.uom, s.factor, s.ghg_unit, s.apply_pct, s.calc_tco2e,
     CASE WHEN s.data_source IS NULL OR btrim(s.data_source) = '' THEN s.data_source
       WHEN btrim(s.data_source) IN ('Company Data', 'Spend Data', 'WFM Import', 'Legacy Annual Upload', 'Previous Year Import',
@@ -174,7 +180,7 @@ CREATE VIEW v7_import.emission_sources AS
     FROM public.factor_lookup f WHERE f.db_id::text = s.factor_db_id::text ORDER BY f.db_id LIMIT 1) own ON true
   CROSS JOIN LATERAL (SELECT
     concat_ws(' ', s.source_type, s.source_subtype, s.data_source, s.category) ~* '(commut|home ?working|gr[ae]y ?fleet)' AS person_linked,
-    CASE WHEN own.label IS NOT NULL AND btrim(own.label) IN (SELECT label FROM v7_import.factor_labels) AND NOT v7_import.label_has_pii(own.label) THEN own.label END AS factor_label,
+    CASE WHEN own.label IS NOT NULL AND btrim(own.label) IN (SELECT label FROM allowed) AND NOT v7_import.label_has_pii(own.label) THEN own.label END AS factor_label,
     CASE WHEN substring(s.scope FROM '[123]') IS NOT NULL THEN 'Scope ' || substring(s.scope FROM '[123]') ELSE 'Uncategorised' END AS base) c
   WHERE s.job_id IN (SELECT job_id FROM v7_import.jobs);
 

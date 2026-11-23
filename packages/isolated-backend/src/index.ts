@@ -331,6 +331,7 @@ export {
 export { resumeV7ImportBatch, startV7ImportBatch, v7ImportBatchJobIds } from "./v7ImportBatchCommands";
 export {
   readV7ImportBatch, runV7ImportBatch, v7ImportBatchFailureClass, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome, v7ImportBatchTally,
+  v7ImportBatchPauseAfter, V7_IMPORT_BATCH_PACING, V7_IMPORT_BATCH_PAUSED_REASON,
   type V7ImportBatchJobOutcome,
   type V7ImportBatchQueueItem, type V7ImportBatchRunnerOptions, type V7ImportBatchRunnerResult, type V7ImportBatchView,
 } from "./v7ImportBatch";

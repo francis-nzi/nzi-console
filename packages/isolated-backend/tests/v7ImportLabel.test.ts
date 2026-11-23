@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
 import { CONSOLIDATED_ON_READ, KNOWN_DATA_SOURCES } from "../src/v7ClientImport";
 import { sanitiseV7ImportLabel, V7_IMPORT_LABEL_DEFAULTS, V7_IMPORT_LABEL_PII_PATTERNS, v7ImportLabelHasPii } from "../src/v7ImportLabel";
-import { supabaseProjectRef, V7_IMPORT_VIEW_CONTRACT, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "../src/v7ImportView";
+import { supabaseProjectRef, V7_IMPORT_VIEW_CONTRACT, V7_IMPORT_VIEW_TIMEOUTS, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "../src/v7ImportView";
 import { LABEL_FIXTURES, PII_FIXTURES } from "./support/v7ImportLabelFixtures";
 
 /** The import's label rule (R-1) and the view set's SQL, without a database: the TypeScript half, and the SQL's text. */
@@ -77,6 +77,12 @@ describe("the service's one connection to the view set", () => {
   it("needs verified TLS off-machine, and is read-only on the wire", () => {
     assert.throws(() => v7ImportViewPoolConfig({ NZI_V7_VIEW_URL: URL }), /TLS|CA|certificate/i);
     const config = v7ImportViewPoolConfig({ NZI_V7_VIEW_URL: URL, NZI_V7_VIEW_CA_CERT: "-----BEGIN CERTIFICATE-----x" });
-    assert.deepEqual([config.options, config.max], ["-c default_transaction_read_only=on", 2]);
+    assert.deepEqual([config.options, config.max], ["-c default_transaction_read_only=on -c statement_timeout=45000", 2]);
+  });
+  it("bounds every read: a connect cap, a server-side statement cap under the role's 60s, and a client-side answer cap", () => {
+    const config = v7ImportViewPoolConfig({ NZI_V7_VIEW_URL: URL, NZI_V7_VIEW_CA_CERT: "-----BEGIN CERTIFICATE-----x" });
+    assert.deepEqual([config.connectionTimeoutMillis, config.query_timeout, config.keepAlive], [10_000, 50_000, true]);
+    assert.ok(V7_IMPORT_VIEW_TIMEOUTS.statementMs < 60_000 && V7_IMPORT_VIEW_TIMEOUTS.statementMs < V7_IMPORT_VIEW_TIMEOUTS.queryMs,
+      "the server cancels first; the client's cap catches a server that cannot");
   });
 });

@@ -41,15 +41,34 @@ export type V7ImportBatchRunnerOptions = {
   classify?: (error: unknown) => V7ImportBatchFailureClass | null;
   leaseHolder?: string;
   leaseSeconds?: number;
+  /** The least pause between jobs (BRIEF-v7-import-batch-hardening §3): 2s unless set. */
   pauseMs?: number;
+  /** The most the adaptive pause grows to: 60s unless set. */
+  maxPauseMs?: number;
+  /** A job whose reads of the source took longer than this counts as distress (§4): 30s unless set. */
+  slowReadMs?: number;
+  /** Consecutive distressed jobs that pause the run (§4): 3 unless set. */
+  breakerThreshold?: number;
   /** Stop after this many jobs, leaving the run open — a test's stand-in for a runner that goes away. */
   maxJobs?: number;
   fastPath?: typeof refreshV7ImportFastPath;
   /** Max view-timeout attempts per job in a run (1 retry by default). */
   maxAttempts?: number;
+  /** A test's clock and sleep; the real ones unless set. */
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
 };
 
-export type V7ImportBatchRunnerResult = { claimed: boolean; processed: number; status: V7ImportBatchRunStatus | null };
+/** `paused`: the circuit breaker stopped the run — the source was not answering. It waits, Resumable, for an Admin. */
+export type V7ImportBatchRunnerResult = { claimed: boolean; processed: number; status: V7ImportBatchRunStatus | "paused" | null };
+
+export const V7_IMPORT_BATCH_PACING = { pauseMs: 2_000, maxPauseMs: 60_000, slowReadMs: 30_000, breakerThreshold: 3 } as const;
+export const V7_IMPORT_BATCH_PAUSED_REASON = "source-unresponsive";
+
+/** The pause after a job (§3): never less than the floor; twice the job's read time when the source is slowing; never past the cap. */
+export function v7ImportBatchPauseAfter(readMs: number, pauseMs: number = V7_IMPORT_BATCH_PACING.pauseMs, maxPauseMs: number = V7_IMPORT_BATCH_PACING.maxPauseMs): number {
+  return Math.min(Math.max(maxPauseMs, pauseMs), Math.max(pauseMs, Math.round(readMs * 2)));
+}
 
 type Claimed = { jobId: string; legacyJobNumber: string; attempts: number };
 
@@ -64,7 +83,8 @@ export function v7ImportBatchFailureClass(error: unknown): V7ImportBatchFailureC
   const record = (error ?? {}) as { code?: unknown; name?: unknown; message?: unknown };
   const code = typeof record.code === "string" ? record.code : "";
   const message = typeof record.message === "string" ? record.message : "";
-  if (code === "57014" || /statement timeout|canceling statement/i.test(message)) return "view-timeout";
+  // A server-side cancel, or the client's own cap on an answer that never came (pg's query_timeout: "Query read timeout").
+  if (code === "57014" || /statement timeout|canceling statement|query read timeout/i.test(message)) return "view-timeout";
   if (record.name === "PlanDirectoryMissing") return "plan-missing";
   if (record.name === "V7ImportViewConnectionRefused" || error instanceof Error && error.constructor.name === "V7ImportViewConnectionRefused") return "view-unavailable";
   if (["ECONNREFUSED", "ECONNRESET", "ENOTFOUND", "ETIMEDOUT", "EAI_AGAIN", "57P01", "57P03", "53300"].includes(code) || code.startsWith("08")
@@ -205,6 +225,20 @@ export async function runV7ImportBatch(pool: PoolLike, organisationId: string, r
   const leaseSeconds = options.leaseSeconds ?? 600;
   const run = await claimRun(pool, organisationId, runId, holder, leaseSeconds);
   if (!run) return { claimed: false, processed: 0, status: null };
+  const now = options.now ?? (() => performance.now());
+  const wait = options.sleep ?? sleep;
+  const pauseMs = options.pauseMs ?? V7_IMPORT_BATCH_PACING.pauseMs;
+  const slowReadMs = options.slowReadMs ?? V7_IMPORT_BATCH_PACING.slowReadMs;
+  const threshold = options.breakerThreshold ?? V7_IMPORT_BATCH_PACING.breakerThreshold;
+  // Each job's time spent reading the source (its preview's read and, when it commits, the commit's own).
+  let readMs = 0;
+  const source: V7ImportRefreshSource = async (db, job) => {
+    const started = now();
+    try { return await options.source(db, job); } finally { readMs += now() - started; }
+  };
+  // The breaker (§4): consecutive jobs showing the source in distress — a timeout, the source unreachable, or a slow read.
+  let distressed = 0;
+  const failedBySource: string[] = [];
   let processed = 0;
   for (;;) {
     if (options.maxJobs !== undefined && processed >= options.maxJobs) return { claimed: true, processed, status: "running" };
@@ -217,10 +251,46 @@ export async function runV7ImportBatch(pool: PoolLike, organisationId: string, r
       await finish(pool, organisationId, runId, holder, "cancelled");
       return { claimed: true, processed, status: "cancelled" };
     }
-    await record(pool, organisationId, runId, claimed.jobId, await v7ImportBatchJobOutcome(pool, organisationId, runId, run, claimed, grant, options));
+    readMs = 0;
+    const outcome = await v7ImportBatchJobOutcome(pool, organisationId, runId, run, claimed, grant, { ...options, source });
+    await record(pool, organisationId, runId, claimed.jobId, outcome);
     processed += 1;
-    if (options.pauseMs) await sleep(options.pauseMs);
+    const bySource = outcome.status === "retry" || outcome.status === "failed" && (outcome.failureClass === "view-timeout" || outcome.failureClass === "view-unavailable");
+    if (bySource || readMs > slowReadMs) {
+      distressed += 1;
+      if (outcome.status === "failed") failedBySource.push(claimed.jobId);
+    } else {
+      distressed = 0;
+      failedBySource.length = 0;
+    }
+    if (distressed >= threshold) {
+      await pauseRun(pool, organisationId, runId, holder, failedBySource, distressed);
+      return { claimed: true, processed, status: "paused" };
+    }
+    await wait(v7ImportBatchPauseAfter(readMs, pauseMs, options.maxPauseMs ?? V7_IMPORT_BATCH_PACING.maxPauseMs));
   }
+}
+
+/**
+ * The breaker trips (§4): the run stops and waits — open, its lease released, so it reads as stopped and an Admin may Resume it
+ * once the source answers. Nothing further is read. The jobs the source failed are put back to pending (the failure was the
+ * source's, not theirs), so Resume runs them again; no commit happened for any of them, so their keys stand. Audited with the
+ * reason the panel shows, counts only.
+ */
+async function pauseRun(pool: PoolLike, org: string, runId: string, holder: string, failedBySource: readonly string[], consecutive: number) {
+  await withTenantWrite(pool, org, async (db) => {
+    const run = (await db.query<{ client_id: string; triggered_by: string; correlation_id: string }>(
+      `UPDATE nzi_console.v7_import_batch_runs SET lease_holder = NULL, lease_until = NULL
+        WHERE organisation_id = $1 AND run_id = $2 AND lease_holder = $3 AND status = 'running' RETURNING client_id, triggered_by, correlation_id`,
+      [org, runId, holder])).rows[0];
+    if (!run) return;
+    await db.query(`UPDATE nzi_console.v7_import_batch_results SET status = 'pending', failure_class = NULL, lease_until = NULL, updated_at = now()
+      WHERE organisation_id = $1 AND run_id = $2 AND job_id = ANY($3::text[]) AND status = 'failed'`, [org, runId, [...failedBySource]]);
+    await db.query(`INSERT INTO nzi_console.audit_events (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, reason, after_json, client_id)
+      VALUES ($1, $2, $3, 'staff', 'import.refreshBatch.paused', 'client', $4, $5, NULL, $6::jsonb, $4)`,
+      [org, randomUUID(), run.triggered_by, run.client_id, run.correlation_id,
+        JSON.stringify({ runId, reason: V7_IMPORT_BATCH_PAUSED_REASON, consecutive, putBack: failedBySource.length })]);
+  });
 }
 
 /** The tally, derived from the results — never stored. exceptions = queued + refused. */
@@ -238,7 +308,10 @@ export type V7ImportBatchQueueItem = {
 };
 export type V7ImportBatchView = {
   clientId: string; importedJobs: number;
-  run: null | { runId: string; status: V7ImportBatchRunStatus; createdAt: string; finishedAt: string | null; stopped: boolean; tally: V7ImportBatchTally; queue: V7ImportBatchQueueItem[] };
+  run: null | { runId: string; status: V7ImportBatchRunStatus; createdAt: string; finishedAt: string | null; stopped: boolean;
+    /** Why a stopped run stopped, when the breaker stopped it: the source was not answering. Null for any other stop. */
+    paused: typeof V7_IMPORT_BATCH_PAUSED_REASON | null;
+    tally: V7ImportBatchTally; queue: V7ImportBatchQueueItem[] };
 };
 
 /**
@@ -259,8 +332,14 @@ export async function readV7ImportBatch(db: Queryable, organisationId: string, c
     `SELECT r.job_id, j.sequence, r.status, r.because, r.flagged, r.refusal_codes, r.failure_class FROM nzi_console.v7_import_batch_results r
        JOIN nzi_console.jobs j ON j.organisation_id = r.organisation_id AND j.job_id = r.job_id
       WHERE r.organisation_id = $1 AND r.run_id = $2 AND r.status IN ('queued', 'refused', 'failed') ORDER BY r.position`, [organisationId, run.run_id])).rows;
+  // The breaker's own record: the run's latest pause or resume. Paused, and not resumed since, and still stopped → the reason.
+  const lastTurn = (await db.query<{ action: string }>(
+    `SELECT action FROM nzi_console.audit_events WHERE organisation_id = $1 AND entity_type = 'client' AND entity_id = $2
+        AND action IN ('import.refreshBatch.paused', 'import.refreshBatch.resumed') AND after_json ->> 'runId' = $3
+      ORDER BY occurred_at DESC, action DESC LIMIT 1`, [organisationId, clientId, run.run_id])).rows[0];
   return { clientId, importedJobs, run: {
     runId: run.run_id, status: run.status, createdAt: run.created_at.toISOString(), finishedAt: run.finished_at?.toISOString() ?? null, stopped: run.stopped,
+    paused: run.stopped && lastTurn?.action === "import.refreshBatch.paused" ? V7_IMPORT_BATCH_PAUSED_REASON : null,
     tally: await v7ImportBatchTally(db, organisationId, run.run_id),
     queue: queue.map((row) => ({ jobId: row.job_id, jobNumber: `J${String(row.sequence).padStart(6, "0")}`, status: row.status, because: row.because, flagged: row.flagged,
       refusalCodes: row.refusal_codes, failureClass: row.failure_class })),

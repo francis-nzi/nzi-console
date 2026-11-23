@@ -17,11 +17,14 @@ export type ImportBatchQueueItem = {
 export type ImportBatchState = {
   clientId: string; importedJobs: number; writeEnabled: boolean;
   run: null | { runId: string; status: "queued" | "running" | "completed" | "cancelled"; createdAt: string; finishedAt: string | null; stopped: boolean;
+    /** The breaker stopped it (BRIEF-v7-import-batch-hardening §4): the previous system was not answering. */
+    paused?: "source-unresponsive" | null;
     tally: V7ImportBatchTally; queue: ImportBatchQueueItem[] };
 };
 
 export const REFRESH_ALL = "Refresh all from the previous system";
 export const ALREADY_CURRENT_LOCALLY = "already current locally";
+export const PAUSED_LINE = "Paused — the previous system was not responding.";
 
 const FAILURE_LABEL: Record<V7ImportBatchFailureClass, string> = {
   "view-timeout": "the previous system did not answer in time",
@@ -53,7 +56,9 @@ export function ImportBatchRunView({ run }: { run: NonNullable<ImportBatchState[
   return <div data-batch={run.status}>
     <p className="sub" data-tally><b>{tallyLine(run.tally)}</b>{rest ? <> · {rest}</> : null}</p>
     {open && !run.stopped ? <div className="nz-banner" role="status"><div>Refreshing, one job at a time. This page updates as it goes.</div></div> : null}
-    {run.stopped ? <div className="nz-banner warn" role="alert"><div>This batch stopped before it finished (the service restarted). Resume it to carry on from where it stopped.</div></div> : null}
+    {run.stopped && run.paused ? <div className="nz-banner warn" role="alert" data-paused={run.paused}><div><b>{PAUSED_LINE}</b> The batch stopped itself
+      rather than add to the load. Resume it once the previous system is answering again; the jobs it could not read are run again.</div></div>
+      : run.stopped ? <div className="nz-banner warn" role="alert"><div>This batch stopped before it finished (the service restarted). Resume it to carry on from where it stopped.</div></div> : null}
     {run.status === "cancelled" ? <div className="nz-banner warn" role="alert"><div>This batch was stopped: whoever started it may no longer run one. The jobs not reached were left as they were.</div></div> : null}
     {run.tally.skipped ? <p className="sub">Already current locally: a committed refresh stands and nothing has changed here since, so these jobs were not read from the previous system again. A job&rsquo;s own Refresh picks up a later change there.</p> : null}
     {run.queue.length ? <div className="nz-table-wrap"><table className="nz-tbl" data-queue>
