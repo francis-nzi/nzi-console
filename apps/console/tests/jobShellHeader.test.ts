@@ -80,8 +80,8 @@ describe("the job shell's header summaries", () => {
   it("logs time in the Time drawer through the Time screen's own form and command, the job fixed — no redirect out", () => {
     const page = readFileSync(join(APP, "jobs/[jobId]/page.tsx"), "utf8");
     assert.match(page, /const shellTimePanel = <JobTimePanel [^>]*logInPlace=\{\{ jobLabel: `\$\{job\.header\.client\} · \$\{job\.header\.number\}`, today: todayInLondon\(\) \}\} \/>;/);
-    assert.match(page, /const shell = \{ milestonesPanel: milestones, timePanel: shellTimePanel, milestoneStates \};/);
-    assert.match(page, /const panels = <>\{milestones\}\{timePanel\}<ImportRefreshPanel jobId=\{job\.header\.id\} \/><\/>;/, "every other place keeps the panel that links to the Time screen");
+    assert.match(page, /const shell = \{ milestonesPanel: milestones, timePanel: shellTimePanel, importPanel, milestoneStates \};/);
+    assert.match(page, /const panels = <>\{milestones\}\{timePanel\}\{importPanel\}<\/>;/, "every other place keeps the panel that links to the Time screen");
     const panel = readFileSync(join(APP, "jobs/JobTimePanel.tsx"), "utf8");
     assert.match(panel, /<AddEntry [^>]*fixedJob=\{\{ jobId, label: logInPlace\.jobLabel \}\}/);
     const board = readFileSync(join(APP, "time/TimeBoard.tsx"), "utf8");
