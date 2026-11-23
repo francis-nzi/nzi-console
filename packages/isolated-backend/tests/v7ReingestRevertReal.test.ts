@@ -23,6 +23,7 @@ import { readImportPolicy, setOrganisationImportPolicy } from "../src/organisati
 import { readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON } from "../src/v7ImportFastPath";
 import { resumeV7ImportBatch, startV7ImportBatch } from "../src/v7ImportBatchCommands";
 import { readV7ImportBatch, runV7ImportBatch, V7_IMPORT_BATCH_PACING, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome, v7ImportBatchPauseAfter } from "../src/v7ImportBatch";
+import { readV7ImportMapping, v7JobIsTotalsOnly } from "../src/v7ImportMapping";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -1848,5 +1849,130 @@ describe("the import refresh batch: one client's jobs through the fast path, the
       "a slow read that succeeded keeps its refresh; the fourth job is not read");
     assert.ok(!reads.includes(SLOW[3]!.jobId));
     for (const entry of SLOW) slow.delete(entry.jobId);
+  });
+});
+
+describe("the job's mapping view: every row of the previous system against its intended console mapping, read and rolled back", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  const MV_ORG = "v7-mapping";
+  const JOB_T = "v7-job-t";
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  const context = (role: "admin" | "consultant" | "reviewer" = "consultant", actorId = `staff-${role}`): CommandContext => {
+    keys += 1;
+    return { organisationId: MV_ORG, actorId, principal: "staff", idempotencyKey: `mv-${keys}`, correlationId: `mv-corr-${keys}`, grant: commandGrantForRole(role, MV_ORG, actorId) };
+  };
+  const holder = (role: "admin" | "consultant" | "reviewer" = "consultant") => commandGrantForRole(role, MV_ORG, `staff-${role}`);
+  const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
+  // J000434's shape: the console imported only the previous system's three scope totals (its WFM import); it now holds activity rows.
+  const total = (n: "1" | "2" | "3", id: string): PlannedRow => {
+    const row = plannedRow({ id, scope: n === "2" ? "1" : n as "1" | "3", label: "Imported Totals", qty: 1000, unit: "kgCO2e", reported: 1 });
+    return { ...row, scope: n, v7Scope: n, migratedRecord: { ...row.migratedRecord, original_id: `wfm-import-scope-${n}`, data_source: "WFM Import" } as PlannedRow["migratedRecord"] };
+  };
+  const TOTALS = [total("1", "3001"), total("2", "3002"), total("3", "3003")];
+  const ACTIVITY = [{ ...GAS, id: "2001" }, { ...WATER, id: "2002" }].map(plannedRow);
+  const holds = new Map<string, readonly PlannedRow[]>([[JOB_A, NOW], [JOB_T, ACTIVITY]]);
+  const reads: string[] = [];
+  const source: V7ImportRefreshSource = async (_db, job) => { reads.push(job.jobId); return { sourceSha256: "e".repeat(64), rows: holds.get(job.jobId)! }; };
+  const EMPTY_PLAN = (jobId: string) => ({ jobId, crosswalkVersion: "none", crosswalkSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", vintageDatasetIds: [], rows: [] });
+  const planOf = (jobId: string) => jobId === JOB_A ? withoutRun(PLAN_BEFORE("x")) : EMPTY_PLAN(jobId);
+  const mapping = (jobId: string, role: "admin" | "consultant" | "reviewer" = "consultant") => readV7ImportMapping(database.pool, source, holder(role), jobId, { basePlan: planOf(jobId) });
+  const fingerprint = async () => {
+    const tables = (await db.query<{ t: string }>(`SELECT tablename AS t FROM pg_tables WHERE schemaname = 'nzi_console' ORDER BY tablename`)).rows.map((row) => row.t);
+    const prints: Record<string, string> = {};
+    for (const table of tables) prints[table] = (await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) AS p FROM nzi_console.${table} t`)).rows[0]!.p;
+    return prints;
+  };
+  const upload = async (jobId: string, legacyJobNumber: string) => {
+    const summary = await withTenantWrite(database.pool, MV_ORG, (client) => summariseV7JobAsTheChainSees(client,
+      { organisationId: MV_ORG, jobId, legacyJobNumber, extractSha256: "e".repeat(64), rows: holds.get(jobId)!, generatedAt: "2026-11-23T09:00:00.000Z" }));
+    await uploadV7ImportSummary(database.pool, { jobId, summary }, context("admin", V7_IMPORT_ACTOR));
+  };
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7mapping"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [MV_ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [MV_ORG]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [MV_ORG]);
+    for (const client of ["c1", "ct"]) await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,$2,'Mapping Test','active')`, [MV_ORG, client]);
+    for (const [user, role] of [["staff-admin", "admin"], ["staff-consultant", "consultant"], ["staff-reviewer", "reviewer"]]) {
+      await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [MV_ORG, user, role]);
+    }
+    await db.query(`INSERT INTO nzi_console.client_sites (organisation_id,site_id,client_id,name,created_by) VALUES ($1,'v7-site-1','c1','Head office','test')`, [MV_ORG]);
+    for (const [jobId, client, sequence, number] of [[JOB_A, "c1", 901, "J000901"], [JOB_T, "ct", 902, "J000902"]] as const) {
+      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+        VALUES ($1,$2,$3,$4,'crp','CRP','open','Data entry',2025,'2025-01-01','2025-12-31','nzi-pro-v7',$5,$6)`, [MV_ORG, jobId, client, sequence, String(sequence), number]);
+      await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [MV_ORG, jobId]);
+    }
+    await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                    VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [MV_ORG]);
+    for (const [id, label, unit, kg, scope, levels] of [["gas", "Natural gas", "kWh", 0.2, "1", ["Fuels", "Gaseous fuels", "Natural gas"]], ["water", "Water supply", "m3", 0.15, "3", []]] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
+        [MV_ORG, id, label, unit, kg, scope, levels]);
+    }
+    for (const [jobId, rows] of [[JOB_A, BEFORE], [JOB_T, TOTALS]] as const) for (const row of rows) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: MV_ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(jobId, row)]);
+    const standing = `v7-reingest-${randomUUID()}`;
+    await withTenantWrite(database.pool, MV_ORG, (client) => reingestV7JobInTransaction(client, { ...PLAN_BEFORE(standing) },
+      { organisationId: MV_ORG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+        reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", MV_ORG, V7_REINGEST_ACTOR) }));
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("access: the refresh's own rule — a Reviewer is refused before the source is read, and nothing is written", async () => {
+    const before = await fingerprint();
+    reads.length = 0;
+    await assert.rejects(mapping(JOB_A, "reviewer"), (error) => error instanceof AuthorizationError && error.permission === "import.refresh");
+    assert.deepEqual(reads, []);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("every row, two sides: the previous system now, and the console's intended mapping — from the committed plan, or none — with why a row is flagged", async () => {
+    const before = await fingerprint();
+    const seen = await mapping(JOB_A);
+    assert.deepEqual(await fingerprint(), before, "a read: nothing written, the lock and the summary's revert rolled back");
+    assert.deepEqual(seen.rows.map((row) => [row.legacyDbId, row.status, row.source, row.intended.categoryCode, row.intended.factorId, row.flag]), [
+      ["1001", "changed", "plan", "1.natural-gas", "gas", null],
+      ["1002", "matched", "plan", "3.5", "water", null],
+      ["1004", "new", "none", null, null, "NEW"],
+      ["1003", "withdrawn", "none", null, null, "WITHDRAWN"],
+    ]);
+    const gas = seen.rows[0]!.previous;
+    assert.deepEqual([gas.label, gas.quantity, gas.unit, gas.factorCode, gas.tco2e], ["Natural gas", 1200, "kWh", "7_1001", 0.24], "the previous system as it stands now");
+    assert.equal(seen.rows[3]!.previous.label, "Refrigerant", "a withdrawn row: as the console last held it");
+    assert.deepEqual([seen.verdict, seen.summaryCurrent, seen.firstTimeMapping], ["needs-mapping", false, false]);
+    assert.deepEqual([seen.scopeTotals["1"].v7Tco2e, seen.scopeTotals["3"].v7Tco2e], [0.34, 0.0015], "Σ per scope, as the preview reconciles it");
+  });
+
+  it("a decision is the row's mapping once made: resolved inline against the current summary, its source the decision; the rest unchanged", async () => {
+    await upload(JOB_A, "J000901");
+    assert.equal((await mapping(JOB_A)).summaryCurrent, true, "the stored summary is the one shown, so a decision is checked against it");
+    await setV7ImportDecision(database.pool, { jobId: JOB_A, sourceSystem: "nzi-pro-v7", legacyDbId: "1004", kind: "map", categoryCode: "1.natural-gas",
+      datasetId: "v7-vintage-2025", factorId: "gas", expectedDecisionId: null } as never, context("admin", "staff-admin"));
+    await setV7ImportDecision(database.pool, { jobId: JOB_A, sourceSystem: "nzi-pro-v7", legacyDbId: "1003", kind: "withdraw", expectedDecisionId: null } as never, context("admin", "staff-admin"));
+    const seen = await mapping(JOB_A);
+    assert.deepEqual(seen.rows.map((row) => [row.legacyDbId, row.source, row.intended.factorId, row.intended.withdraw, row.flag]), [
+      ["1001", "plan", "gas", false, null], ["1002", "plan", "water", false, null], ["1004", "decision", "gas", false, null], ["1003", "decision", null, true, null]]);
+    assert.equal(seen.verdict, "ready-to-ingest");
+  });
+
+  it("J000434's case: a totals-only job with activity rows now — each row new, its three totals withdrawn, and it reads as a first-time mapping", async () => {
+    const seen = await mapping(JOB_T);
+    assert.deepEqual(seen.rows.map((row) => [row.legacyDbId, row.status, row.source, row.flag]), [
+      ["2001", "new", "none", "NEW"], ["2002", "new", "none", "NEW"],
+      ["3001", "withdrawn", "none", "WITHDRAWN"], ["3002", "withdrawn", "none", "WITHDRAWN"], ["3003", "withdrawn", "none", "WITHDRAWN"]]);
+    assert.equal(seen.firstTimeMapping, true);
+    assert.deepEqual(await withTenantRead(database.pool, MV_ORG, async (client) => [await v7JobIsTotalsOnly(client, MV_ORG, JOB_T), await v7JobIsTotalsOnly(client, MV_ORG, JOB_A)]),
+      [true, false], "the totals test: every imported row a WFM scope total — and a job with activity rows is not");
+  });
+
+  it("the batch's queue says the same: the totals-only job is a first-time mapping, not a regression", async () => {
+    const started = await startV7ImportBatch(database.pool, { clientId: "ct" }, context("admin", "staff-admin"));
+    await runV7ImportBatch(database.pool, MV_ORG, started.data.runId, { source, optionsFor: (jobId: string) => ({ basePlan: planOf(jobId) }), sleep: async () => undefined });
+    const view = await withTenantRead(database.pool, MV_ORG, (client) => readV7ImportBatch(client, MV_ORG, "ct"));
+    assert.deepEqual(view.run?.queue.map((item) => [item.jobNumber, item.status, item.because, item.flagged, item.firstTimeMapping]),
+      [["J000902", "queued", ["flagged"], 5, true]]);
   });
 });

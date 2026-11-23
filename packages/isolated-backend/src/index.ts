@@ -325,6 +325,10 @@ export {
   type V7ImportRefreshOptions, type V7ImportRefreshSource,
 } from "./v7ImportRefresh";
 export {
+  readV7ImportMapping, v7JobIsTotalsOnly, V7_SCOPE_TOTAL_CODE,
+  type V7ImportMapping, type V7ImportMappingFlag, type V7ImportMappingRow, type V7ImportMappingSource,
+} from "./v7ImportMapping";
+export {
   readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON, v7ImportFastPathBlockers,
   type V7ImportFastPathBlocker, type V7ImportFastPathResult, type V7ImportFastPathSignals,
 } from "./v7ImportFastPath";

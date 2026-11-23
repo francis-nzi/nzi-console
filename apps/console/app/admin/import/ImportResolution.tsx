@@ -18,13 +18,15 @@ type Props = {
   /** The row's own status: a pair member's is the one it has outside the pair. */
   jobId: string; legacyDbId: string; status: Exclude<V7ImportRowStatus, "linked-pair-changed">; scope: V7ImportScope;
   resolution: V7ImportResolution; decision: V7ImportDecision | null; invalid: string | null;
+  /** After a save or clear: by default the page refreshes; the job's mapping view re-reads itself instead. */
+  onSaved?: () => void;
 };
 
 export const errorText = (result: BrowserCommandResult<unknown>) => result.state === "validation_failed" ? result.issues.map((issue) => issue.message).join(" ")
   : result.state === "conflict" ? "This row changed since the page loaded. Reload to see the latest." : result.state === "success" ? "" : result.message;
 const categoryName = (code: string | null) => emissionCategoryTaxonomy.find((entry) => entry.code === code)?.name ?? code ?? "";
 
-export function ImportResolution({ jobId, legacyDbId, status, scope, resolution, decision, invalid }: Props) {
+export function ImportResolution({ jobId, legacyDbId, status, scope, resolution, decision, invalid, onSaved }: Props) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,8 @@ export function ImportResolution({ jobId, legacyDbId, status, scope, resolution,
       // A refused command is answered: the next click is a new attempt, so it takes a new key. A transport failure keeps it.
       if (result.state === "validation_failed" || result.state === "conflict") key.current = null;
       if (result.state !== "success") { setError(errorText(result)); return; }
-      key.current = null; setEditing(false); router.refresh();
+      key.current = null; setEditing(false);
+      if (onSaved) onSaved(); else router.refresh();
     } finally { setBusy(false); }
   }
   async function chooseCategory(code: string) {

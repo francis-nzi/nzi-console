@@ -87,7 +87,7 @@ export type V7ImportRefreshOptions = {
   within?: (db: Queryable, at: "preview" | "commit") => Promise<void>;
 };
 
-type Refresh = {
+export type Refresh = {
   legacyJobNumber: string; sourceSha256: string; rows: readonly PlannedRow[]; summary: V7ImportSummary; summarySha256: string;
   decisions: V7ImportDecision[]; decisionsSha256: string; resolved: ReturnType<typeof resolveV7Import>; exceptions: V7ImportRefreshException[];
 };
@@ -97,7 +97,7 @@ type Refresh = {
  * decision commands lock it), its rows from the source, its summary as the chain will see it, its decisions and what they
  * resolve. Writes nothing.
  */
-async function readRefresh(db: Queryable, source: V7ImportRefreshSource, organisationId: string, jobId: string): Promise<Refresh> {
+export async function readRefresh(db: Queryable, source: V7ImportRefreshSource, organisationId: string, jobId: string): Promise<Refresh> {
   await lockV7Job(db, organisationId, jobId);
   const legacyJobNumber = (await db.query<{ legacy_job_number: string | null }>(
     `SELECT legacy_job_number FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [organisationId, jobId])).rows[0]?.legacy_job_number ?? null;
