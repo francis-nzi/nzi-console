@@ -262,4 +262,17 @@ describe("the wiring", () => {
   it("the panel is on every job page, beside Milestones and Time", () => {
     assert.match(read("jobs/[jobId]/page.tsx"), /<ImportRefreshPanel jobId=\{job\.header\.id\} \/>/);
   });
+  it("and under the job shell too: the shell renders none of the page's panels, so it is handed the refresh panel by name and shows it", () => {
+    // FINDING-import-refresh-panel-not-rendering (23 Nov): with `job-shell` on, the CRP page rendered only the shell's named
+    // panels — the refresh panel was in `panels` alone, so an imported job had no Refresh from the previous system.
+    const page = read("jobs/[jobId]/page.tsx");
+    assert.match(page, /const panels = <>\{milestones\}\{timePanel\}\{importPanel\}<\/>;/);
+    assert.match(page, /const shell = \{ milestonesPanel: milestones, timePanel: shellTimePanel, importPanel, milestoneStates \};/);
+    const workspace = read("jobs/CrpScopeWorkspace.tsx");
+    assert.match(workspace, /importPanel\?: ReactNode/);
+    assert.match(workspace, /<div className="nz-body nz-shell-body">\s*\{noticeBanner\}\s*\{shell\?\.importPanel \?\? null\}/);
+  });
+  it("the batch's review queue links each job to its page — where the panel is", () => {
+    assert.ok(read("clients/[clientId]/importBatchView.tsx").includes("href={`/jobs/${encodeURIComponent(item.jobId)}`}"));
+  });
 });

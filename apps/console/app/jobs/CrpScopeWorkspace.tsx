@@ -209,9 +209,10 @@ export function CrpScopeWorkspace({
   datasetUpdates?: DatasetUpdate[];
   /**
    * Phase 2 job shell (`job-shell`): the Milestones and Time panels apart, so each has its own place, and the
-   * milestones the Milestones button summarises (null when that read failed).
+   * milestones the Milestones button summarises (null when that read failed). `importPanel`: Refresh from the previous system
+   * (import.refresh), shown at the top of the body; it renders nothing on a job not imported, or for someone who may not refresh.
    */
-  shell?: { milestonesPanel: ReactNode; timePanel: ReactNode; milestoneStates: Array<{ dueDate: string | null; completedAt: string | null }> | null };
+  shell?: { milestonesPanel: ReactNode; timePanel: ReactNode; importPanel?: ReactNode; milestoneStates: Array<{ dueDate: string | null; completedAt: string | null }> | null };
 }) {
   // Phase 3a: capture offers only the sites this job reports on; the Sites drawer lists them all, with the toggle.
   const captureSites = includedSites(sites);
@@ -711,6 +712,7 @@ export function CrpScopeWorkspace({
   const shellBody = (
     <div className="nz-body nz-shell-body">
       {noticeBanner}
+      {shell?.importPanel ?? null}
       <section className="nz-shell-capture" aria-label="Data capture" id={stageAnchorId("Data entry")}>
         {dataEntrySurface}
         {sourceRegister}
