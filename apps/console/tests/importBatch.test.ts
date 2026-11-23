@@ -132,4 +132,16 @@ describe("the client's batch panel", () => {
     assert.ok(html(run({ status: "cancelled" })).includes("may no longer run one"));
     assert.ok(html(run({ queue: [] })).includes("Nothing needs a person."));
   });
+  it("paused by the breaker: says the previous system was not responding — not a restart — and offers Resume", () => {
+    const markup = html(run({ status: "running", finishedAt: null, stopped: true, paused: "source-unresponsive" }));
+    assert.ok(markup.includes(view.PAUSED_LINE));
+    assert.equal(view.PAUSED_LINE, "Paused — the previous system was not responding.");
+    assert.ok(!markup.includes("the service restarted"), "one reason, the right one");
+    assert.ok(markup.includes("Resume it once the previous system is answering again"));
+  });
+  it("the runner's pause defaults to the 2s floor and cannot be set below it", () => {
+    const runner = read("lib/importBatchRunner.ts");
+    assert.ok(runner.includes("NZI_IMPORT_BATCH_PAUSE_MS ?? String(V7_IMPORT_BATCH_PACING.pauseMs)"));
+    assert.ok(runner.includes("pauseMs >= V7_IMPORT_BATCH_PACING.pauseMs ? pauseMs : V7_IMPORT_BATCH_PACING.pauseMs"));
+  });
 });

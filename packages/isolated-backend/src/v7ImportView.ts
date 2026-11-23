@@ -279,9 +279,21 @@ export function v7ImportViewPoolConfig(env: Readonly<Record<string, string | und
   };
   if (same(env.NZI_ISOLATED_DATABASE_URL)) throw new V7ImportViewConnectionRefused("NZI_V7_VIEW_URL names the console's own database; it must name the source's view set.");
   const tls = verifiedTlsConfig(url, { caCert: env.NZI_V7_VIEW_CA_CERT });
-  return { connectionString: tls.connectionString, ssl: tls.ssl, max: 2, idleTimeoutMillis: 30_000, connectionTimeoutMillis: 10_000,
-    application_name: "nzi-import-view", options: "-c default_transaction_read_only=on", description: tls.description };
+  const bounds = V7_IMPORT_VIEW_TIMEOUTS;
+  return { connectionString: tls.connectionString, ssl: tls.ssl, max: 2, idleTimeoutMillis: 30_000, connectionTimeoutMillis: bounds.connectMs,
+    // Client-side: a query whose answer never comes (a source gone silent, a severed connection) throws here, whatever the server.
+    query_timeout: bounds.queryMs, keepAlive: true,
+    application_name: "nzi-import-view",
+    // Server-side, under the role's own 60s, and set as the read-only flag is (an `options` startup parameter the pooler passes on).
+    options: `-c default_transaction_read_only=on -c statement_timeout=${bounds.statementMs}`, description: tls.description };
 }
+
+/**
+ * Every read of the view set is bounded (BRIEF-v7-import-batch-hardening §2): a source that does not answer fails the read — it
+ * never blocks a refresh, or a batch, past these. connect: acquiring or opening a connection; statement: the server cancels a
+ * query (under the role's 60s); query: the client gives up on an answer that never comes, the server's cancel included.
+ */
+export const V7_IMPORT_VIEW_TIMEOUTS = { connectMs: 10_000, statementMs: 45_000, queryMs: 50_000 } as const;
 
 /** The service's pool on the view set: `v7ImportViewPoolConfig`, so it refuses exactly what that refuses, before connecting. */
 export function createV7ImportViewPool(env: Readonly<Record<string, string | undefined>> = process.env): Pool {
