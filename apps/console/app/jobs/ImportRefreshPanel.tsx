@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { postBrowserCommand, postBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import type { V7ImportRefreshCommitted, V7ImportRefreshPreview } from "@nzi/contracts";
+import type { V7ImportMapping, V7ImportMappingRow } from "@nzi/isolated-backend";
+import { ImportResolution } from "../admin/import/ImportResolution";
+import { ImportMappingView } from "./importMappingView";
 import { FastPathRefreshedView, ImportRefreshPreviewView, notAutomaticLine, refreshViewOf, type FastPathOutcome, type ImportRefreshState } from "./importRefreshView";
 
 /**
@@ -35,6 +38,9 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
   const [auto, setAuto] = useState<Extract<FastPathOutcome, { fastPath: "refreshed" }> | null>(null);
   const [notAutomatic, setNotAutomatic] = useState<string | null>(null);
   const commitKey = useRef<string | null>(null);
+  const [mapping, setMapping] = useState<V7ImportMapping | null>(null);
+  const [mappingOpen, setMappingOpen] = useState(false);
+  const [mappingError, setMappingError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -79,6 +85,25 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
       window.location.assign(`/admin/import?job=${encodeURIComponent(state.jobId)}`);
     } finally { setBusy(false); }
   }
+  // The mapping view (Part 2): a read of every row against its intended mapping; re-read after each inline decision.
+  async function readMapping() {
+    setMappingOpen(true); setMappingError(null);
+    try {
+      const response = await fetch(`${path}/mapping`, { cache: "no-store" });
+      const body = await response.json().catch(() => null) as { data?: V7ImportMapping; message?: string } | null;
+      if (!response.ok || !body?.data) { setMapping(null); setMappingError(body?.message ?? "The mapping could not be read just now."); return; }
+      setMapping(body.data);
+    } catch { setMapping(null); setMappingError("The mapping could not be read just now."); }
+  }
+  async function storeForInline() {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try {
+      const result = await postBrowserCommand(`${path}/summary`, {}, crypto.randomUUID());
+      if (result.state !== "success") { setError(failureText(result)); return; }
+    } finally { setBusy(false); }
+    await readMapping();
+  }
   async function runCommit() {
     if (busy || !preview || !reason.trim()) return;
     setBusy(true); setError(null);
@@ -106,10 +131,34 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
       <button type="submit" className="nz-btn pri" disabled={busy || !reason.trim() || !state.writeEnabled}>Commit the refresh</button>
     </form>) : null;
 
+  const reconciliation = `/admin/import?job=${encodeURIComponent(state.jobId)}`;
+  // A flagged row's control: inline once the job's stored summary is the one shown (a decision is checked against it); a pair, in
+  // Import reconciliation, where pairs are carried as a group.
+  const resolveRow = (row: V7ImportMappingRow) => {
+    if (!state.canResolve || !mapping) return null;
+    if (row.flag === "PAIR_TO_CARRY" || row.flag === "NEEDS_FRESH_SUMMARY") return <a href={reconciliation}>Carry it in Import reconciliation</a>;
+    if (!mapping.summaryCurrent || row.ownStatus === "matched" || row.ownStatus === "changed") return null;
+    return <ImportResolution jobId={state.jobId} legacyDbId={row.legacyDbId} status={row.ownStatus} scope={row.scope} resolution={row.resolution}
+      decision={row.decision} invalid={row.invalid} onSaved={() => void readMapping()} />;
+  };
+  const mappingSection = mappingOpen ? <div data-mapping-panel>
+    <div className="nz-milestones-heading"><div><h3>Each row&rsquo;s mapping</h3><span className="sub">Every row the previous system holds for this job, against what the console will map it to. Reading it changes nothing.</span></div>
+      <div className="nz-milestone-actions"><a className="nz-btn" href={reconciliation}>Open Import reconciliation</a><button type="button" className="nz-btn" onClick={() => setMappingOpen(false)}>Hide</button></div></div>
+    {mappingError ? <div className="nz-banner warn" role="alert"><div>{mappingError}</div></div> : null}
+    {mapping && state.canResolve && !mapping.summaryCurrent && mapping.rows.some((row) => row.flag !== null) ? <div className="nz-milestone-actions">
+      <button type="button" className="nz-btn pri" disabled={busy || !state.writeEnabled} onClick={() => void storeForInline()}>Resolve here</button>
+      <span className="sub">Stores this summary first, so each decision is checked against the rows shown.</span>
+    </div> : null}
+    {mapping ? <ImportMappingView mapping={mapping} resolve={resolveRow} /> : null}
+  </div> : null;
+
   return <section className="nz-body nz-milestones-body"><div className="nz-panel nz-milestones" data-import-refresh={state.jobId}>
     <div className="nz-milestones-heading">
       <div><h2>Refresh from the previous system</h2><span className="sub">{state.legacyJobNumber}: compare this job with the previous system&rsquo;s records now, then bring it up to date. A preview changes nothing.</span></div>
-      <button type="button" className="nz-btn" disabled={busy || !state.writeEnabled} onClick={() => void runPreview()}>{preview ? "Preview again" : "Refresh from the previous system"}</button>
+      <div className="nz-milestone-actions">
+        <button type="button" className="nz-btn" disabled={busy} onClick={() => void readMapping()}>{mappingOpen ? "Read the mapping again" : "Show each row's mapping"}</button>
+        <button type="button" className="nz-btn" disabled={busy || !state.writeEnabled} onClick={() => void runPreview()}>{preview ? "Preview again" : "Refresh from the previous system"}</button>
+      </div>
     </div>
     {!state.writeEnabled ? <div className="sub">Refreshing is not enabled in this environment.</div> : null}
     {error ? <div className="nz-banner warn" role="alert"><div>{error}</div></div> : null}
@@ -117,5 +166,6 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
     {auto ? <FastPathRefreshedView outcome={auto} /> : null}
     {preview && notAutomatic ? <div className="sub" data-not-automatic>{notAutomatic}</div> : null}
     {preview ? <ImportRefreshPreviewView preview={preview} resolve={resolve} commit={commit} /> : null}
+    {mappingSection}
   </div></section>;
 }

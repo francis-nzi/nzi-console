@@ -29,6 +29,7 @@ import { AuthorizationError, resolveMemberGrant } from "./auth";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { CommandValidationError } from "./postgresCommands";
 import { refreshV7ImportFastPath } from "./v7ImportFastPath";
+import { v7TotalsOnlySql } from "./v7ImportMapping";
 import type { V7ImportRefreshOptions, V7ImportRefreshSource } from "./v7ImportRefresh";
 
 export const v7ImportBatchIdempotencyKey = (runId: string, jobId: string, attempts: number) => `v7-batch:${runId}:${jobId}:${attempts}`;
@@ -305,6 +306,11 @@ export async function v7ImportBatchTally(db: Queryable, organisationId: string, 
 export type V7ImportBatchQueueItem = {
   jobId: string; jobNumber: string; status: "queued" | "refused" | "failed";
   because: V7ImportBatchBlocker[]; flagged: number; refusalCodes: string[]; failureClass: V7ImportBatchFailureClass | null;
+  /**
+   * Flagged, and the console holds only the previous system's scope totals for the job (or nothing): its rows there are new to the
+   * console, not regressed — a first-time mapping. Read from the console's own rows; nothing is stored for it.
+   */
+  firstTimeMapping: boolean;
 };
 export type V7ImportBatchView = {
   clientId: string; importedJobs: number;
@@ -328,8 +334,9 @@ export async function readV7ImportBatch(db: Queryable, organisationId: string, c
     [organisationId, clientId])).rows[0];
   if (!run) return { clientId, importedJobs, run: null };
   const queue = (await db.query<{ job_id: string; sequence: number; status: "queued" | "refused" | "failed"; because: V7ImportBatchBlocker[]; flagged: number;
-    refusal_codes: string[]; failure_class: V7ImportBatchFailureClass | null }>(
-    `SELECT r.job_id, j.sequence, r.status, r.because, r.flagged, r.refusal_codes, r.failure_class FROM nzi_console.v7_import_batch_results r
+    refusal_codes: string[]; failure_class: V7ImportBatchFailureClass | null; totals_only: boolean }>(
+    `SELECT r.job_id, j.sequence, r.status, r.because, r.flagged, r.refusal_codes, r.failure_class, ${v7TotalsOnlySql("r.organisation_id", "r.job_id")} AS totals_only
+       FROM nzi_console.v7_import_batch_results r
        JOIN nzi_console.jobs j ON j.organisation_id = r.organisation_id AND j.job_id = r.job_id
       WHERE r.organisation_id = $1 AND r.run_id = $2 AND r.status IN ('queued', 'refused', 'failed') ORDER BY r.position`, [organisationId, run.run_id])).rows;
   // The breaker's own record: the run's latest pause or resume. Paused, and not resumed since, and still stopped → the reason.
@@ -342,6 +349,7 @@ export async function readV7ImportBatch(db: Queryable, organisationId: string, c
     paused: run.stopped && lastTurn?.action === "import.refreshBatch.paused" ? V7_IMPORT_BATCH_PAUSED_REASON : null,
     tally: await v7ImportBatchTally(db, organisationId, run.run_id),
     queue: queue.map((row) => ({ jobId: row.job_id, jobNumber: `J${String(row.sequence).padStart(6, "0")}`, status: row.status, because: row.because, flagged: row.flagged,
-      refusalCodes: row.refusal_codes, failureClass: row.failure_class })),
+      refusalCodes: row.refusal_codes, failureClass: row.failure_class,
+      firstTimeMapping: row.status === "queued" && row.flagged > 0 && row.because.includes("flagged") && row.totals_only })),
   } };
 }

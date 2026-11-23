@@ -13,6 +13,8 @@ import { blockerParts, type FastPathBlocker } from "../../jobs/importRefreshView
 export type ImportBatchQueueItem = {
   jobId: string; jobNumber: string; status: "queued" | "refused" | "failed";
   because: FastPathBlocker[]; flagged: number; refusalCodes: string[]; failureClass: V7ImportBatchFailureClass | null;
+  /** Flagged, and the console held only the previous system's scope totals for it: its rows are new, not regressed. */
+  firstTimeMapping?: boolean;
 };
 export type ImportBatchState = {
   clientId: string; importedJobs: number; writeEnabled: boolean;
@@ -25,6 +27,7 @@ export type ImportBatchState = {
 export const REFRESH_ALL = "Refresh all from the previous system";
 export const ALREADY_CURRENT_LOCALLY = "already current locally";
 export const PAUSED_LINE = "Paused — the previous system was not responding.";
+export const FIRST_TIME_MAPPING_LINE = "Now has activity data in the previous system — map its rows.";
 
 const FAILURE_LABEL: Record<V7ImportBatchFailureClass, string> = {
   "view-timeout": "the previous system did not answer in time",
@@ -37,6 +40,10 @@ const FAILURE_LABEL: Record<V7ImportBatchFailureClass, string> = {
 export function queueLine(item: ImportBatchQueueItem): string {
   if (item.status === "failed") return `Failed: ${FAILURE_LABEL[item.failureClass ?? "internal"]}.`;
   if (item.status === "refused") return `Refused: ${item.refusalCodes.join(", ")}.`;
+  if (item.firstTimeMapping) {
+    const others = blockerParts(item.because.filter((blocker) => blocker !== "flagged"), item.flagged);
+    return others.length ? `${FIRST_TIME_MAPPING_LINE} Also not automatic: ${others.join(" · ")}.` : FIRST_TIME_MAPPING_LINE;
+  }
   return `Not automatic: ${blockerParts(item.because, item.flagged).join(" · ")}.`;
 }
 
