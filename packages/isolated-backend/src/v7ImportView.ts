@@ -34,7 +34,7 @@ export const V7_IMPORT_VIEW_CONTRACT = {
   emission_groups: ["group_id", "job_id", "dataset_id", "factor_db_id", "original_id", "factor", "ghg_unit", "uom", "enabled"],
   emission_sources: ["source_id", "job_id", "scope", "source_type", "enabled", "group_id", "source_subtype", "site_id", "category", "dataset_id",
     "factor_db_id", "original_id", "qty", "uom", "factor", "ghg_unit", "apply_pct", "calc_tco2e", "data_source", "data_confidence", "review_status",
-    "label_person_linked", "label_factor", "label_base"],
+    "label_person_linked", "label_factor", "label_base", "category_name"],
   factor_labels: ["label"],
   job_types: ["job_type_id", "name", "job_family", "job_group", "is_crp"],
   jobs: ["job_id", "client_db_id", "job_number", "status", "archived", "job_type_id", "job_type", "reporting_year", "reporting_period_start", "reporting_period_end"],
@@ -42,15 +42,19 @@ export const V7_IMPORT_VIEW_CONTRACT = {
     "category", "level_1", "level_2", "level_3", "level_4", "column_text", "report_label", "factor_original_id", "storage_reason", "apply_pct",
     "month_1", "month_2", "month_3", "month_4", "month_5", "month_6", "month_7", "month_8", "month_9", "month_10", "month_11", "month_12",
     "calc_tco2e", "override_tco2e", "data_source", "data_confidence", "is_custom_entry", "linked_row_id", "is_auto_generated", "auto_pair_kind",
-    "review_status", "reference_factor", "reference_ghg_unit", "label_person_linked", "label_factor", "label_base"],
+    "review_status", "reference_factor", "reference_ghg_unit", "label_person_linked", "label_factor", "label_base", "category_name"],
   sites: ["site_id", "client_db_id", "is_registered_office", "vacated_date", "archived"],
   spend_entries: ["entry_id", "job_id", "amount_gross", "is_deleted", "site_id", "factor_db_id", "factor_original_id", "mapped_scope",
     "conversion_currency", "currency", "submitted_by_portal", "review_status", "estimated_emissions_tco2e"],
 } as const satisfies Record<string, readonly string[]>;
 export type V7ImportView = keyof typeof V7_IMPORT_VIEW_CONTRACT;
 
-/** The label rule's context columns: read for the rule, never planned. */
-const LABEL_CONTEXT = ["label_person_linked", "label_factor", "label_base"] as const;
+/**
+ * The columns read beside the rows, never planned: the label rule's context, and the row's own category name when it is one of the
+ * factor library's (`category_name`; the rows modal's tie-break, BRIEF-v7-import-rows-autopick-fix §5). The planner's tables, and
+ * the fingerprint of what was read, are as they were without them.
+ */
+const LABEL_CONTEXT = ["label_person_linked", "label_factor", "label_base", "category_name"] as const;
 
 const refuse = (code: string, message: string): never => { throw new CommandValidationError([{ field: "source", code, message }]); };
 
@@ -105,6 +109,8 @@ export type V7ImportViewRead = {
   sourceSha256: string;
   /** The label rule's context, per import identity (`row_id`, or `source:<id>`). */
   labelContexts: Map<string, V7ImportLabelContext>;
+  /** Each row's own category name, when it is one of the factor library's, per import identity; null otherwise. */
+  categoryNames: Map<string, string | null>;
 };
 
 const without = (row: V7Row, columns: readonly string[]): V7Row => Object.fromEntries(Object.entries(row).filter(([column]) => !columns.includes(column)));
@@ -138,6 +144,9 @@ export async function readV7JobFromViews(db: Source, jobNumber: string): Promise
   const labelContexts = new Map<string, V7ImportLabelContext>();
   for (const row of scopeRows) labelContexts.set(row.row_id!, contextOf(row));
   for (const row of sources) labelContexts.set(`source:${row.source_id}`, contextOf(row));
+  const categoryNames = new Map<string, string | null>();
+  for (const row of scopeRows) categoryNames.set(row.row_id!, row.category_name ?? null);
+  for (const row of sources) categoryNames.set(`source:${row.source_id}`, row.category_name ?? null);
 
   // The extract's tables, rebuilt. A name the planner requires and the view never carries is a placeholder of the id alone.
   const tables: Partial<Record<V7Table, V7Row[]>> = {
@@ -163,7 +172,7 @@ export async function readV7JobFromViews(db: Source, jobNumber: string): Promise
   };
   const extract = new Proxy(tables, { get: (target, table: string) => target[table as V7Table] ?? [] }) as unknown as V7Extract;
   const sourceSha256 = createHash("sha256").update(stable({ jobNumber, tables })).digest("hex");
-  return { extract, headers, sourceSha256, labelContexts };
+  return { extract, headers, sourceSha256, labelContexts, categoryNames };
 }
 
 /** Plan the one job from a view read, as the summary script plans it from an extract. A refusal is refused here too. */
@@ -235,11 +244,10 @@ export async function readV7JobRowsFromViews(consoleDb: Queryable, source: Pick<
       }
       return Object.keys(carried).length ? { ...planned, ...carried } : planned;
     });
-    // Each row's own category name, beside the rows (the import rows modal's tie-break); the planned rows are untouched.
-    const v7Categories: Record<string, string | null> = {};
-    for (const row of viewRead.extract.job_scope_rows) if (row.row_id) v7Categories[row.row_id] = row.category ?? null;
-    for (const row of viewRead.extract.job_emission_sources) if (row.source_id) v7Categories[`source:${row.source_id}`] = row.category ?? null;
-    return { sourceSha256: viewRead.sourceSha256, rows, v7Categories };
+    // Each row's own category name, beside the rows (the import rows modal's tie-break); the planned rows are untouched. Read from
+    // `category_name` — the library's names only — never from `category`, which the label rule rewrites when it is not on the
+    // taxonomy allow-list ("Business Travel" is not: the J000434 live check, 24 Nov).
+    return { sourceSha256: viewRead.sourceSha256, rows, v7Categories: Object.fromEntries(viewRead.categoryNames) };
   });
 }
 

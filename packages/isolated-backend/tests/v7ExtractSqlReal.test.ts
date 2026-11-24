@@ -16,7 +16,8 @@ import { sanitiseV7ImportLabel, v7ImportLabelHasPii } from "../src/v7ImportLabel
 import { guardV7ImportViews, planV7JobFromViews, readV7JobFromViews, readV7JobRowsFromViews, summariseV7JobFromViews, V7_IMPORT_VIEW_CONTRACT, withV7ViewSnapshot } from "../src/v7ImportView";
 import { previewV7ImportRefresh, v7ImportViewSource, type V7ImportRefreshSource } from "../src/v7ImportRefresh";
 import { resyncV7JobInTransaction, v7ResyncContext } from "../src/v7Resync";
-import { commandGrantForRole } from "@nzi/contracts";
+import { commandGrantForRole, v7CategoryCode } from "@nzi/contracts";
+import { readV7ImportRows } from "../src/v7ImportRows";
 import { randomUUID } from "node:crypto";
 import { checkV7ImportViews } from "../scripts/v7-import-view-check";
 import { createDisposableDatabase, ensureDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
@@ -334,6 +335,13 @@ describe("the import's view set, server-side: non-PII, guarded, and the extract'
       (551,'7','Scope 1','TAX-551',0.18,'kgCO2e','Fuels','Gaseous fuels','Natural gas',NULL), (552,'7','Scope 1','TAX-552',2.5,'kgCO2e','Fuels','Liquid fuels','Diesel',NULL),
       (555,'7','Scope 2','TAX-555',0.2,'kgCO2e','UK electricity','Electricity generated','Electricity: UK',NULL), (560,'7','Scope 3','TAX-560',0.3,'kgCO2e','Spend','Land transport',NULL,NULL),
       (570,'7','Scope 3','TAX-570',0.1,'kgCO2e','Business travel- land','Cars (by size)','Average car',NULL), (580,'7','Scope 3','TAX-580',0.15,'kgCO2e','Business travel- land','Rail','National rail',NULL)`);
+    // The factor library's category names, as v7 holds them: on factor_lookup, and curated on emission_factor_definitions
+    // (v_factor_lookup reads both). One entry is PII-shaped: it must never become a category the view passes.
+    await source.query(`ALTER TABLE public.factor_lookup ADD COLUMN category text`);
+    await source.query(`UPDATE public.factor_lookup SET category = CASE WHEN db_id IN (551, 552) THEN 'Fuels' WHEN db_id = 555 THEN 'Energy'
+      WHEN db_id IN (570, 580) THEN 'Business travel- land' WHEN db_id = 560 THEN 'Purchased Goods and Services' END`);
+    await source.query(`CREATE TABLE public.emission_factor_definitions (factor_id text, category text)`);
+    await source.query(`INSERT INTO public.emission_factor_definitions VALUES ('efd-570','Business Travel'), ('efd-552','Company Vehicles'), ('efd-x','Mr Smith')`);
     await source.query(VIEW_SQL);
     await source.query(`ALTER ROLE cc_import_view PASSWORD 'test-only-view'`);
     const viewUrl = new URL(sourceUrl);
@@ -501,9 +509,8 @@ describe("the import's view set, server-side: non-PII, guarded, and the extract'
     // Beside the rows (BRIEF-v7-import-rows-autopick-fix §5): each row's own category name as the views carry it — for the modal's
     // tie-break only; the rows above, and their fingerprint, are what the chain ran on.
     const viewed = await withV7ViewSnapshot(viewPool, (db) => readV7JobFromViews(db, JOB));
-    const expected = Object.fromEntries([...viewed.extract.job_scope_rows.map((row) => [row.row_id!, row.category ?? null]),
-      ...viewed.extract.job_emission_sources.map((row) => [`source:${row.source_id}`, row.category ?? null])]);
-    assert.deepEqual(read.v7Categories, expected);
+    assert.deepEqual(read.v7Categories, Object.fromEntries(viewed.categoryNames), "from the view's category_name, not the rewritten category");
+    assert.ok(viewed.extract.job_scope_rows.every((row) => !("category_name" in row)), "never in the planner's tables");
     assert.ok(read.rows.every((row) => row.legacyDbId in read.v7Categories), "every planned row has its category beside it");
     assert.equal(read.sourceSha256, viewed.sourceSha256, "the fingerprint of what was read is unchanged by it");
     assert.equal(await consolePrint(), before, "nothing kept on the console's side");
@@ -530,6 +537,49 @@ describe("the import's view set, server-side: non-PII, guarded, and the extract'
       assert.equal(Number((await admin.query(`SELECT count(*) AS n FROM nzi_console.command_idempotency WHERE idempotency_key IN ('rf-view', 'rf-extract')`)).rows[0].n), 0, "nor an idempotency row");
     } finally {
       await admin.end();
+    }
+  });
+
+  // The J000434 live check (24 Nov), after #651: v7 files business travel as "Business Travel" — not taxonomy text, so the label rule
+  // rewrote `category` and the modal's tie-break saw no category. The category now crosses as `category_name`: the library's names only.
+  it("the previous system's own category crosses as category_name — the factor library's names only — and the rows read files business travel under 3.6", async () => {
+    await source.query(`INSERT INTO public.job_scope_rows (row_id, job_id, scope, original_id, qty, uom, factor, ghg_unit, enabled, site_id, dataset_id, factor_db_id,
+      category, level_1, level_2, level_3, data_source) VALUES
+      ('1011','100','Scope 3','TAX-570','100','km','0.1','kgCO2e',true,'11','7','570','Business Travel','Business travel- land','Cars (by size)','Average car','Company Data'),
+      ('1012','100','Scope 3','TAX-570','50','km','0.1','kgCO2e',false,'11','7','570','Mr Smith','Business travel- land','Cars (by size)','Average car','Company Data')`);
+    const admin = await target.admin();
+    try {
+      const client = await viewPool.connect();
+      try {
+        const crossed = Object.fromEntries((await client.query(`SELECT row_id, category, category_name FROM v7_import.scope_rows WHERE row_id IN ('1008','1011','1012')`)).rows
+          .map((row) => [row.row_id, [row.category, row.category_name]]));
+        assert.deepEqual(crossed["1011"], ["Business travel- land — site 11", "Business Travel"], "the label rule still rewrites category; category_name carries the library's name");
+        assert.deepEqual(crossed["1012"], ["Business travel- land — site 11", null], "a PII-shaped category is no library name, even when an entry claims it");
+        assert.equal(crossed["1008"]![1], null, "exact names only: 'Company vehicles' is not the library's 'Company Vehicles'");
+        const text = (await client.query(`SELECT t::text AS row FROM v7_import.scope_rows t`)).rows.map((row) => row.row as string).join("\n");
+        assert.ok(!text.includes("Smith"));
+      } finally {
+        client.release();
+      }
+      const read = await withTenantWrite(target.pool, ORG, (db) => readV7JobRowsFromViews(db, viewPool, { organisationId: ORG, jobId: JOB_ID, legacyJobNumber: JOB }));
+      assert.deepEqual([read.v7Categories["1011"], read.v7Categories["1012"], v7CategoryCode(read.v7Categories["1011"], "3")], ["Business Travel", null, "3.6"]);
+      // End to end, off the views: the console's business car factor, filed by its family under 3.6 and 3.7 alike — v7's own
+      // category settles it, so the row comes in matched (it stayed a suggestion while the category was lost).
+      await admin.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
+      await admin.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+        VALUES ($1,'uk-ghg-cat-test','DESNZ (test)','1','2023-01-01','2026-12-31','GB','active','Test','Source: test.') ON CONFLICT DO NOTHING`, [ORG]);
+      await admin.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels)
+        VALUES ($1,'uk-ghg-cat-test','uk-ghg-TAX-570','Business travel · average car','km',0.1,ARRAY['3'],ARRAY['Business travel- land','Cars (by size)','Average car'])`, [ORG]);
+      const plan = { basePlan: { jobId: JOB_ID, crosswalkVersion: "none", crosswalkSha256: "0".repeat(64), vintageDatasetIds: [], rows: [] } };
+      const rows = await readV7ImportRows(target.pool, v7ImportViewSource(viewPool), commandGrantForRole("consultant", ORG, "staff-crm"), JOB_ID, plan);
+      const travel = rows.rows.find((row) => row.legacyDbId === "1011")!;
+      assert.deepEqual([travel.v7Category, travel.categories, travel.lane, travel.pick?.factorId, travel.pick?.match.categoryCode],
+        ["3.6", ["3.6", "3.7"], "pre-accepted", "uk-ghg-TAX-570", "3.6"]);
+    } finally {
+      await admin.query(`DELETE FROM nzi_console.emission_factors WHERE dataset_id = 'uk-ghg-cat-test'`).catch(() => undefined);
+      await admin.query(`DELETE FROM nzi_console.emission_factor_datasets WHERE dataset_id = 'uk-ghg-cat-test'`).catch(() => undefined);
+      await admin.end();
+      await source.query(`DELETE FROM public.job_scope_rows WHERE row_id IN ('1011','1012')`);
     }
   });
 });
