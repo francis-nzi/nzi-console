@@ -42,6 +42,8 @@ export const v7ImportDecisionsSha256 = (decisions: readonly V7ImportDecision[]) 
  * The job's summary as the chain will see it. A job already re-ingested has its imported rows switched off by that run, so a
  * plain comparison finds every row "changed" and no row withdrawn. The chain reverts the standing run first; so does this —
  * under a savepoint, rolled back before it returns — and then summarises. Nothing is kept. Use it inside a write transaction.
+ * It is a read, so a snapshot does not stop it (BRIEF-v7-import-j000663 §A): the revert runs as a `comparison`, and only the
+ * chain's own revert, which is kept, is refused on a snapshotted job.
  */
 export async function summariseV7JobAsTheChainSees(db: Queryable, input: Parameters<typeof summariseV7JobForImport>[1]): ReturnType<typeof summariseV7JobForImport> {
   const standing = (await db.query<{ run_id: string }>(
@@ -50,7 +52,7 @@ export async function summariseV7JobAsTheChainSees(db: Queryable, input: Paramet
   await db.query("SAVEPOINT v7_import_summary_as_reverted");
   try {
     await revertV7ReingestInTransaction(db, { jobId: input.jobId, runId: standing },
-      v7ReingestRevertContext(input.organisationId, standing, "import summary: compared as the ingest will see it (rolled back)"));
+      v7ReingestRevertContext(input.organisationId, standing, "import summary: compared as the ingest will see it (rolled back)"), "comparison");
     return await summariseV7JobForImport(db, input);
   } finally {
     await db.query("ROLLBACK TO SAVEPOINT v7_import_summary_as_reverted");
