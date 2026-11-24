@@ -111,7 +111,13 @@ CREATE VIEW v7_import.datasets AS
 CREATE VIEW v7_import.scope_rows AS
   -- The allow-list, computed ONCE per query (BRIEF-v7-import-batch-hardening §1). Written inline, each membership test below was
   -- its own subplan, and each rebuilt the whole list from factor_lookup: a full scan per test. Same list, same rule, same rows.
-  WITH allowed AS MATERIALIZED (SELECT label FROM v7_import.factor_labels)
+  WITH allowed AS MATERIALIZED (SELECT label FROM v7_import.factor_labels),
+  -- The factor library's own category names (BRIEF-v7-import-rows-autopick-fix §5; the J000434 live check, 24 Nov): a closed,
+  -- curated vocabulary ("Business Travel", "Company Vehicles", "Fuels" …), never free text. Read for the rows modal's tie-break
+  -- only, as `category_name`; the label rule above is unchanged, so the planner's inputs are too.
+  categories AS MATERIALIZED (SELECT DISTINCT btrim(x.category) AS category
+    FROM (SELECT fl.category FROM public.factor_lookup fl UNION ALL SELECT d.category FROM public.emission_factor_definitions d) x
+    WHERE x.category IS NOT NULL AND btrim(x.category) <> '' AND NOT v7_import.label_has_pii(x.category))
   SELECT r.row_id, r.job_id, r.scope, r.original_id, r.qty, r.uom, r.factor, r.ghg_unit, r.enabled, r.site_id, r.dataset_id, r.factor_db_id,
     v7_import.sanitise_label(r.category, btrim(r.category) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS category,
     v7_import.sanitise_label(r.level_1, btrim(r.level_1) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, r.site_id::text) AS level_1,
@@ -137,7 +143,9 @@ CREATE VIEW v7_import.scope_rows AS
     CASE WHEN ref1.factor IS NOT NULL THEN ref1.factor ELSE ref2.factor END AS reference_factor,
     CASE WHEN ref1.factor IS NOT NULL THEN NULLIF(trim(ref1.ghg_unit), '')
       ELSE COALESCE(NULLIF(trim(ref2.ghg_unit), ''), NULLIF(trim(ref1.ghg_unit), '')) END AS reference_ghg_unit,
-    c.person_linked AS label_person_linked, c.factor_label AS label_factor, c.base AS label_base
+    c.person_linked AS label_person_linked, c.factor_label AS label_factor, c.base AS label_base,
+    -- The row's own category, only when it is exactly one of the library's category names; otherwise nothing.
+    CASE WHEN btrim(r.category) IN (SELECT category FROM categories) THEN btrim(r.category) END AS category_name
   FROM public.job_scope_rows r
   LEFT JOIN LATERAL (SELECT fl.factor, fl.ghg_unit FROM public.factor_lookup fl WHERE r.dataset_id IS NOT NULL AND fl.dataset_id = r.dataset_id
     AND fl.original_id = substring(r.notes FROM '(?i)(?:^|[;( ])factor_original_id=([^;)\s]+)') AND (trim(r.scope) = '' OR fl.scope = trim(r.scope))
@@ -163,7 +171,11 @@ CREATE VIEW v7_import.emission_groups AS
 CREATE VIEW v7_import.emission_sources AS
   -- The allow-list, computed ONCE per query (BRIEF-v7-import-batch-hardening §1). Written inline, each membership test below was
   -- its own subplan, and each rebuilt the whole list from factor_lookup: a full scan per test. Same list, same rule, same rows.
-  WITH allowed AS MATERIALIZED (SELECT label FROM v7_import.factor_labels)
+  WITH allowed AS MATERIALIZED (SELECT label FROM v7_import.factor_labels),
+  -- The library's category names, as for the scope rows.
+  categories AS MATERIALIZED (SELECT DISTINCT btrim(x.category) AS category
+    FROM (SELECT fl.category FROM public.factor_lookup fl UNION ALL SELECT d.category FROM public.emission_factor_definitions d) x
+    WHERE x.category IS NOT NULL AND btrim(x.category) <> '' AND NOT v7_import.label_has_pii(x.category))
   SELECT s.source_id, s.job_id, s.scope, s.source_type, s.enabled, s.group_id, s.source_subtype, s.site_id,
     v7_import.sanitise_label(s.category, btrim(s.category) IN (SELECT label FROM allowed), c.person_linked, c.factor_label, c.base, s.site_id::text) AS category,
     s.dataset_id, s.factor_db_id, s.original_id, s.qty, s.uom, s.factor, s.ghg_unit, s.apply_pct, s.calc_tco2e,
@@ -174,7 +186,8 @@ CREATE VIEW v7_import.emission_sources AS
         'Asset Register (Consolidated)', 'Business Travel Register (Consolidated)') THEN s.data_source
       ELSE 'Unlisted' END AS data_source,
     s.data_confidence, s.review_status,
-    c.person_linked AS label_person_linked, c.factor_label AS label_factor, c.base AS label_base
+    c.person_linked AS label_person_linked, c.factor_label AS label_factor, c.base AS label_base,
+    CASE WHEN btrim(s.category) IN (SELECT category FROM categories) THEN btrim(s.category) END AS category_name
   FROM public.job_emission_sources s
   LEFT JOIN LATERAL (SELECT COALESCE(NULLIF(btrim(f.column_text), ''), NULLIF(btrim(f.level_3), ''), NULLIF(btrim(f.level_2), ''), NULLIF(btrim(f.level_1), '')) AS label
     FROM public.factor_lookup f WHERE f.db_id::text = s.factor_db_id::text ORDER BY f.db_id LIMIT 1) own ON true
