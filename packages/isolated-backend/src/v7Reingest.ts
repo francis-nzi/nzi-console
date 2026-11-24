@@ -412,8 +412,16 @@ export async function snapshottedSince(db: Queryable, organisationId: string, jo
     [organisationId, jobId, since])).rows.length > 0;
 }
 
+/**
+ * How a revert is used. `revert` — the governed write, gated on the job's snapshot. `comparison` — a read comparing the job's rows
+ * as the chain will see them, run under a savepoint the caller always rolls back (BRIEF-v7-import-j000663 §A): a snapshot blocks a
+ * revert, never a read, so this use alone skips the snapshot gate. Every other check stands.
+ */
+export type V7ReingestRevertUse = "revert" | "comparison";
+
 /** `v7.reingest.revert`, inside the caller's transaction: before any snapshot of the job, nothing deleted either way. */
-export function revertV7ReingestInTransaction(db: Queryable, input: CommandInputMap["v7.reingest.revert"], context: CommandContext): Promise<StoredOutcome<V7ReingestRevertResult>> {
+export function revertV7ReingestInTransaction(db: Queryable, input: CommandInputMap["v7.reingest.revert"], context: CommandContext,
+  use: V7ReingestRevertUse = "revert"): Promise<StoredOutcome<V7ReingestRevertResult>> {
   return runPostgresCommandInTransaction(db, "v7.reingest.revert", input, context, async (db) => {
     await requireCrpJob(db, context.organisationId, input.jobId);
     const run = (await db.query<{ status: string; created_at: Date; rows_by_disposition_json: Record<string, number> }>(
@@ -421,7 +429,7 @@ export function revertV7ReingestInTransaction(db: Queryable, input: CommandInput
       [context.organisationId, input.jobId, input.runId])).rows[0];
     if (!run) fail("NOT_FOUND", "No such re-ingest run for this job.", "runId");
     if (run!.status !== "completed") fail("NOT_COMPLETED", "Only a completed re-ingest is reverted.", "runId");
-    if (await snapshottedSince(db, context.organisationId, input.jobId, run!.created_at)) fail("SNAPSHOT_EXISTS", "The job has been snapshotted since the re-ingest; it is no longer reverted here.", "runId");
+    if (use === "revert" && await snapshottedSince(db, context.organisationId, input.jobId, run!.created_at)) fail("SNAPSHOT_EXISTS", "The job has been snapshotted since the re-ingest; it is no longer reverted here.", "runId");
     // RULING-v7-reingest-row-protection 2: the run's rows are found by what nothing but the run writes — never by provenance,
     // which an edit could rewrite (the J000663 finding: two edited rows had lost their run id, and the revert would have
     // reversed 78 of 80 and still marked the run reverted). The run's v7 rows are its own `v7_row_superseded` audit events

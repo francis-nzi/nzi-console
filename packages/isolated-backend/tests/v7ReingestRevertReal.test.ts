@@ -1464,11 +1464,13 @@ describe("the import refresh's fast path: eligible jobs refresh in one action, e
     assert.deepEqual(await fingerprint(), before);
   });
 
-  it("D-ELIG-1 — a report the console issued: never auto-committed; the snapshot it froze refuses the refresh outright (R1), nothing written", async () => {
-    // A console report version needs its reviewed snapshot (the FK), and the chain already refuses a snapshotted job, so the
-    // refresh stops before any verdict; D-ELIG-1 (read true in the signals test) stands behind that refusal, not in front of it.
+  it("D-ELIG-1 — a report the console issued: never auto-committed; held for a person as issued-report, nothing written", async () => {
+    // A console report version needs its reviewed snapshot (the FK). A snapshot blocks a revert, never a read
+    // (BRIEF-v7-import-j000663 §A): the fast path reads the job and falls back to the deliberate flow, by D-ELIG-1's own reason.
     const before = await fingerprint();
-    await assert.rejects(fast("fp-issued"), (error) => codes(error).includes("SNAPSHOT_EXISTS"));
+    const result = await fast("fp-issued");
+    assert.equal(result.fastPath, "deliberate");
+    if (result.fastPath === "deliberate") assert.ok(result.because.includes("issued-report"), JSON.stringify(result.because));
     assert.deepEqual(await fingerprint(), before);
     assert.equal((await refreshedEvents("fp-issued")).length, 0);
   });
@@ -1682,7 +1684,7 @@ describe("the import refresh batch: one client's jobs through the fast path, the
       ["queued", ["flagged"], 0, [], null, 0],
       ["current", [], 0, [], null, 0],
       ["failed", [], 0, [], "view-timeout", 1],
-      ["refused", [], 0, ["SNAPSHOT_EXISTS"], null, 0],
+      ["queued", ["issued-report", "flagged"], 0, [], null, 0],
     ]);
     assert.deepEqual(rows[ELIGIBLE.jobId]!.ingest_id, (await ingests(ORG, ELIGIBLE.jobId))[0]);
     // The commit is the fast path's, as a person's one action makes it: the starter as actor, the fixed reason, the run's correlation.
@@ -1693,7 +1695,7 @@ describe("the import refresh batch: one client's jobs through the fast path, the
     assert.deepEqual(view.run?.tally, { total: 6, refreshed: 1, exceptions: 3, failed: 1, current: 1, skipped: 0, pending: 0 });
     assert.deepEqual(view.run?.queue.map((item) => [item.jobNumber, item.status, item.because, item.refusalCodes, item.failureClass]), [
       ["J009302", "queued", ["manual-edits"], [], null], ["J009303", "queued", ["flagged"], [], null],
-      ["J009305", "failed", [], [], "view-timeout"], ["J009306", "refused", [], ["SNAPSHOT_EXISTS"], null]]);
+      ["J009305", "failed", [], [], "view-timeout"], ["J009306", "queued", ["issued-report", "flagged"], [], null]]);
     assert.deepEqual([view.importedJobs, view.run?.status, view.run?.stopped], [6, "completed", false]);
     const events = (await db.query<{ action: string; after_json: Record<string, unknown> }>(`SELECT action, after_json FROM nzi_console.audit_events
       WHERE organisation_id = $1 AND action LIKE 'import.refreshBatch.%' AND entity_id = 'c1' ORDER BY occurred_at, action`, [ORG])).rows;
@@ -1712,7 +1714,7 @@ describe("the import refresh batch: one client's jobs through the fast path, the
     reads.length = 0;
     assert.equal((await runV7ImportBatch(database.pool, ORG, started.data.runId, runner)).status, "completed");
     assert.deepEqual(reads, [D7, CLEAN, TIMEOUT, TIMEOUT, ISSUED].map((entry) => entry.jobId), "the two committed jobs are not read again (the recovered one reads twice: preview, commit)");
-    assert.deepEqual(Object.values(await results(ORG, started.data.runId)).map((row) => row.status), ["skipped", "skipped", "queued", "current", "refreshed", "refused"]);
+    assert.deepEqual(Object.values(await results(ORG, started.data.runId)).map((row) => row.status), ["skipped", "skipped", "queued", "current", "refreshed", "queued"]);
     assert.equal((await refreshedEvents(ORG, ELIGIBLE.jobId)).length, 1, "never committed twice");
     assert.equal((await refreshedEvents(ORG, TIMEOUT.jobId)).length, 1, "the job that failed last time refreshed now");
     const view = await withTenantRead(database.pool, ORG, (client) => readV7ImportBatch(client, ORG, "c1"));
@@ -2434,5 +2436,93 @@ describe("the import rows modal's auto-pick, on a job shaped as J000434: the job
     await assert.rejects(commitV7ImportRefresh(database.pool, source, { jobId: JOB_N, mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 },
       context("consultant", "bring J000908 in (test)"), { basePlan: EMPTY_PLAN(JOB_N), requireScopesAgree: true }), (error) => error instanceof CommandValidationError);
     assert.equal((await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'live'`, [JOB_N])).rows[0]!.n, before, "nothing written");
+  });
+});
+
+/**
+ * BRIEF-v7-import-j000663 §A: a snapshot blocks a revert, never a read. J000663 was re-ingested and then snapshotted, and its rows
+ * read refused with the revert's SNAPSHOT_EXISTS: every read compares the job's rows as the chain will see them, by running the
+ * revert under a savepoint it rolls back, and that revert reached the snapshot gate. The comparison now skips that gate; the
+ * revert itself does not.
+ */
+describe("a snapshotted job: the rows read, the mapping read and the refresh preview return and write nothing; the revert is still refused", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  const SN_ORG = "v7-snapshotted";
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  let standing = "";
+  const context = (role: "admin" | "consultant" = "consultant"): CommandContext => {
+    keys += 1;
+    return { organisationId: SN_ORG, actorId: `staff-${role}`, principal: "staff", idempotencyKey: `sn-${keys}`, correlationId: `sn-corr-${keys}`, grant: commandGrantForRole(role, SN_ORG, `staff-${role}`) };
+  };
+  const holder = () => commandGrantForRole("consultant", SN_ORG, "staff-consultant");
+  const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+  const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
+  const source: V7ImportRefreshSource = async () => ({ sourceSha256: "e".repeat(64), rows: NOW });
+  const options = { basePlan: withoutRun(PLAN_BEFORE("x")) };
+  const fingerprint = async () => {
+    const tables = (await db.query<{ t: string }>(`SELECT tablename AS t FROM pg_tables WHERE schemaname = 'nzi_console' ORDER BY tablename`)).rows.map((row) => row.t);
+    const prints: Record<string, string> = {};
+    for (const table of tables) prints[table] = (await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) AS p FROM nzi_console.${table} t`)).rows[0]!.p;
+    return prints;
+  };
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7snapshotted"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [SN_ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [SN_ORG]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [SN_ORG]);
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'c1','Snapshotted Test','active')`, [SN_ORG]);
+    await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+      VALUES ($1,$2,'c1',901,'crp','CRP','open','Data entry',2025,'2025-01-01','2025-12-31','nzi-pro-v7','901','J000901')`, [SN_ORG, JOB_A]);
+    await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [SN_ORG, JOB_A]);
+    await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                    VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [SN_ORG]);
+    for (const [id, label, unit, kg, scope, levels] of [["gas", "Natural gas", "kWh", 0.2, "1", ["Fuels", "Gaseous fuels", "Natural gas"]], ["water", "Water supply", "m3", 0.15, "3", []]] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
+        [SN_ORG, id, label, unit, kg, scope, levels]);
+    }
+    for (const row of BEFORE) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: SN_ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(JOB_A, row)]);
+    standing = `v7-reingest-${randomUUID()}`;
+    await withTenantWrite(database.pool, SN_ORG, (client) => reingestV7JobInTransaction(client, { ...PLAN_BEFORE(standing) },
+      { organisationId: SN_ORG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+        reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", SN_ORG, V7_REINGEST_ACTOR) }));
+    // Then reviewed and frozen, as J000663 was: a snapshot taken after the re-ingest.
+    await db.query(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by)
+                    VALUES ($1,'snap-after-reingest',$2,1,1,'sha256:' || repeat('a', 64),'{}'::jsonb,'staff-1')`, [SN_ORG, JOB_A]);
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("the rows read returns every row of the previous system, and writes nothing", async () => {
+    const before = await fingerprint();
+    const rows = await readV7ImportRows(database.pool, source, holder(), JOB_A, options);
+    assert.deepEqual(rows.rows.map((row) => [row.legacyDbId, row.ownStatus]).sort(), [["1001", "changed"], ["1002", "matched"], ["1003", "withdrawn"], ["1004", "new"]]);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("the mapping read returns, and writes nothing", async () => {
+    const before = await fingerprint();
+    const mapping = await readV7ImportMapping(database.pool, source, holder(), JOB_A, options);
+    assert.equal(mapping.rows.length, 4);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("the refresh preview returns, and writes nothing", async () => {
+    const before = await fingerprint();
+    const seen = await previewV7ImportRefresh(database.pool, source, { jobId: JOB_A, mode: "preview" }, context(), options);
+    assert.deepEqual([seen.outcome, seen.verdict, seen.refusal?.stage], ["refused", "needs-mapping", "ready"]);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("the revert is still refused with SNAPSHOT_EXISTS, and nothing is written", async () => {
+    const before = await fingerprint();
+    await assert.rejects(withTenantWrite(database.pool, SN_ORG, (client) => revertV7ReingestInTransaction(client, { jobId: JOB_A, runId: standing },
+      { organisationId: SN_ORG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: `sn-revert-${randomUUID()}`, correlationId: "sn-revert",
+        reason: "revert (test)", grant: commandGrantForRole("admin", SN_ORG, V7_REINGEST_ACTOR) })), (error) => codes(error).includes("SNAPSHOT_EXISTS"));
+    assert.deepEqual(await fingerprint(), before);
+    assert.equal((await db.query(`SELECT status FROM nzi_console.v7_reingest_runs WHERE run_id = $1`, [standing])).rows[0]!.status, "completed");
   });
 });
