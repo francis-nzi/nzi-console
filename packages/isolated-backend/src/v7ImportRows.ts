@@ -13,8 +13,8 @@
 //      command (0228), keyed by the row id, under its own idempotency key and audit, exactly as the one-row control writes it. No new
 //      command, no new authority: the route takes `import.decision.set`'s principal, and each write is that command's own check.
 import {
-  emissionCategoryTaxonomy, familylessCategories, categoriesForLevels, membersOfCategory, parseFactorId, rankV7Candidates, v7ApplyPct, v7AutoPick, v7CoreCode,
-  v7MatchCandidate, V7_IMPORT_SOURCE_SYSTEM,
+  emissionCategoryTaxonomy, familylessCategories, categoriesForLevels, membersOfCategory, parseFactorId, rankV7Candidates, v7ApplyPct, v7AutoPick, v7CategoryCode,
+  v7CodeKeys, v7FactorKeys, v7MatchCandidate, V7_IMPORT_SOURCE_SYSTEM,
   type CommandContext, type CommandInputMap, type MembershipFactor, type V7ImportCarryState, type V7ImportScope, type V7MatchResult, type V7MatchRow,
 } from "@nzi/contracts";
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
@@ -36,16 +36,26 @@ import { normaliseV7Unit, sameV7Unit } from "./v7Reingest";
  *   suggested     — needs a mapping; the best candidate is on its basis but not a clean single reproduction: a person confirms;
  *   unmatched     — needs a mapping, and nothing found by its ID will do: a person searches;
  *   confirm-off   — gone from the previous system: a person confirms it goes off;
+ *   switched-off  — needs a mapping, but switched off in the previous system (BRIEF-v7-import-rows-autopick-fix §2, ruled 24 Nov):
+ *                   mapped to the previous system's own factor and brought in switched off, as it is held there — never counted
+ *                   in a scope total, the reconcile or a report; accepted with "Accept all". Its pick is that factor, or none;
  *   in-console    — in the console and unmoved in what its mapping keyed on: carried as it stands;
  *   retiring      — one of the previous system's scope totals, switched off or gone there: it retires when the rows come in.
  */
-export const V7_IMPORT_ROW_LANES = ["accepted", "pre-accepted", "suggested", "unmatched", "confirm-off", "in-console", "retiring"] as const;
+export const V7_IMPORT_ROW_LANES = ["accepted", "pre-accepted", "suggested", "unmatched", "confirm-off", "switched-off", "in-console", "retiring"] as const;
 export type V7ImportRowLane = (typeof V7_IMPORT_ROW_LANES)[number];
 
 export type V7ImportCandidate = {
   datasetId: string; factorId: string; code: string; label: string; unit: string; rate: number; dataset: string;
   /** Found as the previous system's own factor (its lookup row), by its code, or as the row's current mapping. */
   identity: boolean; exactCode: boolean;
+  /**
+   * The job-year anchor: the previous system's own factor — or, for a variant row, its core code — in the job's reporting-year
+   * dataset, at the previous system's own rate (BRIEF-v7-import-rows-autopick-fix §1). Ranked first; auto-picked when it reproduces.
+   */
+  anchor: boolean;
+  /** The dataset's year (the year it is valid from). */
+  year: number | null;
   /** Its scope tags, and the categories whose family claims it (with the family-less ones of the row's scope, where it may be filed). */
   scopes: string[]; categories: string[];
   match: V7MatchResult;
@@ -59,6 +69,8 @@ export type V7ImportRowsRow = V7ImportMappingRow & {
   applyPct: number;
   /** The categories the row is known to belong in, of its scope (its own code, or its levels). */
   categories: string[];
+  /** The console category the previous system's own category names for the row, or null (it settles a two-category factor). */
+  v7Category: string | null;
   pairGroup: string | null; carry: V7ImportCarryState | null;
   /** Ranked, best first; at most eight. Empty for a row that needs no mapping. */
   candidates: V7ImportCandidate[];
@@ -79,7 +91,9 @@ const CANDIDATES_PER_ROW = 8;
 const FAMILY_PREFIX = "^(uk-ghg|iea|ceda|ice|swc|nzi)-";
 const CODE_SQL = `coalesce(f.legacy_original_id, regexp_replace(f.factor_id, '${FAMILY_PREFIX}', ''))`;
 type FactorRow = { dataset_id: string; factor_id: string; label: string; activity_unit: string; rate: string; scopes: string[]; source_levels: string[] | null;
-  code: string; source_system: string | null; legacy_db_id: string | null; dataset: string };
+  code: string; source_system: string | null; legacy_db_id: string | null; dataset: string; year: number | null };
+/** The previous system's own rate, to the factor's: the same number (a stored float's last digits aside). */
+const sameRate = (a: number, b: number | null) => b !== null && Math.abs(a - b) <= 1e-9 * Math.max(1, Math.abs(a));
 const ofScope = (scope: V7ImportScope) => new Set(emissionCategoryTaxonomy.filter((category) => category.scope === scope).map((category) => category.code));
 
 /** The library's view of categories: the rules, the variants and the pairs, read once — and a factor's claimed categories from them. */
@@ -139,42 +153,58 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
   // The rows a mapping is for: new or needs-mapping, still in the previous system.
   const needsMap = (row: V7ImportMappingRow) => (row.ownStatus === "new" || row.ownStatus === "needs-mapping") && planned.has(row.legacyDbId);
   const wanted = mapping.rows.filter(needsMap);
-  const cores = [...new Set(wanted.map((row) => v7CoreCode(planned.get(row.legacyDbId)!.migratedRecord.original_id, library.suffixes)).filter((core): core is string => core !== null))];
+  const keysOf = new Map(wanted.map((row) => [row.legacyDbId, v7CodeKeys(planned.get(row.legacyDbId)!.migratedRecord.original_id, library.suffixes)]));
+  // Fetched by the shorter key, so both steps of the ID match are in hand; which step a factor matches on is decided below.
+  const prefixes = [...new Set([...keysOf.values()].map((keys) => keys.fallback ?? keys.core).filter((key): key is string => key !== null))];
   const lookupIds = [...new Set(wanted.map((row) => planned.get(row.legacyDbId)!.migratedRecord.factor_db_id).filter((id): id is string => typeof id === "string" && id !== ""))];
   const intended = wanted.filter((row) => row.intended.datasetId && row.intended.factorId);
-  const factors = cores.length + lookupIds.length + intended.length === 0 ? [] : (await db.query<FactorRow>(
+  const factors = prefixes.length + lookupIds.length + intended.length === 0 ? [] : (await db.query<FactorRow>(
     `SELECT f.dataset_id, f.factor_id, f.label, f.activity_unit, f.kgco2e_per_unit::text AS rate, f.scopes, f.source_levels, ${CODE_SQL} AS code,
-            f.source_system, f.legacy_db_id, d.name AS dataset
+            f.source_system, f.legacy_db_id, d.name AS dataset, extract(year FROM d.valid_from)::int AS year
        FROM nzi_console.emission_factors f JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (f.organisation_id, f.dataset_id)
       WHERE f.organisation_id = $1 AND f.active AND d.status = 'active'
         AND ((f.source_system = $2 AND f.legacy_db_id = ANY($3::text[]))
           OR EXISTS (SELECT 1 FROM unnest($4::text[]) c WHERE starts_with(lower(${CODE_SQL}), c))
           OR (f.dataset_id, f.factor_id) IN (SELECT * FROM unnest($5::text[], $6::text[])))
       ORDER BY f.label, d.name, f.factor_id`,
-    [org, V7_IMPORT_SOURCE_SYSTEM, lookupIds, cores, intended.map((row) => row.intended.datasetId!), intended.map((row) => row.intended.factorId!)])).rows;
+    [org, V7_IMPORT_SOURCE_SYSTEM, lookupIds, prefixes, intended.map((row) => row.intended.datasetId!), intended.map((row) => row.intended.factorId!)])).rows;
   const claimed = library.claimed(factors.map((factor) => ({ factorId: factor.factor_id, activityUnit: factor.activity_unit, sourceLevels: factor.source_levels ?? [] })));
+  const factorKeys = new Map(factors.map((factor) => [`${factor.dataset_id}|${factor.factor_id}`, v7FactorKeys(factor.code, library.suffixes)]));
+  // The job's reporting year (the year its datasets are chosen by): where the previous system's own factor is the anchor.
+  const jobYear = (await db.query<{ year: number | null }>(
+    `SELECT coalesce(reporting_year, extract(year FROM start_date)::int) AS year FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [org, jobId])).rows[0]?.year ?? null;
+  const v7CategoryOf = (row: V7ImportMappingRow) => v7CategoryCode(read.v7Categories[row.legacyDbId] ?? planned.get(row.legacyDbId)?.level2 ?? null, row.scope);
 
   // Each wanted row's candidates, judged; then whether each would save, in one check.
   const judged = new Map<string, V7ImportCandidate[]>();
   for (const row of wanted) {
     const plan = planned.get(row.legacyDbId)!;
     const record = plan.migratedRecord;
-    const core = v7CoreCode(record.original_id, library.suffixes);
+    const keys = keysOf.get(row.legacyDbId)!;
     const unit = normaliseV7Unit(record.uom);
     const input: V7MatchRow = { scope: row.scope, quantity: record.qty, applyPct: v7ApplyPct(record.apply_pct), previousTco2e: row.previous.tco2e,
-      categories: rowCategories(plan, row.scope, library.rules) };
-    const own = factors.filter((factor) => (factor.source_system === V7_IMPORT_SOURCE_SYSTEM && factor.legacy_db_id !== null && factor.legacy_db_id === record.factor_db_id)
-      || (core !== null && v7CoreCode(factor.code, library.suffixes) === core)
+      categories: rowCategories(plan, row.scope, library.rules), v7Category: v7CategoryOf(row) };
+    const keyOf = (factor: FactorRow) => factorKeys.get(`${factor.dataset_id}|${factor.factor_id}`)!;
+    const isIdentity = (factor: FactorRow) => factor.source_system === V7_IMPORT_SOURCE_SYSTEM && factor.legacy_db_id !== null && factor.legacy_db_id === record.factor_db_id;
+    // The ID, in order (§3): the core first; the unitless fallback only when the core finds nothing — never both.
+    const byCore = factors.filter((factor) => keys.core !== null && keyOf(factor).core === keys.core);
+    const byCode = byCore.length ? byCore : factors.filter((factor) => keys.fallback !== null && keyOf(factor).unitless === keys.fallback);
+    const own = factors.filter((factor) => isIdentity(factor) || byCode.includes(factor)
       || (factor.dataset_id === row.intended.datasetId && factor.factor_id === row.intended.factorId));
-    judged.set(row.legacyDbId, own.map((factor): V7ImportCandidate => ({
-      datasetId: factor.dataset_id, factorId: factor.factor_id, code: factor.code, label: factor.label, unit: factor.activity_unit, rate: Number(factor.rate), dataset: factor.dataset,
-      identity: factor.source_system === V7_IMPORT_SOURCE_SYSTEM && factor.legacy_db_id !== null && factor.legacy_db_id === record.factor_db_id,
-      exactCode: record.original_id !== null && factor.code.toLowerCase() === record.original_id.trim().toLowerCase(),
-      scopes: factor.scopes, categories: claimed.get(factor.factor_id) ?? [],
-      match: v7MatchCandidate(input, { rate: Number(factor.rate), scopes: factor.scopes, categories: claimed.get(factor.factor_id) ?? [], sameUnit: unit !== null && sameV7Unit(unit, factor.activity_unit) },
-        library.familyless),
-      invalid: null,
-    })));
+    const year = jobYear ?? record.dataset?.year ?? null;
+    judged.set(row.legacyDbId, own.map((factor): V7ImportCandidate => {
+      const rate = Number(factor.rate);
+      // The anchor (§1): the previous system's own factor — or its core code, for a variant row — in the job's year, at its own rate.
+      const anchor = year !== null && factor.year === year && sameRate(rate, record.factor) && (isIdentity(factor) || byCore.includes(factor));
+      const categories = claimed.get(factor.factor_id) ?? [];
+      return {
+        datasetId: factor.dataset_id, factorId: factor.factor_id, code: factor.code, label: factor.label, unit: factor.activity_unit, rate, dataset: factor.dataset,
+        identity: isIdentity(factor), exactCode: record.original_id !== null && factor.code.toLowerCase() === record.original_id.trim().toLowerCase(),
+        anchor, year: factor.year, scopes: factor.scopes, categories,
+        match: v7MatchCandidate(input, { rate, scopes: factor.scopes, categories, sameUnit: unit !== null && sameV7Unit(unit, factor.activity_unit), anchor }, library.familyless),
+        invalid: null,
+      };
+    }));
   }
   const checks = [...judged].flatMap(([legacyDbId, candidates]) => candidates.filter((candidate) => candidate.match.categoryCode !== null).map((candidate) =>
     ({ key: `${legacyDbId}|${candidate.datasetId}|${candidate.factorId}`, scope: summaryOf.get(legacyDbId)!.scope,
@@ -197,17 +227,22 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
       ? candidates.find((candidate) => candidate.datasetId === row.decision!.datasetId && candidate.factorId === row.decision!.factorId) ?? null : null;
     const auto = v7AutoPick(candidates);
     const best = candidates.find((candidate) => candidate.match.rightBasis && (candidate.match.verdict === "reproduces" || candidate.match.verdict === "close")) ?? null;
+    // Switched off in the previous system (§2, ruled): mapped to its own factor — the anchor, else its lookup row — whatever the
+    // figure says (it is never counted, so the figure decides nothing); a person finds one only when it has none that would save.
+    const ownFactor = candidates.find((candidate) => candidate.anchor) ?? candidates.find((candidate) => candidate.identity) ?? null;
+    const usable = (candidate: V7ImportCandidate | null) => candidate !== null && candidate.match.categoryCode !== null && !candidate.invalid ? candidate : null;
     let lane: V7ImportRowLane;
     let pick: V7ImportCandidate | null = null;
     if (retiring) lane = "retiring";
     else if (row.ownStatus === "matched" || row.ownStatus === "changed") lane = "in-console";
     else if (row.resolution === "resolved") { lane = "accepted"; pick = decided; }
     else if (row.ownStatus === "withdrawn") lane = "confirm-off";
+    else if (row.previous.enabled === false) { lane = "switched-off"; pick = usable(ownFactor); }
     else if (auto) { lane = "pre-accepted"; pick = auto; }
     else if (best) { lane = "suggested"; pick = best; }
     else lane = "unmatched";
     return { ...row, lane, applyPct: v7ApplyPct(planned.get(row.legacyDbId)?.migratedRecord.apply_pct ?? null),
-      categories: rowCategories(planned.get(row.legacyDbId), row.scope, library.rules),
+      categories: rowCategories(planned.get(row.legacyDbId), row.scope, library.rules), v7Category: v7CategoryOf(row),
       pairGroup: summary?.pairGroup ?? null, carry: carryOf.get(row.legacyDbId) ?? null, candidates: needsMap(row) ? candidates : [], pick,
       totalStillCounted: total && !retiring && row.ownStatus !== "withdrawn" && activityCounted.has(row.scope) };
   });
@@ -241,7 +276,7 @@ export async function searchV7ImportFactors(pool: PoolLike, holder: CapabilityHo
     await assertCapabilityOnClient(db, holder, "import.refresh", { jobId: input.jobId });
     const found = (await db.query<FactorRow>(
       `SELECT f.dataset_id, f.factor_id, f.label, f.activity_unit, f.kgco2e_per_unit::text AS rate, f.scopes, f.source_levels, ${CODE_SQL} AS code,
-              f.source_system, f.legacy_db_id, d.name AS dataset
+              f.source_system, f.legacy_db_id, d.name AS dataset, extract(year FROM d.valid_from)::int AS year
          FROM nzi_console.emission_factors f JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (f.organisation_id, f.dataset_id)
         WHERE f.organisation_id = $1 AND f.active AND d.status = 'active'
           AND NOT EXISTS (SELECT 1 FROM unnest($2::text[]) t

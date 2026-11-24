@@ -216,7 +216,7 @@ async function labelComparison(consoleDb: Queryable, db: Source, viewRead: V7Imp
  * system still arrives as the rule makes it. Nothing new enters the console: a carried label is the console's own.
  */
 export async function readV7JobRowsFromViews(consoleDb: Queryable, source: Pick<Pool, "connect">, input: { organisationId: string; jobId: string; legacyJobNumber: string }):
-  Promise<{ sourceSha256: string; rows: PlannedRow[] }> {
+  Promise<{ sourceSha256: string; rows: PlannedRow[]; v7Categories: Record<string, string | null> }> {
   return withV7ViewSnapshot(source, async (db) => {
     const viewRead = await readV7JobFromViews(db, input.legacyJobNumber);
     const job = planV7JobFromViews(viewRead, input.legacyJobNumber, input.organisationId);
@@ -235,7 +235,11 @@ export async function readV7JobRowsFromViews(consoleDb: Queryable, source: Pick<
       }
       return Object.keys(carried).length ? { ...planned, ...carried } : planned;
     });
-    return { sourceSha256: viewRead.sourceSha256, rows };
+    // Each row's own category name, beside the rows (the import rows modal's tie-break); the planned rows are untouched.
+    const v7Categories: Record<string, string | null> = {};
+    for (const row of viewRead.extract.job_scope_rows) if (row.row_id) v7Categories[row.row_id] = row.category ?? null;
+    for (const row of viewRead.extract.job_emission_sources) if (row.source_id) v7Categories[`source:${row.source_id}`] = row.category ?? null;
+    return { sourceSha256: viewRead.sourceSha256, rows, v7Categories };
   });
 }
 

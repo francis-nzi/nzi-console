@@ -498,6 +498,14 @@ describe("the import's view set, server-side: non-PII, guarded, and the extract'
     // A label that really changed still arrives, as the rule makes it.
     const label = (rows: readonly PlannedRow[], id: string) => rows.find((row) => row.legacyDbId === id)!;
     assert.equal(label(read.rows, "1010").reportLabel, "Natural gas");
+    // Beside the rows (BRIEF-v7-import-rows-autopick-fix §5): each row's own category name as the views carry it — for the modal's
+    // tie-break only; the rows above, and their fingerprint, are what the chain ran on.
+    const viewed = await withV7ViewSnapshot(viewPool, (db) => readV7JobFromViews(db, JOB));
+    const expected = Object.fromEntries([...viewed.extract.job_scope_rows.map((row) => [row.row_id!, row.category ?? null]),
+      ...viewed.extract.job_emission_sources.map((row) => [`source:${row.source_id}`, row.category ?? null])]);
+    assert.deepEqual(read.v7Categories, expected);
+    assert.ok(read.rows.every((row) => row.legacyDbId in read.v7Categories), "every planned row has its category beside it");
+    assert.equal(read.sourceSha256, viewed.sourceSha256, "the fingerprint of what was read is unchanged by it");
     assert.equal(await consolePrint(), before, "nothing kept on the console's side");
     await assert.rejects(withTenantWrite(target.pool, ORG, (db) => readV7JobRowsFromViews(db, viewPool, { organisationId: ORG, jobId: "v7-job-other", legacyJobNumber: JOB })),
       (error: unknown) => codes(error)[0] === "JOB_MISMATCH", "the J number names another job here than in the previous system");

@@ -2106,8 +2106,8 @@ describe("the import rows modal: candidates by ID, recomputed and judged; the bu
     const gas = seen.rows[0]!;
     assert.deepEqual(gas.candidates.map((candidate) => [candidate.datasetId, candidate.factorId, candidate.match.verdict, candidate.match.tco2e]), [
       ["uk-ghg-gb-2024", "uk-ghg-1_100_1004_6_1", "reproduces", 28.168063],
-      ["uk-ghg-gb-2023", "uk-ghg-1_100_1004_6_1", "close", 29.26152],
-      ["uk-ghg-gb-2024", "uk-ghg-1_100_1004_6_2", "differs", 30.8016]], "the suffix-insensitive ID finds the net-CV variant and the other edition too; the recompute tells them apart");
+      ["uk-ghg-gb-2023", "uk-ghg-1_100_1004_6_1", "close", 29.26152]],
+      "the ID finds the other edition too, and the recompute tells them apart; the net-CV _6_2 is not offered — the code itself found factors, so its unit index is never stripped (autopick fix §3)");
     assert.deepEqual([gas.pick?.factorId, gas.pick?.match.categoryCode, gas.pick?.invalid, gas.pick?.exactCode], ["uk-ghg-1_100_1004_6_1", "1.natural-gas", null, true]);
     assert.deepEqual(seen.rows[2]!.candidates.filter((candidate) => candidate.match.verdict === "reproduces").map((candidate) => candidate.datasetId), ["uk-ghg-gb-2023", "uk-ghg-gb-2024"],
       "two editions at one value: ambiguity, a person chooses");
@@ -2190,5 +2190,204 @@ describe("the import rows modal: candidates by ID, recomputed and judged; the bu
     assert.ok(totals.length >= 3 && totals.every((row) => row.enabled === false), "the import totals are retired");
     const live = (await db.query<{ t: string }>(`SELECT sum(calculated_tco2e)::text AS t FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'live' AND enabled`, [JOB_R])).rows[0]!.t;
     assert.equal(Math.round(Number(live) * 1e6) / 1e6, 29.100963, "the activity rows are the job's native entries, at the previous system's figure");
+  });
+});
+
+/**
+ * BRIEF-v7-import-rows-autopick-fix (24 Nov), after the J000434 live check: the lanes were wrong though the data reconciled. A job
+ * shaped as J000434 is — 41 live rows, 12 switched off in the previous system, 3 import totals; 56 in the read — on the factor codes
+ * and rates the live check cites. Synthetic: no client, site, label or quantity of the real job (the repository holds no client
+ * data); the three linked pairs are not in it (carried as one, proven above). After the fix every live row comes in pre-accepted on
+ * the previous system's own factor in the job's year; the switched-off rows come in switched off and are never counted (ruled 24 Nov).
+ */
+describe("the import rows modal's auto-pick, on a job shaped as J000434: the job-year anchor, switched-off rows, the ordered ID, the previous system's category", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  const AP_ORG = "v7-autopick";
+  const JOB_J = "v7-job-j", JOB_S = "v7-job-s";
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  const context = (role: "admin" | "consultant" = "admin", reason?: string): CommandContext => {
+    keys += 1;
+    const actorId = `staff-${role}`;
+    return { organisationId: AP_ORG, actorId, principal: "staff", idempotencyKey: `ap-${keys}`, correlationId: `ap-corr-${keys}`, ...(reason ? { reason } : {}),
+      grant: commandGrantForRole(role, AP_ORG, actorId) };
+  };
+  const importer = (): CommandContext => {
+    keys += 1;
+    return { organisationId: AP_ORG, actorId: V7_IMPORT_ACTOR, principal: "staff", idempotencyKey: `ap-${keys}`, correlationId: `ap-corr-${keys}`,
+      grant: commandGrantForRole("admin", AP_ORG, V7_IMPORT_ACTOR) };
+  };
+  const holder = () => commandGrantForRole("consultant", AP_ORG, "staff-consultant");
+  const round6 = (value: number) => Math.round(value * 1e6) / 1e6;
+
+  // The factor families the live check names: V7's own factor in the job's year (2024), and another year beside it.
+  type Family = { code: string; scope: "1" | "3"; unit: string; levels: string[]; label: string; v7Category: string; rates: Array<[string, number]>; lookup: string | null };
+  const HGV: Family = { code: "5_304_3140_9_1", scope: "1", unit: "miles", levels: ["Delivery vehicles", "HGV (all diesel)", "Average laden"], label: "HGV · diesel · average laden",
+    v7Category: "Company Vehicles", rates: [["uk-ghg-gb-2024", 1.40489], ["uk-ghg-gb-2023", 1.40341]], lookup: "f-hgv" };
+  const VAN: Family = { code: "5_301_3140_9_2", scope: "1", unit: "miles", levels: ["Delivery vehicles", "Vans", "Diesel"], label: "Van · diesel · average",
+    v7Category: "Company Vehicles", rates: [["uk-ghg-gb-2024", 0.27332], ["uk-ghg-gb-2023", 0.27298]], lookup: "f-van" };
+  const GAS_OIL: Family = { code: "1_100_1012_7_1", scope: "1", unit: "litres", levels: ["Fuels", "Liquid fuels", "Gas oil"], label: "Gas oil",
+    v7Category: "Fuels", rates: [["uk-ghg-gb-2024", 2.75857], ["uk-ghg-gb-2023", 2.75776]], lookup: "f-gasoil" };
+  const CAR: Family = { code: "25_301_3069_9_2", scope: "3", unit: "miles", levels: ["Business travel- land", "Cars (by size)", "Small car"], label: "Business travel · small car · petrol",
+    v7Category: "Business Travel", rates: [["uk-ghg-gb-2024", 0.23818], ["uk-ghg-gb-2023", 0.23791]], lookup: "f-car" };
+  // Walking, as a commuting row (`-c`): its own code in every NZI year, at a zero rate; Cycling beside it, also zero.
+  const WALK: Family = { code: "99_316_3160_11_2", scope: "3", unit: "km", levels: ["Business travel- land", "Walking"], label: "Walking",
+    v7Category: "Employee Commuting", rates: [["nzi-gb-2024", 0], ["nzi-gb-2019", 0]], lookup: null };
+  const CYCLE = { code: "99_316_3160_11_3", label: "Cycling", rates: [["nzi-gb-2024", 0], ["nzi-gb-2019", 0]] as Array<[string, number]> };
+
+  const v7Categories: Record<string, string> = {};
+  const row = (id: string, family: Family, qty: number, enabled: boolean): PlannedRow => {
+    const rate = family.rates[0]![1];
+    const reported = round6(qty * rate / 1000);
+    const base = plannedRow({ id, scope: family.scope, label: family.label, qty, unit: family.unit, reported });
+    v7Categories[id] = family.v7Category;
+    return { ...base, level1: family.levels[0]!, level2: family.levels[1] ?? family.levels[0]!, level3: family.levels[2] ?? null, enabled, counted: enabled,
+      migratedRecord: { ...(base.migratedRecord as unknown as Record<string, unknown>), original_id: family === WALK ? `${family.code}-c` : family.code, factor: rate,
+        factor_db_id: family.lookup, uom: family.unit, enabled } as unknown as PlannedRow["migratedRecord"] };
+  };
+  // 41 live: 10 HGV, 11 van (one the duplicate's twin, below), 6 gas oil, 11 business car, 3 walking. Small quantities make the
+  // other year reproduce to 1 dp too (F1).
+  const live: PlannedRow[] = [];
+  const families: Array<[Family, number]> = [[HGV, 10], [VAN, 10], [GAS_OIL, 6], [CAR, 11], [WALK, 3]];
+  let n = 10300;
+  for (const [family, count] of families) for (let at = 0; at < count; at += 1) live.push(row(String(n += 1), family, 400 + at * 2_311.7, true));
+  // 12 switched off: among them the duplicate of a live van row — 87,803 miles, 24.0 t — that would count twice if it came in on.
+  const DUPLICATE_OF = row(String(n += 1), VAN, 87_803, true);
+  const DUPLICATE = row("10372", VAN, 87_803, false);
+  const off: PlannedRow[] = [DUPLICATE, ...[HGV, HGV, HGV, VAN, VAN, VAN, VAN, VAN, CAR, CAR, CAR].map((family, at) => row(String(10_500 + at), family, 150 + at * 911.3, false))];
+  const JOB_ROWS = [...live, DUPLICATE_OF, ...off];
+  const totalRow = (scope: "1" | "2" | "3", id: string): PlannedRow => {
+    const base = plannedRow({ id, scope: scope === "2" ? "1" : scope, label: "Imported Totals", qty: 1000, unit: "kgCO2e", reported: 1 });
+    return { ...base, scope, v7Scope: scope, migratedRecord: { ...base.migratedRecord, original_id: `wfm-import-scope-${scope}`, data_source: "WFM Import" } as PlannedRow["migratedRecord"] };
+  };
+  // A second job, of 2025 — no 2025 edition exists, so nothing is the anchor: two editions reproduce alike, a suggestion each.
+  const SUGGESTED = [row("20001", HGV, 300, true), row("20002", CAR, 250, true)];
+  const holds = new Map<string, readonly PlannedRow[]>([[JOB_J, JOB_ROWS], [JOB_S, SUGGESTED]]);
+  const source: V7ImportRefreshSource = async (_db, job) => ({ sourceSha256: "a".repeat(64), rows: holds.get(job.jobId)!, v7Categories });
+  const EMPTY_PLAN = (jobId: string) => ({ jobId, crosswalkVersion: "none", crosswalkSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", vintageDatasetIds: [], rows: [] });
+  const rowsOf = (jobId: string) => readV7ImportRows(database.pool, source, holder(), jobId, { basePlan: EMPTY_PLAN(jobId) });
+  const upload = async (jobId: string, legacyJobNumber: string) => {
+    const summary = await withTenantWrite(database.pool, AP_ORG, (client) => summariseV7JobAsTheChainSees(client,
+      { organisationId: AP_ORG, jobId, legacyJobNumber, extractSha256: "a".repeat(64), rows: holds.get(jobId)!, generatedAt: "2026-11-24T12:00:00.000Z" }));
+    await uploadV7ImportSummary(database.pool, { jobId, summary }, importer());
+  };
+  /** What "Accept all matched" sends (the modal's pendingAccepts): every pre-accepted and switched-off pick, and the totals retiring. */
+  const acceptAll = (rows: Awaited<ReturnType<typeof rowsOf>>["rows"]) => [
+    ...rows.filter((entry) => (entry.lane === "pre-accepted" || entry.lane === "switched-off") && entry.pick?.match.categoryCode).map((entry) => ({ kind: "map" as const,
+      legacyDbId: entry.legacyDbId, categoryCode: entry.pick!.match.categoryCode!, datasetId: entry.pick!.datasetId, factorId: entry.pick!.factorId, expectedDecisionId: null })),
+    ...rows.filter((entry) => entry.lane === "retiring" && entry.ownStatus === "withdrawn").map((entry) => ({ kind: "withdraw" as const, legacyDbId: entry.legacyDbId, expectedDecisionId: null })),
+  ];
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7autopick"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [AP_ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [AP_ORG]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [AP_ORG]);
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'ca','Autopick Client','active')`, [AP_ORG]);
+    for (const [user, role] of [["staff-admin", "admin"], ["staff-consultant", "consultant"]]) {
+      await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [AP_ORG, user, role]);
+    }
+    const DATASETS = [["uk-ghg-gb-2024", "DESNZ GB 2024", "2024-01-01"], ["uk-ghg-gb-2023", "DESNZ GB 2023", "2023-01-01"], ["nzi-gb-2024", "NZI GB 2024", "2024-01-01"], ["nzi-gb-2019", "NZI GB 2019", "2019-01-01"]] as const;
+    // As the reference import loads them: the previous system's datasets, by family — a factor's identity takes its family from here.
+    for (const [ds, name, from] of DATASETS) {
+      await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence,
+                        source_system,source_family,legacy_dataset_id,content_sha256)
+                      VALUES ($1,$2,$3,'1',$4,'2026-12-31','GB','active','Test','Source: test.','nzi-pro-v7',$5,$2,repeat('a',64))`, [AP_ORG, ds, name, from, ds.split("-gb-")[0]]);
+    }
+    const factor = async (ds: string, code: string, label: string, unit: string, rate: number, scope: string, levels: string[], lookup: string | null) =>
+      db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels,source_system,legacy_db_id,legacy_original_id)
+                VALUES ($1,$2,$3,$4,$5,$6,ARRAY[$7::text],$8::text[],$9,$10,$11)`,
+        [AP_ORG, ds, `${ds.split("-")[0] === "nzi" ? "nzi" : "uk-ghg"}-${code}`, label, unit, rate, scope, levels, lookup ? "nzi-pro-v7" : null, lookup, code]);
+    for (const family of [HGV, VAN, GAS_OIL, CAR, WALK]) {
+      for (const [at, [ds, rate]] of family.rates.entries()) await factor(ds, family.code, family.label, family.unit, rate, family.scope, family.levels, at === 0 ? family.lookup : null);
+    }
+    for (const [ds, rate] of CYCLE.rates) await factor(ds, CYCLE.code, CYCLE.label, "km", rate, "3", ["Business travel- land", "Cycling"], null);
+    for (const [jobId, sequence, number, year] of [[JOB_J, 906, "J000906", 2024], [JOB_S, 907, "J000907", 2025]] as const) {
+      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+        VALUES ($1,$2,'ca',$3,'crp','CRP','open','Data entry',$4,$5,$6,'nzi-pro-v7',$7,$8)`, [AP_ORG, jobId, sequence, year, `${year}-01-01`, `${year}-12-31`, String(sequence), number]);
+      await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`, [AP_ORG, jobId, `${year}-01-01`, `${year}-12-31`]);
+      for (const [ds] of DATASETS) await db.query(`INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
+        VALUES ($1,$2,$3,'manual','the job''s datasets (test)','staff-admin')`, [AP_ORG, jobId, ds]);
+    }
+    for (const total of [totalRow("1", "3001"), totalRow("2", "3002"), totalRow("3", "3003")]) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: AP_ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: total.legacyDbId, type: "text" }, ...migratedRowCols(JOB_J, total)]);
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("the counts: 56 rows read — 41 live all pre-accepted, 12 switched off, 3 totals retiring; nothing suggested, nothing to find", async () => {
+    const seen = await rowsOf(JOB_J);
+    const lanes = new Map<string, number>();
+    for (const entry of seen.rows) lanes.set(entry.lane, (lanes.get(entry.lane) ?? 0) + 1);
+    assert.equal(seen.rows.length, 56);
+    assert.deepEqual(Object.fromEntries(lanes), { "pre-accepted": 41, "switched-off": 12, retiring: 3 });
+    assert.ok(seen.rows.filter((entry) => entry.lane === "switched-off").every((entry) => entry.pick !== null && entry.pick.identity && entry.pick.anchor),
+      "each switched-off row comes in on the previous system's own factor");
+  });
+
+  it("the job-year anchor (F1): another year reproducing to 1 dp is an alternative, never ambiguity", async () => {
+    const small = (await rowsOf(JOB_J)).rows.find((entry) => entry.legacyDbId === "10301")!;
+    const reproducing = small.candidates.filter((candidate) => candidate.match.verdict === "reproduces");
+    assert.deepEqual(reproducing.map((candidate) => [candidate.datasetId, candidate.anchor]), [["uk-ghg-gb-2024", true], ["uk-ghg-gb-2023", false]], "two years reproduce 400 miles of HGV");
+    assert.deepEqual([small.lane, small.pick?.datasetId, small.pick?.identity, small.pick?.year], ["pre-accepted", "uk-ghg-gb-2024", true, 2024]);
+  });
+
+  it("the ordered ID and the zero rate (F3): walking (_11_2-c) comes in on Walking in the job's NZI year, never Cycling", async () => {
+    const walks = (await rowsOf(JOB_J)).rows.filter((entry) => entry.previous.factorCode === "99_316_3160_11_2-c");
+    assert.equal(walks.length, 3);
+    for (const walk of walks) {
+      assert.deepEqual([walk.lane, walk.pick?.factorId, walk.pick?.datasetId, walk.pick?.match.categoryCode], ["pre-accepted", "nzi-99_316_3160_11_2", "nzi-gb-2024", "3.7"]);
+      assert.ok(!walk.candidates.some((candidate) => candidate.code === CYCLE.code), "Cycling is not a candidate: the core is _11_2, the unit index never stripped too");
+      assert.deepEqual(walk.candidates.filter((candidate) => !candidate.anchor).map((candidate) => [candidate.datasetId, candidate.match.verdict]), [["nzi-gb-2019", "figure-only"]],
+        "the other year's zero: the figure only");
+    }
+  });
+
+  it("the previous system's category (F4): gas oil filed under Other Stationary Fuels, business travel under 3.6", async () => {
+    const seen = (await rowsOf(JOB_J)).rows;
+    const of = (code: string) => [...new Set(seen.filter((entry) => entry.previous.factorCode === code && entry.lane === "pre-accepted").map((entry) => entry.pick?.match.categoryCode))];
+    assert.deepEqual(of(GAS_OIL.code), ["1.other-stationary-fuels"], "Liquid fuels files under both; V7's Fuels settles it");
+    assert.deepEqual(of(CAR.code), ["3.6"]);
+    assert.ok(seen.filter((entry) => entry.previous.factorCode === GAS_OIL.code).every((entry) => entry.categories.length === 2), "the levels alone name two");
+  });
+
+  it("Accept all, then bring in: every scope agrees; the switched-off rows come in switched off — the duplicate 10372 is not counted, in the totals or the report's rows", async () => {
+    await upload(JOB_J, "J000906");
+    const outcome = await acceptV7ImportRows(database.pool, { jobId: JOB_J, items: acceptAll((await rowsOf(JOB_J)).rows) }, context());
+    assert.deepEqual([outcome.written.length, outcome.refused], [41 + 12 + 3, []]);
+    const preview = await previewV7ImportRefresh(database.pool, source, { jobId: JOB_J, mode: "preview" }, context("consultant"), { basePlan: EMPTY_PLAN(JOB_J) });
+    assert.equal(preview.outcome, "would-commit");
+    const v7 = (scope: "1" | "3") => round6(JOB_ROWS.filter((entry) => entry.enabled && entry.scope === scope).reduce((sum, entry) => sum + entry.calculatedTco2e, 0));
+    assert.deepEqual([preview.scopeTotals?.["1"].v7Tco2e, preview.scopeTotals?.["3"].v7Tco2e], [v7("1"), v7("3")], "the previous system's totals leave its switched-off rows out");
+    const committed = await commitV7ImportRefresh(database.pool, source, { jobId: JOB_J, mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 },
+      context("consultant", "bring J000906 in from the previous system (test)"), { basePlan: EMPTY_PLAN(JOB_J), requireScopesAgree: true });
+    assert.equal(committed.data.mode, "commit", "the reconcile gate passed: every scope agrees to one decimal place");
+    const duplicate = (await db.query<{ enabled: boolean; origin: string }>(`SELECT enabled, origin FROM nzi_console.job_scope_rows WHERE job_id = $1 AND legacy_db_id = '10372' AND superseded_by_row_id IS NULL
+      UNION ALL SELECT enabled, origin FROM nzi_console.job_scope_rows WHERE job_id = $1 AND reingested_from_row_id = 'v7-row-10372'`, [JOB_J])).rows;
+    assert.ok(duplicate.length > 0 && duplicate.every((entry) => entry.enabled === false), "10372 is held, switched off — as the previous system holds it");
+    const counted = async (scope: string) => round6(Number((await db.query<{ t: string | null }>(`SELECT sum(coalesce(override_tco2e, calculated_tco2e))::text AS t FROM nzi_console.job_scope_rows
+      WHERE job_id = $1 AND origin = 'live' AND enabled AND split_part(scope, '.', 1) = $2`, [JOB_J, scope])).rows[0]!.t ?? 0));
+    assert.deepEqual([await counted("1"), await counted("3")], [v7("1"), v7("3")], "the job's counted rows: the previous system's totals, 24.0 t not twice");
+    const offCounted = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id = $1 AND enabled AND
+      (legacy_db_id = ANY($2::text[]) OR reingested_from_row_id = ANY($3::text[]))`, [JOB_J, off.map((entry) => entry.legacyDbId), off.map((entry) => entry.scopeRowId)])).rows[0]!.n;
+    assert.equal(offCounted, 0, "no switched-off row is counted anywhere a report reads the job's enabled rows");
+  });
+
+  it("Accept all suggested: each suggestion's pick by row id through import.decision.set; a refused item reported, the rest kept", async () => {
+    const seen = await rowsOf(JOB_S);
+    assert.deepEqual(seen.rows.map((entry) => [entry.legacyDbId, entry.lane]), [["20001", "suggested"], ["20002", "suggested"]], "a 2025 job: two editions reproduce, no anchor");
+    await upload(JOB_S, "J000907");
+    const items = seen.rows.map((entry) => ({ kind: "map" as const, legacyDbId: entry.legacyDbId, categoryCode: entry.pick!.match.categoryCode!, datasetId: entry.pick!.datasetId,
+      factorId: entry.pick!.factorId, expectedDecisionId: null }));
+    // One the decision command refuses: the car's pick filed under a category its family does not offer.
+    const refusedItem = { ...items[1]!, categoryCode: "1.natural-gas" };
+    const outcome = await acceptV7ImportRows(database.pool, { jobId: JOB_S, items: [items[0]!, refusedItem] }, context());
+    assert.deepEqual(outcome.written.map((entry) => [entry.legacyDbId, entry.kind]), [["20001", "map"]]);
+    assert.deepEqual(outcome.refused.map((entry) => entry.legacyDbId), ["20002"]);
+    const decisions = (await db.query(`SELECT legacy_db_id, kind, dataset_id, factor_id FROM nzi_console.v7_import_decisions WHERE job_id = $1 AND superseded_at IS NULL ORDER BY legacy_db_id`, [JOB_S])).rows;
+    assert.deepEqual(decisions, [{ legacy_db_id: "20001", kind: "map", dataset_id: items[0]!.datasetId, factor_id: items[0]!.factorId }]);
+    const audit = (await db.query(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.decision.set' AND entity_id = $2`, [AP_ORG, JOB_S])).rows[0]!.n;
+    assert.equal(audit, 1, "one audit event per decision written");
   });
 });

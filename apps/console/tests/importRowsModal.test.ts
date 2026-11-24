@@ -7,7 +7,8 @@ import { v7MatchCandidate, type V7MatchFactor } from "@nzi/contracts";
 import { v7ImportRowsAcceptIssues, type V7ImportCandidate, type V7ImportRows, type V7ImportRowsRow } from "@nzi/isolated-backend";
 import { ADMIN_ITEMS } from "../app/admin/adminNav";
 import {
-  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, pendingAccepts, rowsProgress, scopeLines, verdictWords,
+  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, pendingAccepts, rowsProgress, scopeLines, suggestedAccepts,
+  suggestedSummary, verdictWords,
 } from "../app/jobs/importRowsModel";
 
 /**
@@ -25,7 +26,7 @@ const candidate = (label: string, over: Partial<V7MatchFactor> & { code?: string
   const { code = label, quantity = 12_400, previous = 2.953432, scope = "3", rowCategories = ["3.6"], ...factor } = over;
   const full: V7MatchFactor = { rate: 0.23818, scopes: [scope], categories: [scope === "3" ? "3.6" : "1.company-vehicles"], sameUnit: true, ...factor };
   return { datasetId: "uk-ghg-gb-2024", factorId: `uk-ghg-${code}`, code, label, unit: full.sameUnit ? "miles" : "km", rate: full.rate!, dataset: "DESNZ GB 2024",
-    identity: false, exactCode: false, scopes: [...full.scopes], categories: [...full.categories],
+    identity: false, exactCode: false, anchor: false, year: 2024, scopes: [...full.scopes], categories: [...full.categories],
     match: v7MatchCandidate({ scope, quantity, applyPct: 100, previousTco2e: previous, categories: rowCategories }, full, []), invalid: null };
 };
 const RIGHT = candidate("Business travel · Car · Petrol · Small · per mile", { code: "25_301_3069_9_2" });
@@ -37,7 +38,7 @@ const row = (over: Partial<V7ImportRowsRow>): V7ImportRowsRow => ({
   previous: { label: "Delivery vehicles — HGV (all diesel)", siteName: "Head office", quantity: 20_563, unit: "miles", factorCode: "5_304_3140_9_1", factor: 1.40489,
     factorUnit: "kgCO2e", tco2e: 28.888, enabled: true },
   intended: { categoryCode: null, datasetId: null, factorId: null, withdraw: false }, source: "none", flag: "NEW", resolution: "unresolved", decision: null, invalid: null,
-  lane: "pre-accepted", applyPct: 100, categories: ["1.company-vehicles"], pairGroup: null, carry: null, candidates: [], pick: null, totalStillCounted: false, ...over,
+  lane: "pre-accepted", applyPct: 100, categories: ["1.company-vehicles"], v7Category: null, pairGroup: null, carry: null, candidates: [], pick: null, totalStillCounted: false, ...over,
 });
 const HGV = candidate("HGV all · average laden · diesel", { code: "5_304_3140_9_1", quantity: 20_563, previous: 28.888, scope: "1", rate: 1.40489, rowCategories: ["1.company-vehicles"] });
 const ROWS: V7ImportRowsRow[] = [
@@ -70,7 +71,7 @@ describe("the rows, grouped as the mockup groups them", () => {
     assert.deepEqual(pairGroups(ROWS).map((group) => [group.pairGroup, group.rows.length]), [["v7-row-10365", 2]]);
   });
   it("progress: rows done of the rows the task is over (the retiring totals are not), each kind counted", () => {
-    assert.deepEqual(rowsProgress(ROWS), { total: 6, done: 2, matched: 2, suggested: 1, confirmOff: 0, pairs: 1, unmatched: 1, retiring: 1, doubleCounted: 0 });
+    assert.deepEqual(rowsProgress(ROWS), { total: 6, done: 2, matched: 2, suggested: 1, confirmOff: 0, pairs: 1, unmatched: 1, retiring: 1, doubleCounted: 0, switchedOff: 0, switchedOffUnmatched: 0 });
   });
   it("Accept all matched writes the pre-accepted rows' mappings by row id — and, as they come in, the dropped totals retire; never an amber or red row", () => {
     assert.deepEqual(pendingAccepts(ROWS), [
@@ -163,6 +164,57 @@ describe("the modal's states", () => {
     assert.ok(agrees.includes(`data-commit="true"`) && agrees.includes("Reason for bringing it in") && agrees.includes("Not automatic: manual edits.") && agrees.includes("as the refresh would bring it in"));
     const off = html({ data: ready, preview: { ...preview, scopeTotals: { ...preview.scopeTotals, "1": { v7Tco2e: 40.988, liveTco2e: 41.2 } } } });
     assert.ok(!off.includes(`data-commit="true"`) && off.includes("A scope does not agree to one decimal place, so it cannot be brought in."));
+  });
+});
+
+describe("the autopick fix (BRIEF-v7-import-rows-autopick-fix): switched-off rows, and Accept all suggested", () => {
+  // 10372: switched off in the previous system, a duplicate of 10396 (87,803 mi, 24.0 t) — its own factor in hand.
+  const OFF_PICK = { ...HGV, anchor: true, identity: true };
+  const OFF = row({ legacyDbId: "10372", scope: "1", lane: "switched-off", previous: { ...row({}).previous, label: "Delivery vehicles — van (duplicate)", quantity: 87_803, tco2e: 24.0, enabled: false },
+    candidates: [OFF_PICK], pick: OFF_PICK });
+  const OFF_NONE = row({ legacyDbId: "10380", scope: "1", lane: "switched-off", previous: { ...row({}).previous, enabled: false }, candidates: [], pick: null });
+  it("a switched-off row: its own group, after the matched; Accept all matched brings it in on its own factor; never counted in the scope total", () => {
+    const rows = [...ROWS, OFF];
+    assert.deepEqual(groupRows(rows).map((group) => group.key), ["unmatched", "suggested", "pairs", "matched", "switched-off", "retiring"]);
+    assert.ok(pendingAccepts(rows).some((item) => item.kind === "map" && item.legacyDbId === "10372" && item.factorId === HGV.factorId));
+    assert.equal(scopeLines({ ...DATA, rows }, null)[0]!.console, scopeLines(DATA, null)[0]!.console, "24.0 t switched off is not in Scope 1's total");
+    assert.deepEqual([rowsProgress(rows).switchedOff, rowsProgress(rows).done], [1, 3], "one with its factor in hand is done");
+  });
+  it("a switched-off row with no factor of its own holds the job, in words, and opens to a search", () => {
+    assert.ok(bringInBlockers([row({}), OFF_NONE]).includes("1 switched-off row needs its factor"));
+    assert.deepEqual(pendingAccepts([row({ candidates: [HGV], pick: HGV }), OFF_NONE]).map((item) => item.legacyDbId), ["10353"]);
+    const markup = html({ data: { ...DATA, rows: [OFF_NONE] } });
+    assert.ok(markup.includes(`data-row="10380" data-lane="switched-off"`) && markup.includes(">Find a factor<"), "shown although collapsed: it needs a person");
+  });
+  it("the group renders collapsed, in plain words, and its rows say they are not counted", () => {
+    const collapsed = html({ data: { ...DATA, rows: [row({ candidates: [HGV], pick: HGV }), OFF] } });
+    assert.ok(collapsed.includes("Switched off in the previous system — 1") && collapsed.includes("come in switched off, as the previous system holds them — never counted"));
+    assert.ok(!collapsed.includes(`data-row="10372"`) && collapsed.includes("+ 1 more switched-off rows"));
+    assert.ok(collapsed.includes("1 switched off in the previous system"), "in the legend");
+    const shown = html({ data: { ...DATA, rows: [OFF] }, collapseDone: false });
+    assert.ok(shown.includes(`data-row="10372" data-lane="switched-off"`) && shown.includes("Switched off — not counted") && shown.includes("not counted")
+      && shown.includes("own factor · comes in switched off"));
+  });
+  it("Accept all N suggested: each suggestion's pick, a pair carried with its members; asked first by scope, a pair counted once", () => {
+    const S1 = row({ legacyDbId: "201", lane: "suggested", pick: HGV, candidates: [HGV] });
+    const S3 = row({ legacyDbId: "202", scope: "3", lane: "suggested", pick: RIGHT, candidates: [RIGHT] });
+    const NOCAT = row({ legacyDbId: "203", lane: "suggested", pick: { ...HGV, match: { ...HGV.match, categoryCode: null } } });
+    const PA = row({ legacyDbId: "301", scope: "2", lane: "suggested", pick: HGV, pairGroup: "v7-row-302", carry: "awaiting", status: "linked-pair-changed" });
+    const PB = row({ legacyDbId: "302", scope: "2", lane: "pre-accepted", pick: HGV, pairGroup: "v7-row-302", carry: "awaiting", status: "linked-pair-changed" });
+    const rows = [S1, S3, NOCAT, PA, PB, row({ legacyDbId: "999", lane: "unmatched" })];
+    assert.deepEqual(suggestedAccepts(rows).map((item) => [item.kind, item.legacyDbId]), [["map", "201"], ["map", "202"], ["map", "301"], ["carry", "301"]],
+      "no single category: left for a person; nothing red; the pair carried as one");
+    assert.deepEqual(suggestedSummary(rows), { total: 3, byScope: [{ scope: "1", count: 1 }, { scope: "2", count: 1 }, { scope: "3", count: 1 }], pairs: 1 });
+    const markup = html({ data: { ...DATA, rows } });
+    assert.match(markup, /<button type="button" class="nz-btn" data-accept-suggested="true" aria-expanded="false">Accept all 3 suggested<\/button>/);
+    assert.ok(!markup.includes("data-confirm-suggested"), "nothing asked, nothing written, until it is pressed");
+    const asked = renderToStaticMarkup(createElement(modal.SuggestedConfirm, { summary: suggestedSummary(rows), disabled: false, onAccept: () => undefined, onCancel: () => undefined })).replace(/<!-- -->/g, "");
+    assert.ok(asked.includes("Accept 3 suggestions?") && asked.includes("Scope 1: 1 · Scope 2: 1 · Scope 3: 1") && asked.includes("a linked pair counts once (1 here)"));
+    assert.ok(asked.includes(">Accept them<") && asked.includes(">Cancel<"));
+    assert.match(html({ data: { ...DATA, rows: [row({})] } }), /data-accept-suggested="true" disabled=""/, "none to accept: held");
+  });
+  it("a zero-rate figure on the row's own basis says what it is", () => {
+    assert.deepEqual(verdictWords({ tco2e: 0, delta: 0, verdict: "figure-only", rightBasis: true, categoryCode: "3.7" }, "3", ["3"]), { text: "a zero rate — any zero gives this figure", tone: "off" });
   });
 });
 
