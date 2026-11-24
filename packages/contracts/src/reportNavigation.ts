@@ -12,6 +12,11 @@ export type ReportNavFacts = {
   hasSnapshot: boolean;
   /** Imported v7 history: its record of account is its v7 report. */
   v7Record: boolean;
+  /**
+   * BRIEF-v7-import-j000663 §B (0234): the job's latest snapshot was superseded by a newer import from the previous system. It is
+   * kept as history; no report is validated or issued from it, so the job is re-composed from a new snapshot.
+   */
+  snapshotSuperseded?: boolean;
 };
 
 export type ReportLink =
@@ -19,7 +24,11 @@ export type ReportLink =
   | { kind: "prepare"; label: "Prepare report"; href: string }
   | { kind: "add-evidence"; label: "Add evidence"; href: string }
   /** No link: v7's report is the record of account and its content is sealed (Q1 (b)) — the metadata is shown instead. */
-  | { kind: "v7-record"; label: "Earlier record of account · awaiting re-compose"; href: null };
+  | { kind: "v7-record"; label: "Earlier record of account · awaiting re-compose"; href: null }
+  /** §B: a newer import superseded the snapshot — a published version stands, untouched, behind it; or none was published. */
+  | { kind: "superseded"; label: typeof SUPERSEDED_PUBLISHED_LABEL | "Earlier record of account · awaiting re-compose"; href: string };
+
+export const SUPERSEDED_PUBLISHED_LABEL = "Published report is behind the previous system — issue a new version";
 
 /**
  * A1: the one report link a job has, computed from its state — so the same control does the right thing before and after a
@@ -30,6 +39,9 @@ export type ReportLink =
  * page. Off, the link is exactly as before.
  */
 export function reportLinkFor(facts: ReportNavFacts, options: { studio?: boolean } = {}): ReportLink {
+  // §B: re-composed from a new snapshot of the job's current rows, taken on the job.
+  if (facts.snapshotSuperseded) return { kind: "superseded", label: facts.publishedVersionId ? SUPERSEDED_PUBLISHED_LABEL : "Earlier record of account · awaiting re-compose",
+    href: `/jobs/${encodeURIComponent(facts.jobId)}` };
   if (facts.publishedVersionId) return { kind: "published", label: "View composed report", href: `/reports/${encodeURIComponent(facts.publishedVersionId)}` };
   if (facts.hasSnapshot) return { kind: "prepare", label: "Prepare report", href: options.studio ? `/jobs/${encodeURIComponent(facts.jobId)}/report/printing` : `/report-preview?jobId=${encodeURIComponent(facts.jobId)}` };
   if (facts.v7Record) return { kind: "v7-record", label: "Earlier record of account · awaiting re-compose", href: null };

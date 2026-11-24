@@ -135,6 +135,11 @@ export type V7ChainOptions = {
   completePlan?: (db: Queryable, replan: V7Replan, superseded: V7ResyncResult["superseded"]) => Promise<Omit<V7ReingestJobInput, "runId">>;
   /** The re-ingest's reason suffix: the rehearsal says it is rolled back; a committed ingest says nothing. */
   reingestReasonSuffix?: string;
+  /**
+   * A bring-in on a snapshotted job (BRIEF-v7-import-j000663 §B): the revert and the re-sync run as `bring-in`, so the job's
+   * snapshot does not refuse them. Only `import.refresh` sets it, from the job's own route; the caller records the supersession.
+   */
+  bringIn?: boolean;
 };
 
 /**
@@ -155,14 +160,15 @@ export async function runV7ResyncChain(db: Queryable, input: V7RehearsalInput, r
   const standing = (await db.query<{ run_id: string }>(
     `SELECT run_id FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND status = 'completed'`, [org, input.jobId])).rows[0]?.run_id;
   if (standing) {
-    const outcome = await step("revert", () => revertV7ReingestInTransaction(db, { jobId: input.jobId, runId: standing }, v7ReingestRevertContext(org, standing, input.reason)));
+    const outcome = await step("revert", () => revertV7ReingestInTransaction(db, { jobId: input.jobId, runId: standing }, v7ReingestRevertContext(org, standing, input.reason),
+      options.bringIn ? "bring-in" : "revert"));
     if (!outcome) return false;
     report.revert = { runId: standing, liveRowsSwitchedOff: outcome.data.liveRowsSwitchedOff, v7RowsSwitchedOn: outcome.data.v7RowsSwitchedOn };
   }
   // 2. The re-sync, as its runner calls it.
   const resync = await step("resync", () => resyncV7JobInTransaction(db,
     { jobId: input.jobId, runId: input.resyncRunId, extractSha256: input.extractSha256, rows: input.rows,
-      ...(options.carriedPairGroups ? { carriedPairGroups: options.carriedPairGroups } : {}) }, v7ResyncContext(org, input.reason)));
+      ...(options.carriedPairGroups ? { carriedPairGroups: options.carriedPairGroups } : {}) }, v7ResyncContext(org, input.reason), options.bringIn ? "bring-in" : "resync"));
   if (!resync) return false;
   report.resync = { unchanged: resync.unchanged, superseded: resync.superseded, added: resync.added, withdrawn: resync.withdrawn };
   report.v7ScopeTotals = await v7ScopeTotals(db, org, input.jobId);

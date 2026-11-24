@@ -21,6 +21,8 @@ export function JobReportLink({ jobId }: { jobId: string }) {
   // On the job's own page, "Add evidence" would link to itself; it says where the report stands instead, beside the job's
   // own "Add emissions source" (found by the rendered check).
   if (link.kind === "add-evidence") return <span className="nz-job-report-link nz-job-report-state">No report yet — add evidence to begin</span>;
+  // BRIEF-v7-import-j000663 §B: a newer import superseded the snapshot. On the job's own page it says so; the new snapshot is taken here.
+  if (link.kind === "superseded") return <span className="nz-job-report-link nz-job-report-state">{link.label}</span>;
   // Addendum #1: preparing or opening the report is the job's primary way into reporting, so it looks primary — as the
   // register row's action does.
   if (link.kind === "prepare" || link.kind === "published") return <Link className="nz-btn pri nz-job-report-link" href={link.href}>{link.label}</Link>;

@@ -28,6 +28,8 @@ export type ReportStatusRow = {
   leadConsultant: string | null;
   /** A reviewed snapshot exists: the job can be prepared for a composed report (compose-eligible). */
   hasSnapshot: boolean;
+  /** BRIEF-v7-import-j000663 §B (0234): the latest snapshot was superseded by a newer import from the previous system. */
+  snapshotSuperseded: boolean;
   /** Imported v7 history whose record of account is its v7 report (decision 12). */
   v7Record: boolean;
   /**
@@ -48,7 +50,7 @@ export async function listReportStatusRegister(db: Queryable, options: { jobId?:
     job_id: string; job_number: string; client_id: string; client_name: string; owner_user_id: string | null;
     reporting_year: number | null; status: string;
     title: string; legacy_job_number: string | null; lead_consultant: string | null;
-    has_snapshot: boolean; latest_approved: boolean | null; has_validated: boolean;
+    has_snapshot: boolean; latest_approved: boolean | null; latest_superseded: boolean; has_validated: boolean;
     published: PublishedEntry[];
     v7_record: boolean;
     v7_report: { version: number; status: string; finalisedAt: string | null; dataHash: string | null } | null;
@@ -62,6 +64,9 @@ export async function listReportStatusRegister(db: Queryable, options: { jobId?:
             EXISTS (SELECT 1 FROM nzi_console.reviewed_crp_snapshots s WHERE (s.organisation_id, s.job_id) = (j.organisation_id, j.job_id)) AS has_snapshot,
             (SELECT s.approved_by IS NOT NULL FROM nzi_console.reviewed_crp_snapshots s
               WHERE (s.organisation_id, s.job_id) = (j.organisation_id, j.job_id) ORDER BY s.snapshot_version DESC LIMIT 1) AS latest_approved,
+            coalesce((SELECT EXISTS (SELECT 1 FROM nzi_console.reviewed_crp_snapshot_supersessions x WHERE (x.organisation_id, x.snapshot_id) = (s.organisation_id, s.snapshot_id))
+               FROM nzi_console.reviewed_crp_snapshots s
+              WHERE (s.organisation_id, s.job_id) = (j.organisation_id, j.job_id) ORDER BY s.snapshot_version DESC LIMIT 1), false) AS latest_superseded,
             EXISTS (SELECT 1 FROM nzi_console.report_versions v WHERE (v.organisation_id, v.job_id) = (j.organisation_id, j.job_id) AND v.status = 'validated') AS has_validated,
             coalesce((SELECT jsonb_agg(jsonb_build_object(
                        'reportVersionId', p.report_version_id, 'scopeKind', p.scope_kind, 'siteIds', p.scope_site_ids, 'status', p.status, 'scopeKey', p.scope_key,
@@ -92,6 +97,7 @@ export async function listReportStatusRegister(db: Queryable, options: { jobId?:
     const derived = deriveReportStatus({
       hasSnapshot: row.has_snapshot,
       latestSnapshotApproved: row.latest_approved === true,
+      latestSnapshotSuperseded: row.latest_superseded,
       hasValidatedVersion: row.has_validated,
       published: row.published.map((entry) => {
         const scope: ReportScope = entry.scopeKind === "sites" && entry.siteIds ? { kind: "sites", siteIds: entry.siteIds } : { kind: "whole" };
@@ -105,7 +111,7 @@ export async function listReportStatusRegister(db: Queryable, options: { jobId?:
       publishedVersionId: row.published.find((entry) => entry.status === "published")?.reportVersionId ?? null,
       ...(derived.scopes ? { scopes: derived.scopes } : {}),
       title: row.title, legacyJobNumber: row.legacy_job_number, leadConsultant: row.lead_consultant,
-      hasSnapshot: row.has_snapshot, v7Record: row.v7_record, v7Report: row.v7_report,
+      hasSnapshot: row.has_snapshot, snapshotSuperseded: row.latest_superseded, v7Record: row.v7_record, v7Report: row.v7_report,
     };
   });
 }

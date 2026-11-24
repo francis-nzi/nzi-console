@@ -415,9 +415,11 @@ export async function snapshottedSince(db: Queryable, organisationId: string, jo
 /**
  * How a revert is used. `revert` — the governed write, gated on the job's snapshot. `comparison` — a read comparing the job's rows
  * as the chain will see them, run under a savepoint the caller always rolls back (BRIEF-v7-import-j000663 §A): a snapshot blocks a
- * revert, never a read, so this use alone skips the snapshot gate. Every other check stands.
+ * revert, never a read, so this use skips the snapshot gate. `bring-in` — the chain's revert inside an `import.refresh` commit that
+ * brings the previous system's rows in on a snapshotted job (§B, ruled): V7 is the source, the snapshot is kept and recorded as
+ * superseded (0234), so this use skips the gate too. Every other check stands, for every use.
  */
-export type V7ReingestRevertUse = "revert" | "comparison";
+export type V7ReingestRevertUse = "revert" | "comparison" | "bring-in";
 
 /** `v7.reingest.revert`, inside the caller's transaction: before any snapshot of the job, nothing deleted either way. */
 export function revertV7ReingestInTransaction(db: Queryable, input: CommandInputMap["v7.reingest.revert"], context: CommandContext,
