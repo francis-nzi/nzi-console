@@ -203,6 +203,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-irm-rec{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 18px;border-bottom:1px solid var(--line2);font-size:12.5px;background:var(--paper)}
 .nz-irm-rec.ok{background:var(--mint);color:var(--pine)}
 .nz-irm-rec.warn{background:#FFF4DC;color:#7A5808}
+.nz-irm-rec.bad{background:var(--danger-bg);color:var(--danger)}
 .nz-irm-rec b{font-variant-numeric:tabular-nums}
 .nz-irm-tb{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--line2)}
 .nz-irm-tb .nz-inp{flex:1;min-width:200px}

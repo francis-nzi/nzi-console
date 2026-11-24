@@ -27,7 +27,7 @@ import type { PlannedRow } from "./v7ClientImport";
 import { invalidV7ImportMappings, setV7ImportDecision } from "./v7ImportDecision";
 import { buildV7ImportMapping, V7_SCOPE_TOTAL_CODE, type V7ImportMapping, type V7ImportMappingRow } from "./v7ImportMapping";
 import type { V7ImportRefreshOptions, V7ImportRefreshSource } from "./v7ImportRefresh";
-import { normaliseV7Unit, sameV7Unit } from "./v7Reingest";
+import { v7UnitAgainstFactor } from "./v7Reingest";
 
 /**
  * Where a row stands in the modal:
@@ -59,7 +59,9 @@ export type V7ImportCandidate = {
   /** Its scope tags, and the categories whose family claims it (with the family-less ones of the row's scope, where it may be filed). */
   scopes: string[]; categories: string[];
   match: V7MatchResult;
-  /** Why a mapping to it would not save (the decision command's own check), or null. */
+  /** Why bringing the row in on it would be refused for its unit (`v7UnitAgainstFactor`, the rule the final check applies), or null. */
+  unitRefusal: string | null;
+  /** Why a mapping to it would not save (the decision command's own check), or would be refused when brought in (its unit); or null. */
   invalid: string | null;
 };
 
@@ -78,6 +80,11 @@ export type V7ImportRowsRow = V7ImportMappingRow & {
   pick: V7ImportCandidate | null;
   /** A scope total the previous system still counts beside activity rows of the same scope: bringing it in would count both. */
   totalStillCounted: boolean;
+  /**
+   * Why the row needs a person although a factor was found for it — bringing it in on that factor would be refused for its unit (its
+   * accepted decision included: it goes back to Need a match) — or null. Shown on the row.
+   */
+  held: string | null;
 };
 
 export type V7ImportRows = Omit<V7ImportMapping, "rows"> & {
@@ -181,7 +188,6 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
     const plan = planned.get(row.legacyDbId)!;
     const record = plan.migratedRecord;
     const keys = keysOf.get(row.legacyDbId)!;
-    const unit = normaliseV7Unit(record.uom);
     const input: V7MatchRow = { scope: row.scope, quantity: record.qty, applyPct: v7ApplyPct(record.apply_pct), previousTco2e: row.previous.tco2e,
       categories: rowCategories(plan, row.scope, library.rules), v7Category: v7CategoryOf(row) };
     const keyOf = (factor: FactorRow) => factorKeys.get(`${factor.dataset_id}|${factor.factor_id}`)!;
@@ -197,12 +203,14 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
       // The anchor (§1): the previous system's own factor — or its core code, for a variant row — in the job's year, at its own rate.
       const anchor = year !== null && factor.year === year && sameRate(rate, record.factor) && (isIdentity(factor) || byCore.includes(factor));
       const categories = claimed.get(factor.factor_id) ?? [];
+      // The unit, by the rule bringing it in applies (v7UnitAgainstFactor): the same unit, or why it would be refused.
+      const unit = v7UnitAgainstFactor(record.uom, factor.activity_unit);
       return {
         datasetId: factor.dataset_id, factorId: factor.factor_id, code: factor.code, label: factor.label, unit: factor.activity_unit, rate, dataset: factor.dataset,
         identity: isIdentity(factor), exactCode: record.original_id !== null && factor.code.toLowerCase() === record.original_id.trim().toLowerCase(),
         anchor, year: factor.year, scopes: factor.scopes, categories,
-        match: v7MatchCandidate(input, { rate, scopes: factor.scopes, categories, sameUnit: unit !== null && sameV7Unit(unit, factor.activity_unit), anchor }, library.familyless),
-        invalid: null,
+        match: v7MatchCandidate(input, { rate, scopes: factor.scopes, categories, sameUnit: unit.sameUnit, anchor }, library.familyless),
+        unitRefusal: unit.refusal, invalid: null,
       };
     }));
   }
@@ -211,7 +219,7 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
       categoryCode: candidate.match.categoryCode!, datasetId: candidate.datasetId, factorId: candidate.factorId })));
   const invalid = await invalidV7ImportMappings(db, org, checks);
   for (const [legacyDbId, candidates] of judged) for (const candidate of candidates) {
-    candidate.invalid = invalid.get(`${legacyDbId}|${candidate.datasetId}|${candidate.factorId}`)?.message ?? null;
+    candidate.invalid = invalid.get(`${legacyDbId}|${candidate.datasetId}|${candidate.factorId}`)?.message ?? candidate.unitRefusal;
   }
 
   // The previous system's own counting per scope: a scope total it still counts beside activity rows of that scope counts twice.
@@ -224,24 +232,27 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
     const total = isTotal(row);
     const retiring = total && (row.ownStatus === "withdrawn" || row.previous.enabled === false);
     const decided = row.resolution === "resolved" && row.decision?.kind === "map"
-      ? candidates.find((candidate) => candidate.datasetId === row.decision!.datasetId && candidate.factorId === row.decision!.factorId) ?? null : null;
+      ? (judged.get(row.legacyDbId) ?? []).find((candidate) => candidate.datasetId === row.decision!.datasetId && candidate.factorId === row.decision!.factorId) ?? null : null;
     const auto = v7AutoPick(candidates);
-    const best = candidates.find((candidate) => candidate.match.rightBasis && (candidate.match.verdict === "reproduces" || candidate.match.verdict === "close")) ?? null;
+    const best = candidates.find((candidate) => !candidate.invalid && candidate.match.rightBasis && (candidate.match.verdict === "reproduces" || candidate.match.verdict === "close")) ?? null;
     // Switched off in the previous system (§2, ruled): mapped to its own factor — the anchor, else its lookup row — whatever the
     // figure says (it is never counted, so the figure decides nothing); a person finds one only when it has none that would save.
     const ownFactor = candidates.find((candidate) => candidate.anchor) ?? candidates.find((candidate) => candidate.identity) ?? null;
     const usable = (candidate: V7ImportCandidate | null) => candidate !== null && candidate.match.categoryCode !== null && !candidate.invalid ? candidate : null;
     let lane: V7ImportRowLane;
     let pick: V7ImportCandidate | null = null;
+    // Why the row needs a person although its factor was found: bringing it in on that factor would be refused (its unit).
+    let held: string | null = null;
     if (retiring) lane = "retiring";
     else if (row.ownStatus === "matched" || row.ownStatus === "changed") lane = "in-console";
+    else if (row.resolution === "resolved" && decided?.unitRefusal) { lane = "unmatched"; held = decided.unitRefusal; }
     else if (row.resolution === "resolved") { lane = "accepted"; pick = decided; }
     else if (row.ownStatus === "withdrawn") lane = "confirm-off";
-    else if (row.previous.enabled === false) { lane = "switched-off"; pick = usable(ownFactor); }
+    else if (row.previous.enabled === false) { lane = "switched-off"; pick = usable(ownFactor); held = pick ? null : ownFactor?.unitRefusal ?? null; }
     else if (auto) { lane = "pre-accepted"; pick = auto; }
     else if (best) { lane = "suggested"; pick = best; }
-    else lane = "unmatched";
-    return { ...row, lane, applyPct: v7ApplyPct(planned.get(row.legacyDbId)?.migratedRecord.apply_pct ?? null),
+    else { lane = "unmatched"; held = (ownFactor ?? candidates.find((candidate) => candidate.match.rightBasis))?.unitRefusal ?? null; }
+    return { ...row, lane, held, applyPct: v7ApplyPct(planned.get(row.legacyDbId)?.migratedRecord.apply_pct ?? null),
       categories: rowCategories(planned.get(row.legacyDbId), row.scope, library.rules), v7Category: v7CategoryOf(row),
       pairGroup: summary?.pairGroup ?? null, carry: carryOf.get(row.legacyDbId) ?? null, candidates: needsMap(row) ? candidates : [], pick,
       totalStillCounted: total && !retiring && row.ownStatus !== "withdrawn" && activityCounted.has(row.scope) };
@@ -258,6 +269,8 @@ export type V7ImportFactorHit = {
   categories: string[];
   /** Priced per the row's unit (the unit the modal names), as the re-ingest's own unit check reads it. */
   sameUnit: boolean;
+  /** Why bringing the row in on it would be refused for its unit, or null (`v7UnitAgainstFactor`). */
+  unitRefusal: string | null;
 };
 
 const SEARCH_LIMIT = 50;
@@ -287,10 +300,9 @@ export async function searchV7ImportFactors(pool: PoolLike, holder: CapabilityHo
     const ranked = found.map((factor, at) => ({ factor, at, starts: wordStart(factor) })).sort((a, b) => Number(b.starts) - Number(a.starts) || a.at - b.at).slice(0, SEARCH_LIMIT).map(({ factor }) => factor);
     const library = await categoryReader(db, holder.organisationId);
     const claimed = library.claimed(ranked.map((factor) => ({ factorId: factor.factor_id, activityUnit: factor.activity_unit, sourceLevels: factor.source_levels ?? [] })));
-    const unit = normaliseV7Unit(input.unit);
     return { familyless: library.familyless, hits: ranked.map((factor) => ({ datasetId: factor.dataset_id, factorId: factor.factor_id, code: factor.code, label: factor.label,
       unit: factor.activity_unit, rate: Number(factor.rate), dataset: factor.dataset, scopes: factor.scopes, categories: claimed.get(factor.factor_id) ?? [],
-      sameUnit: unit !== null && sameV7Unit(unit, factor.activity_unit) })) };
+      ...(({ sameUnit, refusal }) => ({ sameUnit, unitRefusal: refusal }))(v7UnitAgainstFactor(input.unit, factor.activity_unit)) })) };
   });
 }
 

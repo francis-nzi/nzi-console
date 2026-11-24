@@ -2202,7 +2202,7 @@ describe("the import rows modal: candidates by ID, recomputed and judged; the bu
  */
 describe("the import rows modal's auto-pick, on a job shaped as J000434: the job-year anchor, switched-off rows, the ordered ID, the previous system's category", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   const AP_ORG = "v7-autopick";
-  const JOB_J = "v7-job-j", JOB_S = "v7-job-s";
+  const JOB_J = "v7-job-j", JOB_S = "v7-job-s", JOB_N = "v7-job-n";
   let database: DisposableDatabase;
   let db: pg.Client;
   let keys = 0;
@@ -2221,11 +2221,18 @@ describe("the import rows modal's auto-pick, on a job shaped as J000434: the job
   const round6 = (value: number) => Math.round(value * 1e6) / 1e6;
 
   // The factor families the live check names: V7's own factor in the job's year (2024), and another year beside it.
-  type Family = { code: string; scope: "1" | "3"; unit: string; levels: string[]; label: string; v7Category: string; rates: Array<[string, number]>; lookup: string | null };
+  // `unit`: the console factor's; `v7Uom`: the previous system's spelling on its rows, where it differs (energy's calorific value).
+  type Family = { code: string; scope: "1" | "3"; unit: string; v7Uom?: string; levels: string[]; label: string; v7Category: string; rates: Array<[string, number]>; lookup: string | null };
   const HGV: Family = { code: "5_304_3140_9_1", scope: "1", unit: "miles", levels: ["Delivery vehicles", "HGV (all diesel)", "Average laden"], label: "HGV · diesel · average laden",
     v7Category: "Company Vehicles", rates: [["uk-ghg-gb-2024", 1.40489], ["uk-ghg-gb-2023", 1.40341]], lookup: "f-hgv" };
   const VAN: Family = { code: "5_301_3140_9_2", scope: "1", unit: "miles", levels: ["Delivery vehicles", "Vans", "Diesel"], label: "Van · diesel · average",
     v7Category: "Company Vehicles", rates: [["uk-ghg-gb-2024", 0.27332], ["uk-ghg-gb-2023", 0.27298]], lookup: "f-van" };
+  // Natural gas as J000434 holds it (10357/10358): v7 records it in kWh (Gross CV); the console's factor is in kWh — the same unit.
+  const GAS: Family = { code: "1_100_1004_6_1", scope: "1", unit: "kWh", v7Uom: "kWh (Gross CV)", levels: ["Fuels", "Gaseous fuels", "Natural gas"], label: "Natural gas — kWh (Gross CV)",
+    v7Category: "Fuels", rates: [["uk-ghg-gb-2024", 0.1829], ["uk-ghg-gb-2023", 0.18293]], lookup: "f-gas" };
+  // Natural gas in net CV, against a factor the console stores in kWh (its label carries the CV): never the same unit.
+  const GAS_NET: Family = { code: "1_100_1004_6_2", scope: "1", unit: "kWh", v7Uom: "kWh (Net CV)", levels: ["Fuels", "Gaseous fuels", "Natural gas"], label: "Natural gas — kWh (Net CV)",
+    v7Category: "Fuels", rates: [["uk-ghg-gb-2024", 0.20297]], lookup: "f-gasnet" };
   const GAS_OIL: Family = { code: "1_100_1012_7_1", scope: "1", unit: "litres", levels: ["Fuels", "Liquid fuels", "Gas oil"], label: "Gas oil",
     v7Category: "Fuels", rates: [["uk-ghg-gb-2024", 2.75857], ["uk-ghg-gb-2023", 2.75776]], lookup: "f-gasoil" };
   const CAR: Family = { code: "25_301_3069_9_2", scope: "3", unit: "miles", levels: ["Business travel- land", "Cars (by size)", "Small car"], label: "Business travel · small car · petrol",
@@ -2239,16 +2246,16 @@ describe("the import rows modal's auto-pick, on a job shaped as J000434: the job
   const row = (id: string, family: Family, qty: number, enabled: boolean): PlannedRow => {
     const rate = family.rates[0]![1];
     const reported = round6(qty * rate / 1000);
-    const base = plannedRow({ id, scope: family.scope, label: family.label, qty, unit: family.unit, reported });
+    const base = plannedRow({ id, scope: family.scope, label: family.label, qty, unit: family.v7Uom ?? family.unit, reported });
     v7Categories[id] = family.v7Category;
     return { ...base, level1: family.levels[0]!, level2: family.levels[1] ?? family.levels[0]!, level3: family.levels[2] ?? null, enabled, counted: enabled,
       migratedRecord: { ...(base.migratedRecord as unknown as Record<string, unknown>), original_id: family === WALK ? `${family.code}-c` : family.code, factor: rate,
-        factor_db_id: family.lookup, uom: family.unit, enabled } as unknown as PlannedRow["migratedRecord"] };
+        factor_db_id: family.lookup, uom: family.v7Uom ?? family.unit, enabled } as unknown as PlannedRow["migratedRecord"] };
   };
-  // 41 live: 10 HGV, 11 van (one the duplicate's twin, below), 6 gas oil, 11 business car, 3 walking. Small quantities make the
+  // 41 live: 10 HGV, 11 van (one the duplicate's twin, below), 4 gas oil, 2 natural gas (kWh (Gross CV)), 11 business car, 3 walking. Small quantities make the
   // other year reproduce to 1 dp too (F1).
   const live: PlannedRow[] = [];
-  const families: Array<[Family, number]> = [[HGV, 10], [VAN, 10], [GAS_OIL, 6], [CAR, 11], [WALK, 3]];
+  const families: Array<[Family, number]> = [[HGV, 10], [VAN, 10], [GAS_OIL, 4], [GAS, 2], [CAR, 11], [WALK, 3]];
   let n = 10300;
   for (const [family, count] of families) for (let at = 0; at < count; at += 1) live.push(row(String(n += 1), family, 400 + at * 2_311.7, true));
   // 12 switched off: among them the duplicate of a live van row — 87,803 miles, 24.0 t — that would count twice if it came in on.
@@ -2262,7 +2269,9 @@ describe("the import rows modal's auto-pick, on a job shaped as J000434: the job
   };
   // A second job, of 2025 — no 2025 edition exists, so nothing is the anchor: two editions reproduce alike, a suggestion each.
   const SUGGESTED = [row("20001", HGV, 300, true), row("20002", CAR, 250, true)];
-  const holds = new Map<string, readonly PlannedRow[]>([[JOB_J, JOB_ROWS], [JOB_S, SUGGESTED]]);
+  // A third job of 2024: one natural gas row in net CV.
+  const NET = [row("30001", GAS_NET, 50_000, true)];
+  const holds = new Map<string, readonly PlannedRow[]>([[JOB_J, JOB_ROWS], [JOB_S, SUGGESTED], [JOB_N, NET]]);
   const source: V7ImportRefreshSource = async (_db, job) => ({ sourceSha256: "a".repeat(64), rows: holds.get(job.jobId)!, v7Categories });
   const EMPTY_PLAN = (jobId: string) => ({ jobId, crosswalkVersion: "none", crosswalkSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", vintageDatasetIds: [], rows: [] });
   const rowsOf = (jobId: string) => readV7ImportRows(database.pool, source, holder(), jobId, { basePlan: EMPTY_PLAN(jobId) });
@@ -2299,11 +2308,11 @@ describe("the import rows modal's auto-pick, on a job shaped as J000434: the job
       db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels,source_system,legacy_db_id,legacy_original_id)
                 VALUES ($1,$2,$3,$4,$5,$6,ARRAY[$7::text],$8::text[],$9,$10,$11)`,
         [AP_ORG, ds, `${ds.split("-")[0] === "nzi" ? "nzi" : "uk-ghg"}-${code}`, label, unit, rate, scope, levels, lookup ? "nzi-pro-v7" : null, lookup, code]);
-    for (const family of [HGV, VAN, GAS_OIL, CAR, WALK]) {
+    for (const family of [HGV, VAN, GAS, GAS_NET, GAS_OIL, CAR, WALK]) {
       for (const [at, [ds, rate]] of family.rates.entries()) await factor(ds, family.code, family.label, family.unit, rate, family.scope, family.levels, at === 0 ? family.lookup : null);
     }
     for (const [ds, rate] of CYCLE.rates) await factor(ds, CYCLE.code, CYCLE.label, "km", rate, "3", ["Business travel- land", "Cycling"], null);
-    for (const [jobId, sequence, number, year] of [[JOB_J, 906, "J000906", 2024], [JOB_S, 907, "J000907", 2025]] as const) {
+    for (const [jobId, sequence, number, year] of [[JOB_J, 906, "J000906", 2024], [JOB_S, 907, "J000907", 2025], [JOB_N, 908, "J000908", 2024]] as const) {
       await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
         VALUES ($1,$2,'ca',$3,'crp','CRP','open','Data entry',$4,$5,$6,'nzi-pro-v7',$7,$8)`, [AP_ORG, jobId, sequence, year, `${year}-01-01`, `${year}-12-31`, String(sequence), number]);
       await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`, [AP_ORG, jobId, `${year}-01-01`, `${year}-12-31`]);
@@ -2368,7 +2377,9 @@ describe("the import rows modal's auto-pick, on a job shaped as J000434: the job
     assert.ok(duplicate.length > 0 && duplicate.every((entry) => entry.enabled === false), "10372 is held, switched off — as the previous system holds it");
     const counted = async (scope: string) => round6(Number((await db.query<{ t: string | null }>(`SELECT sum(coalesce(override_tco2e, calculated_tco2e))::text AS t FROM nzi_console.job_scope_rows
       WHERE job_id = $1 AND origin = 'live' AND enabled AND split_part(scope, '.', 1) = $2`, [JOB_J, scope])).rows[0]!.t ?? 0));
-    assert.deepEqual([await counted("1"), await counted("3")], [v7("1"), v7("3")], "the job's counted rows: the previous system's totals, 24.0 t not twice");
+    for (const scope of ["1", "3"] as const) {
+      assert.ok(Math.abs((await counted(scope)) - v7(scope)) < 1e-5, `Scope ${scope}: the job's counted rows are the previous system's total, 24.0 t not twice`);
+    }
     const offCounted = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id = $1 AND enabled AND
       (legacy_db_id = ANY($2::text[]) OR reingested_from_row_id = ANY($3::text[]))`, [JOB_J, off.map((entry) => entry.legacyDbId), off.map((entry) => entry.scopeRowId)])).rows[0]!.n;
     assert.equal(offCounted, 0, "no switched-off row is counted anywhere a report reads the job's enabled rows");
@@ -2389,5 +2400,39 @@ describe("the import rows modal's auto-pick, on a job shaped as J000434: the job
     assert.deepEqual(decisions, [{ legacy_db_id: "20001", kind: "map", dataset_id: items[0]!.datasetId, factor_id: items[0]!.factorId }]);
     const audit = (await db.query(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.decision.set' AND entity_id = $2`, [AP_ORG, JOB_S])).rows[0]!.n;
     assert.equal(audit, 1, "one audit event per decision written");
+  });
+
+  // J000434's refused bring-in (24 Nov): "v7-row-10357/10358: the plan's unit kWh (Gross CV) is not v7's kWh". One unit rule now.
+  it("natural gas held in kWh (Gross CV), on the factor in kWh: matched, and brought in — on the factor's unit, v7's quantity", async () => {
+    const gas = live.filter((entry) => entry.migratedRecord.original_id === GAS.code);
+    assert.equal(gas.length, 2);
+    const live2 = (await db.query<{ legacy: string; unit: string; quantity: string; enabled: boolean }>(`SELECT m.legacy_db_id AS legacy, l.unit, l.quantity::text AS quantity, l.enabled
+      FROM nzi_console.job_scope_rows l JOIN nzi_console.job_scope_rows m ON (m.organisation_id, m.scope_row_id) = (l.organisation_id, l.reingested_from_row_id)
+      WHERE l.job_id = $1 AND l.origin = 'live' AND l.enabled AND m.legacy_db_id = ANY($2::text[]) ORDER BY 1`, [JOB_J, gas.map((entry) => entry.legacyDbId)])).rows;
+    assert.deepEqual(live2.map((entry) => [entry.legacy, entry.unit, Number(entry.quantity)]), gas.map((entry) => [entry.legacyDbId, "kWh", entry.quantity]),
+      "the bring-in above went through with both: no PLAN_QUANTITY_MISMATCH on the unit");
+  });
+
+  it("natural gas in kWh (Net CV) on a factor in kWh: Need a match with the reason before anything is pressed — and still refused when brought in, nothing written", async () => {
+    const seen = (await rowsOf(JOB_N)).rows[0]!;
+    assert.deepEqual([seen.lane, seen.pick], ["unmatched", null]);
+    assert.match(seen.held ?? "", /kWh \(Net CV\).*priced per kWh.*refused/, "the reason, on the row");
+    const own = seen.candidates.find((candidate) => candidate.identity)!;
+    assert.deepEqual([own.match.verdict, own.unitRefusal !== null, own.invalid !== null], ["unit-mismatch", true, true], "its own factor, and why it cannot come in on it");
+    // Forced: the decision written by hand — the modal still holds it, and bringing it in refuses it.
+    await upload(JOB_N, "J000908");
+    const forced = await acceptV7ImportRows(database.pool, { jobId: JOB_N, items: [{ kind: "map", legacyDbId: "30001", categoryCode: "1.natural-gas",
+      datasetId: own.datasetId, factorId: own.factorId, expectedDecisionId: null }] }, context());
+    assert.equal(forced.written.length, 1);
+    const after = (await rowsOf(JOB_N)).rows[0]!;
+    assert.deepEqual([after.resolution, after.lane], ["resolved", "unmatched"], "an accepted decision bringing it in would refuse goes back to Need a match");
+    assert.match(after.held ?? "", /refused/);
+    const before = (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'live'`, [JOB_N])).rows[0]!.n;
+    const preview = await previewV7ImportRefresh(database.pool, source, { jobId: JOB_N, mode: "preview" }, context("consultant"), { basePlan: EMPTY_PLAN(JOB_N) });
+    assert.equal(preview.outcome, "refused", JSON.stringify(preview.refusal));
+    assert.ok(preview.refusal?.issues.some((issue) => /unit|kWh/i.test(issue.message)), JSON.stringify(preview.refusal?.issues));
+    await assert.rejects(commitV7ImportRefresh(database.pool, source, { jobId: JOB_N, mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 },
+      context("consultant", "bring J000908 in (test)"), { basePlan: EMPTY_PLAN(JOB_N), requireScopesAgree: true }), (error) => error instanceof CommandValidationError);
+    assert.equal((await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'live'`, [JOB_N])).rows[0]!.n, before, "nothing written");
   });
 });

@@ -6,9 +6,9 @@ import { emissionCategoryTaxonomy, type V7ImportRefreshCommitted, type V7ImportR
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsAcceptResult, V7ImportRowsRow } from "@nzi/isolated-backend";
 import { Drawer } from "@nzi/ui";
 import {
-  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, pendingAccepts, rowsProgress, scopeLines, suggestedAccepts,
-  suggestedSummary, verdictWords,
-  type RowsGroup,
+  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, pendingAccepts, reasonOutcome, refusedOutcome, rowsProgress,
+  scopeLines, suggestedAccepts, suggestedSummary, verdictWords,
+  type BringInOutcome, type RowsGroup,
 } from "./importRowsModel";
 import { notAutomaticLine, refreshViewOf, type FastPathOutcome, type ImportRefreshState } from "./importRefreshView";
 
@@ -29,6 +29,9 @@ import { notAutomaticLine, refreshViewOf, type FastPathOutcome, type ImportRefre
 type Applies = Extract<ImportRefreshState, { applies: true }>;
 type Load = { state: "loading" } | { state: "failed"; message: string } | { state: "ready"; data: V7ImportRows };
 
+/** A refusal's messages, one per issue — so the outcome can list each and name its rows. */
+const failureLines = (result: BrowserCommandResult<unknown>): string[] => result.state === "validation_failed" && result.issues.length
+  ? result.issues.map((issue) => issue.message) : result.state === "success" ? [] : [result.message];
 const failureText = (result: BrowserCommandResult<unknown>) => result.state === "validation_failed" ? result.issues.map((issue) => issue.message).join(" ") || result.message
   : result.state === "success" ? "" : result.message;
 const t = (value: number | null) => (value === null ? "—" : oneDp(value));
@@ -53,6 +56,8 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
   const [preview, setPreview] = useState<V7ImportRefreshPreview | null>(null);
   const [notAutomatic, setNotAutomatic] = useState<string | null>(null);
   const [reason, setReason] = useState("");
+  // What bringing it in said, when it refused: shown at the top, in the reconcile strip's place.
+  const [refusal, setRefusal] = useState<BringInOutcome | null>(null);
   const commitKey = useRef<string | null>(null);
 
   async function read(bump: boolean): Promise<V7ImportRows | null> {
@@ -67,7 +72,7 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
   }
   useEffect(() => {
     if (!open) return;
-    setLoad({ state: "loading" }); setPreview(null); setNotAutomatic(null); setError(null); setNotice(null);
+    setLoad({ state: "loading" }); setPreview(null); setNotAutomatic(null); setError(null); setNotice(null); setRefusal(null);
     void read(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one read each time the modal opens
   }, [open, state.jobId]);
@@ -96,7 +101,7 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
   }
   const save = (items: V7ImportRowsAcceptItem[]) => run(async () => {
     if (load.state !== "ready") return;
-    setPreview(null); setNotAutomatic(null);
+    setPreview(null); setNotAutomatic(null); setRefusal(null);
     const after = await accept(items, load.data);
     if (after) setOpenRow(null);
   });
@@ -111,6 +116,7 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
     if (load.state !== "ready") return;
     let data: V7ImportRows | null = load.data;
     if (bringInBlockers(data.rows).length) return;
+    setRefusal(null);
     const pending = pendingAccepts(data.rows);
     if (pending.length) {
       if (!state.canResolve) { setError("An Admin accepts the matched rows first."); return; }
@@ -119,7 +125,7 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
     }
     // Phase D: one action — refreshed there and then when the job is eligible; otherwise its preview and why.
     const result = await postBrowserCommand<FastPathOutcome>(path, { mode: "auto" }, crypto.randomUUID());
-    if (result.state !== "success") { setError(failureText(result)); return; }
+    if (result.state !== "success") { setRefusal(refusedOutcome(failureLines(result))); return; }
     commitKey.current = null;
     if (result.data.fastPath === "refreshed") { onBroughtIn("Brought in automatically: the job's rows now match the previous system, and wait for a reviewer's attest."); onClose(); return; }
     setPreview(result.data.preview); setNotAutomatic(notAutomaticLine(result.data));
@@ -128,7 +134,7 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
     if (!preview || !reason.trim()) return;
     const result = await postBrowserCommandWithReason<V7ImportRefreshCommitted>(path,
       { mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 }, commitKey.current ??= crypto.randomUUID(), reason.trim());
-    if (result.state !== "success") { if (result.state !== "failed" || !result.retryable) commitKey.current = null; setError(failureText(result)); return; }
+    if (result.state !== "success") { if (result.state !== "failed" || !result.retryable) commitKey.current = null; setRefusal(refusedOutcome(failureLines(result))); return; }
     commitKey.current = null; setReason("");
     onBroughtIn(`Brought in: re-synced ${result.data.resync.superseded + result.data.resync.added + result.data.resync.withdrawn} row(s); the new entries wait for a reviewer's attest.`);
     onClose();
@@ -146,7 +152,7 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
       {load.state === "ready" ? <ImportRowsView data={load.data} pass={pass} busy={busy} canResolve={state.canResolve} writeEnabled={state.writeEnabled}
         commitGated={state.commitNeedsAdmin && !state.isAdmin} error={error} notice={notice} filter={filter} onFilter={setFilter}
         collapseDone={collapseDone} onCollapse={() => setCollapseDone((value) => !value)} openRow={openRow} onOpenRow={setOpenRow}
-        preview={preview} notAutomatic={notAutomatic} reason={reason} onReason={setReason}
+        preview={preview} notAutomatic={notAutomatic} refusal={refusal} reason={reason} onReason={setReason}
         onSave={(items) => void save(items)} onSaveAndClose={() => void saveAndClose()} onBringIn={() => void bringIn()} onCommit={() => void commit()}
         search={(query, unit) => searchFactors(path, query, unit)} /> : null}
     </div>
@@ -166,7 +172,10 @@ export type ImportRowsViewProps = {
   data: V7ImportRows; pass: number; busy: boolean; canResolve: boolean; writeEnabled: boolean; commitGated: boolean;
   error: string | null; notice: string | null; filter: string; onFilter: (value: string) => void;
   collapseDone: boolean; onCollapse: () => void; openRow: string | null; onOpenRow: (legacyDbId: string | null) => void;
-  preview: V7ImportRefreshPreview | null; notAutomatic: string | null; reason: string; onReason: (value: string) => void;
+  preview: V7ImportRefreshPreview | null; notAutomatic: string | null;
+  /** What bringing it in refused (the command's own refusal), when it did; the preview's refusal and its reasons come from `preview`. */
+  refusal?: BringInOutcome | null;
+  reason: string; onReason: (value: string) => void;
   onSave: (items: V7ImportRowsAcceptItem[]) => void; onSaveAndClose: () => void; onBringIn: () => void; onCommit: () => void;
   search: (query: string, unit: string | null) => Promise<{ hits: V7ImportFactorHit[]; familyless: string[] } | string>;
 };
@@ -199,6 +208,14 @@ export function ImportRowsView(props: ImportRowsViewProps) {
   const blocked = blockers.length > 0 || !writeEnabled || (pending.length > 0 && !canResolve);
   // Ready: every row with a way in — matched, suggested, a pair to carry, a withdrawal to confirm — all but the reds.
   const ready = progress.total - progress.unmatched - progress.doubleCounted;
+  // What bringing it in said, when it did not bring the job in: refused (the command, or the preview), or a reason it needs.
+  const outcome: BringInOutcome | null = props.refusal
+    ?? (view?.kind === "refused" ? refusedOutcome(view.issues.map((issue) => issue.message))
+      : preview && props.notAutomatic ? reasonOutcome(props.notAutomatic, preview.exceptions) : null);
+  // Scrolled to, so it is never missed below the rows.
+  const outcomeRef = useRef<HTMLDivElement | null>(null);
+  const outcomeKey = outcome ? `${outcome.tone}|${outcome.lines.join("|")}` : "";
+  useEffect(() => { if (outcomeKey) outcomeRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" }); }, [outcomeKey]);
 
   return <>
     <div className="nz-irm-prog" data-progress={`${progress.done}/${progress.total}`}>
@@ -220,20 +237,24 @@ export function ImportRowsView(props: ImportRowsViewProps) {
       </div>
     </div>
 
-    <div className={`nz-irm-rec${allAgree ? " ok" : anyOff ? " warn" : ""}`} role="status" data-reconcile={allAgree ? "agrees" : anyOff ? "differs" : "waiting"}>
+    {outcome ? <div ref={outcomeRef} className={`nz-irm-rec ${outcome.tone === "refused" ? "bad" : "warn"}`} role="alert" data-outcome={outcome.tone}>
+      <span><b>{outcome.title}</b></span>
+      {outcome.lines.map((line, at) => <span key={at}>{line}</span>)}
+      {outcome.rows.length ? <span data-outcome-rows={outcome.rows.join(",")}>Rows: <b>{outcome.rows.join(", ")}</b></span> : null}
+    </div> : <div className={`nz-irm-rec${allAgree ? " ok" : anyOff ? " warn" : ""}`} role="status" data-reconcile={allAgree ? "agrees" : anyOff ? "differs" : "waiting"}>
       <span><b>{allAgree ? "✓ Figures match the previous system to 1 decimal place" : anyOff ? "A scope total does not agree with the previous system yet" : `Waiting on ${waiting} row${waiting === 1 ? "" : "s"} before the scope totals can be checked`}</b></span>
       {lines.map((line) => <span key={line.scope} data-scope-line={line.scope} data-agrees={String(line.agrees)}>
         Scope {line.scope} total <b>{t(line.previous)}</b>{line.agrees === true ? " ✓" : line.agrees === false ? <> · here <b>{t(line.console)}</b> — does not agree</> : line.waiting ? ` · ${line.waiting} to go` : ""}
       </span>)}
       <span>{preview ? "as the refresh would bring it in" : "as worked out here"}</span>
-    </div>
+    </div>}
 
     <div className="nz-irm-tb">
       <input className="nz-inp" aria-label="Filter rows" placeholder="Filter rows — ID, label, site, unit… (e.g. “van diesel miles”)" value={filter} onChange={(event) => onFilter(event.target.value)} />
-      <button type="button" className="nz-btn" data-accept-all disabled={busy || !canWrite || mapsPending === 0} onClick={() => props.onSave(pending)}
-        title={acceptAllTitle}>Accept all {mapsPending} matched</button>
-      <button type="button" className="nz-btn" data-accept-suggested disabled={busy || !canWrite || suggestedCount.total === 0} aria-expanded={confirmSuggested}
-        onClick={() => setConfirmSuggested(true)}>Accept all {suggestedCount.total} suggested</button>
+      {mapsPending ? <button type="button" className="nz-btn" data-accept-all disabled={busy || !canWrite} onClick={() => props.onSave(pending)}
+        title={acceptAllTitle}>Accept all {mapsPending} matched</button> : null}
+      {suggestedCount.total ? <button type="button" className="nz-btn" data-accept-suggested disabled={busy || !canWrite} aria-expanded={confirmSuggested}
+        onClick={() => setConfirmSuggested(true)}>Accept all {suggestedCount.total} suggested</button> : null}
       <button type="button" className="nz-btn" onClick={onCollapse}>{collapseDone ? "Show done" : "Collapse done"}</button>
     </div>
     {confirmSuggested && suggestedCount.total ? <SuggestedConfirm summary={suggestedCount} disabled={busy || !canWrite}
@@ -254,8 +275,6 @@ export function ImportRowsView(props: ImportRowsViewProps) {
         {blockers.length ? <><b>{blockers.join(" · ")}</b> · your decisions are saved as you go, so you can leave and come back.</>
           : view?.kind === "nothing" ? <b>Nothing to bring in: every row matches the previous system&rsquo;s record now.</b>
             : <>Everything is matched{mapsPending ? ` — ${mapsPending} accepted when you bring it in` : ""}. Your decisions are saved as you go.</>}
-        {props.notAutomatic ? <div data-not-automatic>{props.notAutomatic}</div> : null}
-        {view?.kind === "refused" ? <div role="alert">Would not bring it in: {view.issues.map((issue) => issue.message).join(" ")} Nothing was written.</div> : null}
         {view?.kind === "ready" && anyOff ? <div role="alert">A scope does not agree to one decimal place, so it cannot be brought in. Investigate the scope&rsquo;s rows.</div> : null}
         {view?.kind === "ready" && allAgree && props.commitGated ? <div role="status">This organisation requires an Admin to bring a job in. You can check it; an Admin commits.</div> : null}
       </div>
@@ -339,7 +358,8 @@ function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; ca
       ? <div className="nz-irm-s">{row.lane === "retiring" ? "replaced by the activity rows" : row.lane === "confirm-off" ? "switches off when brought in" : row.intended.factorId ? `${categoryName(row.intended.categoryCode)} · ${row.intended.factorId}` : "carried as it stands"}</div>
       : pick ? <><div className="nz-irm-t">{pick.label}</div><div className="nz-irm-id">{pick.code} · {rate(pick.rate)}{pick.match.categoryCode ? ` · ${categoryName(pick.match.categoryCode)}` : ""}</div>
         {row.lane === "switched-off" ? <div className="nz-irm-s">the previous system&rsquo;s own factor · comes in switched off</div> : null}</>
-        : <><div className="nz-irm-t" style={{ color: "var(--danger)" }}>— no console factor</div><div className="nz-irm-s">{row.lane === "switched-off" ? "switched off — needs its factor, to come in switched off" : "needs a match"}</div></>}</div>
+        : <><div className="nz-irm-t" style={{ color: "var(--danger)" }}>— no console factor</div><div className="nz-irm-s">{row.lane === "switched-off" ? "switched off — needs its factor, to come in switched off" : "needs a match"}</div>
+          {row.held ? <div className="nz-irm-s" data-held style={{ color: "var(--danger)" }}>{row.held}</div> : null}</>}</div>
     <div className="nz-irm-st">
       <span className={`nz-irm-pill ${pill.tone}`}>{pill.text}</span>
       <div className="nz-irm-fig">{row.lane === "switched-off" ? <span>not counted</span> : row.previous.tco2e === null ? "" : <>{pick?.match.tco2e !== undefined && pick?.match.tco2e !== null && row.lane !== "in-console" ? <>{t(pick.match.tco2e)} <span>vs {t(row.previous.tco2e)}{pick.match.verdict === "reproduces" ? " ✓" : ""}</span></>

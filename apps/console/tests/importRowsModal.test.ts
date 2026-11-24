@@ -7,7 +7,7 @@ import { v7MatchCandidate, type V7MatchFactor } from "@nzi/contracts";
 import { v7ImportRowsAcceptIssues, type V7ImportCandidate, type V7ImportRows, type V7ImportRowsRow } from "@nzi/isolated-backend";
 import { ADMIN_ITEMS } from "../app/admin/adminNav";
 import {
-  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, pendingAccepts, rowsProgress, scopeLines, suggestedAccepts,
+  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, pendingAccepts, reasonOutcome, refusedOutcome, rowsNamed, rowsProgress, scopeLines, suggestedAccepts,
   suggestedSummary, verdictWords,
 } from "../app/jobs/importRowsModel";
 
@@ -27,7 +27,7 @@ const candidate = (label: string, over: Partial<V7MatchFactor> & { code?: string
   const full: V7MatchFactor = { rate: 0.23818, scopes: [scope], categories: [scope === "3" ? "3.6" : "1.company-vehicles"], sameUnit: true, ...factor };
   return { datasetId: "uk-ghg-gb-2024", factorId: `uk-ghg-${code}`, code, label, unit: full.sameUnit ? "miles" : "km", rate: full.rate!, dataset: "DESNZ GB 2024",
     identity: false, exactCode: false, anchor: false, year: 2024, scopes: [...full.scopes], categories: [...full.categories],
-    match: v7MatchCandidate({ scope, quantity, applyPct: 100, previousTco2e: previous, categories: rowCategories }, full, []), invalid: null };
+    match: v7MatchCandidate({ scope, quantity, applyPct: 100, previousTco2e: previous, categories: rowCategories }, full, []), unitRefusal: null, invalid: null };
 };
 const RIGHT = candidate("Business travel · Car · Petrol · Small · per mile", { code: "25_301_3069_9_2" });
 const WRONG = candidate("Passenger vehicles · Small car · Petrol · per mile", { code: "4_301_3069_9_2", scopes: ["1"], categories: ["1.company-vehicles"] });
@@ -38,7 +38,7 @@ const row = (over: Partial<V7ImportRowsRow>): V7ImportRowsRow => ({
   previous: { label: "Delivery vehicles — HGV (all diesel)", siteName: "Head office", quantity: 20_563, unit: "miles", factorCode: "5_304_3140_9_1", factor: 1.40489,
     factorUnit: "kgCO2e", tco2e: 28.888, enabled: true },
   intended: { categoryCode: null, datasetId: null, factorId: null, withdraw: false }, source: "none", flag: "NEW", resolution: "unresolved", decision: null, invalid: null,
-  lane: "pre-accepted", applyPct: 100, categories: ["1.company-vehicles"], v7Category: null, pairGroup: null, carry: null, candidates: [], pick: null, totalStillCounted: false, ...over,
+  lane: "pre-accepted", applyPct: 100, categories: ["1.company-vehicles"], v7Category: null, pairGroup: null, carry: null, candidates: [], pick: null, totalStillCounted: false, held: null, ...over,
 });
 const HGV = candidate("HGV all · average laden · diesel", { code: "5_304_3140_9_1", quantity: 20_563, previous: 28.888, scope: "1", rate: 1.40489, rowCategories: ["1.company-vehicles"] });
 const ROWS: V7ImportRowsRow[] = [
@@ -161,7 +161,10 @@ describe("the modal's states", () => {
       scopeTotals: { "1": { v7Tco2e: 40.988, liveTco2e: 40.988 }, "2": { v7Tco2e: 0, liveTco2e: 0 }, "3": { v7Tco2e: 0, liveTco2e: 0 } } };
     const ready = { ...DATA, rows: [ROWS[6]!] };
     const agrees = html({ data: ready, preview, notAutomatic: "Not automatic: manual edits." });
-    assert.ok(agrees.includes(`data-commit="true"`) && agrees.includes("Reason for bringing it in") && agrees.includes("Not automatic: manual edits.") && agrees.includes("as the refresh would bring it in"));
+    assert.ok(agrees.includes(`data-commit="true"`) && agrees.includes("Reason for bringing it in"));
+    assert.ok(agrees.includes(`data-outcome="reason"`) && agrees.includes("Not automatic — give a reason to bring it in") && agrees.includes("Not automatic: manual edits."),
+      "amber, at the top, in the reconcile strip's place");
+    assert.ok(!agrees.includes("data-reconcile="));
     const off = html({ data: ready, preview: { ...preview, scopeTotals: { ...preview.scopeTotals, "1": { v7Tco2e: 40.988, liveTco2e: 41.2 } } } });
     assert.ok(!off.includes(`data-commit="true"`) && off.includes("A scope does not agree to one decimal place, so it cannot be brought in."));
   });
@@ -211,10 +214,43 @@ describe("the autopick fix (BRIEF-v7-import-rows-autopick-fix): switched-off row
     const asked = renderToStaticMarkup(createElement(modal.SuggestedConfirm, { summary: suggestedSummary(rows), disabled: false, onAccept: () => undefined, onCancel: () => undefined })).replace(/<!-- -->/g, "");
     assert.ok(asked.includes("Accept 3 suggestions?") && asked.includes("Scope 1: 1 · Scope 2: 1 · Scope 3: 1") && asked.includes("a linked pair counts once (1 here)"));
     assert.ok(asked.includes(">Accept them<") && asked.includes(">Cancel<"));
-    assert.match(html({ data: { ...DATA, rows: [row({})] } }), /data-accept-suggested="true" disabled=""/, "none to accept: held");
+    const none = html({ data: { ...DATA, rows: [row({ lane: "accepted", resolution: "resolved", pick: HGV })] } });
+    assert.ok(!none.includes("data-accept-suggested") && !none.includes("data-accept-all") && !/Accept all 0/.test(none), "a count of zero: no button at all");
   });
   it("a zero-rate figure on the row's own basis says what it is", () => {
     assert.deepEqual(verdictWords({ tco2e: 0, delta: 0, verdict: "figure-only", rightBasis: true, categoryCode: "3.7" }, "3", ["3"]), { text: "a zero rate — any zero gives this figure", tone: "off" });
+  });
+});
+
+describe("bringing it in: the outcome at the top, and a row the unit rule refuses back to Need a match (J000434, 24 Nov)", () => {
+  const REFUSAL = ["v7 row v7-row-10357: the plan's unit kWh (Gross CV) is not v7's kWh — its quantity cannot be carried faithfully.",
+    "v7 row v7-row-10358: the plan's unit kWh (Gross CV) is not v7's kWh — its quantity cannot be carried faithfully."];
+  it("a refusal: red, in the reconcile strip's place, each message and the rows it names", () => {
+    assert.deepEqual(rowsNamed([...REFUSAL, "v7 row v7-row-1001-r1: …", "row 772 is gone"]), ["10357", "10358", "1001", "772"]);
+    const markup = html({ refusal: refusedOutcome(REFUSAL) });
+    assert.ok(markup.includes(`class="nz-irm-rec bad" role="alert" data-outcome="refused"`) && markup.includes("Not brought in — nothing was written"));
+    assert.ok(markup.includes(`data-outcome-rows="10357,10358"`) && markup.includes("Rows: <b>10357, 10358</b>") && markup.includes("unit kWh (Gross CV) is not v7"));
+    assert.ok(!markup.includes("data-reconcile="), "it takes the strip's place");
+    assert.ok(!html().includes("data-outcome="), "nothing to say: the reconcile strip");
+  });
+  it("a preview that would not bring it in is the same red outcome", () => {
+    const preview = { mode: "preview" as const, jobId: "v7-job-424", legacyJobNumber: "J000434", outcome: "refused" as const, summarySha256: "a".repeat(64), decisionsSha256: "b".repeat(64),
+      counts: { matched: 0, changed: 0, needsMapping: 0, new: 1, withdrawn: 0, linkedPairChanged: 0 }, verdict: "ready-to-ingest" as const, exceptions: [],
+      refusal: { stage: "reingest", issues: [{ field: "rows", code: "PLAN_QUANTITY_MISMATCH", message: REFUSAL[0]! }] }, chain: { resync: null, plan: null }, scopeTotals: null };
+    const markup = html({ preview: preview as never });
+    assert.ok(markup.includes(`data-outcome="refused"`) && markup.includes(`data-outcome-rows="10357"`));
+    assert.deepEqual(reasonOutcome("Not automatic: manual edits.", [{ legacyDbId: "10353" }]).rows, ["10353"]);
+  });
+  it("a row bringing it in would refuse for its unit: Need a match, the reason on the row, the job held — never counted ready", () => {
+    const why = "the previous system holds it in kWh (Net CV); the factor is priced per kWh, so bringing it in would be refused";
+    const net = row({ legacyDbId: "10361", lane: "unmatched", held: why, candidates: [{ ...HGV, unitRefusal: why, invalid: why }] });
+    const markup = html({ data: { ...DATA, rows: [row({ candidates: [HGV], pick: HGV }), net] } });
+    assert.ok(markup.includes(`data-row="10361" data-lane="unmatched"`) && markup.includes(`data-held="true"`) && markup.includes(why));
+    assert.ok(markup.includes("Need a match — 1") && markup.includes("Accept &amp; bring in — 1 ready"), "the refused row is not one of the ready");
+    assert.deepEqual(bringInBlockers([row({}), net]), ["1 row still needs a match"]);
+    const hit = judgeHit(net, { datasetId: "d", factorId: "f", code: "c", label: "Natural gas", unit: "kWh", rate: 0.2, dataset: "D", scopes: ["1"], categories: ["1.natural-gas"],
+      sameUnit: false, unitRefusal: why }, []);
+    assert.equal(hit.invalid, why, "a search hit bringing it in would refuse cannot be used either");
   });
 });
 
@@ -222,7 +258,7 @@ describe("the resolve control's search, judged as the ID candidates are", () => 
   it("a hit is recomputed for the row and ranked with the row's own candidates, each factor once", () => {
     const target = ROWS[1]!;
     const hit = judgeHit(target, { datasetId: "uk-ghg-gb-2024", factorId: "uk-ghg-25_301_3069_9_2", code: "25_301_3069_9_2", label: RIGHT.label, unit: "miles", rate: 0.23818,
-      dataset: "DESNZ GB 2024", scopes: ["3"], categories: ["3.6"], sameUnit: true }, []);
+      dataset: "DESNZ GB 2024", scopes: ["3"], categories: ["3.6"], sameUnit: true, unitRefusal: null }, []);
     assert.equal(hit.match.verdict, "reproduces");
     assert.deepEqual(mergeCandidates([KM], [hit, { ...KM }]).map((entry) => entry.code), ["25_301_3069_9_2", "25_301_3069_9_1"]);
     assert.deepEqual(verdictWords(WRONG.match, "3", WRONG.scopes), { text: "Scope 1 — wrong basis", tone: "off" });

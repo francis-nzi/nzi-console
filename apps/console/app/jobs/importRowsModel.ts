@@ -174,7 +174,8 @@ export function judgeHit(row: V7ImportRowsRow, hit: V7ImportFactorHit, familyles
   const match = v7MatchCandidate({ scope: row.scope, quantity: row.previous.quantity, applyPct: row.applyPct, previousTco2e: row.previous.tco2e, categories: row.categories,
     v7Category: row.v7Category }, { rate: hit.rate, scopes: hit.scopes, categories: hit.categories, sameUnit: hit.sameUnit }, familyless);
   return { datasetId: hit.datasetId, factorId: hit.factorId, code: hit.code, label: hit.label, unit: hit.unit, rate: hit.rate, dataset: hit.dataset,
-    identity: false, exactCode: false, anchor: false, year: null, scopes: hit.scopes, categories: hit.categories, match, invalid: null };
+    identity: false, exactCode: false, anchor: false, year: null, scopes: hit.scopes, categories: hit.categories, match, unitRefusal: hit.unitRefusal,
+    invalid: hit.unitRefusal };
 }
 
 /** The ID candidates and the search's hits, as one ranked list, each factor once (the ID candidate kept: it carries its save check). */
@@ -187,6 +188,31 @@ export function mergeCandidates(own: readonly V7ImportCandidate[], hits: readonl
 /** Where a candidate may be filed for this row: its claimed categories of the row's scope, and the scope's family-less ones. */
 export function fileableCategories(row: Pick<V7ImportRowsRow, "scope">, candidate: Pick<V7ImportCandidate, "categories">, familyless: readonly string[]) {
   return emissionCategoryTaxonomy.filter((category) => category.scope === row.scope && (candidate.categories.includes(category.code) || familyless.includes(category.code)));
+}
+
+// ── What bringing it in said ────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The outcome of "Accept & bring in" when it did not simply bring the job in, shown in the reconcile strip's place: refused (red —
+ * nothing was written) or needing a reason (amber — the deliberate path), with the rows it names.
+ */
+export type BringInOutcome = { tone: "refused" | "reason"; title: string; lines: string[]; rows: string[] };
+
+/** The previous system's row ids a refusal names (`v7 row v7-row-10357`, `v7-row-10358`, `row 10357`), each once, in order. */
+export function rowsNamed(messages: readonly string[]): string[] {
+  const ids: string[] = [];
+  for (const message of messages) for (const match of message.matchAll(/v7-row-([0-9A-Za-z_-]+?)(?:-r\d+)?(?=[^0-9A-Za-z_-]|$)|\brow (\d+)\b/g)) {
+    const id = match[1] ?? match[2]!;
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
+export function refusedOutcome(messages: readonly string[]): BringInOutcome {
+  return { tone: "refused", title: "Not brought in — nothing was written", lines: [...messages], rows: rowsNamed(messages) };
+}
+export function reasonOutcome(why: string | null, exceptions: ReadonlyArray<{ legacyDbId: string }> = []): BringInOutcome {
+  return { tone: "reason", title: "Not automatic — give a reason to bring it in", lines: why ? [why] : [], rows: exceptions.map((entry) => entry.legacyDbId) };
 }
 
 /** The smart filter over the rows: every word, in any order, across the row's ids, label, site, unit and its pick. */
