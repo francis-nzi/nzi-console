@@ -97,6 +97,13 @@ export type V7ImportRefreshOptions = {
    * unchanged beneath it. The job's route sets it; the batch does not.
    */
   requireScopesAgree?: boolean;
+  /**
+   * BRIEF-v7-import-j000663 §B (ruled 24 Nov): bring the previous system's rows in on a snapshotted job. V7 is the source, so the
+   * chain's revert and re-sync run as `bring-in` and the snapshot does not refuse them. Each of the job's snapshots is kept, never
+   * edited, and recorded as superseded by this ingest (0234) in the same transaction; validate and publish then refuse it
+   * (SNAPSHOT_SUPERSEDED), so the report is re-composed from a new snapshot. The job's route sets it; the batch does not.
+   */
+  allowSnapshotted?: boolean;
 };
 
 export type Refresh = {
@@ -132,14 +139,14 @@ const notReady = (verdict: string) => ({ field: "jobId", code: "NOT_READY_TO_ING
   message: `The job is ${verdict}, not ready to ingest: every row that differs needs its decision, and every decision must stand.` });
 
 /** The chain, in the caller's transaction, from what `readRefresh` read. Returns whether the re-ingest went through. */
-async function runChain(db: Queryable, read: Refresh, organisationId: string, jobId: string, reason: string, suffix: string, basePlan: Omit<V7ReingestJobInput, "runId">) {
+async function runChain(db: Queryable, read: Refresh, organisationId: string, jobId: string, reason: string, suffix: string, basePlan: Omit<V7ReingestJobInput, "runId">, bringIn = false) {
   const run: V7ImportIngestRun = { organisationId, jobId, legacyJobNumber: read.legacyJobNumber, reason, extractSha256: read.sourceSha256, rows: read.rows, basePlan };
   const counts: PlanCounts = { committed: 0, decided: 0 };
   const chain = chainInput(run);
   const report: V7RehearsalReport = emptyRehearsalReport(jobId);
   let planSha256: string | null = null;
   const options = chainOptions(run, { decisions: read.decisions, carriedPairGroups: read.resolved.groups.filter((group) => group.moved && group.carried).map((group) => group.pairGroup) }, counts);
-  const committed = await runV7ResyncChain(db, chain, report, { ...options, reingestReasonSuffix: suffix,
+  const committed = await runV7ResyncChain(db, chain, report, { ...options, reingestReasonSuffix: suffix, bringIn,
     completePlan: async (db2, replan, superseded) => { const plan = await options.completePlan!(db2, replan, superseded); planSha256 = plan.crosswalkSha256; return plan; } });
   return { committed: committed && report.refusal === null, report, chain, counts, planSha256: planSha256 as string | null };
 }
@@ -168,7 +175,7 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
           await tx.query("SAVEPOINT v7_import_refresh_preview");
           try {
             const ran = await runChain(tx, read, context.organisationId, input.jobId, context.reason?.trim() || "import refresh preview", " — refresh preview, rolled back",
-              options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber));
+              options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true);
             data = { ...base, outcome: ran.committed ? "would-commit" : "refused",
               refusal: ran.committed ? null : ran.report.refusal ?? { stage: "reingest", issues: [{ field: "jobId", code: "NOT_COMMITTED", message: "The re-ingest did not commit." }] },
               chain: countsOf(ran.report, ran.counts), scopeTotals: ran.committed ? totalsOf(ran.report) : null };
@@ -203,7 +210,7 @@ export function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSou
     if (read.resolved.verdict !== "ready-to-ingest") throw new CommandValidationError([notReady(read.resolved.verdict)]);
     await options.within?.(db, "commit");
     const ran = await runChain(db, read, context.organisationId, input.jobId, context.reason!.trim(), " — import refresh",
-      options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber));
+      options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true);
     if (!ran.committed) throw new CommandValidationError(ran.report.refusal?.issues ?? [{ field: "jobId", code: "NOT_COMMITTED", message: "The re-ingest did not commit." }]);
     if (options.requireScopesAgree) {
       // Named by scope, never by figure: the refusal is answered on screen, and the modal shows both totals from its preview.
@@ -219,8 +226,25 @@ export function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSou
     const record = { sessionId, extractSha256: read.sourceSha256, decisionsSha256: read.decisionsSha256, planSha256: ran.planSha256, outcome: "committed" as const,
       refusedStage: null, refusalCodes: [], counts: countsOf(ran.report, ran.counts), scopeTotals: totalsOf(ran.report) };
     const ingestId = await insertIngest(db, context, input.jobId, "ingest", record, { resync: ran.chain.resyncRunId, reingest: ran.chain.reingestRunId });
+    const governedEvents = options.allowSnapshotted ? await supersedeSnapshots(db, context, input.jobId, ingestId) : [];
     const data: V7ImportRefreshCommitted = { mode: "commit", jobId: input.jobId, ingestId, sessionId, resyncRunId: ran.chain.resyncRunId, reingestRunId: ran.chain.reingestRunId,
       resync: record.counts.resync!, plan: record.counts.plan ?? { committed: 0, decided: 0 } };
-    return { data, entityType: "job", entityId: input.jobId, topic: "import.refreshed" };
+    return { data, entityType: "job", entityId: input.jobId, topic: "import.refreshed", ...(governedEvents.length ? { governedEvents } : {}) };
   });
+}
+
+/**
+ * §B: each of the job's snapshots not yet superseded, recorded as superseded by this ingest (0234) — the snapshot row untouched — with
+ * one audit event each (ids only). Returns the events for the command to write beside its own.
+ */
+async function supersedeSnapshots(db: Queryable, context: CommandContext, jobId: string, ingestId: string) {
+  const superseded = (await db.query<{ snapshot_id: string }>(
+    `INSERT INTO nzi_console.reviewed_crp_snapshot_supersessions (organisation_id, snapshot_id, job_id, superseded_by_ingest_id, created_by, correlation_id)
+     SELECT s.organisation_id, s.snapshot_id, s.job_id, $3, $4, $5 FROM nzi_console.reviewed_crp_snapshots s
+      WHERE s.organisation_id = $1 AND s.job_id = $2
+        AND NOT EXISTS (SELECT 1 FROM nzi_console.reviewed_crp_snapshot_supersessions x WHERE (x.organisation_id, x.snapshot_id) = (s.organisation_id, s.snapshot_id))
+      ORDER BY s.snapshot_version RETURNING snapshot_id`,
+    [context.organisationId, jobId, ingestId, context.actorId, context.correlationId])).rows;
+  return superseded.map((row) => ({ action: "report.snapshot.superseded", entityType: "reviewed_snapshot", entityId: row.snapshot_id,
+    before: { superseded: false }, after: { superseded: true, jobId, ingestId } }));
 }

@@ -76,7 +76,10 @@ const blocksAutoCommit = async (db: Queryable, context: CommandContext) =>
  * the fixed system reason and the preview's fingerprints. Otherwise the preview and why, for the deliberate flow.
  */
 export async function refreshV7ImportFastPath(pool: PoolLike, source: V7ImportRefreshSource, jobId: string, context: CommandContext,
-  options: V7ImportRefreshOptions = {}): Promise<V7ImportFastPathResult> {
+  given: V7ImportRefreshOptions = {}): Promise<V7ImportFastPathResult> {
+  // Never a bring-in on a snapshotted job (BRIEF-v7-import-j000663 §B): that is a person's act, in the deliberate flow. Without it the
+  // chain refuses a snapshotted job (SNAPSHOT_EXISTS), so its preview is flagged and it falls back.
+  const options: V7ImportRefreshOptions = { ...given, allowSnapshotted: false };
   let signals = null as V7ImportFastPathSignals | null;
   let adminGateBlocks = true;
   const preview = await previewV7ImportRefresh(pool, source, { jobId, mode: "preview" }, context, { ...options,

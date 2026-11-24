@@ -38,6 +38,8 @@ export type ReportStatusFacts = {
   published: ReadonlyArray<PublishedScopeFacts>;
   /** The job's period is imported history whose record of account is its v7 report (decision 12). */
   v7Record: boolean;
+  /** BRIEF-v7-import-j000663 §B (0234): the latest snapshot was superseded by a newer import — a new one is needed. */
+  latestSnapshotSuperseded?: boolean;
 };
 
 /**
@@ -120,6 +122,8 @@ export function deriveReportStatus(facts: ReportStatusFacts): DerivedReportStatu
     const stage = ATTENTION.find((candidate) => scopes.some((scope) => scope.stage === candidate))!;
     return { stage, reissueReady: facts.hasValidatedVersion, ...(scopes.length > 1 ? { scopes } : {}) };
   }
+  // §B: a superseded snapshot (and any version validated on it) is history — the report is in preparation again.
+  if (facts.latestSnapshotSuperseded) return { stage: "in-preparation", reissueReady: false };
   if (facts.hasValidatedVersion) return { stage: "ready-to-publish", reissueReady: false };
   // Imported history is never "in preparation": its record of account already exists, in v7.
   if (facts.v7Record && !facts.hasSnapshot) return { stage: "v7-record", reissueReady: false };

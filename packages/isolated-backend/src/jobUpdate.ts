@@ -52,6 +52,7 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   job_intensity_targets: { periodBound: true, why: "set against the reporting year" },
   job_emissions_targets: { periodBound: true, why: "set against the period's baseline" },
   reviewed_crp_snapshots: { periodBound: true, why: "a reviewed snapshot records the period it was made for" },
+  reviewed_crp_snapshot_supersessions: { periodBound: true, why: "a reviewed snapshot superseded by a newer import of the period's rows (0234)" },
   report_versions: { periodBound: true, why: "a report is issued for the period" },
   report_compositions: { periodBound: true, why: "a report's composition for the period" },
   report_sections: { periodBound: true, why: "a report's sections for the period" },

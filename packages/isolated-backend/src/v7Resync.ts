@@ -116,15 +116,22 @@ async function audit(db: Queryable, context: V7ResyncContext, clientId: string, 
 
 const SUPERSEDED_FK = "nzi_console.job_scope_rows_superseded_by_fk";
 
+/**
+ * How a re-sync is used: `resync` (R1 as ruled: refused on a snapshotted job), or `bring-in` — inside an `import.refresh` commit
+ * on a snapshotted job (BRIEF-v7-import-j000663 §B, ruled 24 Nov): V7 is the source, so R1's snapshot check stands aside; the
+ * snapshot is kept, and the commit records it as superseded (0234). Every other check stands.
+ */
+export type V7ResyncUse = "resync" | "bring-in";
+
 /** The re-sync, inside the caller's transaction (the dry run is this, rolled back). */
-export async function resyncV7JobInTransaction(db: Queryable, input: V7ResyncInput, context: V7ResyncContext): Promise<V7ResyncResult> {
+export async function resyncV7JobInTransaction(db: Queryable, input: V7ResyncInput, context: V7ResyncContext, use: V7ResyncUse = "resync"): Promise<V7ResyncResult> {
   requirePrincipal(context);
   const org = context.organisationId;
   if (!V7_RESYNC_RUN_PATTERN.test(input.runId)) fail("BAD_RUN_ID", "A re-sync run id is v7-resync-<uuid>.", "runId");
   if (!/^[0-9a-f]{64}$/.test(input.extractSha256)) fail("BAD_EXTRACT_SHA256", "The extract's sha256 is 64 lower-case hex characters.", "extractSha256");
   const job = await lockV7Job(db, org, input.jobId);
   // R1: nothing client-facing is frozen on this job, and nothing stands on the rows about to be superseded.
-  if (await snapshottedSince(db, org, input.jobId, null))
+  if (use === "resync" && await snapshottedSince(db, org, input.jobId, null))
     fail("SNAPSHOT_EXISTS", "The job has been snapshotted; its figures are frozen for the client. Roll the report version back first.", "jobId");
   if (await completedReingest(db, org, input.jobId))
     fail("ALREADY_REINGESTED", "This job has a completed re-ingest on its current v7 rows; revert it first, then re-sync.", "jobId");

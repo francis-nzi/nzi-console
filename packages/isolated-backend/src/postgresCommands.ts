@@ -2546,6 +2546,7 @@ export async function validateCrpReport(pool:PoolLike,input:CommandInputMap["rep
   const found=await db.query<{job_id:string;data_hash:string;created_at:Date|string;created_by:string;approved_by:string|null;payload_json:{jobNumber:string;client:string;reportingYear:number;target?:unknown;intensityTarget?:unknown;annualComparison?:unknown[];provenance?:{boundary?:{siteIds?:string[]}}|null;measurements:Array<Record<string,unknown>&{siteId?:string|null}>}}>(`SELECT job_id,data_hash,created_at,created_by,approved_by,payload_json FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id=$1 AND snapshot_id=$2`,[context.organisationId,input.reviewedSnapshotId]);
   const snapshot=found.rows[0];
   if(!snapshot)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"NOT_FOUND",message:"Reviewed snapshot was not found."}]);
+  await refuseSupersededSnapshot(db,context.organisationId,input.reviewedSnapshotId);
   const releasedByPreparer=await requireReleasableSnapshot(context,snapshot,access,db);
   const signee=input.signeeContactId?(await db.query<{contact_id:string;full_name:string;job_title:string|null}>(`SELECT k.contact_id,k.full_name,k.job_title FROM nzi_console.client_contacts k JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(k.organisation_id,k.client_id) WHERE k.organisation_id=$1 AND k.contact_id=$2 AND j.job_id=$3 AND k.status='active' AND 'report_signee'=ANY(k.roles)`,[context.organisationId,input.signeeContactId,snapshot.job_id])).rows[0]:null;
   if(input.signeeContactId&&!signee)throw new CommandValidationError([{field:"signeeContactId",code:"SIGNEE_INVALID",message:"The signee must be one of this client's active report-signee contacts."}]);
@@ -2617,11 +2618,23 @@ export async function publishCrpReport(pool:PoolLike,input:CommandInputMap["repo
 });}
 
 /**
+ * BRIEF-v7-import-j000663 §B (0234): a snapshot superseded by a newer import from the previous system is history. It stays, unedited,
+ * but no report is validated or issued from it: the job's rows have moved on, so the report is re-composed from a new snapshot.
+ */
+export async function refuseSupersededSnapshot(db:Queryable,organisationId:string,snapshotId:string):Promise<void>{
+  const superseded=(await db.query(`SELECT 1 FROM nzi_console.reviewed_crp_snapshot_supersessions WHERE organisation_id=$1 AND snapshot_id=$2`,[organisationId,snapshotId])).rows.length>0;
+  if(superseded)throw new CommandValidationError([{field:"reviewedSnapshotId",code:"SNAPSHOT_SUPERSEDED",message:"This snapshot was superseded by a newer import from the previous system. Take a new snapshot of the job's current rows and compose the report from it."}]);
+}
+
+/**
  * Issue a report version: supersede the published report of its scope, make this version `published`, and freeze its composition —
  * one act, in the caller's transaction. Shared by `report.publish` (from `validated`, the direct path) and `report.finalApprove` (from
  * `client_approved`, the end of the client-review loop, which also stamps `final_approved_*`), so the two cannot issue differently.
  */
 export async function issueReportVersion(db:Queryable,context:CommandContext,report:{reportVersionId:string;jobId:string;scopeKey:string},from:"validated"|"client_approved"){
+  // BRIEF-v7-import-j000663 §B: a version resting on a snapshot a newer import superseded is never issued — re-compose first.
+  const resting=(await db.query<{reviewed_snapshot_id:string}>(`SELECT reviewed_snapshot_id FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2`,[context.organisationId,report.reportVersionId])).rows[0];
+  if(resting)await refuseSupersededSnapshot(db,context.organisationId,resting.reviewed_snapshot_id);
   // S-1 (0163, R-S2 as updated): one published report per job **per scope**. Publishing supersedes the published report of the
   // same scope only; every other scope stays live beside it.
   await db.query(`UPDATE nzi_console.report_versions SET status='superseded',version=version+1 WHERE organisation_id=$1 AND job_id=$2 AND scope_key=$3 AND status='published'`,[context.organisationId,report.jobId,report.scopeKey]);

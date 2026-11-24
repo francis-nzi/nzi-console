@@ -188,7 +188,9 @@ describe("the committed plan, passed explicitly from a known server location", (
     assert.match(route, /importRefreshPlanOptions\(id,/);
     assert.match(route, /source: \(\) => liveImportViewSource\(\)/);
     // BRIEF-v7-import-rows-modal §B: from the job, a commit is refused unless every scope agrees to one decimal place.
-    assert.match(route, /requireScopesAgree: true \}\)/);
+    assert.match(route, /requireScopesAgree: true,/);
+    // BRIEF-v7-import-j000663 §B: from the job, a person may bring in on a snapshotted job (the batch's route never does).
+    assert.match(route, /allowSnapshotted: true \}\)/);
   });
 });
 

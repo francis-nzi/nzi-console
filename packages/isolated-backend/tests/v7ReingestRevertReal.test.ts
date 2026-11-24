@@ -3,9 +3,11 @@ import { randomUUID } from "node:crypto";
 import net from "node:net";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
-import { commandGrantForRole, V7_IMPORT_SUMMARY_ROW_KEYS, V7_REINGEST_ACTOR, type CommandContext, type V7ImportSummary, type V7ReingestJobInput } from "@nzi/contracts";
+import { commandGrantForRole, reportLinkFor, SUPERSEDED_PUBLISHED_LABEL, V7_IMPORT_SUMMARY_ROW_KEYS, V7_REINGEST_ACTOR, type CommandContext, type V7ImportSummary, type V7ReingestJobInput } from "@nzi/contracts";
 import { AuthorizationError } from "../src/auth";
-import { CommandValidationError } from "../src/postgresCommands";
+import { CommandValidationError, issueReportVersion, validateCrpReport } from "../src/postgresCommands";
+import { listReportStatusRegister } from "../src/reportStatusRegister";
+import { crpProfessionalManifest } from "@nzi/charts";
 import { withTenantRead, withTenantWrite } from "../src/postgres";
 import { getScopeQaReadiness } from "../src/readModels";
 import { planReingestAttestation } from "../src/reingestAttest";
@@ -2524,5 +2526,129 @@ describe("a snapshotted job: the rows read, the mapping read and the refresh pre
         reason: "revert (test)", grant: commandGrantForRole("admin", SN_ORG, V7_REINGEST_ACTOR) })), (error) => codes(error).includes("SNAPSHOT_EXISTS"));
     assert.deepEqual(await fingerprint(), before);
     assert.equal((await db.query(`SELECT status FROM nzi_console.v7_reingest_runs WHERE run_id = $1`, [standing])).rows[0]!.status, "completed");
+  });
+});
+
+/**
+ * BRIEF-v7-import-j000663 §B (ruled 24 Nov 2026): V7 is the source, so a person may bring the previous system's rows in on a
+ * snapshotted job. The snapshot is never edited: it is kept, and recorded as superseded by the ingest (0234). QA reopens (the rows
+ * come in pending), and no report is validated or issued from the superseded snapshot until a new one is taken. A published
+ * version stands untouched; the job says it is behind the previous system.
+ */
+describe("bring-in on a snapshotted job: the snapshot kept and superseded, QA reopened, the report blocked until re-composed", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  const BI_ORG = "v7-bring-in";
+  const HASH = `sha256:${"a".repeat(64)}`;
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  let standing = "";
+  const context = (role: "admin" | "consultant" = "consultant", reason?: string): CommandContext => {
+    keys += 1;
+    return { organisationId: BI_ORG, actorId: `staff-${role}`, principal: "staff", idempotencyKey: `bi-${keys}`, correlationId: `bi-corr-${keys}`,
+      ...(reason ? { reason } : {}), grant: commandGrantForRole(role, BI_ORG, `staff-${role}`) };
+  };
+  const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+  const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
+  const source: V7ImportRefreshSource = async () => ({ sourceSha256: "e".repeat(64), rows: NOW });
+  const plan = { basePlan: withoutRun(PLAN_BEFORE("x")) };
+  const snapshotRow = async () => (await db.query<{ t: string }>(`SELECT to_jsonb(s)::text AS t FROM nzi_console.reviewed_crp_snapshots s WHERE snapshot_id = 'snap-bi'`)).rows[0]!.t;
+  const decide = (input: Record<string, unknown>) => setV7ImportDecision(database.pool, { jobId: JOB_A, sourceSystem: "nzi-pro-v7", ...input } as never, context("admin"));
+  const registerRow = async () => (await withTenantRead(database.pool, BI_ORG, (client) => listReportStatusRegister(client, { jobId: JOB_A })))[0]!;
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7bringin"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [BI_ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [BI_ORG]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [BI_ORG]);
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'c1','Bring-in Test','active')`, [BI_ORG]);
+    await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+      VALUES ($1,$2,'c1',901,'crp','CRP','open','Data entry',2025,'2025-01-01','2025-12-31','nzi-pro-v7','901','J000901')`, [BI_ORG, JOB_A]);
+    await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [BI_ORG, JOB_A]);
+    await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                    VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [BI_ORG]);
+    for (const [id, label, unit, kg, scope, levels] of [["gas", "Natural gas", "kWh", 0.2, "1", ["Fuels", "Gaseous fuels", "Natural gas"]], ["water", "Water supply", "m3", 0.15, "3", []]] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
+        [BI_ORG, id, label, unit, kg, scope, levels]);
+    }
+    for (const row of BEFORE) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: BI_ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(JOB_A, row)]);
+    standing = `v7-reingest-${randomUUID()}`;
+    await withTenantWrite(database.pool, BI_ORG, (client) => reingestV7JobInTransaction(client, { ...PLAN_BEFORE(standing) },
+      { organisationId: BI_ORG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+        reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", BI_ORG, V7_REINGEST_ACTOR) }));
+    // As J000663 stood: QA approved, then reviewed and frozen — a snapshot, and a version validated on it.
+    await db.query(`UPDATE nzi_console.job_scope_rows SET review_status = 'approved', reviewed_row_version = version, reviewed_by = 'staff-reviewer', reviewed_at = now()
+                     WHERE job_id = $1 AND origin = 'live' AND enabled`, [JOB_A]);
+    await db.query(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by)
+                    VALUES ($1,'snap-bi',$2,1,1,$3,'{"measurements":[]}'::jsonb,'staff-1')`, [BI_ORG, JOB_A, HASH]);
+    await db.query(`INSERT INTO nzi_console.report_versions (organisation_id,report_version_id,job_id,status,manifest_version,reviewed_snapshot_id,data_hash) VALUES ($1,'rv-bi',$2,'validated',1,'snap-bi',$3)`, [BI_ORG, JOB_A, HASH]);
+    // The person's decisions, made against a stored summary: the deleted row goes off, the new one is mapped.
+    const summary = await withTenantWrite(database.pool, BI_ORG, (client) => summariseV7JobAsTheChainSees(client,
+      { organisationId: BI_ORG, jobId: JOB_A, legacyJobNumber: "J000901", extractSha256: "e".repeat(64), rows: NOW, generatedAt: "2026-11-24T09:00:00.000Z" }));
+    await uploadV7ImportSummary(database.pool, { jobId: JOB_A, summary }, { organisationId: BI_ORG, actorId: V7_IMPORT_ACTOR, principal: "staff", idempotencyKey: "bi-upload",
+      correlationId: "bi-upload", grant: commandGrantForRole("admin", BI_ORG, V7_IMPORT_ACTOR) });
+    await decide({ legacyDbId: "1003", kind: "withdraw" });
+    await decide({ legacyDbId: "1004", kind: "map", categoryCode: "1.natural-gas", datasetId: "v7-vintage-2025", factorId: "gas" });
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("without the job route's bring-in, a snapshotted job is still refused (SNAPSHOT_EXISTS), and the fast path never brings in on one", async () => {
+    const seen = await previewV7ImportRefresh(database.pool, source, { jobId: JOB_A, mode: "preview" }, context(), plan);
+    assert.deepEqual([seen.outcome, seen.refusal?.stage, seen.refusal?.issues.map((issue) => issue.code)], ["refused", "revert", ["SNAPSHOT_EXISTS"]]);
+    await assert.rejects(commitV7ImportRefresh(database.pool, source, { jobId: JOB_A, mode: "commit", summarySha256: seen.summarySha256, decisionsSha256: seen.decisionsSha256 },
+      context("consultant", "bring-in (test)"), plan), (error) => codes(error).includes("SNAPSHOT_EXISTS"));
+    const fast = await refreshV7ImportFastPath(database.pool, source, JOB_A, context(), { ...plan, allowSnapshotted: true });
+    assert.equal(fast.fastPath, "deliberate");
+    assert.deepEqual([fast.preview.refusal?.stage, fast.preview.refusal?.issues.map((issue) => issue.code)], ["revert", ["SNAPSHOT_EXISTS"]],
+      "the fast path turns bring-in off itself: its own preview is refused on the snapshot");
+    assert.equal((await db.query(`SELECT count(*)::int AS n FROM nzi_console.reviewed_crp_snapshot_supersessions`)).rows[0]!.n, 0);
+  });
+
+  let ingestId = "";
+  it("the job route's bring-in commits: the snapshot's bytes unchanged and recorded as superseded by the ingest, audited by id", async () => {
+    const bytes = await snapshotRow();
+    const options = { ...plan, allowSnapshotted: true };
+    const seen = await previewV7ImportRefresh(database.pool, source, { jobId: JOB_A, mode: "preview" }, context(), options);
+    assert.equal(seen.outcome, "would-commit", JSON.stringify(seen.refusal));
+    const outcome = await commitV7ImportRefresh(database.pool, source, { jobId: JOB_A, mode: "commit", summarySha256: seen.summarySha256, decisionsSha256: seen.decisionsSha256 },
+      context("consultant", "bring V7's current rows in (test)"), options);
+    ingestId = outcome.data.ingestId;
+    assert.equal(await snapshotRow(), bytes, "the snapshot row is byte for byte as it was");
+    const marks = (await db.query(`SELECT snapshot_id, job_id, superseded_by_ingest_id, created_by FROM nzi_console.reviewed_crp_snapshot_supersessions`)).rows;
+    assert.deepEqual(marks, [{ snapshot_id: "snap-bi", job_id: JOB_A, superseded_by_ingest_id: ingestId, created_by: "staff-consultant" }]);
+    const audit = (await db.query(`SELECT entity_id, after_json FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'report.snapshot.superseded'`, [BI_ORG])).rows;
+    assert.deepEqual(audit, [{ entity_id: "snap-bi", after_json: { superseded: true, jobId: JOB_A, ingestId } }]);
+    assert.deepEqual((await db.query(`SELECT status FROM nzi_console.v7_reingest_runs WHERE job_id = $1 ORDER BY created_at`, [JOB_A])).rows.map((row) => row.status), ["reverted", "completed"]);
+  });
+
+  it("QA reopens: every row brought in is pending, and the job is not ready for reporting", async () => {
+    const rows = (await db.query<{ review_status: string }>(`SELECT review_status FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'live' AND enabled`, [JOB_A])).rows;
+    assert.ok(rows.length > 0 && rows.every((row) => row.review_status !== "approved"), JSON.stringify(rows));
+    const qa = await withTenantRead(database.pool, BI_ORG, (client) => getScopeQaReadiness(client, JOB_A));
+    assert.deepEqual([qa.approved, qa.readyForReporting], [0, false]);
+  });
+
+  it("the report is blocked until re-composed: validate and issue refuse the superseded snapshot (SNAPSHOT_SUPERSEDED); the version stands unedited", async () => {
+    await assert.rejects(validateCrpReport(database.pool, { reviewedSnapshotId: "snap-bi", manifestVersion: crpProfessionalManifest.version } as never, context("admin")),
+      (error) => codes(error).includes("SNAPSHOT_SUPERSEDED"));
+    await assert.rejects(withTenantWrite(database.pool, BI_ORG, (client) => issueReportVersion(client, context("admin"), { reportVersionId: "rv-bi", jobId: JOB_A, scopeKey: "whole" }, "validated")),
+      (error) => codes(error).includes("SNAPSHOT_SUPERSEDED"));
+    assert.equal((await db.query(`SELECT status FROM nzi_console.report_versions WHERE report_version_id = 'rv-bi'`)).rows[0]!.status, "validated");
+  });
+
+  it("the job reads awaiting re-compose; with a published version standing, it reads behind the previous system and that version stays the job's", async () => {
+    const awaiting = await registerRow();
+    assert.deepEqual([awaiting.snapshotSuperseded, awaiting.stage, reportLinkFor(awaiting).label], [true, "in-preparation", "Earlier record of account · awaiting re-compose"]);
+    // As if the version had been published before the bring-in (set directly: the fixture, not the route).
+    await db.query(`UPDATE nzi_console.report_versions SET status = 'published', published_at = now() WHERE report_version_id = 'rv-bi'`);
+    const behind = await registerRow();
+    assert.deepEqual([reportLinkFor(behind).label, behind.publishedVersionId], [SUPERSEDED_PUBLISHED_LABEL, "rv-bi"]);
+  });
+
+  it("0234 is append-only: a supersession cannot be updated or deleted, even by the owner", async () => {
+    await assert.rejects(db.query(`UPDATE nzi_console.reviewed_crp_snapshot_supersessions SET created_by = 'x'`), /append-only/);
+    await assert.rejects(db.query(`DELETE FROM nzi_console.reviewed_crp_snapshot_supersessions`), /append-only/);
   });
 });
