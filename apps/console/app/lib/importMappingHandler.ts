@@ -1,4 +1,4 @@
-import { V7ImportViewConnectionRefused, type readV7ImportMapping, type StaffPrincipal, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "@nzi/isolated-backend";
+import { V7ImportViewConnectionRefused, type readV7ImportMapping, type readV7ImportRows, type StaffPrincipal, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "@nzi/isolated-backend";
 import { IMPORT_SOURCE_UNAVAILABLE } from "./importRefreshHandler";
 import { PlanDirectoryMissing } from "./importRefreshPlan";
 
@@ -16,7 +16,8 @@ export type ImportMappingDeps = {
   pool: () => Parameters<typeof readV7ImportMapping>[0];
   source: () => V7ImportRefreshSource;
   options: (jobId: string, principal: StaffPrincipal) => Promise<V7ImportRefreshOptions>;
-  read: typeof readV7ImportMapping;
+  /** The mapping view's read, or the import rows modal's (`readV7ImportRows`: the same read, each row's candidates beside it). */
+  read: typeof readV7ImportMapping | typeof readV7ImportRows;
   failure: (error: unknown) => Response;
   log?: (message: string, error: unknown) => void;
 };

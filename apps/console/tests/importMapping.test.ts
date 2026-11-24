@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { before, describe, it } from "node:test";
-import React, { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import React from "react";
 import { AuthorizationError, V7ImportViewConnectionRefused, type StaffPrincipal, type V7ImportMapping, type V7ImportMappingRow } from "@nzi/isolated-backend";
 import { handleImportMapping, type ImportMappingDeps } from "../app/lib/importMappingHandler";
 import { IMPORT_SOURCE_UNAVAILABLE } from "../app/lib/importRefreshHandler";
@@ -14,10 +13,8 @@ import { PlanDirectoryMissing } from "../app/lib/importRefreshPlan";
  * the route's order and fail-closed read, what the view shows, and the batch queue's first-time-mapping line.
  */
 (globalThis as { React?: unknown }).React = React;
-let view: typeof import("../app/jobs/importMappingView");
 let batch: typeof import("../app/clients/[clientId]/importBatchView");
 before(async () => {
-  view = await import("../app/jobs/importMappingView");
   batch = await import("../app/clients/[clientId]/importBatchView");
 });
 const read = (path: string) => readFileSync(new URL(`../app/${path}`, import.meta.url), "utf8");
@@ -79,41 +76,14 @@ describe("the mapping route: who, a fail-closed source, then the read", () => {
     assert.deepEqual(((await response.json()) as { data: V7ImportMapping }).data.legacyJobNumber, "J000434");
     assert.deepEqual([calls.read[0]![2], calls.read[0]![3], (calls.read[0]![4] as { basePlan: { crosswalkVersion: string } }).basePlan.crosswalkVersion], [PRINCIPAL, "v7-job-424", "none"]);
   });
-  it("is wired: the route reads the real mapping under import.refresh; the job's refresh panel shows it, resolving inline", () => {
+  it("is wired: the route reads the real mapping under import.refresh; the import rows modal's read is the same route handler, extended", () => {
     const route = read("api/isolated/jobs/[jobId]/import-refresh/mapping/route.ts");
     assert.ok(route.includes(`requireCapability(principal, "import.refresh")`));
     assert.ok(route.includes("read: readV7ImportMapping"));
-    const panel = read("jobs/ImportRefreshPanel.tsx");
-    for (const piece of ["`${path}/mapping`", "<ImportMappingView mapping={mapping} resolve={resolveRow} />", "onSaved={() => void readMapping()}"]) assert.ok(panel.includes(piece), piece);
-  });
-});
-
-describe("the mapping view", () => {
-  const html = (mapping: V7ImportMapping, resolve?: (row: V7ImportMappingRow) => React.ReactNode) =>
-    renderToStaticMarkup(createElement(view.ImportMappingView, { mapping, resolve }));
-
-  it("every row, both sides: the previous system's record, label, site, quantity, factor and tCO2e; the console's mapping, its source and status", () => {
-    const markup = html(MAPPING);
-    for (const piece of ["1001", "Natural gas", "Head office", "1,200 kWh", "7_1001", "0.24", "1.natural-gas", "gas", "Crosswalk plan", "Resolved"]) assert.ok(markup.includes(piece), piece);
-    assert.ok(markup.includes(`data-row="2001" data-source="none" data-flag="NEW"`));
-    assert.ok(markup.includes(view.FLAG_LABEL.NEW) && markup.includes(view.SOURCE_LABEL.none));
-    assert.ok(markup.includes("Off at refresh") && markup.includes(view.SOURCE_LABEL.decision), "a decided withdrawal");
-    assert.ok(markup.includes("3 rows · 1 flagged · Needs mapping"));
-  });
-  it("Σ per scope on both sides, so the totals can be seen to tie out", () => {
-    const markup = html(MAPPING);
-    assert.ok(markup.includes("1,052.59") && markup.includes("1,052.6"));
-  });
-  it("a flagged row carries the panel's control; a resolved one does not", () => {
-    const markup = html(MAPPING, (target) => createElement("span", { "data-control": target.legacyDbId }));
-    assert.ok(markup.includes(`data-control="2001"`));
-    assert.ok(!markup.includes(`data-control="1001"`) && !markup.includes(`data-control="772"`));
-  });
-  it("a totals-only job says it is a first-time mapping, not a regression; no internal name on screen", () => {
-    const markup = html({ ...MAPPING, firstTimeMapping: true });
-    assert.ok(markup.includes(batch.FIRST_TIME_MAPPING_LINE));
-    assert.ok(!html(MAPPING).includes(batch.FIRST_TIME_MAPPING_LINE));
-    assert.ok(!/v7/i.test(markup.replace(/v7-[a-z0-9-]+/g, "")), "no internal name on screen");
+    // BRIEF-v7-import-rows-modal: the in-page mapping view is retired; the modal reads each row's mapping and its candidates.
+    const rows = read("api/isolated/jobs/[jobId]/import-refresh/rows/route.ts");
+    assert.ok(rows.includes(`requireCapability(principal, "import.refresh")`) && rows.includes("read: readV7ImportRows") && rows.includes("handleImportMapping(request, jobId,"));
+    assert.ok(read("jobs/ImportRowsModal.tsx").includes("fetch(`${path}/rows`"));
   });
 });
 

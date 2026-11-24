@@ -15,7 +15,7 @@ import { resolveV7Import, type V7ImportDecision, type V7ImportResolvedVerdict, t
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { invalidApplied } from "./v7ImportDecision";
-import { committedV7CrosswalkPlan, readRefresh, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
+import { committedV7CrosswalkPlan, readRefresh, type Refresh, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
 import { readV7ImportView } from "./v7ImportSummary";
 
 export type V7ImportMappingSource = "decision" | "plan" | "console" | "none";
@@ -76,7 +76,7 @@ export async function readV7ImportMapping(pool: PoolLike, source: V7ImportRefres
   try {
     await withTenantWrite(pool, holder.organisationId, async (db) => {
       await assertCapabilityOnClient(db, holder, "import.refresh", { jobId });
-      mapping = await buildMapping(db, source, holder.organisationId, jobId, options.basePlan);
+      mapping = (await buildV7ImportMapping(db, source, holder.organisationId, jobId, options.basePlan)).mapping;
       throw new MappingRollback();
     });
   } catch (error) {
@@ -85,7 +85,11 @@ export async function readV7ImportMapping(pool: PoolLike, source: V7ImportRefres
   return mapping!;
 }
 
-async function buildMapping(db: Queryable, source: V7ImportRefreshSource, org: string, jobId: string, basePlan?: Omit<V7ReingestJobInput, "runId">): Promise<V7ImportMapping> {
+/**
+ * The mapping, inside the caller's transaction, with what it was read from (the refresh's own read) — for a read that lays more
+ * beside each row (the import rows modal's candidates). Writes nothing; the caller rolls back.
+ */
+export async function buildV7ImportMapping(db: Queryable, source: V7ImportRefreshSource, org: string, jobId: string, basePlan?: Omit<V7ReingestJobInput, "runId">): Promise<{ mapping: V7ImportMapping; read: Refresh }> {
   const read = await readRefresh(db, source, org, jobId);
   const plan = basePlan ?? committedV7CrosswalkPlan(jobId, read.legacyJobNumber);
   const planned = new Map(plan.rows.map((row) => [row.v7RowId, row]));
@@ -142,5 +146,5 @@ async function buildMapping(db: Queryable, source: V7ImportRefreshSource, org: s
       resolution: resolved.resolution, decision, invalid: decision ? invalid.get(decision.decisionId) ?? null : null };
   });
   const firstTimeMapping = read.summary.counts.new > 0 && await v7JobIsTotalsOnly(db, org, jobId);
-  return { jobId, legacyJobNumber: read.legacyJobNumber, verdict: read.resolved.verdict, scopeTotals: read.summary.scopeTotals, rows, summaryCurrent, firstTimeMapping };
+  return { mapping: { jobId, legacyJobNumber: read.legacyJobNumber, verdict: read.resolved.verdict, scopeTotals: read.summary.scopeTotals, rows, summaryCurrent, firstTimeMapping }, read };
 }
