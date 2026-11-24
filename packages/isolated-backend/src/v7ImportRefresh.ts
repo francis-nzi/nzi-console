@@ -54,7 +54,13 @@ const sha256 = (value: unknown) => createHash("sha256").update(stable(value)).di
  * In the service, the view set (`v7ImportViewSource`); a test may hand in planned rows directly.
  */
 export type V7ImportRefreshSource = (consoleDb: Queryable, job: { organisationId: string; jobId: string; legacyJobNumber: string }) =>
-  Promise<{ sourceSha256: string; rows: readonly PlannedRow[] }>;
+  Promise<{ sourceSha256: string; rows: readonly PlannedRow[]; v7Categories?: V7RowCategories }>;
+/**
+ * The previous system's own category name per row (`row_id`, or `source:<id>`), as its views carry it — read by the import rows
+ * modal to settle a factor filed under two categories (BRIEF-v7-import-rows-autopick-fix §5). The chain never reads it: the
+ * planned rows, and the fingerprint of what was read, are as they were.
+ */
+export type V7RowCategories = Readonly<Record<string, string | null>>;
 
 /** The service's source: the Phase A view set, through NZI_V7_VIEW_URL's pool (`v7ImportViewPoolConfig`). */
 export const v7ImportViewSource = (pool: Pick<Pool, "connect">): V7ImportRefreshSource => (consoleDb, job) => readV7JobRowsFromViews(consoleDb, pool, job);
@@ -94,7 +100,7 @@ export type V7ImportRefreshOptions = {
 };
 
 export type Refresh = {
-  legacyJobNumber: string; sourceSha256: string; rows: readonly PlannedRow[]; summary: V7ImportSummary; summarySha256: string;
+  legacyJobNumber: string; sourceSha256: string; rows: readonly PlannedRow[]; v7Categories: V7RowCategories; summary: V7ImportSummary; summarySha256: string;
   decisions: V7ImportDecision[]; decisionsSha256: string; resolved: ReturnType<typeof resolveV7Import>; exceptions: V7ImportRefreshException[];
 };
 
@@ -108,7 +114,7 @@ export async function readRefresh(db: Queryable, source: V7ImportRefreshSource, 
   const legacyJobNumber = (await db.query<{ legacy_job_number: string | null }>(
     `SELECT legacy_job_number FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [organisationId, jobId])).rows[0]?.legacy_job_number ?? null;
   if (!legacyJobNumber) fail("jobId", "JOB_NUMBER", "The job has no J number of the previous system.");
-  const { sourceSha256, rows } = await source(db, { organisationId, jobId, legacyJobNumber: legacyJobNumber! });
+  const { sourceSha256, rows, v7Categories = {} } = await source(db, { organisationId, jobId, legacyJobNumber: legacyJobNumber! });
   const summary = await summariseV7JobAsTheChainSees(db, { organisationId, jobId, legacyJobNumber: legacyJobNumber!, extractSha256: sourceSha256, rows });
   const decisions = (await currentDecisions(db, jobId)).get(jobId) ?? [];
   const resolved = resolveV7Import(summary.rows, decisions, await invalidApplied(db, organisationId, decisions));
@@ -118,7 +124,7 @@ export async function readRefresh(db: Queryable, source: V7ImportRefreshSource, 
     const of = summary.rows[at]!;
     return [{ legacyDbId: row.legacyDbId, status: of.status, ownStatus: row.ownStatus, resolution: row.resolution, carry: row.carry, scope: of.scope, code: of.code, pairGroup: of.pairGroup }];
   });
-  return { legacyJobNumber: legacyJobNumber!, sourceSha256, rows, summary, summarySha256: v7ImportRefreshSummarySha256(summary),
+  return { legacyJobNumber: legacyJobNumber!, sourceSha256, rows, v7Categories, summary, summarySha256: v7ImportRefreshSummarySha256(summary),
     decisions, decisionsSha256: v7ImportDecisionsSha256(decisions), resolved, exceptions };
 }
 

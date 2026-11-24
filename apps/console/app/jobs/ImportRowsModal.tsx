@@ -6,7 +6,8 @@ import { emissionCategoryTaxonomy, type V7ImportRefreshCommitted, type V7ImportR
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsAcceptResult, V7ImportRowsRow } from "@nzi/isolated-backend";
 import { Drawer } from "@nzi/ui";
 import {
-  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, pendingAccepts, rowsProgress, scopeLines, verdictWords,
+  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, pendingAccepts, rowsProgress, scopeLines, suggestedAccepts,
+  suggestedSummary, verdictWords,
   type RowsGroup,
 } from "./importRowsModel";
 import { notAutomaticLine, refreshViewOf, type FastPathOutcome, type ImportRefreshState } from "./importRefreshView";
@@ -177,6 +178,13 @@ export function ImportRowsView(props: ImportRowsViewProps) {
   const pending = pendingAccepts(data.rows);
   const mapsPending = pending.filter((item) => item.kind === "map").length;
   const retiringPending = pending.filter((item) => item.kind === "withdraw").length;
+  const offPending = pending.filter((item) => item.kind === "map" && data.rows.some((row) => row.legacyDbId === item.legacyDbId && row.lane === "switched-off")).length;
+  const suggested = suggestedAccepts(data.rows);
+  const suggestedCount = suggestedSummary(data.rows);
+  // "Accept all suggested" asks first: how many, by scope, a linked pair counted once.
+  const [confirmSuggested, setConfirmSuggested] = useState(false);
+  const acceptAllTitle = [offPending ? `${offPending} switched off in the previous system come in switched off, not counted.` : "",
+    retiringPending ? `The ${retiringPending} import total${retiringPending === 1 ? "" : "s"} the previous system dropped retire with them.` : ""].filter(Boolean).join(" ") || undefined;
   const blockers = bringInBlockers(data.rows);
   const canWrite = canResolve && writeEnabled;
   const view = preview ? refreshViewOf(preview) : null;
@@ -207,6 +215,7 @@ export function ImportRowsView(props: ImportRowsViewProps) {
         {progress.confirmOff ? <span><i className="nz-irm-dot a" /> {progress.confirmOff} gone — confirm off</span> : null}
         {progress.pairs ? <span><i className="nz-irm-dot a" /> {progress.pairs} linked pair{progress.pairs === 1 ? "" : "s"} to carry</span> : null}
         <span><i className="nz-irm-dot r" /> {progress.unmatched} need a match</span>
+        {progress.switchedOff ? <span><i className="nz-irm-dot m" /> {progress.switchedOff} switched off in the previous system</span> : null}
         {progress.retiring ? <span><i className="nz-irm-dot m" /> {progress.retiring} import total{progress.retiring === 1 ? "" : "s"} retiring</span> : null}
       </div>
     </div>
@@ -222,9 +231,13 @@ export function ImportRowsView(props: ImportRowsViewProps) {
     <div className="nz-irm-tb">
       <input className="nz-inp" aria-label="Filter rows" placeholder="Filter rows — ID, label, site, unit… (e.g. “van diesel miles”)" value={filter} onChange={(event) => onFilter(event.target.value)} />
       <button type="button" className="nz-btn" data-accept-all disabled={busy || !canWrite || mapsPending === 0} onClick={() => props.onSave(pending)}
-        title={retiringPending ? `The ${retiringPending} import total${retiringPending === 1 ? "" : "s"} the previous system dropped retire with them.` : undefined}>Accept all {mapsPending} matched</button>
+        title={acceptAllTitle}>Accept all {mapsPending} matched</button>
+      <button type="button" className="nz-btn" data-accept-suggested disabled={busy || !canWrite || suggestedCount.total === 0} aria-expanded={confirmSuggested}
+        onClick={() => setConfirmSuggested(true)}>Accept all {suggestedCount.total} suggested</button>
       <button type="button" className="nz-btn" onClick={onCollapse}>{collapseDone ? "Show done" : "Collapse done"}</button>
     </div>
+    {confirmSuggested && suggestedCount.total ? <SuggestedConfirm summary={suggestedCount} disabled={busy || !canWrite}
+      onAccept={() => { setConfirmSuggested(false); props.onSave(suggested); }} onCancel={() => setConfirmSuggested(false)} /> : null}
     {!canResolve ? <div className="nz-banner warn" role="status" style={{ margin: "10px 18px 0" }}><div>An Admin accepts the rows; you can review them here.</div></div> : null}
     {!writeEnabled ? <div className="nz-banner warn" role="status" style={{ margin: "10px 18px 0" }}><div>Bringing rows in is not enabled in this environment.</div></div> : null}
     {data.firstTimeMapping ? <div className="nz-irm-sub" style={{ padding: "8px 18px 0" }}>Now has activity data in the previous system — map its rows.</div> : null}
@@ -258,6 +271,21 @@ export function ImportRowsView(props: ImportRowsViewProps) {
   </>;
 }
 
+/** "Accept all suggested", asked first: how many, by scope — a linked pair counted once — before anything is written. */
+export function SuggestedConfirm({ summary, disabled, onAccept, onCancel }: {
+  summary: ReturnType<typeof suggestedSummary>; disabled: boolean; onAccept: () => void; onCancel: () => void;
+}) {
+  return <div className="nz-banner warn" role="alertdialog" aria-label="Accept all suggested" data-confirm-suggested style={{ margin: "10px 18px 0" }}>
+    <div><b>Accept {summary.total} suggestion{summary.total === 1 ? "" : "s"}?</b>{" "}
+      {summary.byScope.map((entry) => `Scope ${entry.scope}: ${entry.count}`).join(" · ")}
+      {summary.pairs ? ` · a linked pair counts once (${summary.pairs} here)` : ""}. Each comes in on the factor shown beside it.</div>
+    <div className="nz-irm-act">
+      <button type="button" className="nz-btn pri" data-confirm-accept disabled={disabled} onClick={onAccept}>Accept them</button>
+      <button type="button" className="nz-btn" onClick={onCancel}>Cancel</button>
+    </div>
+  </div>;
+}
+
 const pairMembers = (rows: readonly V7ImportRowsRow[]) => pairGroups(rows).reduce((sum, group) => sum + group.rows.length, 0);
 
 function Group({ group, ...props }: ImportRowsViewProps & { group: RowsGroup; canWrite: boolean }) {
@@ -275,24 +303,27 @@ function Group({ group, ...props }: ImportRowsViewProps & { group: RowsGroup; ca
       })}
     </>;
   }
-  const visible = group.key === "matched" && props.collapseDone ? group.rows.slice(0, 3) : group.rows;
+  // Matched rows show three when collapsed; switched-off rows collapse whole, unless one needs a person.
+  const offCollapsed = group.key === "switched-off" && props.collapseDone && group.rows.every((row) => row.pick !== null);
+  const visible = group.key === "matched" && props.collapseDone ? group.rows.slice(0, 3) : offCollapsed ? [] : group.rows;
   return <>
     <div className="nz-irm-gh" data-group={group.key}>{group.title} — {group.rows.length}{group.key === "matched" ? <span> · ID matched, figures tie out</span> : null}
-      {group.key === "double-counted" ? <span> · bringing it in beside its rows would count the scope twice — switch it off in the previous system</span> : null}</div>
+      {group.key === "double-counted" ? <span> · bringing it in beside its rows would count the scope twice — switch it off in the previous system</span> : null}
+      {group.key === "switched-off" ? <span> · come in switched off, as the previous system holds them — never counted</span> : null}</div>
     {visible.map((row) => <Row key={row.legacyDbId} row={row} {...props} />)}
-    {visible.length < group.rows.length ? <div className="nz-irm-gh" style={{ background: "transparent", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>+ {group.rows.length - visible.length} more matched rows</div> : null}
+    {visible.length < group.rows.length ? <div className="nz-irm-gh" style={{ background: "transparent", textTransform: "none", letterSpacing: 0, fontWeight: 400 }}>+ {group.rows.length - visible.length} more {group.key === "switched-off" ? "switched-off" : "matched"} rows</div> : null}
   </>;
 }
 
 const LANE_PILL: Record<V7ImportRowsRow["lane"], { tone: "g" | "a" | "r" | "m"; text: string }> = {
   accepted: { tone: "g", text: "Accepted" }, "pre-accepted": { tone: "g", text: "Matched" }, "in-console": { tone: "g", text: "In the console" },
   suggested: { tone: "a", text: "Suggested — confirm" }, "confirm-off": { tone: "a", text: "Gone — confirm off" }, unmatched: { tone: "r", text: "No match" },
-  retiring: { tone: "m", text: "Retires on accept" },
+  retiring: { tone: "m", text: "Retires on accept" }, "switched-off": { tone: "m", text: "Switched off — not counted" },
 };
 
 function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; canWrite: boolean }) {
   const pill = row.totalStillCounted ? { tone: "a" as const, text: "Still counted" } : LANE_PILL[row.lane];
-  const tone = row.lane === "retiring" ? "m" : pill.tone;
+  const tone = row.lane === "retiring" || row.lane === "switched-off" ? "m" : pill.tone;
   const needsMap = row.ownStatus === "new" || row.ownStatus === "needs-mapping";
   const open = props.openRow === row.legacyDbId;
   const pick = row.pick;
@@ -306,18 +337,19 @@ function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; ca
     <div className="num">{qty(row.previous.quantity)} <span className="nz-irm-s">{row.previous.unit ?? ""}</span></div>
     <div>{row.lane === "retiring" || row.lane === "in-console" || row.lane === "confirm-off" || row.totalStillCounted
       ? <div className="nz-irm-s">{row.lane === "retiring" ? "replaced by the activity rows" : row.lane === "confirm-off" ? "switches off when brought in" : row.intended.factorId ? `${categoryName(row.intended.categoryCode)} · ${row.intended.factorId}` : "carried as it stands"}</div>
-      : pick ? <><div className="nz-irm-t">{pick.label}</div><div className="nz-irm-id">{pick.code} · {rate(pick.rate)}{pick.match.categoryCode ? ` · ${categoryName(pick.match.categoryCode)}` : ""}</div></>
-        : <><div className="nz-irm-t" style={{ color: "var(--danger)" }}>— no console factor</div><div className="nz-irm-s">needs a match</div></>}</div>
+      : pick ? <><div className="nz-irm-t">{pick.label}</div><div className="nz-irm-id">{pick.code} · {rate(pick.rate)}{pick.match.categoryCode ? ` · ${categoryName(pick.match.categoryCode)}` : ""}</div>
+        {row.lane === "switched-off" ? <div className="nz-irm-s">the previous system&rsquo;s own factor · comes in switched off</div> : null}</>
+        : <><div className="nz-irm-t" style={{ color: "var(--danger)" }}>— no console factor</div><div className="nz-irm-s">{row.lane === "switched-off" ? "switched off — needs its factor, to come in switched off" : "needs a match"}</div></>}</div>
     <div className="nz-irm-st">
       <span className={`nz-irm-pill ${pill.tone}`}>{pill.text}</span>
-      <div className="nz-irm-fig">{row.previous.tco2e === null ? "" : <>{pick?.match.tco2e !== undefined && pick?.match.tco2e !== null && row.lane !== "in-console" ? <>{t(pick.match.tco2e)} <span>vs {t(row.previous.tco2e)}{pick.match.verdict === "reproduces" ? " ✓" : ""}</span></>
+      <div className="nz-irm-fig">{row.lane === "switched-off" ? <span>not counted</span> : row.previous.tco2e === null ? "" : <>{pick?.match.tco2e !== undefined && pick?.match.tco2e !== null && row.lane !== "in-console" ? <>{t(pick.match.tco2e)} <span>vs {t(row.previous.tco2e)}{pick.match.verdict === "reproduces" ? " ✓" : ""}</span></>
         : <>{t(row.previous.tco2e)} <span>tCO₂e, previous system</span></>}</>}</div>
       <div className="nz-irm-act">
         {confirm ? <button type="button" className="nz-btn" disabled={props.busy || !props.canWrite} onClick={() => accept(pick!, pick!.match.categoryCode!)}>Confirm</button> : null}
         {row.lane === "confirm-off" ? <button type="button" className="nz-btn" disabled={props.busy || !props.canWrite}
           onClick={() => props.onSave([{ kind: "withdraw", legacyDbId: row.legacyDbId, expectedDecisionId: row.decision?.decisionId ?? null }])}>Confirm it goes off</button> : null}
         {needsMap && row.lane !== "retiring" ? <button type="button" className="nz-btn" aria-expanded={open} onClick={() => props.onOpenRow(open ? null : row.legacyDbId)}>
-          {open ? "Close" : row.lane === "unmatched" ? "Find a factor" : "Change"}</button> : null}
+          {open ? "Close" : row.lane === "unmatched" || (row.lane === "switched-off" && !pick) ? "Find a factor" : "Change"}</button> : null}
       </div>
     </div>
     {open ? <Resolve row={row} familyless={props.data.familyless} busy={props.busy} canWrite={props.canWrite} search={props.search} onUse={accept} /> : null}
