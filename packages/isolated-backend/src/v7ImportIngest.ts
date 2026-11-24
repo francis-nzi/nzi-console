@@ -23,7 +23,7 @@ import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "
 import type { PlannedRow } from "./v7ClientImport";
 import { currentDecisions, invalidApplied, invalidV7ImportMappings } from "./v7ImportDecision";
 import { readV7ImportView, summariseV7JobForImport } from "./v7ImportSummary";
-import { revertV7ReingestInTransaction, sameV7Unit } from "./v7Reingest";
+import { revertV7ReingestInTransaction, v7UnitAgainstFactor } from "./v7Reingest";
 import { v7ReingestRevertContext } from "./v7ReingestRevertRun";
 import { emptyRehearsalReport, rehearseV7Resync, runV7ResyncChain, type V7ChainOptions, type V7Replan, type V7RehearsalInput, type V7RehearsalReport } from "./v7ResyncRehearsal";
 import type { V7ResyncResult } from "./v7Resync";
@@ -138,8 +138,9 @@ async function completeFromDecisions(db: Queryable, run: V7ImportIngestRun, read
       rule: `workbench:${decision.decisionId}` };
     // v7 recorded a figure and no activity: carried as a reported total, under the decision's category (D5).
     if (quantity === null) return { ...base, disposition: "REPORTED-TOTAL" as const, quantity: null, unit: null, qualityTier: before?.qualityTier ?? "estimated" };
-    // The factor's own spelling where v7's unit is the same unit, so calculation reads them as one; else v7's, for D7 to judge.
-    const unit = factorUnit && uom && sameV7Unit(factorUnit, uom) ? factorUnit : uom ?? factorUnit ?? "";
+    // The factor's own spelling where v7's unit is the same unit, so calculation reads them as one; else v7's, for D7 to judge — the
+    // one rule the rows modal judges a candidate by (v7UnitAgainstFactor), on v7's unit as D7 reads it.
+    const unit = uom === null ? factorUnit ?? "" : v7UnitAgainstFactor(uom, factorUnit).planUnit;
     return { ...base, disposition: "RE-INGEST" as const, quantity, unit, datasetId: decision.datasetId!, factorId: decision.factorId!,
       qualityTier: before?.qualityTier ?? tierFor(unit, record.data_source) };
   });

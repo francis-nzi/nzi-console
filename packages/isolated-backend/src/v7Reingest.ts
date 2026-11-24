@@ -53,16 +53,62 @@ type MigratedRow = {
   qty: string | null; uom: string | null; apply_pct: string | null;
 };
 
-/** v7's uom in the console registry's spelling (the ruled map; a three-letter currency upper-cased; anything else as written). */
+/**
+ * Energy's calorific basis (ruled 24 Nov, after J000434's refused bring-in): v7 records energy as gross CV unless it says net, so a
+ * bare kWh IS kWh (Gross CV) — and never kWh (Net CV). The key every unit comparison of the import goes through.
+ */
+const NET_KWH = "kwh (net cv)";
+function v7UnitKey(unit: string): string {
+  const key = unit.trim().toLowerCase().replace(/\s+/g, " ");
+  if (/^kwh ?\((gross( cv)?|gcv)\)$/.test(key)) return "kwh";
+  if (/^kwh ?\((net( cv)?|ncv)\)$/.test(key)) return NET_KWH;
+  return key;
+}
+
+/**
+ * v7's uom in the console registry's spelling (the ruled map; a three-letter currency upper-cased; anything else as written) — but
+ * net CV kept as net: the registry map reads both CVs as kWh, and a bare kWh is gross.
+ */
 export function normaliseV7Unit(uom: string | null): string | null {
   const key = (uom ?? "").trim().toLowerCase();
   if (!key) return null;
+  if (v7UnitKey(key) === NET_KWH) return "kWh (Net CV)";
   return V7_UNITS[key] ?? (/^[a-z]{3}$/.test(key) ? key.toUpperCase() : uom!.trim());
 }
 
-/** The same unit — one spelling, or two the unit registry reads as the same (the factor's own spelling, as the plan uses). */
-export const sameV7Unit = (a: string, b: string): boolean =>
-  a.trim().toLowerCase() === b.trim().toLowerCase() || checkUnit(a, b).kind === "same" || checkUnit(b, a).kind === "same";
+/**
+ * The same unit — one spelling, or two the unit registry reads as the same (the factor's own spelling, as the plan uses). kWh and
+ * kWh (Gross CV) are one unit; kWh (Net CV) is the same only as itself.
+ */
+export const sameV7Unit = (a: string, b: string): boolean => {
+  const left = v7UnitKey(a), right = v7UnitKey(b);
+  if (left === right) return true;
+  if (left === NET_KWH || right === NET_KWH) return false;
+  return checkUnit(a, b).kind === "same" || checkUnit(b, a).kind === "same";
+};
+
+/**
+ * The final check's unit test (R2, the hard gate): the plan's unit is v7's (as `normaliseV7Unit` reads it) — or why not, named.
+ * `v7UnitAgainstFactor` gives the plan its unit by the same rule, so a row the modal calls ready is never refused here on its unit.
+ */
+export function v7PlanUnitRefusal(planUnit: string | null, v7Unit: string | null): string | null {
+  return v7Unit === null || !planUnit || !sameV7Unit(planUnit, v7Unit) ? `the plan's unit ${planUnit ?? "none"} is not v7's ${v7Unit ?? "none"}` : null;
+}
+
+/**
+ * One rule for the import's unit, from the rows modal to the final check: the unit a plan row carries for v7's uom against the
+ * factor it is mapped to — the factor's own spelling where they are the same unit (so calculation reads them as one), else v7's — and
+ * why bringing it in would be refused, or null. Refused where the factor cannot be priced per v7's unit at all (kWh (Net CV) against
+ * a factor in kWh), as calculating the live row refuses it; a convertible unit (miles against per km) is carried and converted.
+ */
+export function v7UnitAgainstFactor(v7Uom: string | null, factorUnit: string | null): { planUnit: string; sameUnit: boolean; refusal: string | null } {
+  const held = normaliseV7Unit(v7Uom);
+  if (held === null) return { planUnit: factorUnit ?? "", sameUnit: false, refusal: "the previous system holds no unit for it" };
+  if (factorUnit && sameV7Unit(factorUnit, held)) return { planUnit: factorUnit, sameUnit: true, refusal: null };
+  const priced = factorUnit !== null && v7UnitKey(held) !== NET_KWH && v7UnitKey(factorUnit) !== NET_KWH && checkUnit(held, factorUnit).kind !== "reject";
+  return { planUnit: held, sameUnit: false,
+    refusal: priced ? null : `the previous system holds it in ${held}; the factor is priced per ${factorUnit ?? "no unit"}, so bringing it in would be refused` };
+}
 
 /** v7's stored input, as numbers. */
 const v7Input = (row: MigratedRow) => ({
@@ -156,9 +202,8 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
       const held = v7Input(v7ById.get(row.v7RowId)!);
       const why = held.quantity === null ? "v7 holds no quantity for it"
         : row.quantity === null || !sameV7Quantity(row.quantity, held.quantity) ? `the plan carries ${row.quantity ?? "none"}, v7 holds ${held.quantity}`
-        : held.unit === null || !row.unit || !sameV7Unit(row.unit, held.unit) ? `the plan's unit ${row.unit ?? "none"} is not v7's ${held.unit ?? "none"}`
-        : !sameV7Quantity(row.applyPct ?? 100, held.applyPct) ? `the plan apportions ${row.applyPct ?? 100}%, v7 ${held.applyPct}%`
-        : null;
+        : v7PlanUnitRefusal(row.unit ?? null, held.unit)
+          ?? (!sameV7Quantity(row.applyPct ?? 100, held.applyPct) ? `the plan apportions ${row.applyPct ?? 100}%, v7 ${held.applyPct}%` : null);
       if (why) quantityRefusals.push({ field: "rows", code: "PLAN_QUANTITY_MISMATCH", message: `v7 row ${row.v7RowId}: ${why} — its quantity cannot be carried faithfully.` });
     }
     if (quantityRefusals.length) throw new CommandValidationError(quantityRefusals.slice(0, 20));
