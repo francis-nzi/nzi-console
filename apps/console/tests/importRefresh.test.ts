@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { before, describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import React, { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+import React from "react";
 import { AuthorizationError, CommandValidationError, createV7ImportViewPool, v7ImportFastPathBlockers, type StaffPrincipal } from "@nzi/isolated-backend";
 import type { V7ImportRefreshPreview } from "@nzi/contracts";
 import { handleImportRefresh, IMPORT_SOURCE_UNAVAILABLE, type ImportRefreshDeps } from "../app/lib/importRefreshHandler";
@@ -152,12 +151,8 @@ describe("Phase D: the fast path is one action at the route, over the unchanged 
     assert.deepEqual(v7ImportFastPathBlockers({ ...READY, outcome: "refused", scopeTotals: null, refusal: { stage: "reingest", issues: [] } }, clean, false), ["flagged"], "D7 refusing is flagged");
     assert.deepEqual(v7ImportFastPathBlockers(READY, clean, true), ["admin-commits"]);
   });
-  it("the panel: 'Refreshed automatically' with Σ per scope and the audit id; otherwise why, in one line — and a clean job just has nothing to refresh", () => {
-    const out = renderToStaticMarkup(createElement(view.FastPathRefreshedView, { outcome: { fastPath: "refreshed", preview: READY, committed: COMMITTED, auditEventId: "audit-1" } }));
-    assert.ok(out.includes(view.REFRESHED_AUTOMATICALLY));
-    assert.deepEqual([...out.matchAll(/data-scope="(\d)"/g)].map((match) => match[1]), ["1", "2", "3"]);
-    assert.match(out, /2\.43<\/td><td>2\.43/);
-    assert.match(out, /audit-1/);
+  it("the modal says why a refresh was not automatic, in one line — and a clean job just has nothing to refresh", () => {
+    assert.equal(COMMITTED.mode, "commit");
     const line = (because: Array<"issued-report" | "manual-edits" | "flagged" | "admin-commits">, flagged = 0, preview: V7ImportRefreshPreview = READY) =>
       view.notAutomaticLine({ fastPath: "deliberate", preview, because, flagged });
     assert.equal(line(["issued-report"]), "Not automatic: issued report.");
@@ -165,10 +160,12 @@ describe("Phase D: the fast path is one action at the route, over the unchanged 
     assert.equal(line(["admin-commits"]), "Not automatic: an Admin commits on this organisation.");
     assert.equal(line(["flagged"], 0, PREVIEW_BASE), null, "a clean job: Nothing to refresh, no reason to give");
   });
-  it("the panel's one action is `auto`; its Commit, on a fallback, is still Phase C's", () => {
-    const panel = read("jobs/ImportRefreshPanel.tsx");
-    assert.match(panel, /postBrowserCommand<FastPathOutcome>\(path, \{ mode: "auto" \}/);
-    assert.ok(!/mode: "preview"/.test(panel), "the panel no longer previews without the fast path");
+  it("the modal's bring-in is one action, `auto`; its commit, on a fallback, is still Phase C's", () => {
+    // BRIEF-v7-import-rows-modal: the job's one action moved from the panel into the import rows modal's "Accept & bring in".
+    const modal = read("jobs/ImportRowsModal.tsx");
+    assert.match(modal, /postBrowserCommand<FastPathOutcome>\(path, \{ mode: "auto" \}/);
+    assert.ok(!/mode: "preview"/.test(modal), "the modal never previews without the fast path");
+    assert.ok(!/mode: "auto"|mode: "commit"/.test(read("jobs/ImportRefreshPanel.tsx")), "the panel only opens the modal");
     assert.match(read("api/isolated/jobs/[jobId]/import-refresh/route.ts"), /fastPath: refreshV7ImportFastPath/);
   });
 });
@@ -190,18 +187,17 @@ describe("the committed plan, passed explicitly from a known server location", (
     const route = read("api/isolated/jobs/[jobId]/import-refresh/route.ts");
     assert.match(route, /importRefreshPlanOptions\(id,/);
     assert.match(route, /source: \(\) => liveImportViewSource\(\)/);
+    // BRIEF-v7-import-rows-modal §B: from the job, a commit is refused unless every scope agrees to one decimal place.
+    assert.match(route, /requireScopesAgree: true \}\)/);
   });
 });
 
-describe("the job's panel: what one preview shows", () => {
-  const html = (preview: V7ImportRefreshPreview) => renderToStaticMarkup(createElement(view.ImportRefreshPreviewView, { preview }));
-  it("a clean job shows 'Nothing to refresh' — not an error, not a refusal", () => {
+describe("what one preview means (the modal shows it in its reconcile strip and footer)", () => {
+  it("a clean job is nothing to refresh — not an error, not a refusal", () => {
     assert.deepEqual(view.refreshViewOf(PREVIEW_BASE), { kind: "nothing" });
-    const out = html(PREVIEW_BASE);
-    assert.ok(out.includes(view.NOTHING_TO_REFRESH));
-    assert.ok(!out.includes("role=\"alert\"") && !out.includes("NOT_READY_TO_INGEST") && !out.includes("refused"), out);
+    assert.equal(view.NOTHING_TO_REFRESH, "Nothing to refresh");
   });
-  it("a job with exceptions lists those rows only — ids, codes, states — and no figure", () => {
+  it("a job with exceptions is exceptions — the rows that still need a person", () => {
     const preview: V7ImportRefreshPreview = { ...PREVIEW_BASE, verdict: "needs-mapping",
       counts: { matched: 5, changed: 2, needsMapping: 0, new: 1, withdrawn: 1, linkedPairChanged: 0 },
       exceptions: [
@@ -209,31 +205,21 @@ describe("the job's panel: what one preview shows", () => {
         { legacyDbId: "1003", status: "withdrawn", ownStatus: "withdrawn", resolution: "stale", carry: null, scope: "1", code: null, pairGroup: null },
       ],
       refusal: { stage: "ready", issues: [{ field: "jobId", code: "NOT_READY_TO_INGEST", message: "The job is needs-mapping, not ready to ingest." }] } };
-    assert.equal(view.refreshViewOf(preview).kind, "exceptions");
-    const out = html(preview);
-    assert.deepEqual([...out.matchAll(/data-exception="([^"]+)"/g)].map((match) => match[1]), ["1004", "1003"], "exactly the exceptions, none of the 7 matched or changed rows");
-    assert.match(out, /2 rows need a decision/);
-    assert.match(out, /Needs a decision/);
-    assert.match(out, /Decision no longer stands/);
-    assert.ok(!/tCO2e/.test(out), "an exception list carries no figure");
+    const seen = view.refreshViewOf(preview);
+    assert.equal(seen.kind, "exceptions");
+    assert.deepEqual(seen.kind === "exceptions" ? seen.exceptions.map((row) => row.legacyDbId) : [], ["1004", "1003"], "exactly the exceptions");
   });
-  it("a preview that would commit shows Σ previous system against Σ live per scope", () => {
+  it("a preview that would commit is ready: the previous system's total against the live total, per scope", () => {
     const preview: V7ImportRefreshPreview = { ...PREVIEW_BASE, outcome: "would-commit", verdict: "ready-to-ingest", refusal: null,
       chain: { resync: { unchanged: 1, superseded: 1, added: 1, withdrawn: 1 }, plan: { committed: 2, decided: 1 } },
       scopeTotals: { "1": { v7Tco2e: 0.34, liveTco2e: 0.34 }, "2": { v7Tco2e: 0, liveTco2e: 0 }, "3": { v7Tco2e: 0.0015, liveTco2e: 0.0015 } } };
-    const out = html(preview);
-    assert.deepEqual([...out.matchAll(/data-scope="(\d)"/g)].map((match) => match[1]), ["1", "2", "3"]);
-    assert.match(out, /0\.34<\/td><td>0\.34/);
-    assert.match(out, /Nothing has been written yet/);
+    assert.deepEqual(view.refreshViewOf(preview), { kind: "ready", totals: [{ scope: "1", previous: 0.34, live: 0.34 }, { scope: "2", previous: 0, live: 0 }, { scope: "3", previous: 0.0015, live: 0.0015 }] });
   });
-  it("a refused preview (D7) names the step and its codes, and that nothing was written", () => {
+  it("a refused preview (D7) is refused: the step and its codes", () => {
     const preview: V7ImportRefreshPreview = { ...PREVIEW_BASE, verdict: "ready-to-ingest",
       refusal: { stage: "reingest", issues: [{ field: "rows", code: "PLAN_UNIT_MISMATCH", message: "A row's unit does not match its factor." }] },
       chain: { resync: { unchanged: 1, superseded: 1, added: 1, withdrawn: 1 }, plan: { committed: 2, decided: 1 } } };
-    const out = html(preview);
-    assert.match(out, /refused at the re-ingest&#x27;s reconciliation/);
-    assert.match(out, /PLAN_UNIT_MISMATCH/);
-    assert.match(out, /Nothing was written/);
+    assert.deepEqual(view.refreshViewOf(preview), { kind: "refused", stage: "reingest", issues: [{ code: "PLAN_UNIT_MISMATCH", message: "A row's unit does not match its factor." }] });
   });
 });
 
@@ -251,13 +237,14 @@ describe("the wiring", () => {
     assert.match(route, /readImportPolicy\(db/);
     assert.ok(!/readImportPolicySafely|refreshCommitRequiresAdmin: false/.test(route), "an unreadable policy is an error, never 'off'");
   });
-  it("storing a summary to resolve is the existing upload, import.manage — and the panel sends a resolver to the Phase 2 controls", () => {
+  it("storing a summary to resolve is the existing upload, import.manage — the modal stores it before a decision, and commits with the preview's fingerprints", () => {
     const route = read("api/isolated/jobs/[jobId]/import-refresh/summary/route.ts");
     assert.match(route, /requireCommandPrincipal\(request, "import\.summary\.upload"\)/);
     assert.match(route, /uploadV7ImportSummary\(isolatedPool\(\)/);
-    const panel = read("jobs/ImportRefreshPanel.tsx");
-    assert.match(panel, /\/admin\/import\?job=/);
-    assert.match(panel, /postBrowserCommandWithReason<V7ImportRefreshCommitted>\(path,\s*\{ mode: "commit", summarySha256: preview\.summarySha256, decisionsSha256: preview\.decisionsSha256 \}/);
+    const modal = read("jobs/ImportRowsModal.tsx");
+    assert.match(modal, /if \(data\.summaryCurrent\) return true;\s*const stored = await postBrowserCommand\(`\$\{path\}\/summary`/);
+    assert.match(modal, /postBrowserCommandWithReason<V7ImportRefreshCommitted>\(path,\s*\{ mode: "commit", summarySha256: preview\.summarySha256, decisionsSha256: preview\.decisionsSha256 \}/);
+    assert.ok(!/\/admin\/import/.test(read("jobs/ImportRefreshPanel.tsx") + modal), "no bounce to Import reconciliation");
   });
   it("the panel is on every job page, beside Milestones and Time", () => {
     assert.match(read("jobs/[jobId]/page.tsx"), /<ImportRefreshPanel jobId=\{job\.header\.id\} \/>/);

@@ -52,7 +52,7 @@ describe("the admin rail follows the approved design", () => {
   });
 
   it("shows every unbuilt area with its roadmap phase (ruled P9), and links each to its own page", () => {
-    const LIVE = ["overview", "lookups", "team", "organisation", "job-types", "milestone-templates", "file-types", "tax-currency", "service-catalogue", "suppliers", "message-templates", "action-library", "srs-framework", "crm-pipeline", "custom-fields", "portal-broadcasts", "data-entry", "spend-allocation", "master-templates", "import"];
+    const LIVE = ["overview", "lookups", "team", "organisation", "job-types", "milestone-templates", "file-types", "tax-currency", "service-catalogue", "suppliers", "message-templates", "action-library", "srs-framework", "crm-pipeline", "custom-fields", "portal-broadcasts", "data-entry", "spend-allocation", "master-templates"];
     assert.equal(ADMIN_ITEMS.find((item) => item.id === "action-library")?.capability, "admin.lookups", "Action library is live (Actions A1), under admin.lookups as the library commands are");
     const unbuilt = ADMIN_ITEMS.filter((item) => !LIVE.includes(item.id));
     assert.ok(unbuilt.every((item) => item.phase && item.href === `/admin/${item.id}`));

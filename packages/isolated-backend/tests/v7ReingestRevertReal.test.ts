@@ -24,6 +24,7 @@ import { readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PA
 import { resumeV7ImportBatch, startV7ImportBatch } from "../src/v7ImportBatchCommands";
 import { readV7ImportBatch, runV7ImportBatch, V7_IMPORT_BATCH_PACING, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome, v7ImportBatchPauseAfter } from "../src/v7ImportBatch";
 import { readV7ImportMapping, v7JobIsTotalsOnly } from "../src/v7ImportMapping";
+import { acceptV7ImportRows, readV7ImportRows, searchV7ImportFactors } from "../src/v7ImportRows";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -843,6 +844,19 @@ describe("the import workbench's decisions: keyed on the import identity, valida
     assert.equal((await db.query(`SELECT count(*)::int AS n FROM nzi_console.v7_import_decisions WHERE job_id = $1 AND superseded_at IS NULL`, [JOB_P])).rows[0]!.n, 0);
     assert.equal((await workbench(DX_ORG, JOB_P))!.resolvedVerdict, "blocked-on-pairs", "hold is always open: nothing recorded, the job stays blocked");
     assert.ok(carried);
+  });
+
+  it("the import rows modal carries a linked pair as one: one item writes the carry for every member — a second member's item is already so — and a CRM is refused first", async () => {
+    await assert.rejects(acceptV7ImportRows(database.pool, { jobId: JOB_P, items: [{ kind: "carry", legacyDbId: "5001" }] }, context("consultant", "staff-consultant")),
+      (error) => error instanceof AuthorizationError && error.permission === "import.manage");
+    const outcome = await acceptV7ImportRows(database.pool, { jobId: JOB_P, items: [{ kind: "carry", legacyDbId: "5001" }, { kind: "carry", legacyDbId: "5002" }] }, context());
+    assert.deepEqual([outcome.written.map((entry) => entry.legacyDbId), outcome.unchanged, outcome.refused], [["5001"], ["5002"], []]);
+    const view = (await workbench(DX_ORG, JOB_P))!;
+    assert.deepEqual([view.resolvedVerdict, view.groups[0]!.carried], ["ready-to-ingest", true]);
+    // Left as the next test finds it: the pair uncarried again.
+    const held = (await db.query<{ decision_id: string }>(`SELECT decision_id FROM nzi_console.v7_import_decisions WHERE job_id = $1 AND legacy_db_id = '5001' AND superseded_at IS NULL`, [JOB_P])).rows[0]!.decision_id;
+    await clearV7ImportDecision(database.pool, { ...identity("5001", JOB_P), expectedDecisionId: held }, context());
+    assert.equal((await workbench(DX_ORG, JOB_P))!.resolvedVerdict, "blocked-on-pairs");
   });
 
   it("access: a caller without import.manage is refused — a consultant — and nothing is stored", async () => {
@@ -1974,5 +1988,207 @@ describe("the job's mapping view: every row of the previous system against its i
     const view = await withTenantRead(database.pool, MV_ORG, (client) => readV7ImportBatch(client, MV_ORG, "ct"));
     assert.deepEqual(view.run?.queue.map((item) => [item.jobNumber, item.status, item.because, item.flagged, item.firstTimeMapping]),
       [["J000902", "queued", ["flagged"], 5, true]]);
+  });
+});
+
+/**
+ * The import rows modal (BRIEF-v7-import-rows-modal): J000434's shape — the console holds only the previous system's three scope
+ * totals; the previous system now has activity rows. The read lays each row beside its candidates, found by its own ID
+ * (suffix-insensitive) and recomputed; the accept writes many rows' decisions in one request through the decision command; the
+ * totals retire as the rows come in; and from the job, a commit is refused unless every scope agrees to one decimal place.
+ */
+describe("the import rows modal: candidates by ID, recomputed and judged; the bulk accept; the totals retire; the reconcile gate", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  const RM_ORG = "v7-rows";
+  const JOB_R = "v7-job-r", JOB_W = "v7-job-w";
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  const context = (role: "admin" | "consultant" | "reviewer" = "admin", actorId = `staff-${role}`, reason?: string): CommandContext => {
+    keys += 1;
+    return { organisationId: RM_ORG, actorId, principal: actorId.startsWith("policy:") ? "system" : "staff", idempotencyKey: `rm-${keys}`, correlationId: `rm-corr-${keys}`,
+      ...(reason ? { reason } : {}), grant: commandGrantForRole(role, RM_ORG, actorId) };
+  };
+  const holder = (role: "admin" | "consultant" | "reviewer" = "consultant") => commandGrantForRole(role, RM_ORG, `staff-${role}`);
+  const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+  const activity = (id: string, scope: "1" | "3", label: string, qty: number, unit: string, reported: number, originalId: string): PlannedRow => {
+    const row = plannedRow({ id, scope, label, qty, unit, reported });
+    return { ...row, migratedRecord: { ...(row.migratedRecord as unknown as Record<string, unknown>), original_id: originalId } as unknown as PlannedRow["migratedRecord"] };
+  };
+  const total = (n: "1" | "2" | "3", id: string): PlannedRow => {
+    const row = plannedRow({ id, scope: n === "2" ? "1" : n as "1" | "3", label: "Imported Totals", qty: 1000, unit: "kgCO2e", reported: 1 });
+    return { ...row, scope: n, v7Scope: n, migratedRecord: { ...row.migratedRecord, original_id: `wfm-import-scope-${n}`, data_source: "WFM Import" } as PlannedRow["migratedRecord"] };
+  };
+  // J000434 now, in miniature: a gas row its ID finds (one factor reproduces), a gas row its ID does not, an LPG row two editions
+  // reproduce alike, and the three totals gone from the previous system.
+  const GAS_ROW = activity("4001", "1", "Fuels — natural gas", 154_008, "kWh", 28.168063, "1_100_1004_6_1");
+  const GAS_OTHER = activity("4002", "1", "Natural gas (second meter)", 1_000, "kWh", 0.1829, "1_100_1009_6_1");
+  const LPG_ROW = activity("4003", "1", "LPG", 500, "litres", 0.75, "1_100_1020_6_1");
+  // The wrong-basis guard, alone on its job: a Scope 3 row whose ID finds a Scope 1 factor that gives the right figure.
+  const TRAVEL_ROW = activity("4101", "3", "Business travel — small car", 100, "miles", 0.023818, "4_301_3069_9_1");
+  const holds = new Map<string, readonly PlannedRow[]>([[JOB_R, [GAS_ROW, GAS_OTHER, LPG_ROW]], [JOB_W, [TRAVEL_ROW]]]);
+  const reads: string[] = [];
+  const source: V7ImportRefreshSource = async (_db, job) => { reads.push(job.jobId); return { sourceSha256: "e".repeat(64), rows: holds.get(job.jobId)! }; };
+  const EMPTY_PLAN = (jobId: string) => ({ jobId, crosswalkVersion: "none", crosswalkSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", vintageDatasetIds: [], rows: [] });
+  const rowsOf = (jobId: string, role: "admin" | "consultant" | "reviewer" = "consultant") => readV7ImportRows(database.pool, source, holder(role), jobId, { basePlan: EMPTY_PLAN(jobId) });
+  const fingerprint = async () => {
+    const tables = (await db.query<{ t: string }>(`SELECT tablename AS t FROM pg_tables WHERE schemaname = 'nzi_console' ORDER BY tablename`)).rows.map((row) => row.t);
+    const prints: Record<string, string> = {};
+    for (const table of tables) prints[table] = (await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) AS p FROM nzi_console.${table} t`)).rows[0]!.p;
+    return prints;
+  };
+  const upload = async (jobId: string, legacyJobNumber: string) => {
+    const summary = await withTenantWrite(database.pool, RM_ORG, (client) => summariseV7JobAsTheChainSees(client,
+      { organisationId: RM_ORG, jobId, legacyJobNumber, extractSha256: "e".repeat(64), rows: holds.get(jobId)!, generatedAt: "2026-11-24T02:00:00.000Z" }));
+    await uploadV7ImportSummary(database.pool, { jobId, summary }, context("admin", V7_IMPORT_ACTOR));
+  };
+  const options = { basePlan: EMPTY_PLAN(JOB_R) };
+  const preview = () => previewV7ImportRefresh(database.pool, source, { jobId: JOB_R, mode: "preview" }, context("consultant"), options);
+  const commit = (shown: { summarySha256: string; decisionsSha256: string }, gate: boolean) => commitV7ImportRefresh(database.pool, source,
+    { jobId: JOB_R, mode: "commit", summarySha256: shown.summarySha256, decisionsSha256: shown.decisionsSha256 },
+    context("consultant", "staff-consultant", "bring J000903 in from the previous system (test)"), { ...options, ...(gate ? { requireScopesAgree: true } : {}) });
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7rows"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [RM_ORG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [RM_ORG]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [RM_ORG]);
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'cr','Rows Modal Client','active')`, [RM_ORG]);
+    for (const [user, role] of [["staff-admin", "admin"], ["staff-consultant", "consultant"], ["staff-reviewer", "reviewer"]]) {
+      await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [RM_ORG, user, role]);
+    }
+    for (const [ds, name, from] of [["uk-ghg-gb-2024", "DESNZ GB 2024", "2024-01-01"], ["uk-ghg-gb-2023", "DESNZ GB 2023", "2023-01-01"]]) {
+      await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                      VALUES ($1,$2,$3,'1',$4,'2026-12-31','GB','active','Test','Source: test.')`, [RM_ORG, ds, name, from]);
+    }
+    const GAS = ["Fuels", "Gaseous fuels", "Natural gas"], LPG = ["Fuels", "Gaseous fuels", "LPG"], CARS = ["Passenger vehicles", "Cars (by size)", "Small car"];
+    for (const [ds, id, label, unit, kg, scope, levels] of [
+      ["uk-ghg-gb-2024", "uk-ghg-1_100_1004_6_1", "Natural gas — gross CV", "kWh", 0.1829, "1", GAS],
+      ["uk-ghg-gb-2024", "uk-ghg-1_100_1004_6_2", "Natural gas — net CV", "kWh", 0.2, "1", GAS],
+      ["uk-ghg-gb-2023", "uk-ghg-1_100_1004_6_1", "Natural gas — gross CV", "kWh", 0.19, "1", GAS],
+      ["uk-ghg-gb-2024", "uk-ghg-1_100_1020_6_1", "LPG", "litres", 1.5, "1", LPG],
+      ["uk-ghg-gb-2023", "uk-ghg-1_100_1020_6_1", "LPG", "litres", 1.5, "1", LPG],
+      ["uk-ghg-gb-2024", "uk-ghg-1_100_1020_6_9", "LPG — another edition", "litres", 1.7, "1", LPG],
+      ["uk-ghg-gb-2024", "uk-ghg-4_301_3069_9_2", "Passenger vehicles · small car · petrol · per mile", "miles", 0.23818, "1", CARS],
+    ] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,$2,$3,$4,$5,$6,ARRAY[$7::text],$8::text[])`,
+        [RM_ORG, ds, id, label, unit, kg, scope, levels]);
+    }
+    for (const [jobId, sequence, number] of [[JOB_R, 903, "J000903"], [JOB_W, 904, "J000904"]] as const) {
+      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+        VALUES ($1,$2,'cr',$3,'crp','CRP','open','Data entry',2025,'2025-01-01','2025-12-31','nzi-pro-v7',$4,$5)`, [RM_ORG, jobId, sequence, String(sequence), number]);
+      await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,'2025-01-01','2025-12-31','GB')`, [RM_ORG, jobId]);
+      for (const ds of ["uk-ghg-gb-2024", "uk-ghg-gb-2023"]) await db.query(`INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
+        VALUES ($1,$2,$3,'manual','the job''s datasets (test)','staff-admin')`, [RM_ORG, jobId, ds]);
+    }
+    for (const row of [total("1", "3001"), total("2", "3002"), total("3", "3003")]) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: RM_ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(JOB_R, row)]);
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("access: the refresh's own rule — a Reviewer is refused before the source is read; the read and the search write nothing", async () => {
+    const before = await fingerprint();
+    reads.length = 0;
+    await assert.rejects(rowsOf(JOB_R, "reviewer"), (error) => error instanceof AuthorizationError && error.permission === "import.refresh");
+    await assert.rejects(searchV7ImportFactors(database.pool, holder("reviewer"), { jobId: JOB_R, query: "gas", unit: "kWh" }),
+      (error) => error instanceof AuthorizationError && error.permission === "import.refresh");
+    assert.deepEqual(reads, []);
+    await rowsOf(JOB_R);
+    await searchV7ImportFactors(database.pool, holder(), { jobId: JOB_R, query: "gas", unit: "kWh" });
+    assert.deepEqual(await fingerprint(), before, "read and rolled back: the lock, the summary's revert, nothing kept");
+  });
+
+  it("each row's lane: one clean reproduction by its ID comes in pre-accepted; two that reproduce alike are a suggestion; none is a match to find; the dropped totals retire", async () => {
+    const seen = await rowsOf(JOB_R);
+    assert.deepEqual(seen.rows.map((row) => [row.legacyDbId, row.lane]), [
+      ["4001", "pre-accepted"], ["4002", "unmatched"], ["4003", "suggested"], ["3001", "retiring"], ["3002", "retiring"], ["3003", "retiring"]]);
+    const gas = seen.rows[0]!;
+    assert.deepEqual(gas.candidates.map((candidate) => [candidate.datasetId, candidate.factorId, candidate.match.verdict, candidate.match.tco2e]), [
+      ["uk-ghg-gb-2024", "uk-ghg-1_100_1004_6_1", "reproduces", 28.168063],
+      ["uk-ghg-gb-2023", "uk-ghg-1_100_1004_6_1", "close", 29.26152],
+      ["uk-ghg-gb-2024", "uk-ghg-1_100_1004_6_2", "differs", 30.8016]], "the suffix-insensitive ID finds the net-CV variant and the other edition too; the recompute tells them apart");
+    assert.deepEqual([gas.pick?.factorId, gas.pick?.match.categoryCode, gas.pick?.invalid, gas.pick?.exactCode], ["uk-ghg-1_100_1004_6_1", "1.natural-gas", null, true]);
+    assert.deepEqual(seen.rows[2]!.candidates.filter((candidate) => candidate.match.verdict === "reproduces").map((candidate) => candidate.datasetId), ["uk-ghg-gb-2023", "uk-ghg-gb-2024"],
+      "two editions at one value: ambiguity, a person chooses");
+    assert.deepEqual([seen.rows[1]!.candidates, seen.rows[1]!.pick], [[], null]);
+    assert.ok(seen.rows.every((row) => !row.totalStillCounted));
+    assert.deepEqual([seen.firstTimeMapping, seen.summaryCurrent, seen.scopeTotals["1"].v7Tco2e], [true, false, 29.100963]);
+    assert.ok(!JSON.stringify(seen).includes("Rows Modal Client"), "no client name in the read");
+  });
+
+  it("the wrong-basis guard: a Scope 1 factor giving a Scope 3 row's figure is offered as figure-only, and never auto-picked", async () => {
+    const travel = (await rowsOf(JOB_W)).rows[0]!;
+    assert.deepEqual([travel.lane, travel.pick, travel.candidates.map((candidate) => [candidate.factorId, candidate.match.verdict, candidate.match.rightBasis])],
+      ["unmatched", null, [["uk-ghg-4_301_3069_9_2", "figure-only", false]]]);
+  });
+
+  it("the smart search: any words of the ID, label, unit and dataset, any order; each hit priced against the row's unit and filed by its family", async () => {
+    const found = await searchV7ImportFactors(database.pool, holder(), { jobId: JOB_R, query: "kwh gas natural 2024", unit: "kWh" });
+    // Every word must appear (2024 rules out the 2023 edition); the shorter label first. The modal re-ranks by verdict for the row.
+    assert.deepEqual(found.hits.map((hit) => [hit.factorId, hit.dataset, hit.sameUnit, hit.categories]), [
+      ["uk-ghg-1_100_1004_6_2", "DESNZ GB 2024", true, ["1.natural-gas"]], ["uk-ghg-1_100_1004_6_1", "DESNZ GB 2024", true, ["1.natural-gas"]]]);
+    const byId = await searchV7ImportFactors(database.pool, holder(), { jobId: JOB_R, query: "1_100_1020", unit: "kWh" });
+    assert.deepEqual([...new Set(byId.hits.map((hit) => hit.factorId))].sort(), ["uk-ghg-1_100_1020_6_1", "uk-ghg-1_100_1020_6_9"]);
+    assert.ok(byId.hits.every((hit) => hit.sameUnit === false), "per litre, against a row in kWh");
+    await assert.rejects(searchV7ImportFactors(database.pool, holder(), { jobId: JOB_R, query: "   ", unit: null }), (error) => codes(error).includes("INVALID"));
+  });
+
+  it("the bulk accept: one request, each row's decision by its id through the decision command — the totals retired with them — a refused row reported, the rest kept; a retry replays", async () => {
+    await upload(JOB_R, "J000903");
+    const rowsBefore = (await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(r::text, '|' ORDER BY scope_row_id), '')) AS p FROM nzi_console.job_scope_rows r`)).rows[0]!.p;
+    const items = [
+      { kind: "map" as const, legacyDbId: "4001", categoryCode: "1.natural-gas", datasetId: "uk-ghg-gb-2024", factorId: "uk-ghg-1_100_1004_6_1", expectedDecisionId: null },
+      { kind: "map" as const, legacyDbId: "4002", categoryCode: "1.natural-gas", datasetId: "uk-ghg-gb-2024", factorId: "uk-ghg-1_100_1020_6_1", expectedDecisionId: null },
+      ...["3001", "3002", "3003"].map((legacyDbId) => ({ kind: "withdraw" as const, legacyDbId, expectedDecisionId: null })),
+    ];
+    await assert.rejects(acceptV7ImportRows(database.pool, { jobId: JOB_R, items }, context("consultant")),
+      (error) => error instanceof AuthorizationError && error.permission === "import.manage", "a CRM reviews; an Admin accepts — refused before anything is written");
+    const ctx = context("admin");
+    const outcome = await acceptV7ImportRows(database.pool, { jobId: JOB_R, items }, ctx);
+    assert.deepEqual(outcome.written.map((entry) => [entry.legacyDbId, entry.kind]), [["4001", "map"], ["3001", "withdraw"], ["3002", "withdraw"], ["3003", "withdraw"]]);
+    assert.deepEqual(outcome.refused.map((entry) => [entry.legacyDbId, entry.codes]), [["4002", ["FACTOR_NOT_IN_CATEGORY"]]], "an LPG factor is not one of Natural Gas's");
+    const decisions = (await db.query(`SELECT legacy_db_id, kind, factor_id FROM nzi_console.v7_import_decisions WHERE job_id = $1 AND superseded_at IS NULL ORDER BY legacy_db_id`, [JOB_R])).rows;
+    assert.deepEqual(decisions, [{ legacy_db_id: "3001", kind: "withdraw", factor_id: null }, { legacy_db_id: "3002", kind: "withdraw", factor_id: null },
+      { legacy_db_id: "3003", kind: "withdraw", factor_id: null }, { legacy_db_id: "4001", kind: "map", factor_id: "uk-ghg-1_100_1004_6_1" }]);
+    const audit = (await db.query<{ after_json: unknown }>(`SELECT after_json FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.decision.set' AND entity_id = $2`, [RM_ORG, JOB_R])).rows;
+    assert.equal(audit.length, 4, "one audit event per decision, as the one-row control writes it");
+    assert.ok(audit.every((event) => !/:\s*-?\d/.test(JSON.stringify(event.after_json).replace(/v7-decision-[0-9a-f-]{36}/g, ""))), "no figure in the audit");
+    const again = await acceptV7ImportRows(database.pool, { jobId: JOB_R, items }, ctx);
+    assert.deepEqual(again.written.map((entry) => entry.decisionId), outcome.written.map((entry) => entry.decisionId), "the same request again replays what it wrote");
+    assert.equal((await db.query(`SELECT count(*)::int AS n FROM nzi_console.v7_import_decisions WHERE job_id = $1`, [JOB_R])).rows[0]!.n, 4, "nothing written twice");
+    assert.equal((await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(r::text, '|' ORDER BY scope_row_id), '')) AS p FROM nzi_console.job_scope_rows r`)).rows[0]!.p, rowsBefore,
+      "decisions only: no job row touched");
+    const seen = await rowsOf(JOB_R);
+    assert.deepEqual(seen.rows.map((row) => [row.legacyDbId, row.lane, row.resolution]), [
+      ["4001", "accepted", "resolved"], ["4002", "unmatched", "unresolved"], ["4003", "suggested", "unresolved"],
+      ["3001", "retiring", "resolved"], ["3002", "retiring", "resolved"], ["3003", "retiring", "resolved"]]);
+    assert.equal(seen.summaryCurrent, true);
+  });
+
+  it("the reconcile gate: from the job, a scope that does not agree to one decimal place is refused and nothing is written; once it agrees, it is brought in and the totals retire", async () => {
+    const admin = context("admin");
+    await acceptV7ImportRows(database.pool, { jobId: JOB_R, items: [
+      { kind: "map", legacyDbId: "4002", categoryCode: "1.natural-gas", datasetId: "uk-ghg-gb-2024", factorId: "uk-ghg-1_100_1004_6_1", expectedDecisionId: null },
+      { kind: "map", legacyDbId: "4003", categoryCode: "1.other-stationary-fuels", datasetId: "uk-ghg-gb-2024", factorId: "uk-ghg-1_100_1020_6_9", expectedDecisionId: null }] }, admin);
+    // LPG at 1.7 kg a litre: 0.85 t against the previous system's 0.75 — D7 carries the input exactly, and the scope is out by 0.1.
+    const off = await preview();
+    assert.deepEqual([off.outcome, off.scopeTotals?.["1"]], ["would-commit", { v7Tco2e: 29.100963, liveTco2e: 29.200963 }]);
+    const before = await fingerprint();
+    await assert.rejects(commit(off, true), (error) => codes(error).length === 1 && codes(error)[0] === "SCOPE_DOES_NOT_AGREE"
+      && !JSON.stringify((error as CommandValidationError).issues).includes("29."), "named by scope, never by figure");
+    assert.deepEqual(await fingerprint(), before, "refused: nothing brought in, no record, no audit");
+    // The right edition: now every scope agrees, and it comes in.
+    const lpg = (await db.query<{ decision_id: string }>(`SELECT decision_id FROM nzi_console.v7_import_decisions WHERE job_id = $1 AND legacy_db_id = '4003' AND superseded_at IS NULL`, [JOB_R])).rows[0]!.decision_id;
+    await acceptV7ImportRows(database.pool, { jobId: JOB_R, items: [
+      { kind: "map", legacyDbId: "4003", categoryCode: "1.other-stationary-fuels", datasetId: "uk-ghg-gb-2024", factorId: "uk-ghg-1_100_1020_6_1", expectedDecisionId: lpg }] }, context("admin"));
+    const on = await preview();
+    assert.deepEqual(on.scopeTotals?.["1"], { v7Tco2e: 29.100963, liveTco2e: 29.100963 });
+    const outcome = await commit(on, true);
+    assert.deepEqual([outcome.data.mode, outcome.data.plan], ["commit", { committed: 0, decided: 3 }]);
+    const totals = (await db.query(`SELECT legacy_db_id, enabled FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'migrated' AND migrated_record->>'original_id' LIKE 'wfm-import-scope-%' ORDER BY legacy_db_id`, [JOB_R])).rows;
+    assert.ok(totals.length >= 3 && totals.every((row) => row.enabled === false), "the import totals are retired");
+    const live = (await db.query<{ t: string }>(`SELECT sum(calculated_tco2e)::text AS t FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'live' AND enabled`, [JOB_R])).rows[0]!.t;
+    assert.equal(Math.round(Number(live) * 1e6) / 1e6, 29.100963, "the activity rows are the job's native entries, at the previous system's figure");
   });
 });

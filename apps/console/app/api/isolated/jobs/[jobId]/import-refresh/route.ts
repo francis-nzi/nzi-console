@@ -27,10 +27,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
   return handleImportRefresh(request, jobId, {
     principal: (req) => requireCommandPrincipal(req, "import.refresh"),
     context: commandContext, pool: isolatedPool, source: () => liveImportViewSource(),
-    // The committed plan, passed explicitly from the repository's plan directory (importRefreshPlan.ts says why).
-    options: async (id, principal) => importRefreshPlanOptions(id, await withTenantRead(isolatedPool(), principal.organisationId, async (db) =>
+    // The committed plan, passed explicitly from the repository's plan directory (importRefreshPlan.ts says why) — and, from the
+    // job, the reconcile gate (BRIEF-v7-import-rows-modal §B): every scope agrees to one decimal place, or nothing is brought in.
+    options: async (id, principal) => ({ ...importRefreshPlanOptions(id, await withTenantRead(isolatedPool(), principal.organisationId, async (db) =>
       (await db.query<{ legacy_job_number: string | null }>(`SELECT legacy_job_number FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`,
-        [principal.organisationId, id])).rows[0]?.legacy_job_number ?? null)),
+        [principal.organisationId, id])).rows[0]?.legacy_job_number ?? null)), requireScopesAgree: true }),
     preview: previewV7ImportRefresh, commit: commitV7ImportRefresh, fastPath: refreshV7ImportFastPath, success: commandSuccess, failure: commandFailure,
   });
 }

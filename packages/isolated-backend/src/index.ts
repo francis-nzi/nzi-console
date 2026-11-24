@@ -329,6 +329,11 @@ export {
   type V7ImportMapping, type V7ImportMappingFlag, type V7ImportMappingRow, type V7ImportMappingSource,
 } from "./v7ImportMapping";
 export {
+  acceptV7ImportRows, readV7ImportRows, searchV7ImportFactors, v7ImportRowsAcceptIssues, V7_IMPORT_ROW_LANES, V7_IMPORT_ROWS_ACCEPT_MAX,
+  type V7ImportCandidate, type V7ImportFactorHit, type V7ImportRowLane, type V7ImportRows, type V7ImportRowsAcceptInput, type V7ImportRowsAcceptItem,
+  type V7ImportRowsAcceptResult, type V7ImportRowsRow,
+} from "./v7ImportRows";
+export {
   readV7ImportFastPathSignals, refreshV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON, v7ImportFastPathBlockers,
   type V7ImportFastPathBlocker, type V7ImportFastPathResult, type V7ImportFastPathSignals,
 } from "./v7ImportFastPath";

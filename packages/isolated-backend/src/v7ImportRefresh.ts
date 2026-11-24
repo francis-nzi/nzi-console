@@ -25,7 +25,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 import {
-  resolveV7Import, v7ImportSummaryIssues,
+  resolveV7Import, v7ImportSummaryIssues, v7ScopeAgreement,
   type CommandContext, type CommandInputMap, type V7ImportDecision, type V7ImportRefreshCommitted, type V7ImportRefreshException, type V7ImportRefreshPreview,
   type V7ImportSummary, type V7ReingestJobInput,
 } from "@nzi/contracts";
@@ -85,6 +85,12 @@ export type V7ImportRefreshOptions = {
    * before the chain. The fast path (Phase D) reads its eligibility here; a throw refuses as any step's refusal does.
    */
   within?: (db: Queryable, at: "preview" | "commit") => Promise<void>;
+  /**
+   * BRIEF-v7-import-rows-modal §B, the reconcile gate: a commit is refused (SCOPE_DOES_NOT_AGREE, nothing kept) unless every scope's
+   * console total agrees with the previous system's to one decimal place. D7's own floor (the input carried exactly, R2) is
+   * unchanged beneath it. The job's route sets it; the batch does not.
+   */
+  requireScopesAgree?: boolean;
 };
 
 export type Refresh = {
@@ -193,6 +199,13 @@ export function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSou
     const ran = await runChain(db, read, context.organisationId, input.jobId, context.reason!.trim(), " — import refresh",
       options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber));
     if (!ran.committed) throw new CommandValidationError(ran.report.refusal?.issues ?? [{ field: "jobId", code: "NOT_COMMITTED", message: "The re-ingest did not commit." }]);
+    if (options.requireScopesAgree) {
+      // Named by scope, never by figure: the refusal is answered on screen, and the modal shows both totals from its preview.
+      const totals = totalsOf(ran.report);
+      const off = totals ? v7ScopeAgreement(totals).filter((entry) => !entry.agrees).map((entry) => entry.scope) : ["1", "2", "3"];
+      if (off.length) throw new CommandValidationError(off.map((scope) => ({ field: "jobId", code: "SCOPE_DOES_NOT_AGREE",
+        message: `The Scope ${scope} total does not agree with the previous system's to one decimal place, so nothing was brought in. Investigate the scope's rows first.` })));
+    }
     // The summary it ran from, stored as the job's latest (closed, as an upload is), then the run's record against it.
     const issues = v7ImportSummaryIssues(read.summary);
     if (issues.length) throw new CommandValidationError(issues);
