@@ -66,6 +66,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { id: "spend-allocation", label: "Spend allocation", icon: "funnel", href: "/admin/spend-allocation", capability: "admin.lookups",
         description: "Each client's map from GL code (or description) to the category a spend line belongs in — so PG&S is the residual, not where everything lands. It learns as reviewers move lines." },
+      { id: "import-drift", label: "Against the previous system", icon: "list", href: "/admin/import-drift", capability: "import.refresh_batch",
+        description: "Every job imported from the previous system, its scope totals here and there at the latest check, largest difference first. A job behind the previous system can't be published." },
       { id: "data-entry", label: "Data entry", icon: "sliders", href: "/admin/data-entry", capability: "admin.settings",
         description: "Whether each category's add-entry drawer opens on Activity or Spend — PG&S on Spend and the rest on Activity unless set here. A client's own last choice overrides it for them." },
       { id: "master-templates", label: "Master templates", icon: "doc", href: "/admin/master-templates", capability: "admin.lookups",

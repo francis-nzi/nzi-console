@@ -1,6 +1,7 @@
 import pg from "pg";
 import {
-  emailDispatchFromEnv, emailOrganisationsFrom, mailDelivery, runEmailDrain, runLoginEventRetention, runWorkerTick, smtpSettingsFrom, suppressingMailer, validateDatabaseBoundary,
+  emailDispatchFromEnv, emailOrganisationsFrom, mailDelivery, runEmailDrain, runLoginEventRetention, runV7DriftChecks, runWorkerTick, smtpSettingsFrom, suppressingMailer,
+  validateDatabaseBoundary, v7FiguresClientFromEnv, V7_DRIFT_ACTOR,
   type Mailer,
 } from "../src/index";
 import { smtpMailer } from "../src/smtpMailer";
@@ -23,6 +24,12 @@ import { smtpMailer } from "../src/smtpMailer";
  * **Login-event retention.** Once per London day (the first tick of it), for the organisation above and each email-drain organisation,
  * the IP and user-agent of portal login events older than 90 days are nulled (`runLoginEventRetention`). Idempotent, so a restart or a
  * same-day retry changes nothing; a failure is logged against its organisation and retried on the next tick. Counts only in the log.
+ *
+ * **Drift checks (BRIEF-v7-import-j000663 Part C, ruled 25 Nov: nightly).** Once per London day, for each organisation in
+ * NZI_DRIFT_CHECK_ORGANISATIONS, every job imported from the previous system is checked against its own scope totals
+ * (CONTRACT-v7-import-figures v1), one at a time, paced as the import batch is. It runs beside the tick, never inside it, so
+ * email and reminders are never held up by it; a run already under way is not started again. NZI_V7_FIGURES_URL unset: the run
+ * stores one "not connected" check and stops. Counts only in the log.
  *
  * **Secrets.** SMTP settings and the Resend key are read from the environment and never logged. The startup
  * line says whether a transport was configured, never what it was configured with.
@@ -80,7 +87,31 @@ async function main() {
   process.on("SIGINT", stop);
 
   let retentionDay: string | null = null;
+  const driftOrganisations = emailOrganisationsFrom(process.env.NZI_DRIFT_CHECK_ORGANISATIONS, "");
+  let driftDay: string | null = null;
+  let driftRunning = false;
   while (!stopping) {
+    // Nightly drift checks: started once per London day, beside the tick (a run takes minutes at the batch's pace).
+    const today = londonToday();
+    if (driftOrganisations.length > 0 && driftDay !== today && !driftRunning) {
+      driftDay = today; driftRunning = true;
+      void (async () => {
+        let client: ReturnType<typeof v7FiguresClientFromEnv>;
+        try { client = v7FiguresClientFromEnv(process.env); } catch (error) {
+          log("drift.refused", { reason: error instanceof Error ? error.message : String(error) });
+          client = async () => ({ ok: false, reason: "refused" });
+        }
+        for (const organisation of driftOrganisations) {
+          if (stopping) break;
+          try {
+            const result = await runV7DriftChecks(pool, client, organisation, { trigger: "nightly", requestedBy: V7_DRIFT_ACTOR, correlationId: `v7-drift-nightly:${today}:${organisation}`, principal: "system" });
+            log("drift.run", { organisationId: organisation, ...result });
+          } catch (error) {
+            log("drift.failed", { organisationId: organisation, failed: error instanceof Error ? error.name : "unknown" });
+          }
+        }
+      })().finally(() => { driftRunning = false; });
+    }
     try {
       // Daily, before the rest of the tick and on its own: a retention failure is reported, never fatal to email or reminders.
       const day = londonToday();

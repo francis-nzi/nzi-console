@@ -27,6 +27,7 @@ import { resumeV7ImportBatch, startV7ImportBatch } from "../src/v7ImportBatchCom
 import { readV7ImportBatch, runV7ImportBatch, V7_IMPORT_BATCH_PACING, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome, v7ImportBatchPauseAfter } from "../src/v7ImportBatch";
 import { readV7ImportMapping, v7JobIsTotalsOnly } from "../src/v7ImportMapping";
 import { acceptV7ImportRows, readV7ImportRows, searchV7ImportFactors } from "../src/v7ImportRows";
+import { checkV7Drift, listV7Drift, readConsoleScopeTotals, readV7DriftBanner, refuseDriftedPublish, runV7DriftChecks, type V7FiguresClient, type V7FiguresRead } from "../src/v7Drift";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -2803,5 +2804,157 @@ describe("the two-dataset-year guard: a job whose period spans two calendar year
     assert.equal(await jobPrint(NO_PERIOD.jobId), noPeriodBefore);
     const committed = (await db.query(`SELECT outcome FROM nzi_console.v7_import_ingests WHERE organisation_id = $1 AND job_id = $2 AND kind = 'ingest'`, [ORG_TY, CALENDAR.jobId])).rows;
     assert.deepEqual(committed, [{ outcome: "committed" }]);
+  });
+});
+
+/**
+ * The drift guard (BRIEF-v7-import-j000663 Part C; CONTRACT-v7-import-figures v1; ruled 25 Nov): each check of an imported job against the
+ * previous system's own scope totals is stored (0236); the banner, the Admin list and the publish gate read the latest. Behind → not
+ * published; a two-dataset-year job → not published until a check says level; unknown on a one-year job → published, with the banner.
+ */
+describe("the drift guard: checks stored, the latest read by the banner, the list and the publish gate", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  const ORG_DG = "drift";
+  const codes = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => issue.code) : [String(error)];
+  const job = (k: number, jobId: string, period: [string, string], imported = true) => {
+    const at = (base: V7Fixture, n: string): V7Fixture => ({ ...base, id: `${k}${n}` });
+    const gas = at(GAS, "001"), water = at(WATER, "002"), refrigerant = at(REFRIGERANT, "003");
+    const plan = (runId: string): V7ReingestJobInput => ({ ...planFor(runId, [[`v7-row-${gas.id}`, gas], [`v7-row-${water.id}`, water], [`v7-row-${refrigerant.id}`, refrigerant]]), jobId });
+    // An imported job keeps its J number from the previous system: the same as its console number (sequence 9600 + k).
+    return { jobId, k, period, imported, plan, before: [gas, water, refrigerant].map(plannedRow), number: `J${String(9600 + k).padStart(6, "0")}` };
+  };
+  const CAL = job(71, "dg-calendar", ["2025-01-01", "2025-12-31"]);
+  const TWO = job(72, "dg-two-year", ["2025-04-01", "2026-03-31"]);
+  const THIRD = job(73, "dg-third", ["2025-01-01", "2025-12-31"]);
+  const NATIVE = job(74, "dg-native", ["2025-01-01", "2025-12-31"], false);
+  // The console's totals after the re-ingest: gas 0.2 + refrigerant 2.19 in Scope 1, water 0.0015 in Scope 3.
+  const CONSOLE = { "1": 2.39, "2": 0, "3": 0.0015 };
+  const reply = (number: string, totals: { "1": number; "2": number; "3": number }): V7FiguresRead => ({ ok: true, body: {
+    contract: "v7-import-figures/1", job_id: 1, job_number: number, computed_at: "2026-11-25T14:00:00Z", period: { from: null, to: null },
+    scope_totals: { scope_1: totals["1"], scope_2: totals["2"], scope_3: totals["3"], total: totals["1"] + totals["2"] + totals["3"] }, counted_rows: 3, rows_updated_at: null } });
+  const answering = (byJob: Record<string, V7FiguresRead>): V7FiguresClient => async ({ legacyJobNumber }) => byJob[legacyJobNumber] ?? { ok: false, reason: "not-found" };
+  const options = (trigger: "admin" | "publish" | "nightly" = "admin") => ({ trigger, requestedBy: "staff-admin", correlationId: `dg-${randomUUID()}`, principal: "staff" as const });
+  const check = (entry: ReturnType<typeof job>, client: V7FiguresClient) => checkV7Drift(database.pool, client, ORG_DG, entry.jobId, options());
+  const gate = (entry: ReturnType<typeof job>) => withTenantWrite(database.pool, ORG_DG, (client) => refuseDriftedPublish(client, ORG_DG, entry.jobId));
+  const checks = async (jobId?: string) => (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.v7_drift_checks WHERE organisation_id = $1 ${jobId ? "AND job_id = $2" : ""}`,
+    jobId ? [ORG_DG, jobId] : [ORG_DG])).rows[0]!.n;
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7drift"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [ORG_DG]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [ORG_DG]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG_DG]);
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'c1','Drift Test','active')`, [ORG_DG]);
+    await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                    VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [ORG_DG]);
+    for (const [id, label, unit, kg, scope, levels] of [["gas", "Natural gas", "kWh", 0.2, "1", ["Fuels", "Gaseous fuels", "Natural gas"]], ["water", "Water supply", "m3", 0.15, "3", []]] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
+        [ORG_DG, id, label, unit, kg, scope, levels]);
+    }
+    for (const entry of [CAL, TWO, THIRD, NATIVE]) {
+      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+        VALUES ($1,$2,'c1',$3,'crp','CRP','open','Data entry',2025,$4,$5,$6,$7,$8)`, [ORG_DG, entry.jobId, 9600 + entry.k, entry.period[0], entry.period[1],
+        entry.imported ? "nzi-pro-v7" : null, entry.imported ? String(entry.k) : null, entry.imported ? entry.number : null]);
+      await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`, [ORG_DG, entry.jobId, entry.period[0], entry.period[1]]);
+      if (!entry.imported) continue;
+      for (const row of entry.before) await insert(db, "job_scope_rows", [
+        { column: "organisation_id", value: ORG_DG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+        { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(entry.jobId, row)]);
+      const standing = `v7-reingest-${randomUUID()}`;
+      await withTenantWrite(database.pool, ORG_DG, (client) => reingestV7JobInTransaction(client, { ...entry.plan(standing) },
+        { organisationId: ORG_DG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+          reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", ORG_DG, V7_REINGEST_ACTOR) }));
+    }
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("the console's totals are the job's enabled rows, as the report sums them", async () => {
+    const totals = await withTenantRead(database.pool, ORG_DG, (client) => readConsoleScopeTotals(client, ORG_DG, CAL.jobId));
+    assert.deepEqual(Object.fromEntries(Object.entries(totals).map(([scope, value]) => [scope, Math.round(value * 1e6) / 1e6])), CONSOLE);
+  });
+
+  it("before any check: a one-year job publishes (no banner line); a two-dataset-year job does not; a native job is never gated", async () => {
+    await gate(CAL);
+    await assert.rejects(gate(TWO), (error) => codes(error).includes("NOT_CHECKED_AGAINST_PREVIOUS_SYSTEM"));
+    await gate(NATIVE);
+    const banner = await withTenantRead(database.pool, ORG_DG, (client) => readV7DriftBanner(client, ORG_DG, TWO.jobId));
+    assert.equal(banner?.tone, "unchecked");
+    assert.equal(await withTenantRead(database.pool, ORG_DG, (client) => readV7DriftBanner(client, ORG_DG, NATIVE.jobId)), null);
+  });
+
+  it("level: stored with both sides' figures, audited with ids and the outcome only; the two-year job may now publish", async () => {
+    const result = await check(TWO, answering({ [TWO.number]: reply(TWO.number, CONSOLE) }));
+    assert.equal(result.outcome, "level");
+    const row = (await db.query(`SELECT outcome, trigger, unknown_reason, v7_scope1_tco2e::float8 AS v1, console_scope1_tco2e::float8 AS c1 FROM nzi_console.v7_drift_checks WHERE check_id = $1`, [result.checkId])).rows[0];
+    assert.deepEqual(row, { outcome: "level", trigger: "admin", unknown_reason: null, v1: 2.39, c1: 2.39 });
+    const audit = (await db.query<{ after_json: Record<string, unknown>; entity_id: string }>(`SELECT after_json, entity_id FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.drift.checked'`, [ORG_DG])).rows;
+    assert.deepEqual(audit.map((entry) => [entry.entity_id, Object.keys(entry.after_json).sort()]), [[TWO.jobId, ["behind", "checkId", "outcome", "trigger"]]], "no figure in the audit");
+    await gate(TWO);
+  });
+
+  it("behind: the banner says the brief's line; the gate refuses it by scope; the list puts it first", async () => {
+    const result = await check(CAL, answering({ [CAL.number]: reply(CAL.number, { ...CONSOLE, "2": 2121.17 }) }));
+    assert.equal(result.outcome, "behind");
+    const banner = await withTenantRead(database.pool, ORG_DG, (client) => readV7DriftBanner(client, ORG_DG, CAL.jobId));
+    assert.deepEqual([banner?.tone, banner?.line], ["behind", "Behind the previous system: Scope 2 0.0 here, 2,121.2 in the previous system"]);
+    await assert.rejects(gate(CAL), (error) => codes(error).includes("BEHIND_PREVIOUS_SYSTEM"));
+    const list = await withTenantRead(database.pool, ORG_DG, (client) => listV7Drift(client, ORG_DG));
+    assert.deepEqual(list.map((item) => [item.jobNumber, item.outcome]), [[CAL.number, "behind"], [TWO.number, "level"], [THIRD.number, "unchecked"]], "imported jobs only, the furthest first");
+    assert.deepEqual(list[0]!.scopes[1], { scope: "2", console: 0, previous: 2121.17, difference: -2121.17 });
+    assert.deepEqual(list[2]!.scopes.map((entry) => entry.console), [null, null, null], "never checked: no figure, not a zero");
+  });
+
+  it("through issueReportVersion: a validated report on the job behind is not issued, and nothing changes", async () => {
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG_DG]);
+    await db.query(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by)
+      VALUES ($1, 'dg-snap', $2, 1, 1, $3, '{}'::jsonb, 'staff-consultant')`, [ORG_DG, CAL.jobId, `sha256:${"a".repeat(64)}`]);
+    await db.query(`INSERT INTO nzi_console.report_versions (organisation_id, report_version_id, job_id, status, manifest_version, reviewed_snapshot_id, data_hash)
+      VALUES ($1, 'dg-rv', $2, 'validated', 1, 'dg-snap', $3)`, [ORG_DG, CAL.jobId, `sha256:${"a".repeat(64)}`]);
+    const scopeKey = (await db.query<{ scope_key: string }>(`SELECT scope_key FROM nzi_console.report_versions WHERE report_version_id = 'dg-rv'`)).rows[0]!.scope_key;
+    const context: CommandContext = { organisationId: ORG_DG, actorId: "staff-admin", principal: "staff", idempotencyKey: "dg-issue", correlationId: "dg-issue", grant: commandGrantForRole("admin", ORG_DG, "staff-admin") };
+    await assert.rejects(withTenantWrite(database.pool, ORG_DG, (client) => issueReportVersion(client, context, { reportVersionId: "dg-rv", jobId: CAL.jobId, scopeKey }, "validated")),
+      (error) => codes(error).includes("BEHIND_PREVIOUS_SYSTEM"));
+    assert.deepEqual((await db.query(`SELECT status, published_at FROM nzi_console.report_versions WHERE report_version_id = 'dg-rv'`)).rows[0], { status: "validated", published_at: null });
+  });
+
+  it("unknown: stored with its reason and no figure of the previous system's; a one-year job publishes, a two-year job does not", async () => {
+    const calendar = await check(CAL, answering({}));
+    assert.deepEqual([calendar.outcome, calendar.unknownReason, calendar.scopes], ["unknown", "not-found", null]);
+    await gate(CAL);
+    const banner = await withTenantRead(database.pool, ORG_DG, (client) => readV7DriftBanner(client, ORG_DG, CAL.jobId));
+    assert.deepEqual([banner?.tone, banner?.line], ["unknown", "Can't check against the previous system just now."]);
+    await check(TWO, async () => ({ ok: false, reason: "timeout" }));
+    await assert.rejects(gate(TWO), (error) => codes(error).includes("NOT_CHECKED_AGAINST_PREVIOUS_SYSTEM"));
+  });
+
+  it("a job not imported from the previous system is refused, and nothing is stored", async () => {
+    const before = await checks();
+    await assert.rejects(check(NATIVE, answering({})), (error) => codes(error).includes("NOT_IMPORTED"));
+    assert.equal(await checks(), before);
+  });
+
+  it("0236 holds: append-only for everyone, and an unknown check can't carry a figure of the previous system's", async () => {
+    await assert.rejects(db.query(`UPDATE nzi_console.v7_drift_checks SET outcome = 'level'`), /append-only/);
+    await assert.rejects(db.query(`DELETE FROM nzi_console.v7_drift_checks`), /append-only/);
+    await assert.rejects(db.query(`INSERT INTO nzi_console.v7_drift_checks (organisation_id, check_id, job_id, outcome, trigger, unknown_reason, console_scope1_tco2e, console_scope2_tco2e, console_scope3_tco2e,
+      v7_scope1_tco2e, v7_scope2_tco2e, v7_scope3_tco2e, requested_by, correlation_id) VALUES ($1, 'x', $2, 'unknown', 'admin', 'timeout', 0, 0, 0, 1, 1, 1, 'a', 'b')`, [ORG_DG, CAL.jobId]),
+      /v7_drift_checks_known_has_figures/);
+  });
+
+  it("the run: every imported job in order, paced at the batch's floor; it stops when the source stops answering, or at once when not connected", async () => {
+    const sleeps: number[] = [];
+    const seen: string[] = [];
+    const level: V7FiguresClient = async (job) => { seen.push(job.legacyJobNumber); return reply(job.legacyJobNumber, CONSOLE); };
+    const all = await runV7DriftChecks(database.pool, level, ORG_DG, { ...options("nightly"), principal: "system", requestedBy: "policy:v7-drift-check", sleep: async (ms) => { sleeps.push(ms); } });
+    assert.deepEqual([all, seen], [{ checked: 3, level: 3, behind: 0, unknown: 0, stopped: "completed" }, [CAL.number, TWO.number, THIRD.number]]);
+    assert.ok(sleeps.length === 2 && sleeps.every((ms) => ms >= 2000), `paced between jobs: ${sleeps.join(",")}`);
+    const down = await runV7DriftChecks(database.pool, async () => ({ ok: false, reason: "unreachable" }), ORG_DG, { ...options(), breakerThreshold: 2, sleep: async () => undefined });
+    assert.deepEqual(down, { checked: 2, level: 0, behind: 0, unknown: 2, stopped: "source-unresponsive" });
+    const before = await checks();
+    const off = await runV7DriftChecks(database.pool, async () => ({ ok: false, reason: "not-configured" }), ORG_DG, { ...options(), sleep: async () => undefined });
+    assert.deepEqual(off, { checked: 1, level: 0, behind: 0, unknown: 1, stopped: "not-configured" });
+    assert.equal(await checks(), before + 1, "one honest 'can't check', then nothing called");
   });
 });

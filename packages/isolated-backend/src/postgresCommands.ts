@@ -73,6 +73,7 @@ export class IdempotencyConflictError extends Error {
   }
 }
 import { checkUnit, isAcceptedUnit } from "./unitCompatibility";
+import { refuseDriftedPublish } from "./v7Drift";
 
 export class CommandValidationError extends Error {
   constructor(readonly issues: ReturnType<typeof validateCommand>) {
@@ -2635,6 +2636,8 @@ export async function issueReportVersion(db:Queryable,context:CommandContext,rep
   // BRIEF-v7-import-j000663 §B: a version resting on a snapshot a newer import superseded is never issued — re-compose first.
   const resting=(await db.query<{reviewed_snapshot_id:string}>(`SELECT reviewed_snapshot_id FROM nzi_console.report_versions WHERE organisation_id=$1 AND report_version_id=$2`,[context.organisationId,report.reportVersionId])).rows[0];
   if(resting)await refuseSupersededSnapshot(db,context.organisationId,resting.reviewed_snapshot_id);
+  // BRIEF-v7-import-j000663 Part C (ruled 25 Nov): a job behind the previous system is never issued, nor a two-dataset-year job until a check says level.
+  await refuseDriftedPublish(db,context.organisationId,report.jobId);
   // S-1 (0163, R-S2 as updated): one published report per job **per scope**. Publishing supersedes the published report of the
   // same scope only; every other scope stays live beside it.
   await db.query(`UPDATE nzi_console.report_versions SET status='superseded',version=version+1 WHERE organisation_id=$1 AND job_id=$2 AND scope_key=$3 AND status='published'`,[context.organisationId,report.jobId,report.scopeKey]);

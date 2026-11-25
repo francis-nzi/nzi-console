@@ -12,7 +12,9 @@ import type { V7ImportIngestStage, V7ImportRefreshCommitted, V7ImportRefreshExce
  */
 export type ImportRefreshState =
   | { applies: false }
-  | { applies: true; jobId: string; legacyJobNumber: string; writeEnabled: boolean; commitNeedsAdmin: boolean; isAdmin: boolean; canResolve: boolean };
+  | { applies: true; jobId: string; legacyJobNumber: string; writeEnabled: boolean; commitNeedsAdmin: boolean; isAdmin: boolean; canResolve: boolean;
+      /** The drift guard's banner, from the job's latest check against the previous system (Part C); absent or null shows nothing. */
+      drift?: { tone: "behind" | "unknown" | "level" | "unchecked"; line: string | null; checkedAt: string | null } | null };
 
 export type ImportRefreshView =
   | { kind: "nothing" }

@@ -1,5 +1,5 @@
 import "server-only";
-import { readImportPolicy, withTenantRead, type StaffPrincipal } from "@nzi/isolated-backend";
+import { readImportPolicy, readV7DriftBanner, withTenantRead, type StaffPrincipal } from "@nzi/isolated-backend";
 import { grantsAllow } from "@nzi/contracts";
 import type { ImportRefreshState } from "../jobs/importRefreshView";
 import { isolatedPool } from "./isolatedDatabase";
@@ -16,7 +16,10 @@ export async function readImportRefreshState(principal: StaffPrincipal, jobId: s
     if (!job || job.source_system !== "nzi-pro-v7" || !job.legacy_job_number) return { applies: false };
     // Fails closed: an unreadable policy fails the read, never reads as "an Admin is not needed".
     const policy = await readImportPolicy(db, principal.organisationId);
+    // Part C: the latest stored check against the previous system — never a call to it from here.
+    const drift = await readV7DriftBanner(db, principal.organisationId, job.job_id);
     return {
+      drift: drift ? { tone: drift.tone, line: drift.line, checkedAt: drift.checkedAt } : null,
       applies: true, jobId: job.job_id, legacyJobNumber: job.legacy_job_number, writeEnabled: process.env.NZI_WRITE_API_ENABLED === "true",
       commitNeedsAdmin: policy.refreshCommitRequiresAdmin, isAdmin: principal.role === "admin", canResolve: grantsAllow(principal.capabilities, "import.manage"),
     };
