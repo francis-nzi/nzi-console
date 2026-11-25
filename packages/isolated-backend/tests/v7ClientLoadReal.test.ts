@@ -196,7 +196,7 @@ const CLIENT = "v7-client-1";
 const JOB = "v7-job-100";
 
 /** The extract with the four shapes; `names` gives V7's site names (the load first sees stand-ins, then V7's own). */
-function rowsWith(names: { 70: string; 295: string; 80: string | null }, mutate?: (rows: Rows) => void): Rows {
+function rowsWith(names: { 70: string; 130: string; 295: string; 80: string | null }, mutate?: (rows: Rows) => void): Rows {
   const rows = syntheticRows();
   rows.client_sites.push(
     { site_id: "69", client_db_id: "1", site_name: "Langtons", archived: "f" },
@@ -205,6 +205,9 @@ function rowsWith(names: { 70: string; 295: string; 80: string | null }, mutate?
     { site_id: "295", client_db_id: "1", site_name: names[295], archived: "f" },
     { site_id: "80", client_db_id: "1", site_name: names[80], archived: "f" },
     { site_id: "81", client_db_id: "1", site_name: null, archived: "f" },
+    // Kays Scotland's shape: no entries on either; the unsuffixed one is archived in V7, the repeat active.
+    { site_id: "129", client_db_id: "1", site_name: "Depot North", archived: "t" },
+    { site_id: "130", client_db_id: "1", site_name: names[130], archived: "f" },
   );
   const at = (id: string, site: string) => { rows.job_scope_rows.find((row) => row.row_id === id)!.site_id = site; };
   at("1000", "294"); at("1001", "294"); at("1002", "294");
@@ -216,7 +219,7 @@ function rowsWith(names: { 70: string; 295: string; 80: string | null }, mutate?
 }
 const planOf = (rows: Rows): ClientImportPlan =>
   planV7ClientImport({ extract: syntheticExtract(rows), headers: syntheticHeaders(), extractSha256: "synthetic-sha" });
-const V7_NAMES = { 70: "Langtons", 295: "Yard", 80: null } as const;
+const V7_NAMES = { 70: "Langtons", 130: "Depot North", 295: "Yard", 80: null } as const;
 const jobRows = (plan: ClientImportPlan, jobId = JOB): PlannedRow[] =>
   plan.clients.flatMap((client) => client.jobs).find((job) => job.jobId === jobId)!.rows;
 const BRYSON_SHAPE: RuledRowMove[] = [{ clientId: CLIENT, survivorSiteId: "v7-site-294", duplicateSiteIds: ["v7-site-295"], ruling: "test" }];
@@ -243,10 +246,11 @@ describe("duplicate v7 sites: merged once, never minted again", { skip: DATABASE
     await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
     // The 29 Sep state: each V7 site its own console site, the repeats suffixed. Stand-in names keep the load from matching them;
     // the suffix is then written as the old importer wrote it.
-    const outcome = await loadV7ClientPlan(database.pool, planOf(rowsWith({ 70: "Langtons stand-in", 295: "Yard stand-in", 80: null })), { commit: true, runId: "run-sep" });
+    const outcome = await loadV7ClientPlan(database.pool, planOf(rowsWith({ 70: "Langtons stand-in", 130: "Depot North stand-in", 295: "Yard stand-in", 80: null })), { commit: true, runId: "run-sep" });
     assert.deepEqual(outcome.clients.map((client) => client.state), ["loaded", "loaded"]);
     await db.query(`UPDATE nzi_console.client_sites SET name = 'Langtons (v7 site 70)' WHERE site_id = 'v7-site-70'`);
     await db.query(`UPDATE nzi_console.client_sites SET name = 'Yard (v7 site 295)' WHERE site_id = 'v7-site-295'`);
+    await db.query(`UPDATE nzi_console.client_sites SET name = 'Depot North (v7 site 130)' WHERE site_id = 'v7-site-130'`);
     scopeBefore = await byScope();
   });
   after(async () => { await db?.end(); await database?.end(); });
@@ -258,10 +262,10 @@ describe("duplicate v7 sites: merged once, never minted again", { skip: DATABASE
     ]);
   });
 
-  it("plans Langtons to merge on the site with entries, and holds a group where both have entries unless ruled", async () => {
+  it("plans Langtons to merge on the site with entries, Depot North (Kays) on the site active in V7, and holds a group where both have entries unless ruled", async () => {
     const plan = await withTenantWrite(database.pool, ORG, (tx) => planV7DuplicateSiteMerges(tx, ORG, []));
     assert.deepEqual(plan.merge.map((group) => [group.name, group.survivor.siteId, group.duplicates.map((site) => site.siteId), group.rowsMoving]), [
-      ["Langtons", "v7-site-70", ["v7-site-69"], 0],
+      ["Depot North", "v7-site-130", ["v7-site-129"], 0], ["Langtons", "v7-site-70", ["v7-site-69"], 0],
     ]);
     assert.deepEqual(plan.held.map((group) => [group.name, group.siteIds, group.why]), [["Yard", ["v7-site-294", "v7-site-295"], "more than one of these sites has entries"]]);
   });
@@ -273,7 +277,7 @@ describe("duplicate v7 sites: merged once, never minted again", { skip: DATABASE
         || (SELECT count(*) FROM nzi_console.v7_site_links)::text || (SELECT count(*) FROM nzi_console.audit_events)::text) AS f`)).rows[0]!.f;
     const was = await fingerprint();
     const outcome = await mergeV7DuplicateSites(database.pool, context, { commit: false, ruled: BRYSON_SHAPE });
-    assert.equal(outcome.plan.merge.length, 2);
+    assert.equal(outcome.plan.merge.length, 3);
     assert.equal(outcome.rowsMoved, 2);
     assert.equal(await fingerprint(), was);
   });
@@ -286,8 +290,11 @@ describe("duplicate v7 sites: merged once, never minted again", { skip: DATABASE
     assert.ok(!all.some((site) => /\(v7 site/i.test(site.name)), "no name carries the suffix");
     assert.deepEqual(live.filter((site) => /langtons/i.test(site.name)).map((site) => [site.site_id, site.name]), [["v7-site-70", "Langtons"]]);
     assert.deepEqual(all.filter((site) => site.merged_into_site_id).map((site) => [site.site_id, site.name, site.archived, site.merged_into_site_id]), [
-      ["v7-site-295", "Yard", true, "v7-site-294"], ["v7-site-69", "Langtons", true, "v7-site-70"],
+      ["v7-site-129", "Depot North", true, "v7-site-130"], ["v7-site-295", "Yard", true, "v7-site-294"], ["v7-site-69", "Langtons", true, "v7-site-70"],
     ]);
+    // Kays: the site active in V7 survives, named without the suffix; the one archived in V7 is retired into it.
+    assert.deepEqual(live.filter((site) => /depot north/i.test(site.name)).map((site) => [site.site_id, site.name, site.archived]), [["v7-site-130", "Depot North", false]]);
+    assert.deepEqual([await link("129"), await link("130")], ["v7-site-130", "v7-site-130"]);
     assert.deepEqual([await link("69"), await link("70"), await link("294"), await link("295")], ["v7-site-70", "v7-site-70", "v7-site-294", "v7-site-294"]);
     const moved = (await db.query<{ entity_id: string; before_json: { siteId: string }; after_json: { siteId: string } }>(
       `SELECT entity_id, before_json, after_json FROM nzi_console.audit_events WHERE action = 'job.scope_row.site_moved' ORDER BY entity_id`)).rows;
@@ -295,7 +302,7 @@ describe("duplicate v7 sites: merged once, never minted again", { skip: DATABASE
       ["v7-row-1003", "v7-site-295", "v7-site-294"], ["v7-row-1004", "v7-site-295", "v7-site-294"],
     ]);
     const merged = (await db.query<{ entity_id: string }>(`SELECT entity_id FROM nzi_console.audit_events WHERE action = 'client.site.merged' ORDER BY entity_id`)).rows;
-    assert.deepEqual(merged.map((event) => event.entity_id), ["v7-site-295", "v7-site-69"]);
+    assert.deepEqual(merged.map((event) => event.entity_id), ["v7-site-129", "v7-site-295", "v7-site-69"]);
   });
 
   it("the job's per-scope totals are unchanged by the merge, and it still matches V7 per scope and per site", async () => {
@@ -380,5 +387,14 @@ describe("a fresh import of two same-named v7 sites", { skip: DATABASE_URL ? fal
     assert.deepEqual(names.filter((site) => /langtons|yard/i.test(site.name)).map((site) => [site.site_id, site.name]), [["v7-site-294", "Yard"], ["v7-site-69", "Langtons"]]);
     const rows = (await db.query<{ legacy_db_id: string; site_id: string }>(`SELECT legacy_db_id, site_id FROM nzi_console.job_scope_rows WHERE legacy_db_id IN ('1006','1007') ORDER BY 1`)).rows;
     assert.deepEqual(rows.map((row) => row.site_id), ["v7-site-69", "v7-site-69"], "V7 site 70's rows land on the same-named site");
+    // Kays' shape on a fresh import: the site active in V7 survives; the archived one is retired into it, never the reverse.
+    const kays = (await db.query<{ site_id: string; name: string; archived: boolean; merged_into_site_id: string | null }>(
+      `SELECT site_id, name, archived, merged_into_site_id FROM nzi_console.client_sites WHERE site_id IN ('v7-site-129','v7-site-130') ORDER BY site_id`)).rows;
+    assert.deepEqual(kays.map((site) => [site.site_id, site.name, site.archived, site.merged_into_site_id]), [
+      ["v7-site-129", "Depot North", true, "v7-site-130"], ["v7-site-130", "Depot North", false, null],
+    ]);
+    const links = (await db.query<{ v7_site_id: string; site_id: string }>(
+      `SELECT DISTINCT ON (v7_site_id) v7_site_id, site_id FROM nzi_console.v7_site_links WHERE v7_site_id IN ('129','130') ORDER BY v7_site_id, link_no DESC`)).rows;
+    assert.deepEqual(links.map((row) => [row.v7_site_id, row.site_id]), [["129", "v7-site-130"], ["130", "v7-site-130"]]);
   });
 });

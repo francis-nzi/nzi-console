@@ -4,7 +4,7 @@
 // nothing may assume the id: every load, re-sync and bring-in resolves a V7 site through `v7_site_links` (its latest link).
 //
 // The merge (`mergeV7DuplicateSites`) settles the duplicates the 29 Sep import minted with a " (v7 site N)" suffix:
-//   - the survivor is the site with entries; where none has entries, the unsuffixed site (then the lowest V7 id);
+//   - the survivor is the site with entries, then the site active in V7, then the unsuffixed site, then the lowest V7 id;
 //   - it takes the name without the suffix; each duplicate is archived, records what it merged into, and keeps the name too;
 //   - every V7 site that resolved to a duplicate is re-linked to the survivor;
 //   - a group where more than one site has entries is held for a person, unless ruled (RULED_ROW_MOVES): there the duplicate's
@@ -126,7 +126,9 @@ export async function planV7DuplicateSiteMerges(db: Queryable, organisationId: s
       if (!covered) { hold("more than one of these sites has entries"); continue; }
       survivor = sites.find((site) => site.site_id === rule!.survivorSiteId)!;
     } else {
-      survivor = withEntries[0] ?? sites.find((site) => !SUFFIX.test(site.name)) ?? sites[0]!;
+      // Ruled order: has entries → active in V7 → no suffix → lowest V7 id (sites are in V7-id order).
+      survivor = withEntries[0] ?? [...sites].sort((a, b) =>
+        Number(a.archived) - Number(b.archived) || Number(SUFFIX.test(a.name)) - Number(SUFFIX.test(b.name)) || v7Order(a, b))[0]!;
     }
     const duplicates = sites.filter((site) => site !== survivor);
     const blocked = duplicates.filter((site) => site.other_records > 0);

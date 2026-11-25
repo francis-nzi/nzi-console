@@ -365,8 +365,8 @@ async function loadSites(db: Queryable, org: string, client: PlannedClient, runI
     if (!stored) {
       // Never loaded: a same-named site in use on the client takes it.
       if (!site.nameNeedsReview && !isPlaceholderName(site.name)) {
-        const match = (await db.query<{ site_id: string; rows: number }>(
-          `SELECT s.site_id, (SELECT count(*) FROM nzi_console.job_scope_rows r WHERE (r.organisation_id, r.site_id) = (s.organisation_id, s.site_id))::int AS rows
+        const match = (await db.query<{ site_id: string; rows: number; archived: boolean }>(
+          `SELECT s.site_id, s.archived, (SELECT count(*) FROM nzi_console.job_scope_rows r WHERE (r.organisation_id, r.site_id) = (s.organisation_id, s.site_id))::int AS rows
              FROM nzi_console.client_sites s
             WHERE s.organisation_id = $1 AND s.client_id = $2 AND s.merged_into_site_id IS NULL
               AND lower(regexp_replace(btrim(s.name), '\\s+', ' ', 'g')) = $3
@@ -374,6 +374,33 @@ async function loadSites(db: Queryable, org: string, client: PlannedClient, runI
         if (match) {
           if (site.hasEntries && (match.rows > 0 || withEntries.has(match.site_id))) {
             throw new V7ClientLoadRefused(`site ${site.siteId} "${site.name}" and ${match.site_id} share a name on ${client.clientId} and both have entries: a person decides whether they are one site. Nothing of this client was written.`);
+          }
+          // The ruled survivor order (entries → active in V7 → …): a site active in V7 is never mapped onto an archived one with
+          // no entries. It is created, and the archived one is retired into it, as the merge would (0235).
+          if (match.archived && !site.archived && match.rows === 0 && !withEntries.has(match.site_id)) {
+            await insert(db, "client_sites", [
+              { column: "organisation_id", value: org, type: "text" },
+              { column: "source_system", value: SOURCE_SYSTEM, type: "text" },
+              { column: "legacy_db_id", value: site.legacyId, type: "text" },
+              ...siteCols(client, site, `${site.name} ${randomUUID()}`),
+            ]);
+            await db.query(
+              `UPDATE nzi_console.client_sites SET merged_into_site_id = $3, is_registered_office = false, name = $4, version = version + 1 WHERE organisation_id = $1 AND site_id = $2`,
+              [org, match.site_id, site.siteId, site.name]);
+            await db.query(`UPDATE nzi_console.client_sites SET name = $3 WHERE organisation_id = $1 AND site_id = $2`, [org, site.siteId, site.name]);
+            const pointing = (await db.query<{ v7_site_id: string }>(
+              `SELECT v7_site_id FROM (SELECT DISTINCT ON (v7_site_id) v7_site_id, site_id FROM nzi_console.v7_site_links
+                  WHERE organisation_id = $1 ORDER BY v7_site_id, link_no DESC) current WHERE site_id = $2 ORDER BY v7_site_id::bigint`, [org, match.site_id])).rows;
+            for (const { v7_site_id } of pointing) await linkV7Site(db, org, v7_site_id, site.siteId, "merge", IMPORT_ACTOR, runId);
+            await linkV7Site(db, org, site.legacyId, site.siteId, "import", IMPORT_ACTOR, runId);
+            for (const [token, siteId] of siteOf) if (siteId === match.site_id) siteOf.set(token, site.siteId);
+            await db.query(
+              `INSERT INTO nzi_console.audit_events (organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,reason,before_json,after_json,client_id)
+               VALUES ($1,$2,$3,'system','client.site.merged','client_site',$4,$5,'A same-named site active in the previous system replaces one archived there.',NULL,$6::jsonb,$7)`,
+              [org, randomUUID(), IMPORT_ACTOR, match.site_id, runId, JSON.stringify({ mergedInto: site.siteId, name: site.name, archived: true, v7SitesRelinked: pointing.map((row) => row.v7_site_id) }), client.clientId]);
+            settle(site.siteId, site.siteId, site.hasEntries);
+            tally("sites", "inserted");
+            continue;
           }
           await linkV7Site(db, org, site.legacyId, match.site_id, "name-match", IMPORT_ACTOR, runId);
           settle(site.siteId, match.site_id, site.hasEntries);

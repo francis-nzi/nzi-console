@@ -2,7 +2,7 @@
 --
 -- The 29 Sep import suffixed a V7 site name repeated within one client with " (v7 site N)", minting a second console site for
 -- what is one place (J000434's Langtons). The rulings:
---   1. Survivor: the site with entries keeps them and loses the suffix; where neither has entries, the unsuffixed site survives.
+--   1. Survivor, in order: has entries → active in V7 → no suffix → lowest V7 id. It loses the suffix.
 --      No rows move, except Bryson Tractors (ruled: both had entries; the 2 rows move to the 31-row site, each audited).
 --   2. Mapping: a new append-only table maps each V7 site to its console site. Every load, re-sync and bring-in resolves a V7
 --      site through it.
