@@ -75,7 +75,9 @@ describe("portal broadcasts, against a real database", { skip: TEST_DATABASE_URL
       await assert.rejects(create({ linkUrl: null, linkLabel: "Orphan" }), refused("linkUrl", "REQUIRED"));
       await assert.rejects(create({ startsAt: "" }), refused("startsAt", "REQUIRED"));
       await assert.rejects(create({ startsAt: at(2), endsAt: at(1) }), refused("endsAt", "BEFORE_START"));
-      await assert.rejects(create({ startsAt: at(1), endsAt: at(1) }), refused("endsAt", "BEFORE_START"), "the end is after the start, not at it");
+      // One instant, read once: two `at(1)` calls straddle a millisecond tick now and then, and the "same" end is after the start.
+      const instant = at(1);
+      await assert.rejects(create({ startsAt: instant, endsAt: instant }), refused("endsAt", "BEFORE_START"), "the end is after the start, not at it");
       await assert.rejects(create({ targetClientId: "client-x" }), refused("targetClientId", "NOT_FOUND"));
       await assert.rejects(create({}, "consultant"), /admin\.settings|permission/i);
     });
