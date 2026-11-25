@@ -25,8 +25,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 import {
-  resolveV7Import, v7ImportSummaryIssues, v7ScopeAgreement,
-  type CommandContext, type CommandInputMap, type V7ImportDecision, type V7ImportRefreshCommitted, type V7ImportRefreshException, type V7ImportRefreshPreview,
+  resolveV7Import, v7ImportPeriodIssue, v7ImportSummaryIssues, v7ScopeAgreement,
+  type CommandContext, type V7ImportPeriod, type CommandInputMap, type V7ImportDecision, type V7ImportRefreshCommitted, type V7ImportRefreshException, type V7ImportRefreshPreview,
   type V7ImportSummary, type V7ReingestJobInput,
 } from "@nzi/contracts";
 import { AuthorizationError } from "./auth";
@@ -135,6 +135,28 @@ export async function readRefresh(db: Queryable, source: V7ImportRefreshSource, 
     decisions, decisionsSha256: v7ImportDecisionsSha256(decisions), resolved, exceptions };
 }
 
+/**
+ * The job's reporting period, inclusive: the job's own, else its emissions window (on every imported job the two agree). Read inside
+ * the caller's transaction; writes nothing.
+ */
+export async function readV7ImportPeriod(db: Queryable, organisationId: string, jobId: string): Promise<V7ImportPeriod> {
+  const row = (await db.query<{ period_from: string | null; period_to: string | null }>(
+    `SELECT coalesce(j.reporting_period_start, c.reporting_from)::text AS period_from, coalesce(j.reporting_period_end, c.reporting_to)::text AS period_to
+       FROM nzi_console.jobs j LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id, c.job_id) = (j.organisation_id, j.job_id)
+      WHERE j.organisation_id = $1 AND j.job_id = $2`, [organisationId, jobId])).rows[0];
+  return { from: row?.period_from ?? null, to: row?.period_to ?? null };
+}
+
+/**
+ * The two-dataset-year guard (`v7ImportPeriodIssue`): refused before the previous system is read, in the preview and the commit alike
+ * — so the modal, the fast path and the batch, which all run through them, are all refused. The command's transaction rolls back:
+ * nothing is written.
+ */
+async function assertSingleDatasetYear(db: Queryable, organisationId: string, jobId: string) {
+  const issue = v7ImportPeriodIssue(await readV7ImportPeriod(db, organisationId, jobId));
+  if (issue) throw new CommandValidationError([issue]);
+}
+
 const notReady = (verdict: string) => ({ field: "jobId", code: "NOT_READY_TO_INGEST",
   message: `The job is ${verdict}, not ready to ingest: every row that differs needs its decision, and every decision must stand.` });
 
@@ -163,6 +185,7 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
   try {
     await withTenantWrite(pool, context.organisationId, async (db) => {
       const outcome = await runPostgresCommandInTransaction(db, "import.refresh", input, context, async (tx) => {
+        await assertSingleDatasetYear(tx, context.organisationId, input.jobId);
         const read = await readRefresh(tx, source, context.organisationId, input.jobId);
         await options.within?.(tx, "preview");
         const base = { mode: "preview" as const, jobId: input.jobId, legacyJobNumber: read.legacyJobNumber, summarySha256: read.summarySha256,
@@ -204,6 +227,7 @@ export function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSou
   return runPostgresCommand(pool, "import.refresh", input, context, async (db) => {
     if ((await readImportPolicy(db, context.organisationId)).refreshCommitRequiresAdmin && context.grant?.role !== "admin")
       throw new AuthorizationError("import.refresh", "This organisation requires an Admin to commit a refresh; a preview is still yours to run.");
+    await assertSingleDatasetYear(db, context.organisationId, input.jobId);
     const read = await readRefresh(db, source, context.organisationId, input.jobId);
     if (read.summarySha256 !== input.summarySha256) fail("summarySha256", "SUMMARY_MOVED", "The job's rows have moved since the preview; preview again.");
     if (read.decisionsSha256 !== input.decisionsSha256) fail("decisionsSha256", "DECISIONS_MOVED", "The job's decisions changed since the preview; preview again.");

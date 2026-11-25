@@ -157,12 +157,13 @@ export function verdictWords(match: V7MatchResult, rowScope: V7ImportScope, fact
   const delta = match.delta === null ? "" : `${match.delta > 0 ? "+" : ""}${oneDp(match.delta)}`;
   const otherScope = factorScopes.map((tag) => tag.split(".")[0]).find((scope) => scope !== rowScope);
   const words: Record<V7MatchVerdict, { text: string; tone: "ok" | "off" | "bad" }> = {
-    reproduces: { text: "✓ matches the previous system", tone: "ok" },
+    // Judged against the figure worked out from the previous system's factor — not that system's own figure (25 Nov).
+    reproduces: { text: "✓ matches the previous system’s factor", tone: "ok" },
     // On the row's own basis, a figure-only is a zero rate: any zero gives the figure, so it says nothing (autopick fix §4).
     "figure-only": match.rightBasis ? { text: "a zero rate — any zero gives this figure", tone: "off" }
       : { text: otherScope ? `Scope ${otherScope} — wrong basis` : "another category — wrong basis", tone: "off" },
-    close: { text: `${delta} against the previous system`, tone: "bad" },
-    differs: { text: `${delta} against the previous system`, tone: "bad" },
+    close: { text: `${delta} against the previous system’s factor`, tone: "bad" },
+    differs: { text: `${delta} against the previous system’s factor`, tone: "bad" },
     "unit-mismatch": { text: "unit mismatch", tone: "bad" },
     "no-figure": { text: "no figure to compare", tone: "off" },
   };

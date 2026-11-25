@@ -2652,3 +2652,156 @@ describe("bring-in on a snapshotted job: the snapshot kept and superseded, QA re
     await assert.rejects(db.query(`DELETE FROM nzi_console.reviewed_crp_snapshot_supersessions`), /append-only/);
   });
 });
+
+/**
+ * The two-dataset-year guard (urgent, 25 Nov; J000265). The previous system prices a period over two calendar years month by month
+ * across both editions; the import's "previous system" figure is a recompute from its one stored factor, so on such a job the
+ * reconcile passes falsely (J000265: 17.3 against 17.3, where the previous system's own figure is 15.3). Until monthly pricing is
+ * live, bring-in is refused for every such job — at the preview, the commit, the fast path and the batch — with nothing written,
+ * the previous system not even read. A calendar-year job (J000434's shape) brings in exactly as before.
+ */
+describe("the two-dataset-year guard: a job whose period spans two calendar years is refused at preview, commit, fast path and batch, nothing written", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let database: DisposableDatabase;
+  let db: pg.Client;
+  let keys = 0;
+  const ORG_TY = "two-year";
+  const TWO_YEAR = "This job spans two dataset years. It can't be brought in until monthly pricing is live. Nothing was written.";
+  const context = (role: "admin" | "consultant" = "admin", reason?: string): CommandContext => {
+    keys += 1;
+    return { organisationId: ORG_TY, actorId: `staff-${role}`, principal: "staff", idempotencyKey: `ty-${keys}`, correlationId: `ty-corr-${keys}`, ...(reason ? { reason } : {}),
+      grant: commandGrantForRole(role, ORG_TY, `staff-${role}`) };
+  };
+  const issues = (error: unknown) => error instanceof CommandValidationError ? error.issues.map((issue) => [issue.code, issue.message]) : [[String(error), ""]];
+  const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
+  /** Job k: its own three rows, gas amended in the previous system now — a job with something to bring in. */
+  const job = (k: number, jobId: string, period: [string, string] | null) => {
+    const at = (base: V7Fixture, n: string): V7Fixture => ({ ...base, id: `${k}${n}` });
+    const gas = at(GAS, "001"), water = at(WATER, "002"), refrigerant = at(REFRIGERANT, "003");
+    const plan = (runId: string): V7ReingestJobInput => ({ ...planFor(runId, [[`v7-row-${gas.id}`, gas], [`v7-row-${water.id}`, water], [`v7-row-${refrigerant.id}`, refrigerant]]), jobId });
+    return { jobId, k, period, plan, before: [gas, water, refrigerant].map(plannedRow), now: [{ ...gas, qty: 1200, reported: 0.24 }, water, refrigerant].map(plannedRow) };
+  };
+  // J000265's shape (April to March), J000434's (a calendar year), and a job with no period recorded.
+  const SPANS = job(61, "ty-spans", ["2025-04-01", "2026-03-31"]);
+  const CALENDAR = job(62, "ty-calendar", ["2025-01-01", "2025-12-31"]);
+  const NO_PERIOD = job(63, "ty-no-period", null);
+  const byId = new Map([SPANS, CALENDAR, NO_PERIOD].map((entry) => [entry.jobId, entry]));
+  const reads: string[] = [];
+  const source: V7ImportRefreshSource = async (_db, { jobId }) => { reads.push(jobId); return { sourceSha256: "e".repeat(64), rows: byId.get(jobId)!.now }; };
+  const options = (jobId: string) => ({ basePlan: withoutRun(byId.get(jobId)!.plan("x")) });
+  const fingerprint = async () => {
+    const tables = (await db.query<{ t: string }>(`SELECT tablename AS t FROM pg_tables WHERE schemaname = 'nzi_console' ORDER BY tablename`)).rows.map((row) => row.t);
+    const prints: Record<string, string> = {};
+    for (const table of tables) prints[table] = (await db.query<{ p: string }>(`SELECT md5(coalesce(string_agg(t::text, '|' ORDER BY t::text), '')) AS p FROM nzi_console.${table} t`)).rows[0]!.p;
+    return prints;
+  };
+  /** Everything of one job's own: its rows, its import records, its audit, its decisions. */
+  const jobPrint = async (jobId: string) => (await db.query<{ p: string }>(
+    `SELECT md5(concat_ws('#',
+       (SELECT string_agg(r::text, '|' ORDER BY r.scope_row_id) FROM nzi_console.job_scope_rows r WHERE r.organisation_id = $1 AND r.job_id = $2),
+       (SELECT string_agg(g::text, '|' ORDER BY g.ingest_id) FROM nzi_console.v7_import_ingests g WHERE g.organisation_id = $1 AND g.job_id = $2),
+       (SELECT string_agg(a::text, '|' ORDER BY a.occurred_at, a.audit_event_id) FROM nzi_console.audit_events a WHERE a.organisation_id = $1 AND a.entity_id = $2),
+       (SELECT string_agg(i::text, '|' ORDER BY i.idempotency_key) FROM nzi_console.command_idempotency i WHERE i.organisation_id = $1 AND i.outcome_json::text LIKE '%' || $2 || '%'))) AS p`,
+    [ORG_TY, jobId])).rows[0]!.p;
+
+  before(async () => {
+    database = (await createDisposableDatabase("v7twoyear"))!;
+    db = await database.admin();
+    await db.query(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [ORG_TY]);
+    await db.query(`SELECT nzi_console.provision_organisation($1)`, [ORG_TY]);
+    await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG_TY]);
+    await db.query(`INSERT INTO nzi_console.clients (organisation_id,client_id,name,status) VALUES ($1,'c1','Two Year Test','active')`, [ORG_TY]);
+    for (const [user, role] of [["staff-admin", "admin"], ["staff-consultant", "consultant"]]) {
+      await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [ORG_TY, user, role]);
+    }
+    await db.query(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
+                    VALUES ($1,'v7-vintage-2025','DESNZ GB 2025 (v7 vintage)','1','2025-01-01','2025-12-31','GB','active','Test','Source: test.')`, [ORG_TY]);
+    for (const [id, label, unit, kg, scope, levels] of [["gas", "Natural gas", "kWh", 0.2, "1", ["Fuels", "Gaseous fuels", "Natural gas"]], ["water", "Water supply", "m3", 0.15, "3", []],
+      ["lpg", "LPG", "litres", 0.2, "1", ["Fuels", "Gaseous fuels", "LPG"]]] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
+        [ORG_TY, id, label, unit, kg, scope, levels]);
+    }
+    for (const entry of [SPANS, CALENDAR, NO_PERIOD]) {
+      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+        VALUES ($1,$2,'c1',$3,'crp','CRP','open','Data entry',2025,$4,$5,'nzi-pro-v7',$6,$7)`,
+        [ORG_TY, entry.jobId, 9500 + entry.k, entry.period?.[0] ?? null, entry.period?.[1] ?? null, `9${entry.k}`, `J${String(900 + entry.k).padStart(6, "0")}`]);
+      if (entry.period) await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`,
+        [ORG_TY, entry.jobId, entry.period[0], entry.period[1]]);
+      for (const row of entry.before) await insert(db, "job_scope_rows", [
+        { column: "organisation_id", value: ORG_TY, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+        { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(entry.jobId, row)]);
+      const standing = `v7-reingest-${randomUUID()}`;
+      await withTenantWrite(database.pool, ORG_TY, (client) => reingestV7JobInTransaction(client, { ...entry.plan(standing) },
+        { organisationId: ORG_TY, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+          reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", ORG_TY, V7_REINGEST_ACTOR) }));
+    }
+  });
+  after(async () => { await db?.end(); await database?.end(); });
+
+  it("preview: refused, by name and in the words shown at the top — the previous system never read, nothing written", async () => {
+    const before = await fingerprint();
+    reads.length = 0;
+    await assert.rejects(previewV7ImportRefresh(database.pool, source, { jobId: SPANS.jobId, mode: "preview" }, context(), options(SPANS.jobId)),
+      (error) => { assert.deepEqual(issues(error), [["SPANS_TWO_DATASET_YEARS", TWO_YEAR]]); return true; });
+    assert.deepEqual(reads, [], "refused before the source is read");
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("commit: refused the same way, whatever fingerprints it names — nothing written, no audit, no import record", async () => {
+    const before = await fingerprint();
+    reads.length = 0;
+    await assert.rejects(commitV7ImportRefresh(database.pool, source, { jobId: SPANS.jobId, mode: "commit", summarySha256: "a".repeat(64), decisionsSha256: "b".repeat(64) },
+      context("admin", "bring it in (test)"), options(SPANS.jobId)), (error) => { assert.deepEqual(issues(error), [["SPANS_TWO_DATASET_YEARS", TWO_YEAR]]); return true; });
+    assert.deepEqual(reads, []);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("fast path: refused — never automatic, nothing written", async () => {
+    const before = await fingerprint();
+    reads.length = 0;
+    await assert.rejects(refreshV7ImportFastPath(database.pool, source, SPANS.jobId, context(), options(SPANS.jobId)),
+      (error) => { assert.deepEqual(issues(error), [["SPANS_TWO_DATASET_YEARS", TWO_YEAR]]); return true; });
+    assert.deepEqual(reads, []);
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("a job with no reporting period is refused too: its dataset years cannot be told", async () => {
+    const before = await fingerprint();
+    await assert.rejects(previewV7ImportRefresh(database.pool, source, { jobId: NO_PERIOD.jobId, mode: "preview" }, context(), options(NO_PERIOD.jobId)),
+      (error) => { assert.deepEqual(issues(error).map(([code]) => code), ["NO_REPORTING_PERIOD"]); return true; });
+    assert.deepEqual(await fingerprint(), before);
+  });
+
+  it("the rows modal's read says why, for the modal to show at the top; a calendar-year job carries no refusal", async () => {
+    const holder = commandGrantForRole("admin", ORG_TY, "staff-admin");
+    assert.equal((await readV7ImportRows(database.pool, source, holder, SPANS.jobId, options(SPANS.jobId))).periodRefusal, TWO_YEAR);
+    assert.equal((await readV7ImportRows(database.pool, source, holder, CALENDAR.jobId, options(CALENDAR.jobId))).periodRefusal, null);
+  });
+
+  it("a calendar-year job (J000434's shape) is unchanged: its preview would commit and reconciles per scope", async () => {
+    const preview = await previewV7ImportRefresh(database.pool, source, { jobId: CALENDAR.jobId, mode: "preview" }, context(), options(CALENDAR.jobId));
+    assert.deepEqual([preview.outcome, preview.exceptions, preview.refusal], ["would-commit", [], null]);
+    assert.deepEqual(preview.scopeTotals, { "1": { v7Tco2e: 2.43, liveTco2e: 2.43 }, "2": { v7Tco2e: 0, liveTco2e: 0 }, "3": { v7Tco2e: 0.0015, liveTco2e: 0.0015 } });
+  });
+
+  it("batch: the two-year job and the job with no period are refused by code, nothing of theirs written; the calendar-year job is auto-committed as before", async () => {
+    const spansBefore = await jobPrint(SPANS.jobId);
+    const noPeriodBefore = await jobPrint(NO_PERIOD.jobId);
+    const started = await startV7ImportBatch(database.pool, { clientId: "c1" }, context());
+    reads.length = 0;
+    const run = await runV7ImportBatch(database.pool, ORG_TY, started.data.runId, { source, optionsFor: (jobId) => options(jobId), sleep: async () => undefined });
+    assert.equal(run.status, "completed");
+    const results = Object.fromEntries((await db.query<{ job_id: string; status: string; refusal_codes: string[] }>(
+      `SELECT job_id, status, refusal_codes FROM nzi_console.v7_import_batch_results WHERE organisation_id = $1 AND run_id = $2`, [ORG_TY, started.data.runId])).rows
+      .map((row) => [row.job_id, [row.status, row.refusal_codes]]));
+    assert.deepEqual(results, {
+      [SPANS.jobId]: ["refused", ["SPANS_TWO_DATASET_YEARS"]],
+      [CALENDAR.jobId]: ["refreshed", []],
+      [NO_PERIOD.jobId]: ["refused", ["NO_REPORTING_PERIOD"]],
+    });
+    assert.deepEqual(reads, [CALENDAR.jobId, CALENDAR.jobId], "only the calendar-year job was read (its preview, then its commit)");
+    assert.equal(await jobPrint(SPANS.jobId), spansBefore, "nothing of the two-year job's written");
+    assert.equal(await jobPrint(NO_PERIOD.jobId), noPeriodBefore);
+    const committed = (await db.query(`SELECT outcome FROM nzi_console.v7_import_ingests WHERE organisation_id = $1 AND job_id = $2 AND kind = 'ingest'`, [ORG_TY, CALENDAR.jobId])).rows;
+    assert.deepEqual(committed, [{ outcome: "committed" }]);
+  });
+});

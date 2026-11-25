@@ -55,7 +55,7 @@ const ROWS: V7ImportRowsRow[] = [
 const TOTALS = { "1": { consoleRows: 1, consoleTco2e: 1052.6, v7Rows: 3, v7Tco2e: 69.878 }, "2": { consoleRows: 1, consoleTco2e: 15.3, v7Rows: 1, v7Tco2e: 4.5 },
   "3": { consoleRows: 1, consoleTco2e: 195.7, v7Rows: 2, v7Tco2e: 3.653432 } };
 const DATA: V7ImportRows = { jobId: "v7-job-424", legacyJobNumber: "J000434", verdict: "needs-mapping", scopeTotals: TOTALS, summaryCurrent: false, firstTimeMapping: true,
-  rows: ROWS, familyless: [] };
+  rows: ROWS, familyless: [], periodRefusal: null };
 const props = (over: Partial<Parameters<typeof import("../app/jobs/ImportRowsModal").ImportRowsView>[0]> = {}) => ({
   data: DATA, pass: 2, busy: false, canResolve: true, writeEnabled: true, commitGated: false, error: null, notice: null, filter: "", onFilter: () => undefined,
   collapseDone: true, onCollapse: () => undefined, openRow: null, onOpenRow: () => undefined, preview: null, notAutomatic: null, reason: "", onReason: () => undefined,
@@ -112,7 +112,32 @@ describe("the reconcile strip — the scope totals, in plain words", () => {
   it("says the figures match only when every scope agrees", () => {
     const clean: V7ImportRows = { ...DATA, rows: [ROWS[0]!, ROWS[6]!], scopeTotals: { ...TOTALS, "1": { ...TOTALS["1"], v7Tco2e: 40.988 }, "2": { ...TOTALS["2"], v7Tco2e: 0 }, "3": { ...TOTALS["3"], v7Tco2e: 0 } } };
     const markup = html({ data: clean });
-    assert.ok(markup.includes(`data-reconcile="agrees"`) && markup.includes("✓ Figures match the previous system to 1 decimal place"));
+    assert.ok(markup.includes(`data-reconcile="agrees"`) && markup.includes("✓ Scope totals match those worked out from the previous system’s factors, to 1 decimal place"));
+  });
+  it("the previous system's figure is said as what it is: worked out from its factor, never as its own figure", () => {
+    const markup = html();
+    assert.ok(markup.includes("vs 28.9 worked out from the previous system’s factor ✓"), "a calendar-year job keeps its tick");
+    assert.ok(markup.includes("12.1 <span>tCO₂e, worked out from the previous system’s factor</span>"));
+    assert.ok(!markup.includes("tCO₂e, previous system"));
+  });
+});
+
+describe("the two-dataset-year guard (J000265): refused at the top, before anything is tried, and nothing shown as agreeing", () => {
+  const TWO_YEAR = "This job spans two dataset years. It can't be brought in until monthly pricing is live. Nothing was written.";
+  it("says so at the top in the reconcile strip's place, holds Accept & bring in, and shows no tick on any row", () => {
+    const clean: V7ImportRows = { ...DATA, rows: [ROWS[0]!, ROWS[6]!], periodRefusal: TWO_YEAR,
+      scopeTotals: { ...TOTALS, "1": { ...TOTALS["1"], v7Tco2e: 40.988 }, "2": { ...TOTALS["2"], v7Tco2e: 0 }, "3": { ...TOTALS["3"], v7Tco2e: 0 } } };
+    const markup = html({ data: clean });
+    assert.ok(markup.includes(`data-outcome="refused"`) && markup.includes(TWO_YEAR.replace(/'/g, "&#x27;")), "the refusal, at the top");
+    assert.ok(!markup.includes("data-reconcile="), "no reconcile strip — so no scope said to agree");
+    assert.ok(!markup.includes("✓"), "no tick anywhere");
+    assert.ok(markup.includes("vs 28.9 worked out from the previous system’s factor<"), "the row's figure, labelled, without its tick");
+    assert.match(markup, /data-bring-in="true" disabled=""/);
+  });
+  it("an opened row's candidate table shows no tick either", () => {
+    const open = { ...ROWS[1]!, candidates: mergeCandidates([], [RIGHT, WRONG, KM]) };
+    const markup = html({ data: { ...DATA, rows: [open], periodRefusal: TWO_YEAR }, openRow: "10382" });
+    assert.ok(markup.includes(`data-verdict="reproduces"`) && markup.includes("matches the previous system’s factor") && !markup.includes("✓"));
   });
 });
 
@@ -145,7 +170,7 @@ describe("the modal's states", () => {
     const options = [...markup.matchAll(/data-candidate="([^"]+)" data-verdict="([^"]+)"/g)].map((match) => [match[1], match[2]]);
     assert.deepEqual(options, [["uk-ghg-gb-2024|uk-ghg-25_301_3069_9_2", "reproduces"], ["uk-ghg-gb-2024|uk-ghg-25_301_3069_9_1", "unit-mismatch"], ["uk-ghg-gb-2024|uk-ghg-4_301_3069_9_2", "figure-only"]]);
     assert.ok(markup.includes(`class="nz-irm-opt sel" data-candidate="uk-ghg-gb-2024|uk-ghg-25_301_3069_9_2"`), "the reproducing factor on the right basis is the highlighted one");
-    assert.ok(markup.includes("✓ matches the previous system") && markup.includes("Scope 1 — wrong basis") && markup.includes("unit mismatch"));
+    assert.ok(markup.includes("✓ matches the previous system’s factor") && markup.includes("Scope 1 — wrong basis") && markup.includes("unit mismatch"));
     assert.equal([...markup.matchAll(/data-use="/g)].length, 3, "a Use button on every candidate");
     assert.match(markup, /data-use="uk-ghg-gb-2024\|uk-ghg-4_301_3069_9_2" disabled=""/, "the wrong-scope factor cannot be filed for the row");
   });
