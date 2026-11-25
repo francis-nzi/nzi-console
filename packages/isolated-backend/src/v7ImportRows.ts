@@ -14,7 +14,7 @@
 //      command, no new authority: the route takes `import.decision.set`'s principal, and each write is that command's own check.
 import {
   emissionCategoryTaxonomy, familylessCategories, categoriesForLevels, membersOfCategory, parseFactorId, rankV7Candidates, v7ApplyPct, v7AutoPick, v7CategoryCode,
-  v7CodeKeys, v7FactorKeys, v7MatchCandidate, V7_IMPORT_SOURCE_SYSTEM,
+  v7CodeKeys, v7FactorKeys, v7ImportPeriodIssue, v7MatchCandidate, V7_IMPORT_SOURCE_SYSTEM,
   type CommandContext, type CommandInputMap, type MembershipFactor, type V7ImportCarryState, type V7ImportScope, type V7MatchResult, type V7MatchRow,
 } from "@nzi/contracts";
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
@@ -26,7 +26,7 @@ import { CommandValidationError } from "./postgresCommands";
 import type { PlannedRow } from "./v7ClientImport";
 import { invalidV7ImportMappings, setV7ImportDecision } from "./v7ImportDecision";
 import { buildV7ImportMapping, V7_SCOPE_TOTAL_CODE, type V7ImportMapping, type V7ImportMappingRow } from "./v7ImportMapping";
-import type { V7ImportRefreshOptions, V7ImportRefreshSource } from "./v7ImportRefresh";
+import { readV7ImportPeriod, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
 import { v7UnitAgainstFactor } from "./v7Reingest";
 
 /**
@@ -91,6 +91,11 @@ export type V7ImportRows = Omit<V7ImportMapping, "rows"> & {
   rows: V7ImportRowsRow[];
   /** The categories no family names: their list is their whole scope, so any factor of it may be filed there. */
   familyless: string[];
+  /**
+   * Why the job cannot be brought in for its period (`v7ImportPeriodIssue`: it spans two dataset years, or has none), or null. The
+   * refresh refuses such a job whatever the modal shows; the modal says so at the top and shows no figure as agreeing.
+   */
+  periodRefusal: string | null;
 };
 
 class RowsRollback extends Error {}
@@ -258,7 +263,8 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
       totalStillCounted: total && !retiring && row.ownStatus !== "withdrawn" && activityCounted.has(row.scope) };
   });
   const { rows: _rows, ...rest } = mapping;
-  return { ...rest, rows, familyless: library.familyless };
+  const periodRefusal = v7ImportPeriodIssue(await readV7ImportPeriod(db, org, jobId))?.message ?? null;
+  return { ...rest, rows, familyless: library.familyless, periodRefusal };
 }
 
 // ── The search ──────────────────────────────────────────────────────────────────────────────────────────────────

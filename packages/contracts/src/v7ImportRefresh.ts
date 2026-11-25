@@ -51,6 +51,29 @@ export type V7ImportRefreshCommitted = {
   resync: { unchanged: number; superseded: number; added: number; withdrawn: number }; plan: { committed: number; decided: number };
 };
 
+/**
+ * The two-dataset-year guard (urgent, 25 Nov; J000265). The previous system prices a period that spans two calendar years month by
+ * month across the two editions (J000265's UK electricity: 0.177 for 2025, 0.13096 for 2026, blended 0.15674). The import's
+ * "previous system" figure is a recompute from the single factor it stores, so on such a job it is not the previous system's figure,
+ * and a reconcile against it passes falsely. Until the previous system's own figures can be read and monthly pricing is live, bring-in
+ * (the modal, the fast path, the batch) is refused for every such job — and for a job with no period, whose years cannot be told.
+ */
+export const V7_IMPORT_TWO_DATASET_YEARS = "This job spans two dataset years. It can't be brought in until monthly pricing is live. Nothing was written.";
+export const V7_IMPORT_NO_REPORTING_PERIOD = "This job has no reporting period, so its dataset years can't be checked. It can't be brought in until it has one. Nothing was written.";
+
+/** A reporting period, inclusive, as ISO dates (`YYYY-MM-DD`), or null where none is recorded. */
+export type V7ImportPeriod = { from: string | null; to: string | null };
+
+/** True when the period's first and last days fall in different calendar years. */
+export const v7PeriodSpansTwoYears = (period: V7ImportPeriod) => period.from !== null && period.to !== null && period.from.slice(0, 4) !== period.to.slice(0, 4);
+
+/** Why bring-in is refused for the period, or null when it may go ahead (a period within one calendar year). */
+export function v7ImportPeriodIssue(period: V7ImportPeriod): CommandIssue | null {
+  if (period.from === null || period.to === null) return { field: "jobId", code: "NO_REPORTING_PERIOD", message: V7_IMPORT_NO_REPORTING_PERIOD };
+  if (v7PeriodSpansTwoYears(period)) return { field: "jobId", code: "SPANS_TWO_DATASET_YEARS", message: V7_IMPORT_TWO_DATASET_YEARS };
+  return null;
+}
+
 const SHA256 = /^[0-9a-f]{64}$/;
 
 export function v7ImportRefreshIssues(input: V7ImportRefreshInput): CommandIssue[] {

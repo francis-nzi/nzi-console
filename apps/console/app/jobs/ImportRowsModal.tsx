@@ -38,6 +38,13 @@ const t = (value: number | null) => (value === null ? "—" : oneDp(value));
 const qty = (value: number | null) => (value === null ? "—" : value.toLocaleString("en-GB", { maximumFractionDigits: 3 }));
 const rate = (value: number) => value.toLocaleString("en-GB", { maximumFractionDigits: 5 });
 const categoryName = (code: string | null) => emissionCategoryTaxonomy.find((entry) => entry.code === code)?.name ?? code ?? "";
+/**
+ * The row's "previous system" figure is recomputed from the one factor the previous system stores — not that system's own figure
+ * (which, over two dataset years, it prices month by month). Said so wherever it is shown (two-dataset-year guard, 25 Nov).
+ */
+const FROM_FACTOR = "worked out from the previous system’s factor";
+/** The period guard's refusal, at the top, in the refusal's own place. */
+const periodOutcome = (message: string): BringInOutcome => ({ tone: "refused", title: message, lines: [], rows: [] });
 
 export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
   state: Applies; open: boolean; onClose: () => void;
@@ -205,11 +212,12 @@ export function ImportRowsView(props: ImportRowsViewProps) {
   const shown = filterRows(data.rows, filter);
   const groups = groupRows(shown);
   const pct = (n: number) => `${progress.total ? (100 * n) / progress.total : 0}%`;
-  const blocked = blockers.length > 0 || !writeEnabled || (pending.length > 0 && !canResolve);
+  const blocked = blockers.length > 0 || !writeEnabled || (pending.length > 0 && !canResolve) || data.periodRefusal !== null;
   // Ready: every row with a way in — matched, suggested, a pair to carry, a withdrawal to confirm — all but the reds.
   const ready = progress.total - progress.unmatched - progress.doubleCounted;
   // What bringing it in said, when it did not bring the job in: refused (the command, or the preview), or a reason it needs.
-  const outcome: BringInOutcome | null = props.refusal
+  // A job the period guard refuses (two dataset years, or none) says so first, before anything is tried, and shows nothing as agreeing.
+  const outcome: BringInOutcome | null = data.periodRefusal !== null ? periodOutcome(data.periodRefusal) : props.refusal
     ?? (view?.kind === "refused" ? refusedOutcome(view.issues.map((issue) => issue.message))
       : preview && props.notAutomatic ? reasonOutcome(props.notAutomatic, preview.exceptions) : null);
   // Scrolled to, so it is never missed below the rows.
@@ -242,7 +250,7 @@ export function ImportRowsView(props: ImportRowsViewProps) {
       {outcome.lines.map((line, at) => <span key={at}>{line}</span>)}
       {outcome.rows.length ? <span data-outcome-rows={outcome.rows.join(",")}>Rows: <b>{outcome.rows.join(", ")}</b></span> : null}
     </div> : <div className={`nz-irm-rec${allAgree ? " ok" : anyOff ? " warn" : ""}`} role="status" data-reconcile={allAgree ? "agrees" : anyOff ? "differs" : "waiting"}>
-      <span><b>{allAgree ? "✓ Figures match the previous system to 1 decimal place" : anyOff ? "A scope total does not agree with the previous system yet" : `Waiting on ${waiting} row${waiting === 1 ? "" : "s"} before the scope totals can be checked`}</b></span>
+      <span><b>{allAgree ? "✓ Scope totals match those worked out from the previous system’s factors, to 1 decimal place" : anyOff ? "A scope total does not agree yet with the one worked out from the previous system’s factors" : `Waiting on ${waiting} row${waiting === 1 ? "" : "s"} before the scope totals can be checked`}</b></span>
       {lines.map((line) => <span key={line.scope} data-scope-line={line.scope} data-agrees={String(line.agrees)}>
         Scope {line.scope} total <b>{t(line.previous)}</b>{line.agrees === true ? " ✓" : line.agrees === false ? <> · here <b>{t(line.console)}</b> — does not agree</> : line.waiting ? ` · ${line.waiting} to go` : ""}
       </span>)}
@@ -362,8 +370,8 @@ function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; ca
           {row.held ? <div className="nz-irm-s" data-held style={{ color: "var(--danger)" }}>{row.held}</div> : null}</>}</div>
     <div className="nz-irm-st">
       <span className={`nz-irm-pill ${pill.tone}`}>{pill.text}</span>
-      <div className="nz-irm-fig">{row.lane === "switched-off" ? <span>not counted</span> : row.previous.tco2e === null ? "" : <>{pick?.match.tco2e !== undefined && pick?.match.tco2e !== null && row.lane !== "in-console" ? <>{t(pick.match.tco2e)} <span>vs {t(row.previous.tco2e)}{pick.match.verdict === "reproduces" ? " ✓" : ""}</span></>
-        : <>{t(row.previous.tco2e)} <span>tCO₂e, previous system</span></>}</>}</div>
+      <div className="nz-irm-fig">{row.lane === "switched-off" ? <span>not counted</span> : row.previous.tco2e === null ? "" : <>{pick?.match.tco2e !== undefined && pick?.match.tco2e !== null && row.lane !== "in-console" ? <>{t(pick.match.tco2e)} <span>vs {t(row.previous.tco2e)} {FROM_FACTOR}{pick.match.verdict === "reproduces" && props.data.periodRefusal === null ? " ✓" : ""}</span></>
+        : <>{t(row.previous.tco2e)} <span>tCO₂e, {FROM_FACTOR}</span></>}</>}</div>
       <div className="nz-irm-act">
         {confirm ? <button type="button" className="nz-btn" disabled={props.busy || !props.canWrite} onClick={() => accept(pick!, pick!.match.categoryCode!)}>Confirm</button> : null}
         {row.lane === "confirm-off" ? <button type="button" className="nz-btn" disabled={props.busy || !props.canWrite}
@@ -372,13 +380,13 @@ function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; ca
           {open ? "Close" : row.lane === "unmatched" || (row.lane === "switched-off" && !pick) ? "Find a factor" : "Change"}</button> : null}
       </div>
     </div>
-    {open ? <Resolve row={row} familyless={props.data.familyless} busy={props.busy} canWrite={props.canWrite} search={props.search} onUse={accept} /> : null}
+    {open ? <Resolve row={row} familyless={props.data.familyless} periodHeld={props.data.periodRefusal !== null} busy={props.busy} canWrite={props.canWrite} search={props.search} onUse={accept} /> : null}
   </div>;
 }
 
 /** The resolve control: the row's own candidates and the smart search, as one ranked table — Console factor · This row → tCO₂e · Factor rate · Use. */
-function Resolve({ row, familyless, busy, canWrite, search, onUse }: {
-  row: V7ImportRowsRow; familyless: string[]; busy: boolean; canWrite: boolean;
+function Resolve({ row, familyless, periodHeld, busy, canWrite, search, onUse }: {
+  row: V7ImportRowsRow; familyless: string[]; periodHeld: boolean; busy: boolean; canWrite: boolean;
   search: ImportRowsViewProps["search"]; onUse: (candidate: V7ImportCandidate, categoryCode: string) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -401,7 +409,7 @@ function Resolve({ row, familyless, busy, canWrite, search, onUse }: {
   const list = mergeCandidates(row.candidates, hits).slice(0, 12);
   const best = list.find((candidate) => candidate.match.verdict === "reproduces");
   const cue: ReactNode = row.previous.tco2e === null ? <>The previous system holds no figure for this row — pick the factor it should come in with.</>
-    : <><b>{row.lane === "unmatched" ? "No match on the ID." : "Check the match."}</b> The previous system worked out <strong>{t(row.previous.tco2e)} tCO₂e</strong> for {qty(row.previous.quantity)} {row.previous.unit ?? ""} — pick the factor that reproduces it.</>;
+    : <><b>{row.lane === "unmatched" ? "No match on the ID." : "Check the match."}</b> Worked out from the previous system&rsquo;s factor: <strong>{t(row.previous.tco2e)} tCO₂e</strong> for {qty(row.previous.quantity)} {row.previous.unit ?? ""} — pick the factor that reproduces it.</>;
   return <div className="nz-irm-resolve" data-resolve={row.legacyDbId}>
     <div className="nz-irm-cue">{cue}</div>
     <input className="nz-inp" aria-label={`Search the factor library for row ${row.legacyDbId}`} placeholder="Search — ID, any words, unit (e.g. “car petrol small km”)" value={query} onChange={(event) => setQuery(event.target.value)} />
@@ -410,7 +418,9 @@ function Resolve({ row, familyless, busy, canWrite, search, onUse }: {
     {list.length === 0 ? <div className="nz-irm-s" style={{ padding: "6px 10px" }}>Nothing found yet — search the library by any words of the factor.</div> : null}
     {list.map((candidate) => {
       const key = `${candidate.datasetId}|${candidate.factorId}`;
-      const words = verdictWords(candidate.match, row.scope, candidate.scopes);
+      const judged = verdictWords(candidate.match, row.scope, candidate.scopes);
+      // Under the period guard nothing is shown as agreeing: the figure it is judged against is not the previous system's own.
+      const words = periodHeld ? { ...judged, text: judged.text.replace(/^✓ /, "") } : judged;
       const options = fileableCategories(row, candidate, familyless);
       const chosen = filing?.key === key ? filing.category : candidate.match.categoryCode ?? "";
       return <div key={key} className={`nz-irm-opt${candidate === best ? " sel" : ""}`} data-candidate={key} data-verdict={candidate.match.verdict}>
