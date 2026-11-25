@@ -17,6 +17,7 @@ import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { invalidApplied } from "./v7ImportDecision";
 import { committedV7CrosswalkPlan, readRefresh, type Refresh, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
 import { readV7ImportView } from "./v7ImportSummary";
+import { resolveV7SiteTokens } from "./v7SiteLinks";
 
 export type V7ImportMappingSource = "decision" | "plan" | "console" | "none";
 /** Why a row needs a person: the same states the refresh preview's exceptions carry, as one code. */
@@ -107,9 +108,12 @@ export async function buildV7ImportMapping(db: Queryable, source: V7ImportRefres
        LEFT JOIN nzi_console.job_scope_rows l ON (l.organisation_id, l.reingested_from_row_id) = (m.organisation_id, m.scope_row_id) AND l.origin = 'live' AND l.superseded_by_row_id IS NULL
        LEFT JOIN nzi_console.client_sites s ON (s.organisation_id, s.site_id) = (m.organisation_id, m.site_id)
       WHERE m.organisation_id = $1 AND m.job_id = $2 AND m.origin = 'migrated' AND m.superseded_by_row_id IS NULL`, [org, jobId])).rows.map((row) => [row.legacy_db_id, row]));
-  const siteIds = [...new Set(read.rows.map((row) => row.siteId).filter((id): id is string => id !== null))];
-  const siteNames = new Map((await db.query<{ site_id: string; name: string }>(
+  // Each row's V7 site named as its console site (0235): a merged site reads as the survivor.
+  const siteOf = await resolveV7SiteTokens(db, org, read.rows.map((row) => row.siteId));
+  const siteIds = [...new Set(read.rows.map((row) => siteOf(row.siteId)).filter((id): id is string => id !== null))];
+  const consoleNames = new Map((await db.query<{ site_id: string; name: string }>(
     `SELECT site_id, name FROM nzi_console.client_sites WHERE organisation_id = $1 AND site_id = ANY($2::text[])`, [org, siteIds])).rows.map((row) => [row.site_id, row.name]));
+  const siteNames = { get: (token: string) => consoleNames.get(siteOf(token) ?? "") };
 
   const rows = read.resolved.rows.map((resolved, at): V7ImportMappingRow => {
     const summaryRow = read.summary.rows[at]!;

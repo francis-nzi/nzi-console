@@ -32,6 +32,7 @@ import { CommandValidationError, requireCrpJob } from "./postgresCommands";
 import { differs, insert, migratedRowCols } from "./v7ClientLoad";
 import { SOURCE_SYSTEM, type PlannedRow } from "./v7ClientImport";
 import { snapshottedSince } from "./v7Reingest";
+import { resolveV7SiteTokens } from "./v7SiteLinks";
 
 export const V7_RESYNC_ACTOR = "policy:v7-resync";
 export const V7_RESYNC_RUN_PATTERN = /^v7-resync-[0-9a-f-]{36}$/;
@@ -137,6 +138,10 @@ export async function resyncV7JobInTransaction(db: Queryable, input: V7ResyncInp
     fail("ALREADY_REINGESTED", "This job has a completed re-ingest on its current v7 rows; revert it first, then re-sync.", "jobId");
   const standing = await completedResync(db, org, input.jobId);
   if (standing) fail("ALREADY_RESYNCED", `This job has a completed re-sync (${standing}); revert it first, then re-sync.`, "jobId");
+
+  // Each row's V7 site resolved to its console site (0235): a merged site's rows land on the survivor.
+  const siteOf = await resolveV7SiteTokens(db, org, input.rows.map((row) => row.siteId));
+  input = { ...input, rows: input.rows.map((row) => ({ ...row, siteId: siteOf(row.siteId) })) };
 
   // R5: one job's rows, each once.
   if (input.rows.length === 0) fail("NOTHING_TO_RESYNC", "No v7 rows were given for this job.");

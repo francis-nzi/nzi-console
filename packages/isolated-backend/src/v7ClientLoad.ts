@@ -6,6 +6,7 @@ import type { SealingKeys } from "./piiSealing";
 import { resolveSealingKeys } from "./piiSealingKeys";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { IMPORT_ACTOR, SOURCE_SYSTEM, type ClientImportPlan, type PlannedClient, type PlannedJob, type PlannedRow } from "./v7ClientImport";
+import { currentV7SiteLinks, isPlaceholderName, linkV7Site, siteNameKey } from "./v7SiteLinks";
 
 /**
  * Write a v7 client-and-job plan (docs/CLIENT_JOB_IMPORT_DESIGN.md §8). In foreign-key order — client → sites →
@@ -192,21 +193,8 @@ async function loadClient(
     { column: "baseline_total_tco2e", value: f.baseline.total, type: "numeric" },
   ], `client ${client.clientId}`));
 
-  // ── Sites ──
-  for (const site of client.sites) {
-    tally("sites", await reconcile(db, "client_sites", org, site.legacyId, [
-      { column: "site_id", value: site.siteId, type: "text" },
-      { column: "client_id", value: client.clientId, type: "text" },
-      { column: "name", value: site.name, type: "text" },
-      { column: "created_by", value: IMPORT_ACTOR, type: "text" },
-      { column: "address_lines_json", value: site.addressLines, type: "jsonb" },
-      { column: "latitude", value: site.latitude, type: "numeric" },
-      { column: "longitude", value: site.longitude, type: "numeric" },
-      { column: "archived", value: site.archived, type: "boolean" },
-      { column: "is_registered_office", value: site.isRegisteredOffice, type: "boolean" },
-      { column: "vacated_effective", value: site.vacatedEffective, type: "date" },
-    ], `site ${site.siteId}`));
-  }
+  // ── Sites: each V7 site resolved through v7_site_links (0235) ──
+  const siteOf = await loadSites(db, org, client, run.runId, tally);
 
   // ── Contacts: plaintext, then its version and its seal, in this transaction (NZC-119) ──
   const context = {
@@ -273,7 +261,8 @@ async function loadClient(
       }
     }
     let rowsInserted = 0;
-    for (const row of job.rows) {
+    for (const planned of job.rows) {
+      const row = planned.siteId === null ? planned : { ...planned, siteId: siteOf.get(planned.siteId) ?? planned.siteId };
       const state = await reconcile(db, "job_scope_rows", org, row.legacyDbId, migratedRowCols(job.jobId, row), `row ${row.scopeRowId} of ${job.legacyJobNumber}`);
       tally("rows", state);
       if (state === "inserted") rowsInserted += 1;
@@ -350,6 +339,132 @@ async function loadClient(
  * A migrated row's columns, as the import writes them and compares them. `scope_row_id` is written but not compared: the
  * identity is the import key, and after a v7 re-sync (0225) the current row's id is its replacement id (`…-r<n>`).
  */
+/**
+ * The client's sites (0235). Each V7 site resolves to its console site through `v7_site_links`:
+ *   - linked to a site merged elsewhere → nothing of it is written; its rows land on the survivor;
+ *   - linked to its own site → reconciled as any record, except that a site flagged for naming takes V7's name once V7 has
+ *     one, and a name differing only by the old " (v7 site N)" suffix, or placeholder against placeholder, is the same name;
+ *   - never linked → mapped to a same-named site in use on the client (case and spacing normalised; never a placeholder),
+ *     unless both have entries, which refuses the client for a person; else created with V7's name and linked.
+ * Returns each planner token (`v7-site-<id>`) → its console site.
+ */
+async function loadSites(db: Queryable, org: string, client: PlannedClient, runId: string,
+  tally: (kind: Kind, state: "inserted" | "unchanged") => void): Promise<Map<string, string>> {
+  const siteOf = new Map<string, string>();
+  const links = await currentV7SiteLinks(db, org, client.sites.map((site) => site.legacyId));
+  /** Console sites a V7 site of this plan with entries already resolves to. */
+  const withEntries = new Set<string>();
+  const settle = (token: string, siteId: string, hasEntries: boolean) => { siteOf.set(token, siteId); if (hasEntries) withEntries.add(siteId); };
+
+  for (const site of client.sites) {
+    const linked = links.get(site.legacyId);
+    if (linked !== undefined && linked !== site.siteId) { settle(site.siteId, linked, site.hasEntries); tally("sites", "unchanged"); continue; }
+    const stored = (await db.query<{ name: string; name_needs_review: boolean }>(
+      `SELECT name, name_needs_review FROM nzi_console.client_sites WHERE ${identityWhere("client_sites")}`, [org, SOURCE_SYSTEM, site.legacyId])).rows[0];
+
+    if (!stored) {
+      // Never loaded: a same-named site in use on the client takes it.
+      if (!site.nameNeedsReview && !isPlaceholderName(site.name)) {
+        const match = (await db.query<{ site_id: string; rows: number; archived: boolean }>(
+          `SELECT s.site_id, s.archived, (SELECT count(*) FROM nzi_console.job_scope_rows r WHERE (r.organisation_id, r.site_id) = (s.organisation_id, s.site_id))::int AS rows
+             FROM nzi_console.client_sites s
+            WHERE s.organisation_id = $1 AND s.client_id = $2 AND s.merged_into_site_id IS NULL
+              AND lower(regexp_replace(btrim(s.name), '\\s+', ' ', 'g')) = $3
+            ORDER BY s.archived, s.site_id LIMIT 1`, [org, client.clientId, siteNameKey(site.name)])).rows[0];
+        if (match) {
+          if (site.hasEntries && (match.rows > 0 || withEntries.has(match.site_id))) {
+            throw new V7ClientLoadRefused(`site ${site.siteId} "${site.name}" and ${match.site_id} share a name on ${client.clientId} and both have entries: a person decides whether they are one site. Nothing of this client was written.`);
+          }
+          // The ruled survivor order (entries → active in V7 → …): a site active in V7 is never mapped onto an archived one with
+          // no entries. It is created, and the archived one is retired into it, as the merge would (0235).
+          if (match.archived && !site.archived && match.rows === 0 && !withEntries.has(match.site_id)) {
+            await insert(db, "client_sites", [
+              { column: "organisation_id", value: org, type: "text" },
+              { column: "source_system", value: SOURCE_SYSTEM, type: "text" },
+              { column: "legacy_db_id", value: site.legacyId, type: "text" },
+              ...siteCols(client, site, `${site.name} ${randomUUID()}`),
+            ]);
+            await db.query(
+              `UPDATE nzi_console.client_sites SET merged_into_site_id = $3, is_registered_office = false, name = $4, version = version + 1 WHERE organisation_id = $1 AND site_id = $2`,
+              [org, match.site_id, site.siteId, site.name]);
+            await db.query(`UPDATE nzi_console.client_sites SET name = $3 WHERE organisation_id = $1 AND site_id = $2`, [org, site.siteId, site.name]);
+            const pointing = (await db.query<{ v7_site_id: string }>(
+              `SELECT v7_site_id FROM (SELECT DISTINCT ON (v7_site_id) v7_site_id, site_id FROM nzi_console.v7_site_links
+                  WHERE organisation_id = $1 ORDER BY v7_site_id, link_no DESC) current WHERE site_id = $2 ORDER BY v7_site_id::bigint`, [org, match.site_id])).rows;
+            for (const { v7_site_id } of pointing) await linkV7Site(db, org, v7_site_id, site.siteId, "merge", IMPORT_ACTOR, runId);
+            await linkV7Site(db, org, site.legacyId, site.siteId, "import", IMPORT_ACTOR, runId);
+            for (const [token, siteId] of siteOf) if (siteId === match.site_id) siteOf.set(token, site.siteId);
+            await db.query(
+              `INSERT INTO nzi_console.audit_events (organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,reason,before_json,after_json,client_id)
+               VALUES ($1,$2,$3,'system','client.site.merged','client_site',$4,$5,'A same-named site active in the previous system replaces one archived there.',NULL,$6::jsonb,$7)`,
+              [org, randomUUID(), IMPORT_ACTOR, match.site_id, runId, JSON.stringify({ mergedInto: site.siteId, name: site.name, archived: true, v7SitesRelinked: pointing.map((row) => row.v7_site_id) }), client.clientId]);
+            settle(site.siteId, site.siteId, site.hasEntries);
+            tally("sites", "inserted");
+            continue;
+          }
+          await linkV7Site(db, org, site.legacyId, match.site_id, "name-match", IMPORT_ACTOR, runId);
+          settle(site.siteId, match.site_id, site.hasEntries);
+          tally("sites", "unchanged");
+          continue;
+        }
+      }
+      let name = site.name;
+      if (site.nameNeedsReview || isPlaceholderName(name)) {
+        const taken = new Set((await db.query<{ name: string }>(
+          `SELECT lower(name) AS name FROM nzi_console.client_sites WHERE organisation_id = $1 AND client_id = $2 AND merged_into_site_id IS NULL`, [org, client.clientId])).rows.map((row) => row.name));
+        for (let n = 2; taken.has(name.toLowerCase()); n += 1) name = `Unnamed site ${n}`;
+      }
+      await insert(db, "client_sites", [
+        { column: "organisation_id", value: org, type: "text" },
+        { column: "source_system", value: SOURCE_SYSTEM, type: "text" },
+        { column: "legacy_db_id", value: site.legacyId, type: "text" },
+        ...siteCols(client, site, name),
+      ]);
+      await linkV7Site(db, org, site.legacyId, site.siteId, "import", IMPORT_ACTOR, runId);
+      settle(site.siteId, site.siteId, site.hasEntries);
+      tally("sites", "inserted");
+      continue;
+    }
+
+    // Loaded before: reconciled, the name by its own rule.
+    const found = (await differs(db, "client_sites", identityWhere("client_sites"), [org, SOURCE_SYSTEM, site.legacyId], siteCols(client, site, site.name)))!;
+    if (found.length > 0) throw new V7ClientLoadRefused(`site ${site.siteId} is already loaded and differs in ${found.join(", ")}: v7 changed after migration, or it was edited here since. Nothing of this client was written.`);
+    const named = !site.nameNeedsReview && !isPlaceholderName(site.name);
+    if (stored.name_needs_review && named) {
+      await db.query(`UPDATE nzi_console.client_sites SET name = $3, name_needs_review = false, version = version + 1 WHERE organisation_id = $1 AND site_id = $2`,
+        [org, site.siteId, site.name]);
+      await db.query(
+        `INSERT INTO nzi_console.audit_events (organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,reason,before_json,after_json,client_id)
+         VALUES ($1,$2,$3,'system','client.site.renamed','client_site',$4,$5,'The previous system now names this site.',$6::jsonb,$7::jsonb,$8)`,
+        [org, randomUUID(), IMPORT_ACTOR, site.siteId, runId, JSON.stringify({ name: stored.name, nameNeedsReview: true }),
+          JSON.stringify({ name: site.name, nameNeedsReview: false }), client.clientId]);
+    } else if (siteNameKey(stored.name) !== siteNameKey(site.name) && !(isPlaceholderName(stored.name) && !named)) {
+      throw new V7ClientLoadRefused(`site ${site.siteId} is already loaded and differs in name: v7 changed after migration, or it was edited here since. Nothing of this client was written.`);
+    }
+    if (!links.has(site.legacyId)) await linkV7Site(db, org, site.legacyId, site.siteId, "import", IMPORT_ACTOR, runId);
+    settle(site.siteId, site.siteId, site.hasEntries);
+    tally("sites", "unchanged");
+  }
+  return siteOf;
+}
+
+/** A site's columns as the import writes them; the name is compared by `loadSites`' own rule, never here. */
+function siteCols(client: PlannedClient, site: PlannedClient["sites"][number], name: string): Col[] {
+  return [
+    { column: "site_id", value: site.siteId, type: "text" },
+    { column: "client_id", value: client.clientId, type: "text" },
+    { column: "name", value: name, type: "text", compare: false },
+    { column: "name_needs_review", value: site.nameNeedsReview, type: "boolean", compare: false },
+    { column: "created_by", value: IMPORT_ACTOR, type: "text" },
+    { column: "address_lines_json", value: site.addressLines, type: "jsonb" },
+    { column: "latitude", value: site.latitude, type: "numeric" },
+    { column: "longitude", value: site.longitude, type: "numeric" },
+    { column: "archived", value: site.archived, type: "boolean" },
+    { column: "is_registered_office", value: site.isRegisteredOffice, type: "boolean" },
+    { column: "vacated_effective", value: site.vacatedEffective, type: "date" },
+  ];
+}
+
 export function migratedRowCols(jobId: string, row: PlannedRow, scopeRowId = row.scopeRowId): Col[] {
   return [
     { column: "scope_row_id", value: scopeRowId, type: "text", compare: false },

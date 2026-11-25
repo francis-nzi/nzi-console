@@ -18,6 +18,7 @@ import {
 import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 import { differs, migratedRowCols } from "./v7ClientLoad";
+import { resolveV7SiteTokens } from "./v7SiteLinks";
 import { SOURCE_SYSTEM, type PlannedRow } from "./v7ClientImport";
 import { CROSSWALK_KEYS } from "./v7ResyncRehearsal";
 
@@ -76,6 +77,9 @@ export async function summariseV7JobForImport(db: Queryable, input: {
   if (!job) fail("jobId", "NOT_FOUND", "That job was not found.");
   if (job!.source_system !== SOURCE_SYSTEM) fail("jobId", "NOT_A_V7_JOB", "Only a job imported from the previous system has an import summary.");
   if (job!.legacy_job_number !== input.legacyJobNumber) fail("legacyJobNumber", "JOB_MISMATCH", `The job is ${job!.legacy_job_number ?? "unnumbered"}, not ${input.legacyJobNumber}.`);
+  // Each row's V7 site as its console site (0235), so a merged site compares as the survivor, as the re-sync writes it.
+  const siteOf = await resolveV7SiteTokens(db, org, input.rows.map((row) => row.siteId));
+  input = { ...input, rows: input.rows.map((row) => ({ ...row, siteId: siteOf(row.siteId) })) };
   const ids = input.rows.map((row) => row.legacyDbId);
   const repeated = ids.filter((id, at) => ids.indexOf(id) !== at);
   if (repeated.length) fail("rows", "ROW_REPEATED", `${new Set(repeated).size} record(s) are given more than once.`);
