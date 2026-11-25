@@ -183,8 +183,14 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
   const claimed = library.claimed(factors.map((factor) => ({ factorId: factor.factor_id, activityUnit: factor.activity_unit, sourceLevels: factor.source_levels ?? [] })));
   const factorKeys = new Map(factors.map((factor) => [`${factor.dataset_id}|${factor.factor_id}`, v7FactorKeys(factor.code, library.suffixes)]));
   // The job's reporting year (the year its datasets are chosen by): where the previous system's own factor is the anchor.
-  const jobYear = (await db.query<{ year: number | null }>(
-    `SELECT coalesce(reporting_year, extract(year FROM start_date)::int) AS year FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [org, jobId])).rows[0]?.year ?? null;
+  const jobPeriod = (await db.query<{ year: number | null; spans: boolean | null }>(
+    `SELECT coalesce(reporting_year, extract(year FROM start_date)::int) AS year,
+            extract(year FROM reporting_period_start) <> extract(year FROM reporting_period_end) AS spans
+       FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [org, jobId])).rows[0];
+  const jobYear = jobPeriod?.year ?? null;
+  // Datasets by period §4 (D-B): on a period over two calendar years, the anchor is the previous system's own factor in its
+  // own dataset's year — the edition it priced the row at — not the reporting year's, which prices only the later months.
+  const spansYears = jobPeriod?.spans === true;
   const v7CategoryOf = (row: V7ImportMappingRow) => v7CategoryCode(read.v7Categories[row.legacyDbId] ?? planned.get(row.legacyDbId)?.level2 ?? null, row.scope);
 
   // Each wanted row's candidates, judged; then whether each would save, in one check.
@@ -202,7 +208,7 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
     const byCode = byCore.length ? byCore : factors.filter((factor) => keys.fallback !== null && keyOf(factor).unitless === keys.fallback);
     const own = factors.filter((factor) => isIdentity(factor) || byCode.includes(factor)
       || (factor.dataset_id === row.intended.datasetId && factor.factor_id === row.intended.factorId));
-    const year = jobYear ?? record.dataset?.year ?? null;
+    const year = (spansYears ? record.dataset?.year ?? null : null) ?? jobYear ?? record.dataset?.year ?? null;
     judged.set(row.legacyDbId, own.map((factor): V7ImportCandidate => {
       const rate = Number(factor.rate);
       // The anchor (§1): the previous system's own factor — or its core code, for a variant row — in the job's year, at its own rate.

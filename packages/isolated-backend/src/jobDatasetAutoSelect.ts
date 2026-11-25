@@ -45,10 +45,11 @@ function autoSelectHandler(input: CommandInputMap["job.datasets.autoSelect"], co
     const window: ReportingWindow = { from: period.period_start, to: period.period_end };
     // The job's country is its config row's — the same row the window was just checked against.
     const country = period.country_code!;
-    if ((await automaticDatasetsFor(db, org, window, country)).length === 0) {
+    // Existing imported jobs keep the single-edition rule here: R2 moves them only through the reviewed backfill.
+    if ((await automaticDatasetsFor(db, org, window, country, undefined, { perYear: false })).length === 0) {
       throw new CommandValidationError([{ field: "jobId", code: "NO_EDITION", message: `No active ${country} or GLOBAL dataset is published by the window's last day (${window.to}) — not even an earlier edition to fall back to.` }]);
     }
-    await selectAutomaticDatasets(db, org, input.jobId, window, country, context.actorId);
+    await selectAutomaticDatasets(db, org, input.jobId, window, country, context.actorId, { perYear: false });
     // What was written, read back — the audit says what the job now holds, not what was meant to be.
     const { rows } = await db.query<{ dataset_id: string; name: string }>(
       `SELECT s.dataset_id, d.name FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)

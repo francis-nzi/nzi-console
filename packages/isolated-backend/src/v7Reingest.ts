@@ -120,15 +120,22 @@ const v7Input = (row: MigratedRow) => ({
 type Carried = { siteId: string | null; dataConfidence: string | null; columnText: string | null; slots: Array<{ month: string; quantity: number | null }> | null };
 
 /**
- * RULING-v7-reingest-full-record C: v7's `month_i` is the i-th month of the job's reporting period (v7's own
- * `dataset_selector._month_sequence`), so slot i goes to reporting month i. A non-empty slot (a figure other than 0) that falls
- * outside the period refuses the run; a blank or zero one there carries nothing. Months must be figure-inert: their sum is the
- * row's quantity, or the run refuses — and per-row D7.2 then proves the figure.
+ * v7's `month_N` is **calendar month N** (month_1 = January), whichever month the job's period starts in — v7's own pricing
+ * reads it so (`JobMonthlyEmissionsResolver`, services/monthly_emissions.py: "month_N is always calendar-month-indexed"),
+ * over the first twelve months of the period. So each of the period's first twelve months takes the slot of its calendar
+ * month; a month beyond the twelfth carries nothing. This supersedes RULING-v7-reingest-full-record C's positional reading
+ * (DESIGN-datasets-by-period-and-site §4, ruled 25 Nov: "the import maps each to YYYY-MM ... corrects it if it differs"):
+ * positional months priced an April–March job's January in April's year. A calendar-year period reads the same either way.
+ * A non-empty slot (a figure other than 0) whose calendar month is not in the period refuses the run; a blank or zero one
+ * there carries nothing. Months must be figure-inert: their sum is the row's quantity, or the run refuses — and per-row
+ * D7.2 then proves the figure.
  */
 export function v7MonthSlots(months: Array<number | null> | null, reportingMonths: string[]): { slots: Array<{ month: string; quantity: number | null }> | null; outside: number[] } {
   if (!months || !months.some((value) => value !== null)) return { slots: null, outside: [] };
-  const outside = months.map((value, index) => (index >= reportingMonths.length && value !== null && value !== 0 ? index + 1 : 0)).filter(Boolean);
-  return { slots: reportingMonths.map((month, index) => ({ month, quantity: index < months.length ? months[index] ?? null : null })), outside };
+  const calendarOf = (month: string) => Number(month.slice(5, 7));
+  const covered = new Set(reportingMonths.slice(0, 12).map(calendarOf));
+  const outside = months.map((value, index) => (!covered.has(index + 1) && value !== null && value !== 0 ? index + 1 : 0)).filter(Boolean);
+  return { slots: reportingMonths.map((month, index) => ({ month, quantity: index < 12 ? months[calendarOf(month) - 1] ?? null : null })), outside };
 }
 
 const fail = (code: string, message: string, field = "rows"): never => { throw new CommandValidationError([{ field, code, message }]); };

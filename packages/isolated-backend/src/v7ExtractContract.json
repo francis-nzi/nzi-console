@@ -133,7 +133,8 @@
     ],
     "optional": [
       "year",
-      "version"
+      "version",
+      "country"
     ]
   },
   "job_scope_rows": {

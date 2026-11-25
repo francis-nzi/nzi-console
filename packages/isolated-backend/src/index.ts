@@ -72,6 +72,8 @@ export * from "./portalBroadcasts";
 export * from "./milestoneCommands";
 export * from "./jobUpdate";
 export * from "./datasetSelection";
+export * from "./datasetScope";
+export * from "./monthlyPricing";
 export * from "./jobDatasetUpdate";
 export * from "./staffAdmin";
 export * from "./staffCredentialReset";

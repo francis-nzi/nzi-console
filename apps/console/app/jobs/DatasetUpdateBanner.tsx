@@ -24,7 +24,8 @@ export function DatasetUpdateBanner({ jobId, updates, writeEnabled }: { jobId: s
   const access = useEditAccess("scoperow.edit", writeEnabled);
   const [open, setOpen] = useState(false);
   if (updates.length === 0) return null;
-  const names = updates.map((update) => update.toLabel);
+  // Per year (R1): a spanning job's update names the year(s) it serves.
+  const names = updates.map((update) => (update.years ? `${update.years.join(", ")}: ${update.toLabel}` : update.toLabel));
   return <>
     <div className="nz-banner nz-dataset-update" role="status">
       <div>

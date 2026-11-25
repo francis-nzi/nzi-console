@@ -8,6 +8,9 @@ import { updateJob } from "../src/jobUpdate";
 import { createJob } from "../src/postgresCommands";
 import { listDatasetRegistry, listJobDatasetOptions, listJobFactorOptions } from "../src/readModels";
 import { withTenantRead } from "../src/postgres";
+// Datasets by period and site (increment 1): its real-DB suite is a sibling of this one, run with it — so in CI's migrations
+// job, by this file's step.
+import "./datasetsByPeriodReal.suite";
 
 /**
  * DATASET-CURRENCY §1 (ruled 6 Oct) against a real database, through job.create — the live path: per series, the edition

@@ -191,11 +191,19 @@ describe("the re-ingest carries the full v7 record, and D7 reconciles per site",
       assert.equal(monthsFitQuantity(100, 999), false);
     });
 
-    it("positional months on a short period: slot i on reporting month i, nothing beyond", () => {
-      const { slots, outside } = v7MonthSlots(months12({ 1: 5, 6: 7, 10: 0 }), ["2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09"]);
-      assert.deepEqual(outside, []);
-      assert.deepEqual(slots, [{ month: "2025-04", quantity: 5 }, { month: "2025-05", quantity: null }, { month: "2025-06", quantity: null },
+    it("calendar months (v7's month_N is calendar month N): each reporting month takes its calendar month's slot; a figure outside the period refuses", () => {
+      const short = v7MonthSlots(months12({ 4: 5, 9: 7, 10: 0 }), ["2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09"]);
+      assert.deepEqual(short.outside, [], "October's 0 is outside, and carries nothing");
+      assert.deepEqual(short.slots, [{ month: "2025-04", quantity: 5 }, { month: "2025-05", quantity: null }, { month: "2025-06", quantity: null },
         { month: "2025-07", quantity: null }, { month: "2025-08", quantity: null }, { month: "2025-09", quantity: 7 }]);
+      assert.deepEqual(v7MonthSlots(months12({ 1: 5 }), ["2025-04", "2025-05"]).outside, [1], "January has a figure, and is not in an April–May period");
+      // An April–March year: month_1 is January 2026 — the eleventh reporting month, priced in 2026 — never April 2025.
+      const fiscal = v7MonthSlots(months12({ 1: 31, 4: 4, 12: 12 }), ["2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03"]);
+      assert.deepEqual(fiscal.outside, []);
+      assert.deepEqual(fiscal.slots!.filter((slot) => slot.quantity !== null), [{ month: "2025-04", quantity: 4 }, { month: "2025-12", quantity: 12 }, { month: "2026-01", quantity: 31 }]);
+      // A calendar year reads the same as before.
+      assert.deepEqual(v7MonthSlots(months12({ 1: 1, 12: 12 }), ["2024-01", "2024-02", "2024-03", "2024-04", "2024-05", "2024-06", "2024-07", "2024-08", "2024-09", "2024-10", "2024-11", "2024-12"]).slots!.map((slot) => slot.quantity),
+        [1, null, null, null, null, null, null, null, null, null, null, 12]);
       assert.deepEqual(v7MonthSlots(months12({}), ["2025-01"]), { slots: null, outside: [] }, "no months in v7, none carried");
     });
   });
