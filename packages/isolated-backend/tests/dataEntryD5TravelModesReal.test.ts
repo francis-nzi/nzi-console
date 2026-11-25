@@ -90,12 +90,14 @@ describe("Data entry D5: business travel by controlled mode", { skip: TEST_DATAB
     const stored = (await db.query(`SELECT asset_identifier, asset_identifier_sealed, detail_json FROM nzi_console.job_emission_sources WHERE source_id=$1`, [created.data.sourceId])).rows[0];
     assert.equal(stored.asset_identifier, null);
     assert.equal(stored.asset_identifier_sealed, null, "a travel source is no company vehicle — nothing is sealed, nothing is kept");
-    assert.ok(!JSON.stringify(stored.detail_json).includes("AB12"), "the plate was stored in the detail");
-    // Everything the write leaves behind that a person could read — the row, the source, the audit, the outbox.
-    const anywhere = await db.query(`SELECT ((SELECT count(*) FROM nzi_console.job_scope_rows WHERE coalesce(asset_identifier,'') ILIKE '%AB12%' OR source_label ILIKE '%AB12%' OR coalesce(notes,'') ILIKE '%AB12%')
-        + (SELECT count(*) FROM nzi_console.job_emission_sources WHERE coalesce(asset_identifier,'') ILIKE '%AB12%' OR source_name ILIKE '%AB12%' OR detail_json::text ILIKE '%AB12%')
-        + (SELECT count(*) FROM nzi_console.audit_events WHERE coalesce(after_json::text,'') ILIKE '%AB12%' OR coalesce(before_json::text,'') ILIKE '%AB12%')
-        + (SELECT count(*) FROM nzi_console.transactional_outbox WHERE payload_json::text ILIKE '%AB12%'))::int AS n`);
+    assert.ok(!/AB12 ?CDE/i.test(JSON.stringify(stored.detail_json)), "the plate was stored in the detail");
+    // Everything the write leaves behind that a person could read — the row, the source, the audit, the outbox. The whole plate,
+    // never a fragment: four hex characters ("ab12") turn up in the audit's and outbox's random UUIDs by chance (#659's red in D4).
+    const plate = `'AB12 ?CDE'`;
+    const anywhere = await db.query(`SELECT ((SELECT count(*) FROM nzi_console.job_scope_rows WHERE coalesce(asset_identifier,'') ~* ${plate} OR source_label ~* ${plate} OR coalesce(notes,'') ~* ${plate})
+        + (SELECT count(*) FROM nzi_console.job_emission_sources WHERE coalesce(asset_identifier,'') ~* ${plate} OR source_name ~* ${plate} OR detail_json::text ~* ${plate})
+        + (SELECT count(*) FROM nzi_console.audit_events WHERE coalesce(after_json::text,'') ~* ${plate} OR coalesce(before_json::text,'') ~* ${plate})
+        + (SELECT count(*) FROM nzi_console.transactional_outbox WHERE payload_json::text ~* ${plate}))::int AS n`);
     assert.equal(anywhere.rows[0].n, 0, "the plate was kept somewhere");
   });
 });
