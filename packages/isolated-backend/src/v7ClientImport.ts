@@ -196,6 +196,10 @@ export type PlannedTarget = {
 export type PlannedSite = {
   siteId: string; legacyId: string; name: string; addressLines: string[]; latitude: number | null; longitude: number | null;
   archived: boolean; isRegisteredOffice: boolean; vacatedEffective: string | null;
+  /** V7 holds no name for it and it has entries: a placeholder, flagged until named in V7 (0235). */
+  nameNeedsReview: boolean;
+  /** Any row, source or spend entry of the extract sits on it. */
+  hasEntries: boolean;
 };
 export type PlannedContact = {
   contactId: string; legacyId: string; fullName: string; jobTitle: string | null; email: string | null; phone: string | null; isPrimary: boolean;
@@ -490,24 +494,44 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
   const referenceKnown = hasColumn("job_scope_rows", "reference_factor") && hasColumn("job_scope_rows", "reference_ghg_unit");
   if (!referenceKnown) report("extract-reference-lookup-absent", "the extract carries no factor-lookup reference; rows whose unit or fallback turns on it are flagged", "job_scope_rows.reference_factor / reference_ghg_unit");
 
+  // A V7 site "has entries" when any in-scope row, source or spend entry sits on it.
+  const sitesWithEntries = new Set<string>(
+    [...rowsByJob.values(), ...sourcesByJob.values(), ...spendByJob.values()].flat()
+      .map((row) => row.site_id ?? null).filter((id): id is string => id !== null));
+
   const clients: PlannedClient[] = [];
   let maxSequence = 0;
   for (const clientLegacyId of [...inScope].sort((a, b) => Number(a) - Number(b))) {
     const v7 = clientsById.get(clientLegacyId)!;
     const clientId = `v7-client-${clientLegacyId}`;
 
-    // Sites: names unique per client, one live registered office.
+    // Sites: V7's own name, never suffixed (0235). A name repeated within one client is reported; the load maps it to the
+    // same console site (v7SiteLinks). A nameless site with entries is flagged for naming in V7; one with none is archived.
     const sites: PlannedSite[] = [];
     const siteIds = new Set<string>();
     const names = new Set<string>();
+    const placeholders = new Set<string>();
     let registeredOffice = false;
     for (const site of (sitesByClient.get(clientLegacyId) ?? []).sort(byNumericId("site_id"))) {
       let name = text(site.site_name);
-      if (!name) { name = `Unnamed site (v7 site ${site.site_id})`; report("site-without-name", "a v7 site with no name, given a placeholder", `site ${site.site_id}`); }
-      if (names.has(name.toLowerCase())) { report("site-name-repeated", "a v7 site name repeated within one client, suffixed with its v7 id", `site ${site.site_id}`); name = `${name} (v7 site ${site.site_id})`; }
-      names.add(name.toLowerCase());
+      const hasEntries = sitesWithEntries.has(site.site_id!);
+      let nameNeedsReview = false;
+      let unnamedArchived = false;
+      if (!name) {
+        name = "Unnamed site";
+        for (let n = 2; placeholders.has(name.toLowerCase()); n += 1) name = `Unnamed site ${n}`;
+        placeholders.add(name.toLowerCase());
+        nameNeedsReview = hasEntries;
+        unnamedArchived = !hasEntries;
+        report(hasEntries ? "site-without-name" : "site-without-name-archived", hasEntries
+          ? "a v7 site with no name and with entries: imported flagged for naming in v7"
+          : "a v7 site with no name and no entries: imported archived", `site ${site.site_id}`);
+      } else if (names.has(name.toLowerCase().replace(/\s+/g, " "))) {
+        report("site-name-repeated", "a v7 site name repeated within one client; the load maps it to the same console site", `site ${site.site_id}`);
+      }
+      if (!nameNeedsReview && !unnamedArchived) names.add(name.toLowerCase().replace(/\s+/g, " "));
       const vacated = v7Day(site.vacated_date);
-      const archived = flag(site.archived);
+      const archived = flag(site.archived) || unnamedArchived;
       let isRegisteredOffice = flag(site.is_registered_office);
       if (isRegisteredOffice && (vacated || archived)) { isRegisteredOffice = false; report("registered-office-closed", "a closed v7 site marked registered office; the mark is dropped", `site ${site.site_id}`); }
       if (isRegisteredOffice && registeredOffice) { isRegisteredOffice = false; report("registered-office-repeated", "a second live registered office on one client; only the first keeps the mark", `site ${site.site_id}`); }
@@ -516,7 +540,7 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
       sites.push({
         siteId: `v7-site-${site.site_id}`, legacyId: site.site_id!, name, addressLines: location ? [location] : [],
         latitude: pyFloat(site.latitude ?? null), longitude: pyFloat(site.longitude ?? null), archived, isRegisteredOffice,
-        vacatedEffective: vacated,
+        vacatedEffective: vacated, nameNeedsReview, hasEntries,
       });
       siteIds.add(site.site_id!);
     }

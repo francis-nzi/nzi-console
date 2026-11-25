@@ -209,8 +209,10 @@ describe("the v7 client-and-job plan", () => {
     const p = plan();
     const alpha = p.clients[0]!;
     assert.deepEqual(alpha.sites.map((site) => [site.siteId, site.name, site.isRegisteredOffice]), [
-      ["v7-site-11", "Head Office", true], ["v7-site-12", "Depot", false], ["v7-site-13", "head office (v7 site 13)", false],
+      ["v7-site-11", "Head Office", true], ["v7-site-12", "Depot", false], ["v7-site-13", "head office", false],
     ]);
+    assert.ok(!alpha.sites.some((site) => /\(v7 site/.test(site.name)), "a name never carries the import's suffix (0235)");
+    assert.deepEqual(alpha.sites.map((site) => site.hasEntries), [true, false, false]);
     assert.deepEqual(alpha.contacts.map((contact) => [contact.contactId, contact.isPrimary]), [["v7-contact-21", true], ["v7-contact-22", false]]);
     for (const code of ["site-name-repeated", "registered-office-closed", "contact-primary-repeated"]) assert.ok(codes(p.reports).includes(code), code);
     assert.equal(alpha.fields.financialYearEndMonth, 3);

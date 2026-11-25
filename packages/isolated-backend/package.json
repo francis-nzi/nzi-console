@@ -40,6 +40,7 @@
     "v7:import-view-check": "tsx scripts/v7-import-view-check.ts",
     "v7:import-view-summary": "tsx scripts/v7-import-view-summary.ts",
     "v7:correct-migrated-qty": "tsx scripts/v7-correct-migrated-qty.ts",
+    "v7:merge-duplicate-sites": "tsx scripts/v7-merge-duplicate-sites.ts",
     "v7:batch-attest": "tsx scripts/v7-batch-attest.ts",
     "v7:repoint-stray-2019": "tsx scripts/v7-repoint-stray-2019.ts",
     "v7:correct-desnz-2019": "tsx scripts/v7-correct-desnz-2019.ts",

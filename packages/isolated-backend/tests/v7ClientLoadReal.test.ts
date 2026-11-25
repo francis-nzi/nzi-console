@@ -57,7 +57,13 @@ describe("loading v7 clients and jobs", { skip: DATABASE_URL ? false : "NZI_TEST
     assert.deepEqual(outcome.clients.map((client) => [client.clientId, client.state]), [["v7-client-1", "loaded"], ["v7-client-2", "loaded"]]);
     assert.deepEqual(
       [await count("clients"), await count("client_sites"), await count("client_contacts"), await count("jobs"), await count("job_scope_rows"), await count("legacy_report_versions")],
-      [2, 3, 3, 6, 11, 4]);
+      [2, 2, 3, 6, 11, 4]);
+    // 0235: V7 site 13 "head office" repeats site 11 "Head Office" and has no entries, so it maps to it; no suffixed site.
+    const links = await db.query(`SELECT v7_site_id, site_id, reason FROM nzi_console.v7_site_links ORDER BY link_no`);
+    assert.deepEqual(links.rows, [
+      { v7_site_id: "11", site_id: "v7-site-11", reason: "import" }, { v7_site_id: "12", site_id: "v7-site-12", reason: "import" },
+      { v7_site_id: "13", site_id: "v7-site-11", reason: "name-match" },
+    ]);
     assert.ok(outcome.counterAt! >= 617, `the counter stands at ${outcome.counterAt}, behind v7's J000617`);
     const job = await db.query(`SELECT job_number, job_family, status, workflow_stage, legacy_job_number FROM nzi_console.jobs WHERE job_id='v7-job-100'`);
     assert.deepEqual(job.rows, [{ job_number: "J000612", job_family: "crp", status: "complete", workflow_stage: "Completed", legacy_job_number: "J000612" }]);
