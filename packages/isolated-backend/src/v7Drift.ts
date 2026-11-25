@@ -157,20 +157,40 @@ export type V7DriftListItem = {
   /** Per scope at the latest check: the console's, V7's (null when unknown) and console − V7. */
   scopes: Array<{ scope: "1" | "2" | "3"; console: number | null; previous: number | null; difference: number | null }>;
   maxDifference: number | null;
+  /** The job's enabled scope rows in the console now (0: "no rows in the console"). */
+  consoleRows: number;
+  /** The latest completed re-ingest by the earlier runner (`v7_reingest_runs`), or null when it was never re-ingested. */
+  reingestedAt: string | null;
+  /** The job's last few checks, newest first (the latest is the row's own): outcome, trigger and console − V7 per scope. */
+  history: V7DriftHistoryEntry[];
 };
+export type V7DriftHistoryEntry = {
+  checkedAt: string; outcome: V7DriftOutcome; trigger: V7DriftTrigger; unknownReason: string | null;
+  /** console − V7 per scope 1, 2, 3; null when the previous system gave no figure. */
+  differences: [number | null, number | null, number | null];
+};
+/** How many checks each job's history carries. */
+export const V7_DRIFT_HISTORY_DEPTH = 5;
+
+const differenceOf = (consoleTotal: string, v7: string | null | undefined) =>
+  v7 === null || v7 === undefined ? null : Math.round((Number(consoleTotal) - Number(v7)) * 1e6) / 1e6;
 
 /**
  * Every job imported from the previous system with its latest check — one read of the console's own tables, totals only, nothing of
- * V7's rows and no call to V7. Sorted by the largest difference first; unknown and unchecked after, in job order.
+ * V7's rows and no call to V7. Sorted by the largest difference first; unknown and unchecked after, in job order. Each job also carries
+ * its enabled-row count, its October re-ingest (if any) and its last few checks, so the page can filter and show history without
+ * another read.
  */
 export async function listV7Drift(db: Queryable, organisationId: string): Promise<V7DriftListItem[]> {
   const rows = (await db.query<CheckRow & { job_id: string; sequence: number; client_id: string; client_name: string; period_from: string | null; period_to: string | null;
-    unknown_reason: string | null; max_difference: string | null; checked: boolean }>(
+    unknown_reason: string | null; max_difference: string | null; checked: boolean; console_rows: number; reingested_at: Date | null }>(
     `SELECT j.job_id, j.sequence, j.client_id, c.name AS client_name,
             coalesce(j.reporting_period_start, e.reporting_from)::text AS period_from, coalesce(j.reporting_period_end, e.reporting_to)::text AS period_to,
             k.check_id IS NOT NULL AS checked, k.outcome, k.created_at, k.unknown_reason, k.max_difference_tco2e::text AS max_difference,
             k.console_scope1_tco2e::text AS c1, k.console_scope2_tco2e::text AS c2, k.console_scope3_tco2e::text AS c3,
-            k.v7_scope1_tco2e::text AS v1, k.v7_scope2_tco2e::text AS v2, k.v7_scope3_tco2e::text AS v3
+            k.v7_scope1_tco2e::text AS v1, k.v7_scope2_tco2e::text AS v2, k.v7_scope3_tco2e::text AS v3,
+            (SELECT count(*) FROM nzi_console.job_scope_rows r WHERE (r.organisation_id, r.job_id) = (j.organisation_id, j.job_id) AND r.enabled)::int AS console_rows,
+            (SELECT max(g.created_at) FROM nzi_console.v7_reingest_runs g WHERE (g.organisation_id, g.job_id) = (j.organisation_id, j.job_id) AND g.status = 'completed') AS reingested_at
        FROM nzi_console.jobs j
        JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
        LEFT JOIN nzi_console.job_emissions_config e ON (e.organisation_id, e.job_id) = (j.organisation_id, j.job_id)
@@ -178,18 +198,30 @@ export async function listV7Drift(db: Queryable, organisationId: string): Promis
                            ORDER BY k.created_at DESC, k.check_id DESC LIMIT 1) k ON true
       WHERE j.organisation_id = $1 AND j.job_family = 'crp' AND j.legacy_job_number IS NOT NULL
       ORDER BY k.max_difference_tco2e DESC NULLS LAST, j.sequence`, [organisationId])).rows;
+  const history = new Map<string, V7DriftHistoryEntry[]>();
+  for (const check of (await db.query<CheckRow & { job_id: string; trigger: V7DriftTrigger; unknown_reason: string | null }>(
+    `SELECT job_id, trigger, unknown_reason, ${CHECK_COLUMNS}
+       FROM (SELECT k.*, row_number() OVER (PARTITION BY k.job_id ORDER BY k.created_at DESC, k.check_id DESC) AS position
+               FROM nzi_console.v7_drift_checks k WHERE k.organisation_id = $1) k
+      WHERE position <= $2 ORDER BY job_id, created_at DESC, check_id DESC`, [organisationId, V7_DRIFT_HISTORY_DEPTH])).rows) {
+    const entries = history.get(check.job_id) ?? [];
+    entries.push({ checkedAt: check.created_at.toISOString(), outcome: check.outcome, trigger: check.trigger, unknownReason: check.unknown_reason,
+      differences: [differenceOf(check.c1, check.v1), differenceOf(check.c2, check.v2), differenceOf(check.c3, check.v3)] });
+    history.set(check.job_id, entries);
+  }
   return rows.map((row) => {
     // Never checked: no figure on either side, not a zero.
     const scopes = (["1", "2", "3"] as const).map((scope, at) => {
       if (!row.checked) return { scope, console: null, previous: null, difference: null };
-      const consoleTotal = Number([row.c1, row.c2, row.c3][at]);
+      const consoleTotal = [row.c1, row.c2, row.c3][at]!;
       const v7 = [row.v1, row.v2, row.v3][at];
-      return { scope, console: consoleTotal, previous: v7 === null || v7 === undefined ? null : Number(v7), difference: v7 === null || v7 === undefined ? null : Math.round((consoleTotal - Number(v7)) * 1e6) / 1e6 };
+      return { scope, console: Number(consoleTotal), previous: v7 === null || v7 === undefined ? null : Number(v7), difference: differenceOf(consoleTotal, v7) };
     });
     return { jobId: row.job_id, jobNumber: `J${String(row.sequence).padStart(6, "0")}`, clientId: row.client_id, clientName: row.client_name,
       spansTwoYears: v7PeriodSpansTwoYears({ from: row.period_from, to: row.period_to }),
       outcome: row.checked ? row.outcome : "unchecked", checkedAt: row.checked ? row.created_at.toISOString() : null, unknownReason: row.unknown_reason,
-      scopes, maxDifference: row.max_difference === null ? null : Number(row.max_difference) };
+      scopes, maxDifference: row.max_difference === null ? null : Number(row.max_difference),
+      consoleRows: row.console_rows, reingestedAt: row.reingested_at ? row.reingested_at.toISOString() : null, history: history.get(row.job_id) ?? [] };
   });
 }
 

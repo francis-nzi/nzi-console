@@ -27,7 +27,7 @@ import { resumeV7ImportBatch, startV7ImportBatch } from "../src/v7ImportBatchCom
 import { readV7ImportBatch, runV7ImportBatch, V7_IMPORT_BATCH_PACING, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome, v7ImportBatchPauseAfter } from "../src/v7ImportBatch";
 import { readV7ImportMapping, v7JobIsTotalsOnly } from "../src/v7ImportMapping";
 import { acceptV7ImportRows, readV7ImportRows, searchV7ImportFactors } from "../src/v7ImportRows";
-import { checkV7Drift, listV7Drift, readConsoleScopeTotals, readV7DriftBanner, refuseDriftedPublish, runV7DriftChecks, type V7FiguresClient, type V7FiguresRead } from "../src/v7Drift";
+import { checkV7Drift, listV7Drift, V7_DRIFT_HISTORY_DEPTH, readConsoleScopeTotals, readV7DriftBanner, refuseDriftedPublish, runV7DriftChecks, type V7FiguresClient, type V7FiguresRead } from "../src/v7Drift";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
 /**
@@ -2927,6 +2927,25 @@ describe("the drift guard: checks stored, the latest read by the banner, the lis
     assert.deepEqual([banner?.tone, banner?.line], ["unknown", "Can't check against the previous system just now."]);
     await check(TWO, async () => ({ ok: false, reason: "timeout" }));
     await assert.rejects(gate(TWO), (error) => codes(error).includes("NOT_CHECKED_AGAINST_PREVIOUS_SYSTEM"));
+  });
+
+  it("the list also carries each job's enabled rows now, its re-ingest and its last checks, newest first, with no figure for an unknown", async () => {
+    const list = await withTenantRead(database.pool, ORG_DG, (client) => listV7Drift(client, ORG_DG));
+    const of = (entry: ReturnType<typeof job>) => list.find((item) => item.jobId === entry.jobId)!;
+    const enabled = async (jobId: string) => (await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2 AND enabled`, [ORG_DG, jobId])).rows[0]!.n;
+    for (const entry of [CAL, TWO, THIRD]) assert.equal(of(entry).consoleRows, await enabled(entry.jobId));
+    assert.ok(of(CAL).consoleRows > 0);
+    const reingested = (await db.query<{ at: Date }>(`SELECT max(created_at) AS at FROM nzi_console.v7_reingest_runs WHERE organisation_id = $1 AND job_id = $2 AND status = 'completed'`, [ORG_DG, CAL.jobId])).rows[0]!.at;
+    assert.equal(of(CAL).reingestedAt, reingested.toISOString());
+    assert.deepEqual(of(CAL).history.map((entry) => [entry.outcome, entry.trigger, entry.unknownReason, entry.differences]),
+      [["unknown", "admin", "not-found", [null, null, null]], ["behind", "admin", null, [0, -2121.17, 0]]]);
+    assert.deepEqual(of(TWO).history.map((entry) => [entry.outcome, entry.unknownReason]), [["unknown", "timeout"], ["level", null]]);
+    assert.equal(of(CAL).history[0]!.checkedAt, of(CAL).checkedAt, "the history's newest is the row's own check");
+    assert.deepEqual(of(THIRD).history, [], "never checked: no history");
+    await withTenantRead(database.pool, ORG_DG, async (client) => {
+      const deep = await listV7Drift(client, ORG_DG);
+      assert.ok(deep.every((item) => item.history.length <= V7_DRIFT_HISTORY_DEPTH));
+    });
   });
 
   it("a job not imported from the previous system is refused, and nothing is stored", async () => {
