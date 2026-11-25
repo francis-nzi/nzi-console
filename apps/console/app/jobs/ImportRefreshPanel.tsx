@@ -14,6 +14,18 @@ import type { ImportRefreshState } from "./importRefreshView";
  * Nothing shows for a job of another origin, or for someone who may not refresh. `?import=rows` opens the modal on arrival (the
  * retired Import reconciliation page sends a job there).
  */
+/**
+ * The drift guard's banner (BRIEF-v7-import-j000663 Part C): from the job's latest check against the previous system. Behind → the
+ * brief's line, red, with the panel's Import rows as the action; can't check, or a two-dataset-year job not yet checked → amber; level → nothing.
+ */
+export function DriftBanner({ drift }: { drift: NonNullable<Extract<ImportRefreshState, { applies: true }>["drift"]> | null }) {
+  if (!drift?.line) return null;
+  const when = drift.checkedAt ? ` Checked ${new Date(drift.checkedAt).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: "Europe/London" })}.` : "";
+  return <div className={`nz-banner ${drift.tone === "behind" ? "bad" : "warn"}`} role={drift.tone === "behind" ? "alert" : "status"} data-drift={drift.tone}>
+    <div><b>{drift.line}</b>{drift.tone === "behind" ? " It can't be published until its rows are brought in." : ""}{when}</div>
+  </div>;
+}
+
 type Load = { state: "loading" } | { state: "hidden" } | { state: "failed" } | { state: "ready"; value: Extract<ImportRefreshState, { applies: true }> };
 
 export function ImportRefreshPanel({ jobId }: { jobId: string }) {
@@ -49,6 +61,7 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
         <button type="button" className="nz-btn pri" data-open-import-rows onClick={() => { setDone(null); setOpen(true); }}>Import rows from the previous system</button>
       </div>
     </div>
+    <DriftBanner drift={state.drift ?? null} />
     {done ? <div className="nz-banner ok" role="status"><div>{done}</div></div> : null}
     <ImportRowsModal state={state} open={open} onClose={() => setOpen(false)} onBroughtIn={(line) => { setDone(line); router.refresh(); }} />
   </div></section>;

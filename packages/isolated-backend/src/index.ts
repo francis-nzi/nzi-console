@@ -345,3 +345,8 @@ export {
   type V7ImportBatchQueueItem, type V7ImportBatchRunnerOptions, type V7ImportBatchRunnerResult, type V7ImportBatchView,
 } from "./v7ImportBatch";
 export { createV7ImportViewPool, summariseV7JobFromViews, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "./v7ImportView";
+export {
+  checkV7Drift, listV7Drift, readConsoleScopeTotals, readLatestV7Drift, readV7DriftBanner, refuseDriftedPublish, runV7DriftChecks, v7FiguresClientFromEnv,
+  V7FiguresConnectionRefused, V7_DRIFT_ACTOR, V7_FIGURES_TIMEOUT_MS,
+  type V7DriftBanner, type V7DriftCheck, type V7DriftCheckOptions, type V7DriftListItem, type V7DriftRunOptions, type V7DriftRunResult, type V7FiguresClient, type V7FiguresRead,
+} from "./v7Drift";

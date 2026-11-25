@@ -92,6 +92,13 @@ services:
         sync: false
       - key: NZI_V7_VIEW_CA_CERT
         sync: false
+      # The previous system's own figures (CONTRACT-v7-import-figures v1): the drift guard's read of each job's scope totals,
+      # HTTPS only, a service token scoped to that read. Unset, every check is "can't check" and nothing is called.
+      # Never commit either value.
+      - key: NZI_V7_FIGURES_URL
+        sync: false
+      - key: NZI_V7_FIGURES_TOKEN
+        sync: false
       # Reconciled to the live dashboard values, 16 Sep 2026 — /api/health reports
       # authentication enabled and required, and this file previously said "false".
       #
@@ -168,6 +175,15 @@ services:
       # narrows the isolated boundary to @netzero.international.
       - key: NZI_EMAIL_DRAIN_ORGANISATIONS
         value: net-zero-international
+      # The nightly drift check (BRIEF-v7-import-j000663 Part C): once per London day, every job this organisation imported from the
+      # previous system is checked against its own scope totals, paced as the import batch is. The read needs the two keys below,
+      # set as on the console service; unset, the run stores one "can't check" result and stops.
+      - key: NZI_DRIFT_CHECK_ORGANISATIONS
+        value: net-zero-international
+      - key: NZI_V7_FIGURES_URL
+        sync: false
+      - key: NZI_V7_FIGURES_TOKEN
+        sync: false
       # Same non-production Supabase as the console. Never commit this value.
       - key: NZI_ISOLATED_DATABASE_URL
         sync: false
