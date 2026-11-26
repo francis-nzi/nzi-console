@@ -89,7 +89,7 @@ export async function findRuledHead({ repository, prNumber, token, fetchImpl = f
 /**
  * The paths whose merge must be ruled (ruled 28 Sep 2026). A pull request touching none of them and never ruled is
  * skipped, not failed — an alarm that goes red on every ordinary merge is tuned out within a week. `prefix: true`
- * governs everything under the path.
+ * governs everything under the path; `match` governs the files directly in the path whose name it matches.
  */
 export const GOVERNED_PATHS = [
   // The existing gate's set.
@@ -99,6 +99,11 @@ export const GOVERNED_PATHS = [
   // The v7 importer, and the report sealing it writes through.
   ...["v7ClientExtract.ts", "v7ClientImport.ts", "v7ClientLoad.ts", "v7EmissionsFormula.ts", "legacyReportSeal.ts"]
     .map((file) => ({ path: `packages/isolated-backend/src/${file}`, why: "the v7 importer" })),
+  // The v7 import and the pricing it brings rows in by (ruled 26 Nov 2026), as the gate's isV7ImportPath holds them:
+  // every v7Import*.ts (by name, so a new one is governed without editing this list), the re-ingest, the drift guard
+  // and monthly pricing.
+  { path: "packages/isolated-backend/src/", match: /^v7Import[^/]*\.ts$/, why: "the v7 import" },
+  ...["v7Reingest.ts", "v7Drift.ts", "monthlyPricing.ts"].map((file) => ({ path: `packages/isolated-backend/src/${file}`, why: "the v7 import" })),
   // The extract helpers and the contract they read.
   { path: "packages/isolated-backend/scripts/v7-extract-sql.mjs", why: "the extract helpers" },
   { path: "packages/isolated-backend/scripts/v7-extract-manifest.mjs", why: "the extract helpers" },
@@ -126,7 +131,8 @@ export const GOVERNED_PATHS = [
 ];
 
 export const governedFiles = (files) =>
-  files.filter((file) => GOVERNED_PATHS.some((entry) => (entry.prefix ? file.startsWith(entry.path) : file === entry.path)));
+  files.filter((file) => GOVERNED_PATHS.some((entry) => (entry.match ? file.startsWith(entry.path) && entry.match.test(file.slice(entry.path.length))
+    : entry.prefix ? file.startsWith(entry.path) : file === entry.path)));
 
 /**
  * The post-merge decision. `skipped` is the neutral outcome: nothing ruled, and nothing governed to require it.

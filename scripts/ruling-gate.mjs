@@ -45,8 +45,22 @@ export const isCommandOrPermissionPath = (file) =>
   PERMISSION_FILES.includes(file) ||
   (file.startsWith(BACKEND_SRC) && /^[^/]+Commands\.ts$/.test(file.slice(BACKEND_SRC.length)));
 
-/** Anything that needs a ruling before it merges: a migration, a command or a permission file. */
-export const isGovernedPath = (file) => isMigrationPath(file) || isCommandOrPermissionPath(file);
+/** The previous system's import write path, besides its commands (ruled 26 Nov 2026). */
+const V7_IMPORT_FILES = ["v7Reingest.ts", "v7Drift.ts", "monthlyPricing.ts"];
+
+/**
+ * The previous system's import and the pricing it brings rows in by (ruled 26 Nov 2026): every `v7Import*.ts` in the
+ * backend (matched by prefix, so a new one is gated without editing this list), the re-ingest, the drift guard and
+ * monthly pricing. They write a job's rows and its dataset selection from V7, so they need a ruling like a command.
+ */
+export const isV7ImportPath = (file) => {
+  if (!file.startsWith(BACKEND_SRC)) return false;
+  const name = file.slice(BACKEND_SRC.length);
+  return /^v7Import[^/]*\.ts$/.test(name) || V7_IMPORT_FILES.includes(name);
+};
+
+/** Anything that needs a ruling before it merges: a migration, a command or a permission file, or the v7 import. */
+export const isGovernedPath = (file) => isMigrationPath(file) || isCommandOrPermissionPath(file) || isV7ImportPath(file);
 /** Written when a ruling is applied to the head this run judged; ruling-gate.yml uploads it for ruling-verify.mjs. */
 export const RULED_RECORD = "ruled-head.json";
 
@@ -62,9 +76,12 @@ export function decide({ branch, action, labelName, labels, changedFiles }) {
   if (governed.length === 0) return { pass: true, reason: "No governed path in this diff, and the branch is not on hold." };
   const migrations = governed.filter(isMigrationPath);
   const surface = governed.filter(isCommandOrPermissionPath);
+  // A v7 import command (v7ImportBatchCommands.ts) is named once, as a command.
+  const importing = governed.filter((file) => isV7ImportPath(file) && !isCommandOrPermissionPath(file));
   const carries = [
     migrations.join(", "),
     surface.length ? `a governed command/permission surface (${surface.map((file) => file.split("/").pop()).join(", ")})` : "",
+    importing.length ? `the governed v7 import (${importing.map((file) => file.split("/").pop()).join(", ")})` : "",
   ].filter(Boolean).join(" and ");
   // Only the act of applying the label is a ruling. Its mere presence on any other event is not: that is what makes
   // a push after the ruling fail again.
