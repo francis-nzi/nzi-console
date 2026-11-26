@@ -1,4 +1,4 @@
-import { DATASET_EDITION_SUFFIX, datasetLabelFromId, datasetSeriesKey } from "@nzi/contracts";
+import { DATASET_EDITION_SUFFIX, datasetLabelFromId, datasetSeriesKey, monthsBetween } from "@nzi/contracts";
 import { DESNZ_SERIES, internationalDefaultAllows, siteCountry, windowMonths, windowYearParts } from "./datasetScope";
 import type { Queryable } from "./postgres";
 
@@ -185,18 +185,6 @@ export type V7SpanPart = {
 };
 
 const r6 = (value: number) => Math.round(value * 1e6) / 1e6;
-/** `YYYY-MM` months from one to the other, inclusive. */
-function monthsBetween(from: string, to: string): string[] {
-  const out: string[] = [];
-  let [year, month] = [Number(from.slice(0, 4)), Number(from.slice(5, 7))];
-  const [endYear, endMonth] = [Number(to.slice(0, 4)), Number(to.slice(5, 7))];
-  while (year < endYear || (year === endYear && month <= endMonth)) {
-    out.push(`${year}-${String(month).padStart(2, "0")}`);
-    if (out.length > 240) break;
-    month += 1; if (month > 12) { month = 1; year += 1; }
-  }
-  return out;
-}
 
 /**
  * One previous-system row priced with one candidate, span by span from V7's own spans (each span's dataset year → the candidate's
@@ -215,7 +203,7 @@ export function priceByV7Spans(input: {
 }): { tco2e: number | null; parts: V7SpanPart[] } {
   const hasMonths = (input.months ?? []).some((value) => value !== null && value !== 0);
   const parts = input.spans.map((span): V7SpanPart => {
-    const range = span.from && span.to ? monthsBetween(span.from, span.to) : [];
+    const range = span.from && span.to ? monthsBetween(`${span.from}-01`, `${span.to}-01`, 240) : [];
     const base = { from: span.from ?? "", to: span.to ?? "", months: range.length, year: span.dataset_year, previous: span.tco2e };
     if (span.dataset_id === null) return { ...base, datasetId: null, kg: null, tco2e: null, agrees: false, issue: "custom-factor" };
     const edition = span.dataset_year === null ? undefined : input.editions.get(span.dataset_year);
