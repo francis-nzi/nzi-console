@@ -7,7 +7,7 @@ import { emissionCategoryTaxonomy, v7MatchCandidate, V7_IMPORT_TWO_DATASET_YEARS
 import { v7ImportRowsAcceptIssues, type V7ImportCandidate, type V7ImportRows, type V7ImportRowsRow } from "@nzi/isolated-backend";
 import { ADMIN_ITEMS } from "../app/admin/adminNav";
 import {
-  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsNamed,
+  bringInBlockers, editionLabel, factorIdentity, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsNamed,
   rowsProgress, scopeLines, suggestedAccepts, suggestedSummary, verdictWords,
 } from "../app/jobs/importRowsModel";
 
@@ -356,6 +356,33 @@ describe("readability (Francis's walk-through of J000265)", () => {
     const small = candidate("Waste · landfill", { code: "w", quantity: 0.04, previous: 0.009, scope: "3", rate: 225, rowCategories: ["3.5"], categories: ["3.5"] });
     const markup = html({ data: { ...DATA, rows: [row({ scope: "3", categories: ["3.5"], candidates: [small], pick: small, previous: { ...row({}).previous, quantity: 0.04, tco2e: 0.009 } })] } });
     assert.ok(markup.includes("<span>Here</span> 0.01 <span>·</span> <span>Previous system</span> 0.01 ✓"), "0.009 is never 0.0");
+  });
+});
+
+describe("Find a factor (J000265 source:1169): one row per factor, named by its edition, never the file it was loaded from", () => {
+  // The hotel night in DESNZ 2022, 2025 and 2026, all at 10.4 — the job-year anchor (2025) stands for them; the 2026 edition is
+  // the file "tmpai4mgnde.csv" in the library, which the modal never shows.
+  const night = (year: number, over: Partial<V7ImportCandidate> = {}): V7ImportCandidate => ({ ...candidate("Hotel stay · UK", { code: "29_600_4000_13_1", quantity: 29, previous: 0.3016,
+    scope: "3", rate: 10.4, rowCategories: ["3.6"], categories: ["3.6"] }), datasetId: `uk-ghg-gb-${year}`, factorId: "uk-ghg-29_600_4000_13_1", year,
+    dataset: year === 2026 ? "tmpai4mgnde.csv" : "DESNZ DEFRA Conversion Factors 2019-2025.xlsx", unit: "nights", ...over });
+  const ANCHOR = night(2025, { anchor: true, identity: true });
+  const EDITIONS = [night(2022), night(2026), ANCHOR];
+  const HOTEL_ROW = row({ legacyDbId: "source:1169", scope: "3", lane: "unmatched", categories: ["3.6"], candidates: EDITIONS, pick: null,
+    previous: { ...row({}).previous, label: "Business Travel", quantity: 29, unit: "Room per night", factorCode: "29_600_4000_13_1", tco2e: 0.3016 } });
+
+  it("one factor in three editions is one row — the job-year anchor standing for it; another series' copy is its own row", () => {
+    assert.deepEqual(mergeCandidates(EDITIONS, []).map((entry) => entry.datasetId), ["uk-ghg-gb-2025"]);
+    const nzi = { ...night(2025), datasetId: "nzi-gb-2025" };
+    assert.deepEqual(mergeCandidates(EDITIONS, [nzi, night(2026)]).map((entry) => entry.datasetId), ["uk-ghg-gb-2025", "nzi-gb-2025"], "a search hit of the same factor in another edition: still one row");
+    assert.equal(factorIdentity(night(2022)), factorIdentity(night(2026)));
+    assert.notEqual(factorIdentity(night(2025)), factorIdentity(nzi));
+  });
+  it("the opened row: one candidate, named \"DESNZ GB 2025\", the count one — never a workbook or temp file's name", () => {
+    const markup = html({ data: { ...DATA, rows: [HOTEL_ROW] }, openRow: "source:1169" });
+    assert.equal([...markup.matchAll(/data-candidate="/g)].length, 1);
+    assert.ok(markup.includes("29_600_4000_13_1 · DESNZ GB 2025<") && markup.includes("1 found by the row&#x27;s ID"));
+    assert.ok(!/tmpai4mgnde|\.xlsx|\.csv/.test(markup), "no file name anywhere");
+    assert.equal(editionLabel({ datasetId: "uk-ghg-gb-2026" }), "DESNZ GB 2026");
   });
 });
 
