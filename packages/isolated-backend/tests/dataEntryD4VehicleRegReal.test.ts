@@ -37,11 +37,14 @@ describe("Data entry D4: a vehicle registration held only sealed, with a client 
   }) as never;
   const row = async (rowId: string) => (await db.query(`SELECT asset_identifier, asset_identifier_sealed, asset_identifier_bidx, source_label, notes FROM nzi_console.job_scope_rows WHERE scope_row_id=$1`, [rowId])).rows[0];
   // Everything a write leaves behind that a person could read — none of it may hold the plate.
+  // The whole plate, spaced or not, in any case — never a fragment: a seal's key id and a row id are random UUIDs, and four hex
+  // characters ("ab12") turn up in one by chance about once in 2,300 runs (#659's red). Seven ("ab12cde") don't.
+  const PLATE_SQL = `'AB12 ?CDE'`;
   const plateAnywhere = async () => (await db.query<{ n: string }>(
-    `SELECT ((SELECT count(*) FROM nzi_console.job_scope_rows WHERE asset_identifier ILIKE '%AB12%' OR source_label ILIKE '%AB12%' OR coalesce(notes,'') ILIKE '%AB12%' OR asset_identifier_sealed::text ILIKE '%AB12%')
-           + (SELECT count(*) FROM nzi_console.job_emission_sources WHERE asset_identifier ILIKE '%AB12%' OR source_name ILIKE '%AB12%' OR detail_json::text ILIKE '%AB12%' OR asset_identifier_sealed::text ILIKE '%AB12%')
-           + (SELECT count(*) FROM nzi_console.audit_events WHERE coalesce(after_json::text,'') ILIKE '%AB12%' OR coalesce(before_json::text,'') ILIKE '%AB12%')
-           + (SELECT count(*) FROM nzi_console.transactional_outbox WHERE payload_json::text ILIKE '%AB12%'))::text AS n`)).rows[0]!.n;
+    `SELECT ((SELECT count(*) FROM nzi_console.job_scope_rows WHERE asset_identifier ~* ${PLATE_SQL} OR source_label ~* ${PLATE_SQL} OR coalesce(notes,'') ~* ${PLATE_SQL} OR asset_identifier_sealed::text ~* ${PLATE_SQL})
+           + (SELECT count(*) FROM nzi_console.job_emission_sources WHERE asset_identifier ~* ${PLATE_SQL} OR source_name ~* ${PLATE_SQL} OR detail_json::text ~* ${PLATE_SQL} OR asset_identifier_sealed::text ~* ${PLATE_SQL})
+           + (SELECT count(*) FROM nzi_console.audit_events WHERE coalesce(after_json::text,'') ~* ${PLATE_SQL} OR coalesce(before_json::text,'') ~* ${PLATE_SQL})
+           + (SELECT count(*) FROM nzi_console.transactional_outbox WHERE payload_json::text ~* ${PLATE_SQL}))::text AS n`)).rows[0]!.n;
 
   before(async () => {
     database = (await createDisposableDatabase("dataentryd4"))!;
@@ -71,7 +74,7 @@ describe("Data entry D4: a vehicle registration held only sealed, with a client 
     const stored = await row(rowId);
     assert.equal(stored.asset_identifier, null, "no plaintext");
     assert.ok(stored.asset_identifier_sealed?.ciphertext && stored.asset_identifier_sealed.k, "ciphertext under a named key");
-    assert.ok(!JSON.stringify(stored.asset_identifier_sealed).includes("AB12"));
+    assert.ok(!/AB12 ?CDE/i.test(JSON.stringify(stored.asset_identifier_sealed)));
     assert.ok(stored.asset_identifier_bidx);
     const key = (await db.query(`SELECT client_id, purpose, wrapped_key IS NOT NULL AS live FROM nzi_console.client_data_keys WHERE key_id=$1`, [stored.asset_identifier_sealed.k])).rows[0];
     assert.deepEqual(key, { client_id: CLIENT, purpose: "vehicle-registration", live: true }, "the client's own key, not a person's");
