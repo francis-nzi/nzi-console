@@ -7,6 +7,7 @@ import { resolveSealingKeys } from "./piiSealingKeys";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { IMPORT_ACTOR, SOURCE_SYSTEM, type ClientImportPlan, type PlannedClient, type PlannedJob, type PlannedRow } from "./v7ClientImport";
 import { currentV7SiteLinks, isPlaceholderName, linkV7Site, siteNameKey } from "./v7SiteLinks";
+import { syncV7JobDates } from "./v7JobDates";
 
 /**
  * Write a v7 client-and-job plan (docs/CLIENT_JOB_IMPORT_DESIGN.md §8). In foreign-key order — client → sites →
@@ -253,6 +254,8 @@ async function loadClient(
   for (const job of client.jobs) {
     const jobState = await reconcile(db, "jobs", org, job.legacyId, jobCols(client, job), `job ${job.jobId} (${job.legacyJobNumber})`);
     tally("jobs", jobState);
+    // Addendum B: V7's dates, followed where V7 owns them, recorded (and shown as a difference) where the console does.
+    await syncV7JobDates(db, org, run.runId, { jobId: job.jobId, startDate: job.startDate, periodStart: job.periodStart, periodEnd: job.periodEnd }, jobState === "inserted");
     if (job.family === "crp" && job.periodStart && job.periodEnd) {
       const config = await db.query(`SELECT 1 FROM nzi_console.job_emissions_config WHERE organisation_id=$1 AND job_id=$2`, [org, job.jobId]);
       if (config.rows.length === 0) {
@@ -511,13 +514,18 @@ function jobCols(client: PlannedClient, job: PlannedJob): Col[] {
     { column: "title", value: job.title, type: "text" },
     { column: "status", value: job.status, type: "text" },
     { column: "workflow_stage", value: job.workflowStage, type: "text" },
-    { column: "reporting_year", value: job.reportingYear, type: "integer" },
+    // Addendum B (ruled 25 Nov 2026): the start date and the reporting period (and the year derived from it) are written on
+    // insert and then synced by `syncV7JobDates` — V7's followed unless the console owns the date — never compared here,
+    // where a difference would refuse the whole client.
+    { column: "reporting_year", value: job.reportingYear, type: "integer", compare: false },
     { column: "owner_name", value: job.ownerName, type: "text" },
-    { column: "start_date", value: job.startDate, type: "date" },
+    { column: "start_date", value: job.startDate, type: "date", compare: false },
     { column: "due_date", value: job.dueDate, type: "date" },
-    { column: "reporting_period_start", value: job.periodStart, type: "date" },
-    { column: "reporting_period_end", value: job.periodEnd, type: "date" },
-    { column: "detail_json", value: job.detail, type: "jsonb" },
+    { column: "reporting_period_start", value: job.periodStart, type: "date", compare: false },
+    { column: "reporting_period_end", value: job.periodEnd, type: "date", compare: false },
+    // The imported detail is the family's empty shape plus, for a CRP job, a label copy of the period (`detailFor`): it moves
+    // with the dates, so it is written on insert and not compared — else a V7 period change would still refuse the client.
+    { column: "detail_json", value: job.detail, type: "jsonb", compare: false },
     { column: "legacy_job_number", value: job.legacyJobNumber, type: "text" },
     { column: "legacy_wfm_job_no", value: job.legacyWfmJobNo, type: "text" },
     ...(job.createdAt ? [{ column: "created_at", value: job.createdAt, type: "timestamptz" }] : []),

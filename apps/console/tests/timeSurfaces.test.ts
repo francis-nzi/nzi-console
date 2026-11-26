@@ -31,7 +31,7 @@ describe("the Time surfaces", () => {
     const page = read("apps/console/app/jobs/[jobId]/page.tsx");
     // The Time panel is built once and carried by every family's panels (and, behind `job-shell`, by the Time drawer).
     assert.match(page, /const timePanel = <JobTimePanel jobId=\{job\.header\.id\} writeEnabled=\{process\.env\.NZI_WRITE_API_ENABLED === "true"\} \/>;/);
-    assert.match(page, /const panels = <>\{milestones\}\{timePanel\}\{importPanel\}<\/>;/);
+    assert.match(page, /const panels = <>\{datesPanel \? <section className="nz-body">\{datesPanel\}<\/section> : null\}\{milestones\}\{timePanel\}\{importPanel\}<\/>;/);
     assert.equal(page.match(/milestones=\{panels\}/g)?.length, 4, "every family's page carries Job → Time");
   });
 

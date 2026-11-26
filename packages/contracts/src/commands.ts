@@ -1,6 +1,11 @@
 import { isLookupCategory, LOOKUP_CODE_MAX, LOOKUP_LABEL_MAX } from "./adminLookups";
 import { PORTAL_ACCESS_NOTES_MAX, PORTAL_ACCESS_NOTE_MAX, PORTAL_ACCESS_PAYMENT_REF_MAX, PORTAL_PAYMENT_STATUSES, type PortalClientAccessChanges } from "./portalClientAccess";
 import type { PortalSpendImportPayload } from "./portalSpendImport";
+import { baselineZeroFields, type BaselineZeroField } from "./targets";
+
+/** job.dates.resolve's choices: follow the previous system's date, or keep the console's (Addendum B.2). */
+const JOB_DATES_FOLLOW_PREVIOUS = "v7";
+const isJobDatesChoice = (value: unknown) => value === JOB_DATES_FOLLOW_PREVIOUS || value === "console";
 import { isPriority, type Priority } from "./priority";
 import { PORTAL_MESSAGE_MAX, PORTAL_MESSAGE_MAX_ATTACHMENTS, PORTAL_SUBJECT_CODE_PATTERN, PORTAL_THREAD_STATES, PORTAL_THREAD_TITLE_MAX, type PortalThreadState } from "./portalConversations";
 import { FILE_STORAGE_PROVIDERS, PORTAL_FILE_ALLOWED_TYPES, PORTAL_FILE_FLAGS, PORTAL_FILE_MAX_BYTES, isPortalFileCategory, type PortalFileCategory, type PortalFileIngest } from "./portalFiles";
@@ -78,6 +83,7 @@ export type CommandKey =
   | "job.milestone.reopen"
   | "job.milestone.reschedule"
   | "job.update"
+  | "job.dates.resolve"
   | "job.datasets.autoSelect"
   | "v7.reingest.job"
   | "v7.reingest.revert"
@@ -129,6 +135,7 @@ export type CommandKey =
   | "client.contact.deactivate"
   | "client.contact.consent.record"
   | "client.targets.set"
+  | "client.baseline.useSnapshot"
   | "training.booking.create"
   | "training.attendance.set"
   | "training.certificate.issue"
@@ -703,6 +710,11 @@ export type ClientTargetFields = {
   baselinePeriodStart?: string | null; baselinePeriodEnd?: string | null;
   baselineScope1Tco2e?: number | null; baselineScope2Tco2e?: number | null;
   baselineScope3Tco2e?: number | null; baselineTotalTco2e?: number | null;
+  /**
+   * 0238 rule 4 — the baseline figures entered as 0 that the user has confirmed are genuinely zero ("This scope's baseline is
+   * zero, not unknown"). Not stored: a 0 without its confirm is refused (ZERO_NOT_CONFIRMED), a blank is pending.
+   */
+  baselineZeroConfirmed?: BaselineZeroField[] | null;
   scope1InterimYear?: number | null; scope1InterimReductionPct?: number | null;
   scope2InterimYear?: number | null; scope2InterimReductionPct?: number | null;
   scope3InterimYear?: number | null; scope3InterimReductionPct?: number | null;
@@ -803,8 +815,16 @@ export type CommandInputMap = {
   /** Recompute the uncompleted template rows from the job's template (optionally a new one; null = none) and anchor. */
   "job.milestone.reschedule": { jobId: string; milestoneTemplateId?: string | null; expectedVersion: number };
   /** Edit a job's start date, reporting period and milestone template (ruled job-update-plan.md, J1–J6). A field
-   *  left out is unchanged. A period change needs a reason (J5), and is refused once period-bound data exists (J1). */
+   *  left out is unchanged. A period change needs a reason (J5). Addendum B (25 Nov 2026): an imported job's dates are
+   *  editable too (the console then owns them), and a period with data may move — its datasets re-chosen and rows re-priced —
+   *  unless the job has issued figures. */
   "job.update": { jobId: string; expectedVersion: number; startDate?: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null; milestoneTemplateId?: string | null };
+  /**
+   * Addendum B.2 — a date that differs from V7's: "Use V7's dates" (applied through job.update, or the milestone's due date
+   * set; V7 owns the date again) or "Keep the console's" (the console keeps it; that V7 value is acknowledged). The
+   * observation is the V7 value the person was shown, so a newer one is never accepted or dismissed unseen.
+   */
+  "job.dates.resolve": { jobId: string; expectedVersion: number; dateKey: string; observationNo: number; choice: "v7" | "console" };
   /** JW-13 step 3 — apply the automatic dataset rule (the edition valid on the window's last day) to a CRP job with no
    *  selection at all: fill-blank-only, for the jobs the v7 import wrote without one. A reason is required. */
   "job.datasets.autoSelect": { jobId: string };
@@ -980,6 +1000,12 @@ export type CommandInputMap = {
    */
   "client.targets.set": { clientId: string; expectedVersion: number; restateAgainstBenchmark?: boolean } & ForwardTargetWriteFields;
   /**
+   * 0238 rule 3 — "Use J… figures as the baseline": Scope 1/2/3 from the current reviewed snapshot of the client's CRP job whose
+   * reporting period is the baseline period. The figures are read from the snapshot on the server, never sent. On a baseline
+   * that already has figures it is the governed re-baseline (baseline.rebaseline, a reason, the prior kept).
+   */
+  "client.baseline.useSnapshot": { clientId: string; expectedVersion: number; snapshotId: string };
+  /**
    * Book a person onto a run. `entitlementId` funds it from a place the client holds — the
    * place is reserved atomically, so two consultants cannot spend the same one.
    */
@@ -1015,7 +1041,9 @@ export type CommandInputMap = {
    * interim and a final reduction, each a year with a percentage. The whole target, as the next version; expectedVersion 0
    * for the first. A reason (x-command-reason) is required when it moves a held baseline.
    */
-  "client.intensityTarget.set": { clientId: string; metricKey: string; expectedVersion: number; baselineYear: number; baselineIntensity: number;
+  "client.intensityTarget.set": { clientId: string; metricKey: string; expectedVersion: number; baselineYear: number;
+    /** 0238: null = pending — worked out from the baseline's figures and the baseline year's metric value once both exist. */
+    baselineIntensity: number | null;
     interimYear: number | null; interimReductionPct: number | null; targetYear: number | null; targetReductionPct: number | null };
   "client.intensityTarget.deactivate": { clientId: string; metricKey: string; expectedVersion: number };
   /**
@@ -2165,6 +2193,16 @@ const clientProfileIssues = (input: ClientProfileFields) => {
     optionalTonnes(issues, `baselineScope${scope}Tco2e`, input[`baselineScope${scope}Tco2e`]);
   }
   optionalTonnes(issues, "baselineTotalTco2e", input.baselineTotalTco2e);
+  // 0238 rule 4: 0 is not "pending" — a zero stands only with its explicit confirm. Keyed to the figure's own field, so
+  // client.update checks it only when that figure changes (a held zero stands).
+  if (input.baselineZeroConfirmed != null && (!Array.isArray(input.baselineZeroConfirmed) || input.baselineZeroConfirmed.some((field) => !(baselineZeroFields as readonly string[]).includes(field)))) {
+    issues.push({ field: "baselineZeroConfirmed", code: "INVALID", message: "The zero confirmation names a baseline figure that does not exist." });
+  }
+  for (const field of baselineZeroFields) {
+    if (input[field] === 0 && !(input.baselineZeroConfirmed ?? []).includes(field)) {
+      issues.push({ field, code: "ZERO_NOT_CONFIRMED", message: "A baseline of 0 says the scope is genuinely zero. Leave it blank if the figure is not known yet, or confirm: \"This scope's baseline is zero, not unknown\"." });
+    }
+  }
   for (const field of ["baselinePeriodStart", "baselinePeriodEnd"] as const) if (input[field] != null && !isoDate(input[field])) issues.push({ field, code: "INVALID", message: "Enter the baseline period dates as dd/mm/yyyy." });
   if (isoDate(input.baselinePeriodStart) && isoDate(input.baselinePeriodEnd) && input.baselinePeriodEnd! <= input.baselinePeriodStart!) issues.push({ field: "baselinePeriodEnd", code: "INVALID_RANGE", message: "Baseline period end must fall after its start." });
   // A net-zero target the trajectory cannot anchor is worse than no target at all.
@@ -2249,6 +2287,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   } },
   // job.update (ruled J1–J6). The guards that need the job and its data (closed, imported, family, period-bound data,
   // and the reason a period change needs) are the command's, where the job is locked; here, only the shape.
+  "job.dates.resolve": { key: "job.dates.resolve", label: "Resolve a date that differs from the previous system", permission: "job.manage", reasonRequired: false, transaction: "date owner + (job.update or milestone due date) + audit + outbox + idempotency", auditAction: "job.dates.resolved", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); if (!(input.dateKey === "start_date" || input.dateKey === "reporting_period" || /^milestone:[a-z0-9_-]+$/.test(input.dateKey ?? ""))) issues.push({ field: "dateKey", code: "INVALID", message: "That is not one of the job's dates." }); if (!isJobDatesChoice(input.choice)) issues.push({ field: "choice", code: "INVALID", message: "Choose the previous system's dates or the console's." }); if (!Number.isInteger(input.observationNo) || input.observationNo < 1) issues.push({ field: "observationNo", code: "INVALID", message: "Which of the previous system's dates is being resolved?" }); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." }); return issues; } },
   "job.update": { key: "job.update", label: "Edit a job's schedule", permission: "job.manage", reasonRequired: false, transaction: "job + emissions window + datasets + template milestones + audit + outbox + idempotency", auditAction: "job.updated", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "jobId", input.jobId);
@@ -2529,7 +2568,7 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     const year = (value: unknown) => Number.isInteger(value) && (value as number) >= 2000 && (value as number) <= 2100;
     const pct = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100;
     if (!year(input.baselineYear)) issues.push({ field: "baselineYear", code: "INVALID", message: "The baseline year is a year between 2000 and 2100." });
-    if (!(typeof input.baselineIntensity === "number" && Number.isFinite(input.baselineIntensity) && input.baselineIntensity >= 0)) issues.push({ field: "baselineIntensity", code: "INVALID", message: "The baseline intensity is a number, zero or more." });
+    if (input.baselineIntensity !== null && !(typeof input.baselineIntensity === "number" && Number.isFinite(input.baselineIntensity) && input.baselineIntensity >= 0)) issues.push({ field: "baselineIntensity", code: "INVALID", message: "The baseline intensity is a number, zero or more." });
     for (const [label, yearField, pctField] of [["interim", "interimYear", "interimReductionPct"], ["target", "targetYear", "targetReductionPct"]] as const) {
       const y = input[yearField], p = input[pctField];
       if ((y === null) !== (p === null)) issues.push({ field: yearField, code: "PAIR", message: `The ${label} needs both a year and a reduction, or neither.` });
@@ -3717,6 +3756,8 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
     return issues;
   } },
   "client.targets.set": { key: "client.targets.set", label: "Set reduction targets", permission: "target.edit", reasonRequired: false, transaction: "versioned target record + benchmark stamp + audit + outbox + idempotency", auditAction: "client_targets_set", validate: (input, context) => { const issues = [...baseIssues(context, false), ...forwardTargetIssues(input)]; required(issues, "clientId", input.clientId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 0) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be zero or greater." }); return issues; } },
+  // 0238 rule 3: the reason is required by the handler only when the baseline already has figures (the governed re-baseline).
+  "client.baseline.useSnapshot": { key: "client.baseline.useSnapshot", label: "Use the job's figures as the baseline", permission: "client.edit", reasonRequired: false, transaction: "versioned client + snapshot citation + audit + outbox + idempotency", auditAction: "client_baseline_from_snapshot", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "snapshotId", input.snapshotId); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." }); return issues; } },
   "client.logo.set": { key: "client.logo.set", label: "Upload client logo", permission: "client.edit", reasonRequired: false, transaction: "logo asset + client pointer + audit + outbox + idempotency", auditAction: "client_logo_set", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); required(issues, "fileName", input.fileName); if (!oneOf(input.contentType, clientLogoContentTypes)) issues.push({ field: "contentType", code: "INVALID", message: "The logo must be a PNG, SVG, JPEG or WebP." }); if (!text(input.dataBase64) || !/^[A-Za-z0-9+/]+={0,2}$/.test(input.dataBase64)) issues.push({ field: "dataBase64", code: "INVALID", message: "The logo file could not be read." }); else if (Math.floor(input.dataBase64.length * 3 / 4) > CLIENT_LOGO_MAX_BYTES) issues.push({ field: "dataBase64", code: "TOO_LARGE", message: `The logo must be ${CLIENT_LOGO_MAX_BYTES / 1024} KB or smaller.` }); return issues; } },
   "client.logo.remove": { key: "client.logo.remove", label: "Remove client logo", permission: "client.edit", reasonRequired: false, transaction: "client pointer cleared (asset retained) + audit + outbox + idempotency", auditAction: "client_logo_removed", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "clientId", input.clientId); return issues; } },
   "report.section.edit": { key:"report.section.edit",label:"Edit report section",permission:"report.edit",reasonRequired:false,transaction:"versioned report section + section history + audit + outbox",auditAction:"report_section_edited",validate:(input,context)=>{const issues=baseIssues(context,false);required(issues,"jobId",input.jobId);required(issues,"sectionKey",input.sectionKey);if(text(input.sectionKey)&&!isCrpReportSectionKey(input.sectionKey))issues.push({field:"sectionKey",code:"INVALID",message:"Unknown report section."});issues.push(...reportSectionBodyIssues(input.bodyHtml));if(!Number.isInteger(input.expectedVersion)||input.expectedVersion<0)issues.push({field:"expectedVersion",code:"INVALID",message:"Expected version must be zero or greater."});if(input.contentSource!=null&&!oneOf(input.contentSource,["ai","client-edited"] as const))issues.push({field:"contentSource",code:"INVALID",message:"Content source must be ai or client-edited."});return issues;} },

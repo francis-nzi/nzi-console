@@ -10,6 +10,7 @@ import { withTenantRead } from "../src/postgres";
 import { planV7ClientImport } from "../src/v7ClientImport";
 import { loadV7ClientPlan } from "../src/v7ClientLoad";
 import { loadV7Milestones, planV7Milestones } from "../src/v7MilestoneLoad";
+import { listJobDateDifferences, resolveJobDate, V7_DATE_SYNC_ACTOR } from "../src/v7JobDates";
 
 /**
  * job.update (ruled job-update-plan.md, J1–J6) against a real database: start date, reporting period and template; the
@@ -90,14 +91,15 @@ describe("job.update, against a real database", { skip: TEST_DATABASE_URL ? fals
       }
     });
 
-    it("refuses a period move once period-bound data exists, naming the table and its rows (PERIOD_HAS_DATA)", async () => {
+    // Addendum B.3 (ruled 25 Nov 2026, 0238): a period with data may move — with a reason, its datasets re-chosen and its rows
+    // re-priced (baselineYearPendingReal covers the re-pricing). J1's PERIOD_HAS_DATA stays for data nobody has classified.
+    it("moves a period over classified, period-bound data with a reason — and says why it needs one", async () => {
       const job = await crpJob();
       await q(`INSERT INTO nzi_console.job_intensity_values (organisation_id, job_id, reporting_year, metric_key, value, recorded_by) VALUES ($1, $2, 2025, 'floor_area', 100, 't')`, [ORG, job.jobId]);
-      await assert.rejects(updateJob(database.pool, { jobId: job.jobId, expectedVersion: 1, reportingPeriodStart: "2026-01-01", reportingPeriodEnd: "2026-12-31" }, context(ORG, "admin", "Wrong year")),
-        (error: { issues?: Array<Issue & { message: string }> }) => error.issues?.some((item) => item.code === "PERIOD_HAS_DATA" && /job_intensity_values \(1 row\)/.test(item.message)) === true);
-      // …and a start-date change on the same job is still allowed: the start is not the window.
-      const moved = await updateJob(database.pool, { jobId: job.jobId, expectedVersion: 1, startDate: "2025-03-01" }, context());
-      assert.equal(moved.data.version, 2);
+      await assert.rejects(updateJob(database.pool, { jobId: job.jobId, expectedVersion: 1, reportingPeriodStart: "2026-01-01", reportingPeriodEnd: "2026-12-31" }, context()),
+        (error: { issues?: Array<Issue & { message: string }> }) => error.issues?.some((item) => item.code === "REQUIRED" && /data is recorded for it/.test(item.message)) === true);
+      const moved = await updateJob(database.pool, { jobId: job.jobId, expectedVersion: 1, reportingPeriodStart: "2026-01-01", reportingPeriodEnd: "2026-12-31" }, context(ORG, "admin", "Wrong year"));
+      assert.deepEqual([moved.data.version, moved.data.schedule.reportingYear], [2, 2026]);
     });
   });
 
@@ -257,18 +259,74 @@ describe("job.update on imported jobs (J3), and the v7 loaders after it", { skip
   after(async () => { await database?.end(); });
 
   // Job 106 (J000616): a v7 CRP job with a period and no v7 plan — the template dates it from the period start.
-  it("refuses the start date and the period on a v7 job until cutover (IMPORTED_FROM_V7), and allows its template", async () => {
-    const version = (await q(`SELECT version FROM nzi_console.jobs WHERE job_id = 'v7-job-106'`))[0].version;
-    await assert.rejects(updateJob(database.pool, { jobId: "v7-job-106", expectedVersion: version, startDate: "2026-01-01" }, context()), issue("startDate", "IMPORTED_FROM_V7"));
-    await assert.rejects(updateJob(database.pool, { jobId: "v7-job-106", expectedVersion: version, reportingPeriodStart: "2025-01-01", reportingPeriodEnd: "2025-12-31" }, context("x")), issue("reportingPeriodStart", "IMPORTED_FROM_V7"));
+  const job106 = async () => (await q(`SELECT version, start_date::text AS start, reporting_period_start::text AS ps, reporting_period_end::text AS pe FROM nzi_console.jobs WHERE job_id = 'v7-job-106'`))[0];
+  const owners = async (jobId: string) => (await q(`SELECT date_key, owner, cause FROM nzi_console.job_date_owners WHERE job_id = $1 ORDER BY owner_no`, [jobId])).map((row) => [row.date_key, row.owner, row.cause]);
+  const differences = (jobId: string) => withTenantRead(database.pool, ORG, (db) => listJobDateDifferences(db, ORG, jobId));
+
+  // Addendum B (ruled 25 Nov 2026, 0238) retires J3: an imported job's dates are editable here, and the console then owns them.
+  it("lets an imported job's template change, then its start date and period — the console owning each date it edits", async () => {
+    const version = (await job106()).version;
     const updated = await updateJob(database.pool, { jobId: "v7-job-106", expectedVersion: version, milestoneTemplateId: "mt:ju" }, context());
     assert.deepEqual(updated.data.reschedule!.map((step) => [step.kind, step.action, step.to]), [["data_collection", "unchanged", null], ["first_draft", "unchanged", null], ["final_report", "generate", "2024-03-31"]]);
     assert.equal(updated.data.version, version + 1);
+    assert.deepEqual(updated.data.ownedDates, [], "a template change owns no date");
+
+    const started = await updateJob(database.pool, { jobId: "v7-job-106", expectedVersion: updated.data.version, startDate: "2024-02-01" }, context());
+    assert.deepEqual(started.data.ownedDates, ["start_date"]);
+    // Its period holds migrated rows: a move needs the reason (B.3).
+    await assert.rejects(updateJob(database.pool, { jobId: "v7-job-106", expectedVersion: started.data.version, reportingPeriodStart: "2024-02-01", reportingPeriodEnd: "2025-01-31" }, context()), issue("reason", "REQUIRED"));
+    const moved = await updateJob(database.pool, { jobId: "v7-job-106", expectedVersion: started.data.version, reportingPeriodStart: "2024-02-01", reportingPeriodEnd: "2025-01-31" }, context("The client's year runs February to January"));
+    assert.deepEqual(moved.data.ownedDates, ["reporting_period"]);
+    assert.deepEqual(await owners("v7-job-106"), [["start_date", "console", "edited"], ["reporting_period", "console", "edited"]]);
   });
 
-  it("the client loader's re-run reads every client as unchanged after a template-only job.update", async () => {
+  it("the client loader's re-run reads every client as unchanged after it, and keeps the console's dates — flagging V7's", async () => {
     const outcome = await loadV7ClientPlan(database.pool, clientPlan(), { commit: true, runId: "clients-2" });
     assert.deepEqual(outcome.clients.filter((client) => client.state !== "unchanged").map((client) => [client.clientId, client.state, client.refusal]), []);
+    const held = await job106();
+    assert.deepEqual([held.start, held.ps, held.pe], ["2024-02-01", "2024-02-01", "2025-01-31"], "a later sync never overwrites a date the console owns");
+    const flagged = await differences("v7-job-106");
+    assert.deepEqual(flagged.filter((d) => d.dateKey === "reporting_period").map((d) => [d.owner, d.console, d.v7]),
+      [["console", { from: "2024-02-01", to: "2025-01-31" }, { from: "2024-01-01", to: "2024-12-31" }]]);
+  });
+
+  it("a sync follows V7 for a date the console never edited, through job.update, audited as the sync", async () => {
+    const changed = syntheticRows();
+    changed.jobs.find((row) => row.job_id === "106")!.reporting_period_start = "2024-01-01";
+    changed.jobs.find((row) => row.job_id === "100")!.start_date = "2024-01-08";
+    const before = (await q(`SELECT start_date::text AS start, status FROM nzi_console.jobs WHERE job_id = 'v7-job-100'`))[0];
+    await loadV7ClientPlan(database.pool, planV7ClientImport({ extract: syntheticExtract(changed), headers: syntheticHeaders(), extractSha256: "s2" }), { commit: true, runId: "clients-3" });
+    const after = (await q(`SELECT start_date::text AS start FROM nzi_console.jobs WHERE job_id = 'v7-job-100'`))[0];
+    // J000612 is complete, so job.update refuses it: the sync leaves it and shows the difference instead (owner V7).
+    if (before.status === "complete") {
+      assert.equal(after.start, before.start);
+      assert.ok((await differences("v7-job-100")).some((d) => d.dateKey === "start_date" && d.owner === "v7"));
+    } else {
+      assert.equal(after.start, "2024-01-08");
+      assert.ok((await q(`SELECT 1 FROM nzi_console.audit_events WHERE entity_id = 'v7-job-100' AND action = 'job.updated' AND actor_id = $1`, [V7_DATE_SYNC_ACTOR])).length === 1);
+    }
+  });
+
+  it("'Keep the console's' acknowledges V7's period; 'Use the previous system's dates' applies it (with the reason) and V7 owns it again", async () => {
+    const [period] = (await differences("v7-job-106")).filter((d) => d.dateKey === "reporting_period");
+    const kept = await resolveJobDate(database.pool, { jobId: "v7-job-106", expectedVersion: (await job106()).version, dateKey: "reporting_period", observationNo: period!.observationNo, choice: "console" }, context());
+    assert.equal(kept.data.choice, "console");
+    assert.deepEqual((await differences("v7-job-106")).filter((d) => d.dateKey === "reporting_period"), [], "acknowledged — no longer flagged");
+    await assert.rejects(resolveJobDate(database.pool, { jobId: "v7-job-106", expectedVersion: (await job106()).version, dateKey: "reporting_period", observationNo: period!.observationNo, choice: "v7" }, context()), issue("reason", "REQUIRED"));
+    await resolveJobDate(database.pool, { jobId: "v7-job-106", expectedVersion: (await job106()).version, dateKey: "reporting_period", observationNo: period!.observationNo, choice: "v7" }, context("Back to the previous system's year"));
+    const back = await job106();
+    assert.deepEqual([back.ps, back.pe], ["2024-01-01", "2024-12-31"]);
+    assert.deepEqual((await owners("v7-job-106")).at(-1), ["reporting_period", "v7", "use-v7"]);
+    // V7 owns the period again, so the next sync follows V7's change — through job.update, audited as the sync.
+    const changed = syntheticRows();
+    Object.assign(changed.jobs.find((row) => row.job_id === "106")!, { reporting_period_start: "2024-03-01", reporting_period_end: "2025-02-28" });
+    const synced = await loadV7ClientPlan(database.pool, planV7ClientImport({ extract: syntheticExtract(changed), headers: syntheticHeaders(), extractSha256: "s4" }), { commit: true, runId: "clients-4" });
+    assert.deepEqual(synced.clients.filter((client) => client.state === "refused").map((client) => client.refusal), [], "a V7 date change no longer refuses the client");
+    const followed = await job106();
+    assert.deepEqual([followed.ps, followed.pe], ["2024-03-01", "2025-02-28"], "an unedited (V7-owned) date follows V7 on every sync");
+    assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE entity_id = 'v7-job-106' AND action = 'job.updated' AND actor_id = $1`, [V7_DATE_SYNC_ACTOR]))[0].n, 1);
+    // …and a stale observation is never accepted unseen.
+    await assert.rejects(resolveJobDate(database.pool, { jobId: "v7-job-106", expectedVersion: (await job106()).version, dateKey: "reporting_period", observationNo: period!.observationNo + 999, choice: "console" }, context()), issue("observationNo", "OBSERVATION_MOVED"));
   });
 
   it("the PR 2 backfill refuses a kind job.update generated here, when v7 also records it", async () => {

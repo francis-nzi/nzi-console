@@ -275,8 +275,8 @@ describe("the wiring", () => {
     // FINDING-import-refresh-panel-not-rendering (23 Nov): with `job-shell` on, the CRP page rendered only the shell's named
     // panels — the refresh panel was in `panels` alone, so an imported job had no Refresh from the previous system.
     const page = read("jobs/[jobId]/page.tsx");
-    assert.match(page, /const panels = <>\{milestones\}\{timePanel\}\{importPanel\}<\/>;/);
-    assert.match(page, /const shell = \{ milestonesPanel: milestones, timePanel: shellTimePanel, importPanel, milestoneStates \};/);
+    assert.match(page, /const panels = <>\{datesPanel \? <section className="nz-body">\{datesPanel\}<\/section> : null\}\{milestones\}\{timePanel\}\{importPanel\}<\/>;/);
+    assert.match(page, /const shell = \{ milestonesPanel: milestones, datesPanel, baselineYearJob: [^,]+, timePanel: shellTimePanel, importPanel, milestoneStates \};/);
     const workspace = read("jobs/CrpScopeWorkspace.tsx");
     assert.match(workspace, /importPanel\?: ReactNode/);
     assert.match(workspace, /<div className="nz-body nz-shell-body">\s*\{noticeBanner\}\s*\{shell\?\.importPanel \?\? null\}/);

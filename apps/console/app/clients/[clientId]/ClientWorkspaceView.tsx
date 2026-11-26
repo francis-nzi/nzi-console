@@ -212,7 +212,7 @@ export function ClientWorkspaceView({ workspace, jobs, today, writeEnabled, fact
       {drawer?.kind === "identity" ? <IdentityForm key={`identity-${client.version}`} client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "targets" ? <TargetsForm clientId={client.id} targets={targets} access={access.target} onClose={closeDrawer} onSaved={saved}
         heldNetZero={{ year: client.profile.netZeroTargetYear ?? null, pct: client.profile.netZeroTargetReductionPct ?? null }} /> : null}
-      {drawer?.kind === "rebaseline" ? <RebaselineForm client={client} access={access.client} onClose={closeDrawer} /> : null}
+      {drawer?.kind === "rebaseline" ? <RebaselineForm client={client} access={access.client} onClose={closeDrawer} onSaved={(text) => setNotice(text)} baselineYear={targets.baselineYear} /> : null}
       {drawer?.kind === "address" ? <AddressForm client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "compliance" ? <ComplianceForm client={client} access={access.client} onClose={closeDrawer} /> : null}
       {drawer?.kind === "factors" ? <FactorsDrawerBody clientId={client.id} onClose={closeDrawer} /> : null}

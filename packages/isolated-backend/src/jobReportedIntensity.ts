@@ -26,6 +26,10 @@ export async function resolveJobReportedIntensity(db: Queryable, jobId: string):
   const definition = reportedIntensityMetric(metrics, targets);
   if (!definition) return null;
   const target = targets.find((entry) => entry.metricKey === definition.key)!;
+  // 0238: a target whose baseline intensity is still pending has nothing to draw or freeze — the report carries no intensity
+  // target rather than a 0 baseline. It appears once the baseline's figures (and the baseline year's value) are in.
+  if (target.baselineIntensity === null) return null;
+  const baselineIntensity = target.baselineIntensity;
 
   const reporting = await resolveJobReportingPeriod(db, jobId);
   const period: ReportingPeriod | null = reporting?.period ?? null;
@@ -49,7 +53,7 @@ export async function resolveJobReportedIntensity(db: Queryable, jobId: string):
     denominatorUnit: intensityPer(definition, { currency: job.currency }),
     reportingDenominator: denominator.value === null ? null : denominator.value / divider,
     denominatorBasis,
-    baselineYear: target.baselineYear, baselineIntensity: target.baselineIntensity,
+    baselineYear: target.baselineYear, baselineIntensity,
     interimYear: target.interimYear, interimReductionPercent: target.interimReductionPct,
     targetYear: target.targetYear, targetReductionPercent: target.targetReductionPct,
     // A client intensity target has no net-zero year of its own; its end point is targetYear (addendum (i)).

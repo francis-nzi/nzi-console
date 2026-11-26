@@ -52,6 +52,7 @@ import { BUSINESS_TRAVEL_CODE, factorServesTravelMode, normaliseCommutingDetail,
 import { isPortalProfileKey, isPortalProfileValue, isPortalScope } from "@nzi/contracts";
 import { isCurrencyUnit, rowScopeForCategory, spendCarryKey } from "@nzi/contracts";
 import { recordClientEntryBasisChoice } from "./entryBasisChoices";
+import { getJobPathwayTarget } from "./clientTargetRecords";
 import { fixCarryForwardBasis, storedCarryForwardBasis } from "./carryForwardBasis";
 import { resolveReopenRequestOnEdit } from "./portalReopenRequests";
 import { copySealedVehicleIdentifier, resealVehicleIdentifiers, sealVehicleIdentifiers, VEHICLE_CATEGORY_CODE, vehicleIdentityKey } from "./vehicleRegistrations";
@@ -405,9 +406,11 @@ function updateClientHandler(input: CommandInputMap["client.update"], context: C
     // (they belonged to the old address) and the client is located afresh.
     const moved = trimmed(input.registeredPostcode) !== before.registered_postcode || trimmed(input.registeredCountry) !== before.registered_country;
     const relocate = moved ? ", latitude=NULL, longitude=NULL, geocode_source=NULL, geocode_precision=NULL" : "";
+    // 0238: a baseline typed or corrected by hand no longer cites the snapshot its figures once came from.
+    const uncite = governed.baselineChanged ? ", baseline_snapshot_id=NULL" : "";
     const updated = await db.query<{ version: number }>(
       `UPDATE nzi_console.clients
-         SET name=$4, status=$5, sector=$6, location=$7, owner_name=$8, ${assignments}${relocate},
+         SET name=$4, status=$5, sector=$6, location=$7, owner_name=$8, ${assignments}${relocate}${uncite},
              version=version+1, updated_at=now()
        WHERE organisation_id=$1 AND client_id=$2 AND version=$3
        RETURNING version`,
@@ -486,6 +489,7 @@ const baselineFieldColumns = [
   ["baselineScope1Tco2e", "baseline_scope1_tco2e"], ["baselineScope2Tco2e", "baseline_scope2_tco2e"],
   ["baselineScope3Tco2e", "baseline_scope3_tco2e"], ["baselineTotalTco2e", "baseline_total_tco2e"],
 ] as const;
+const BASELINE_FIGURE_COLUMNS = ["baseline_scope1_tco2e", "baseline_scope2_tco2e", "baseline_scope3_tco2e", "baseline_total_tco2e"] as const;
 // Whether a governed baseline field changed, which decides whether a rebaseline is
 // recorded — so the comparison must answer about the same kind of value on both sides.
 // `baseline_period_start` and `_end` are SQL `date` columns arriving as Date objects while
@@ -517,9 +521,12 @@ function clientGovernedChanges(row: ClientGovernedRow, input: CommandInputMap["c
     if (was !== next) { baselineBefore[field] = was; baselineAfter[field] = next; before[field] = was; after[field] = next; changed.push(field); }
   }
   // Setting a baseline for the first time is the initial baseline — an ordinary audited
-  // edit. Changing one that exists is the governed act.
-  const hadBaseline = baselineFieldColumns.some(([, column]) => comparable(row[column]) !== null);
-  return { before, after, changed, baseline: hadBaseline && Object.keys(baselineAfter).length ? { before: baselineBefore, after: baselineAfter } : null };
+  // edit. Changing one that exists is the governed act. 0238: a baseline *exists* once it has
+  // figures — a baseline year with its figures pending is set (and its period corrected, and its
+  // figures added) as the initial baseline; the governed re-baseline is for changing figures.
+  const hadFigures = BASELINE_FIGURE_COLUMNS.some((column) => comparable(row[column]) !== null);
+  const baselineChanged = Object.keys(baselineAfter).length > 0;
+  return { before, after, changed, baselineChanged, baseline: hadFigures && baselineChanged ? { before: baselineBefore, after: baselineAfter } : null };
 }
 
 export type CreateJobResult = {
@@ -2778,11 +2785,9 @@ export async function createReviewedCrpSnapshot(
         ]);
       if (job.version !== input.expectedJobVersion)
         throw new VersionConflictError();
-      const targetResult = await db.query<{
-        job_id:string;baseline_year:number;baseline_tco2e:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string;
-      }>(`SELECT job_id,baseline_year,baseline_tco2e,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_emissions_targets WHERE organisation_id=$1 AND job_id=$2 FOR SHARE`,[context.organisationId,input.jobId]);
-      const targetRow=targetResult.rows[0];
-      const target=targetRow?{jobId:targetRow.job_id,baselineYear:targetRow.baseline_year,baselineTco2e:Number(targetRow.baseline_tco2e),interimYear:targetRow.interim_year,interimReductionPercent:Number(targetRow.interim_reduction_percent),netZeroYear:targetRow.net_zero_year,version:targetRow.version,updatedAt:targetRow.updated_at instanceof Date?targetRow.updated_at.toISOString():String(targetRow.updated_at),updatedBy:targetRow.updated_by}:null;
+      // Addendum A (ruled 25 Nov 2026): one baseline. The pathway target frozen into the snapshot is the client's baseline and
+      // targets, read as they stand now — null while the baseline's figures are pending (the chart then draws no target line).
+      const target=(await getJobPathwayTarget(db,input.jobId))?.target??null;
       // Phase 3c (ruled): the reported intensity through the one adapter — the client's target on its first targeted standard
       // metric, with this job's Value (floor area resolved over the sites the job reports on). Frozen as it reads now.
       const intensityTarget=await resolveJobReportedIntensity(db,input.jobId);

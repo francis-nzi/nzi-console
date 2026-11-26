@@ -138,6 +138,10 @@ async function composeTargets(db: Queryable, input: {
 }): Promise<ReportTargetsSection | ReportSectionGap> {
   const benchmarkInForce = await getBenchmarkInForce(db, input.clientId);
   const targets = await getClientTargets(db, input.clientId, { benchmarkInForce, actuals: input.actuals });
+  // 0238: targets set against a baseline year whose figures are pending have no tCO₂e yet — say so, never "no target", never 0.
+  if (targets.model && targets.benchmarkPending) {
+    return { state: "unavailable", reason: "The reduction targets are set as percentages against a baseline year whose figures were pending when the report was issued." };
+  }
   if (!targets.model || targets.trajectory.length === 0) {
     return { state: "unavailable", reason: "No reduction target was set for this client when the report was issued." };
   }

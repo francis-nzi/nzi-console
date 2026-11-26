@@ -742,6 +742,12 @@ jobs:
       # ones kept with recomputed warnings, imported and closed jobs guarded, one job-version bump, v7 loaders unaffected.
       - name: A job's schedule moves only where nothing depends on it, and the move is audited whole
         run: npx tsx --test packages/isolated-backend/tests/jobUpdateReal.test.ts
+      # 0238 (BRIEF-baseline-year-and-pending-targets, with Addendum A and B): a baseline year stored and read as pending;
+      # percentage targets against it, their tCO₂e derived once the figures exist; the year's job's snapshot figures, audited;
+      # the explicit zero; the governed re-baseline; job pathway values carried onto the client; a period move over data
+      # re-priced (previewed, rolled back), refused once issued, and the baseline-year job reported.
+      - name: A baseline year can exist before its figures, and targets are set against it as percentages
+        run: npx tsx --test packages/isolated-backend/tests/baselineYearPendingReal.test.ts
       # Team & access (admin Phase B, B1): 0141 — never deleted (DELETE revoked), never without an admin (the deferred
       # trigger and the command lock, raced), never yourself; sealed writes and no name or email in any audit payload;
       # deactivation ending sign-in while the person still resolves; the break-glass through the command; append-only,

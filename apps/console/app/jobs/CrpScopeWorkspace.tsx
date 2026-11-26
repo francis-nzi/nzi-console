@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback,useEffect,useState } from "react";
 import { JobClientMark } from "./JobClientMark";
 import { LogTimeButton } from "./JobTimePanel";
@@ -215,7 +216,9 @@ export function CrpScopeWorkspace({
    * milestones the Milestones button summarises (null when that read failed). `importPanel`: Refresh from the previous system
    * (import.refresh), shown at the top of the body; it renders nothing on a job not imported, or for someone who may not refresh.
    */
-  shell?: { milestonesPanel: ReactNode; timePanel: ReactNode; importPanel?: ReactNode; milestoneStates: Array<{ dueDate: string | null; completedAt: string | null }> | null };
+  shell?: { milestonesPanel: ReactNode; timePanel: ReactNode; importPanel?: ReactNode; milestoneStates: Array<{ dueDate: string | null; completedAt: string | null }> | null;
+    /** Addendum B.1: the job's dates, edited in Setup. Addendum A: the job is its client's baseline year (the header badge). */
+    datesPanel?: ReactNode; baselineYearJob?: boolean };
 }) {
   // Phase 3a: capture offers only the sites this job reports on; the Sites drawer lists them all, with the toggle.
   const captureSites = includedSites(sites);
@@ -527,7 +530,7 @@ export function CrpScopeWorkspace({
   // The job shell's Setup drawer: the same panels less Client sites, which has its own Sites drawer.
   const setupPanels = (
     <>
-      <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
+      <TargetPanel clientId={job.header.clientId} target={target}/>
       {/* Phase 3c: intensity has its own drawer (the Intensity chip); the per-job IntensityPanel is retired. */}
       <PurchasedGoodsPanel jobId={job.header.id} categories={purchasedGoodsCategories} notice={setNotice}/>
       {/* Data entry D3 (R1): each site's currency, the job's FX rates, and the job's spend in the client's currency. */}
@@ -538,7 +541,7 @@ export function CrpScopeWorkspace({
   );
   const configPanels = (
     <>
-      <TargetPanel jobId={job.header.id} reportingYear={job.header.reportingYear??new Date(job.header.startDate).getUTCFullYear()} target={target} notice={setNotice}/>
+      <TargetPanel clientId={job.header.clientId} target={target}/>
       {/* Phase 3c: the Values and the client's targets in one place; the per-job IntensityPanel is retired. */}
       <JobAnnualMetrics jobId={job.header.id} reportingYear={reportingYear} writeEnabled={writeEnabled}/>
       <SitePanel jobId={job.header.id} sites={sites} notice={setNotice}/>
@@ -675,14 +678,15 @@ export function CrpScopeWorkspace({
     // Phase 3c: the metric the CRP reports (the client's first targeted standard metric), or none.
     intensity: intensityTarget ? `${reportedIntensityLabel(intensityTarget)} · reported` : "None reported",
     milestones: milestonesSummary(shell?.milestoneStates ?? null),
+    baselineYear: shell?.baselineYearJob ?? false,
   };
   const openShellDrawer = (drawer: JobShellDrawer) => setShellDrawer(drawer);
   const closeShellDrawer = useCallback(() => setShellDrawer(null), []);
   const period = job.header.reportingPeriod ? `${formatDate(job.header.reportingPeriod.from)} – ${formatDate(job.header.reportingPeriod.to)}` : null;
   const shellDrawerBody: Record<JobShellDrawer, { kicker: string; title: string; body: React.ReactNode }> = {
     setup: { kicker: "Job", title: "Setup", body: <>
-      <div className="nz-shell-period"><span>Reporting period</span><b>{period ?? "Not set"}</b>
-        <button type="button" className="nz-btn" onClick={() => setShellDrawer("milestones")}>Change it in Milestones…</button></div>
+      {/* Addendum B.1: the dates are edited here — start, reporting period and the milestones' due dates — imported jobs included. */}
+      {shell?.datesPanel ?? <div className="nz-shell-period"><span>Reporting period</span><b>{period ?? "Not set"}</b></div>}
       <WorkflowStageControl job={job} />
       {/* E: adding a source is a structure action, so it lives with the job's setup rather than surfacing mid-page. */}
       <section className="nz-panel nz-config-panel nz-add-source" aria-label="Add emissions source">
@@ -839,12 +843,22 @@ export function CrpScopeWorkspace({
   );
 }
 
-function TargetPanel({jobId,reportingYear,target,notice}:{jobId:string;reportingYear:number;target:EmissionsTargetReadModel|null;notice:(n:{kind:"ok"|"warn";text:string})=>void}){
- const router=useRouter(),[value,setValue]=useState({baselineYear:target?.baselineYear??reportingYear,baselineTco2e:target?.baselineTco2e??0,interimYear:target?.interimYear??2030,interimReductionPercent:target?.interimReductionPercent??50,netZeroYear:target?.netZeroYear??2050}),[pending,setPending]=useState(false),[reason,setReason]=useState("");
- const rebaselining=target!==null&&(value.baselineYear!==target.baselineYear||value.baselineTco2e!==target.baselineTco2e);
- async function save(){setPending(true);const result=await putBrowserCommandWithReason<{version:number}>(`/api/isolated/jobs/${jobId}/emissions-target`,{...value,expectedVersion:target?.version??0},crypto.randomUUID(),rebaselining?reason:"");if(result.state==="success")setReason("");setPending(false);if(result.state==="success"){notice({kind:"ok",text:`Emissions target v${result.data.version} saved. It will be frozen into the next reviewed snapshot.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}
- const field=(label:string,key:keyof typeof value,step="1")=><label className="nz-fl">{label}<input className="nz-inp" type="number" step={step} value={value[key]} onChange={e=>setValue({...value,[key]:Number(e.target.value)})}/></label>;
- return <section className="nz-panel nz-config-panel"><div className="nz-config-head"><div><span className="nz-eyebrow">Validated reporting input</span><b>Reduction pathway target</b><div className="sub">Baseline, interim reduction and net-zero milestone used by the shared report chart.</div></div><span className={`nz-st ${target?"done":"est"}`}>{target?`Version ${target.version}`:"Not configured"}</span></div><div className="nz-config-grid target">{field("Baseline year","baselineYear")}{field("Baseline tCO₂e","baselineTco2e","any")}{field("Interim year","interimYear")}{field("Interim reduction %","interimReductionPercent","any")}{field("Net-zero year","netZeroYear")}</div>{rebaselining?<div className="nz-banner warn" role="status" style={{margin:"0 16px 12px"}}><div><b>Changing a saved baseline is a re-baseline.</b><div style={{marginTop:4}}>It needs a reason, recorded on the baseline record and in the audit log (baseline.rebaseline; a Consultant on their own clients only).</div><label className="nz-fl" style={{marginTop:8}}><span>Reason for the re-baseline</span><input className="nz-inp" value={reason} onChange={e=>setReason(e.target.value)} aria-label="Reason for the target re-baseline"/></label></div></div>:null}<div className="nz-config-actions"><button className="nz-btn pri" disabled={pending||(rebaselining&&!reason.trim())} onClick={save}>{pending?"Saving…":"Save target"}</button></div></section>;
+/**
+ * Addendum A (ruled 25 Nov 2026): one baseline, on the client. The job's reduction pathway target is no longer its own entry —
+ * it reads the client's baseline and targets, shows them, and links to edit them on the client. What it shows is what the
+ * reviewed snapshot freezes and the report chart draws.
+ */
+function TargetPanel({clientId,target}:{clientId:string;target:EmissionsTargetReadModel|null}){
+ const editLink=<Link className="nz-btn" href={`/clients/${encodeURIComponent(clientId)}?area=analytics`}>Edit on the client →</Link>;
+ return <section className="nz-panel nz-config-panel"><div className="nz-config-head"><div><span className="nz-eyebrow">Validated reporting input</span><b>Reduction pathway target</b><div className="sub">The client&rsquo;s baseline and targets — the line the report chart draws. Set on the client&rsquo;s Carbon tab.</div></div><span className={`nz-st ${target?"done":"est"}`}>{target?"Read from the client":"Not drawn yet"}</span></div>
+  {target
+   ?<div className="nz-config-grid target">
+     <div className="nz-kv"><span className="k">Baseline</span><span className="v">{target.baselineYear} · {Math.round(target.baselineTco2e).toLocaleString("en-GB")} tCO₂e</span></div>
+     <div className="nz-kv"><span className="k">Near-term</span><span className="v">{target.interimYear} · −{target.interimReductionPercent}%</span></div>
+     <div className="nz-kv"><span className="k">Net zero</span><span className="v">{target.netZeroYear}</span></div>
+    </div>
+   :<p className="sub" style={{margin:"0 16px 12px"}}>The chart needs the client&rsquo;s baseline figures and a near-term and a net-zero target. One of them is not set yet, or the baseline&rsquo;s figures are pending.</p>}
+  <div className="nz-config-actions">{editLink}</div></section>;
 }
 
 function SitePanel({jobId,sites,notice}:{jobId:string;sites:SiteOption[];notice:(n:{kind:"ok"|"warn";text:string})=>void}){const router=useRouter(),[name,setName]=useState(""),[pending,setPending]=useState(false);async function add(){if(pending)return;setPending(true);const result=await postBrowserCommand<{siteId:string;name:string}>(`/api/isolated/jobs/${jobId}/sites`,{name},crypto.randomUUID());setPending(false);if(result.state==="success"){setName("");notice({kind:"ok",text:`Site ${result.data.name} added.`});router.refresh();}else notice({kind:"warn",text:errorText(result)});}return <section className="nz-panel nz-config-panel"><div className="nz-config-head"><div><span className="nz-eyebrow">Controlled dimensions</span><b>Client sites</b><div className="sub">Assign emissions rows to a controlled site list. Unassigned emissions remain visible as Unallocated.</div></div><span className="nz-st done">{sites.length} sites</span></div><div className="nz-inline-create"><label className="nz-sr-only" htmlFor="new-site">New site name</label><input id="new-site" className="nz-inp" value={name} disabled={pending} onChange={e=>setName(e.target.value)} placeholder="New site name"/><button className="nz-btn" disabled={pending||!name.trim()} onClick={add}>{pending?"Adding…":"Add site"}</button></div></section>}

@@ -3,6 +3,8 @@ import { anchorOf, familyHasReportingPeriod, londonDayOf, planReschedule, todayI
 export { anchorOf, planReschedule, type ReschedulePreview } from "@nzi/contracts";
 import { VersionConflictError } from "./errors";
 import { milestoneRisk, riskOf } from "./milestoneRisk";
+import { listJobDateDifferences, type JobDateDifference } from "./jobDateRecords";
+import { isClientBaselineYearJob } from "./clientTargetRecords";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
 import type { PoolLike, Queryable } from "./postgres";
 
@@ -338,6 +340,10 @@ export type JobMilestonesView = {
   /** Active templates a reschedule may choose, the default first, and what a reschedule would do with each (and with none). */
   templates: Array<{ templateId: string; name: string; isDefault: boolean; preview: ReschedulePreview }>;
   previewWithout: ReschedulePreview;
+  /** Addendum B.2: the job's dates that differ from V7's latest — "Dates differ from the previous system". */
+  dateDifferences: JobDateDifference[];
+  /** Addendum A/B.4: the job's period is its client's baseline period — the "Baseline year" badge, and the re-baseline offer. */
+  baselineYearJob: boolean;
 };
 
 export async function readJobMilestones(db: Queryable, jobId: string, operatingDay: string = todayInLondon()): Promise<JobMilestonesView | null> {
@@ -366,5 +372,7 @@ export async function readJobMilestones(db: Queryable, jobId: string, operatingD
     milestones: states.map((state) => ({ ...state, risk: milestoneRisk({ dueDate: state.dueDate, completedAt: state.completedAt }, operatingDay) })),
     risk: riskOf(states.map((state) => ({ dueDate: state.dueDate, completedAt: state.completedAt })), operatingDay),
     templates, previewWithout: planReschedule(rows, null, anchor),
+    dateDifferences: await listJobDateDifferences(db, org, jobId),
+    baselineYearJob: await isClientBaselineYearJob(db, jobId),
   };
 }

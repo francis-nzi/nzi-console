@@ -21,7 +21,8 @@ import { listAllClients } from "./readModels";
  * v7's published totals at import. A scope with no rows is left unset (not measured), never 0; the total is the sum.
  *
  * **Governance:** each write is client.update — versioned (`expectedVersion`), tenant-scoped under forced RLS, one audit
- * event, the outbox, and for a client already holding a baseline field (its stated period) the governed re-baseline
+ * event, the outbox, and — since 0238 only for a client already holding baseline *figures* (a stated period alone is a pending
+ * baseline year, and its first figures are the initial baseline) — the governed re-baseline
  * (`baseline.rebaseline`, the `client_rebaselined` event, a `baseline_change_events` row). The reason is the provenance:
  * "policy: job-derived baseline, <rule step> (job <number>, id <job id>)". One transaction for the run, a savepoint per client so a
  * refusal is reported and the rest go on; a dry run is the whole run, rolled back.
@@ -172,7 +173,8 @@ export async function loadBaselineDerive(pool: PoolLike, organisationId: string,
           const [client] = await listAllClients(db, planned.clientId);
           if (!client) throw new CommandValidationError([{ field: "clientId", code: "NOT_FOUND", message: "Client was not found." }]);
           const before = (await db.query<{ row: Record<string, unknown> }>(`SELECT to_jsonb(c) AS row FROM nzi_console.clients c WHERE organisation_id = $1 AND client_id = $2`, [organisationId, planned.clientId])).rows[0]!.row;
-          result.governed = [before.baseline_period_start, before.baseline_period_end, before.baseline_total_tco2e, before.baseline_scope1_tco2e, before.baseline_scope2_tco2e, before.baseline_scope3_tco2e].some((value) => value !== null);
+          // 0238: the re-baseline is governed only when the held baseline has figures; a stated period alone is a pending baseline.
+          result.governed = [before.baseline_total_tco2e, before.baseline_scope1_tco2e, before.baseline_scope2_tco2e, before.baseline_scope3_tco2e].some((value) => value !== null);
           // Exactly what the Re-baseline drawer sends: the whole record as read, with the baseline on top.
           const input = {
             clientId: planned.clientId, expectedVersion: client.version, name: client.name, status: client.status, sector: client.sector,
@@ -180,6 +182,9 @@ export async function loadBaselineDerive(pool: PoolLike, organisationId: string,
             baselinePeriodStart: planned.job.periodStart, baselinePeriodEnd: planned.job.periodEnd,
             baselineScope1Tco2e: planned.job.scope1, baselineScope2Tco2e: planned.job.scope2, baselineScope3Tco2e: planned.job.scope3,
             baselineTotalTco2e: planned.job.total,
+            // 0238 rule 4: a scope summed from the job's own measured rows to 0 is a measured zero, not an unknown — confirmed as such.
+            baselineZeroConfirmed: (["baselineScope1Tco2e", "baselineScope2Tco2e", "baselineScope3Tco2e"] as const)
+              .filter((field, index) => [planned.job.scope1, planned.job.scope2, planned.job.scope3][index] === 0),
           } as CommandInputMap["client.update"];
           const context: CommandContext = {
             organisationId, actorId: BASELINE_ACTOR, principal: "system", idempotencyKey: `${runId}:${planned.clientId}`, correlationId: runId,

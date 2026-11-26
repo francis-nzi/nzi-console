@@ -22,6 +22,8 @@ export type JobShellSummary = {
   sites: string;
   intensity: string;
   milestones: string;
+  /** Addendum A: the job's period is its client's baseline period — badged "Baseline year". */
+  baselineYear?: boolean;
 };
 
 const DRAWERS: ReadonlyArray<{ id: JobShellDrawer; label: string }> = [
@@ -75,6 +77,7 @@ export function JobShellHeader({ header, summary, actions, onOpen }: {
         <div className="sub nz-shell-meta">
           <span>{header.client}</span><span>{period}</span>
           <span className="nz-shell-stage">{header.workflowStage}</span>
+          {summary.baselineYear ? <span className="nz-shell-stage" title="This job's reporting period is the client's baseline period">Baseline year</span> : null}
           <span>Lead consultant: {header.owner}</span>
         </div>
       </div></div>

@@ -3,10 +3,10 @@
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GatedButton } from "@nzi/ui";
-import { patchBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
+import { patchBrowserCommandWithReason, putBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
 import {
-  clientBaselineFields, clientCertifications, isIsoCountryCode, clientGroupStructures, clientReportingFrameworks, scope3CategoryCodes,
-  type ClientGroupStructure, type ClientProfileFields,
+  BASELINE_ZERO_CONFIRM_TEXT, baselineZeroFields, clientBaselineFields, clientCertifications, isIsoCountryCode, clientGroupStructures, clientReportingFrameworks, scope3CategoryCodes,
+  type BaselineYearState, type BaselineZeroField, type ClientGroupStructure, type ClientProfileFields,
 } from "@nzi/contracts";
 import type { ClientScreenReadModel } from "@nzi/isolated-backend";
 import { ClientFactorsManager } from "../ClientFactorsManager";
@@ -156,14 +156,22 @@ export function ComplianceForm({ client, access, onClose }: { client: ClientScre
  * event. Targets are not touched: they are held against the benchmark they were set
  * against until they are restated deliberately (NZC-068).
  */
-export function RebaselineForm({ client, access, onClose }: { client: ClientScreenReadModel; access: EditAccess; onClose: () => void }) {
+export function RebaselineForm({ client, access, onClose, onSaved, baselineYear = null }: {
+  client: ClientScreenReadModel; access: EditAccess; onClose: () => void; onSaved?: (text: string) => void;
+  /** 0238: the baseline year as the Carbon tab reads it — the job that supplies its figures, and its reviewed snapshot. */
+  baselineYear?: BaselineYearState | null;
+}) {
   const profile = client.profile;
+  const router = useRouter();
   const [draft, setDraft] = useState({
     baselinePeriodStart: profile.baselinePeriodStart ?? "", baselinePeriodEnd: profile.baselinePeriodEnd ?? "",
     baselineScope1Tco2e: profile.baselineScope1Tco2e?.toString() ?? "", baselineScope2Tco2e: profile.baselineScope2Tco2e?.toString() ?? "",
     baselineScope3Tco2e: profile.baselineScope3Tco2e?.toString() ?? "", baselineTotalTco2e: profile.baselineTotalTco2e?.toString() ?? "",
   });
   const [reason, setReason] = useState("");
+  const [zeroConfirmed, setZeroConfirmed] = useState<BaselineZeroField[]>([]);
+  const [snapshotPending, setSnapshotPending] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
   const { pending, error, save } = useClientUpdate(client, onClose);
   const set = (patch: Partial<typeof draft>) => setDraft((current) => ({ ...current, ...patch }));
   const number = (value: string) => value.trim() === "" ? null : Number(value);
@@ -172,31 +180,60 @@ export function RebaselineForm({ client, access, onClose }: { client: ClientScre
     baselineScope1Tco2e: number(draft.baselineScope1Tco2e), baselineScope2Tco2e: number(draft.baselineScope2Tco2e),
     baselineScope3Tco2e: number(draft.baselineScope3Tco2e), baselineTotalTco2e: number(draft.baselineTotalTco2e),
   };
-  const had = clientBaselineFields.some((field) => (profile[field] ?? null) !== null);
+  // 0238: a baseline *exists* once it has figures. A baseline year with its figures pending is still set — and its figures
+  // added — as the initial baseline; the governed re-baseline is for changing figures.
+  const had = baselineZeroFields.some((field) => (profile[field] ?? null) !== null);
   const changed = clientBaselineFields.some((field) => String(profile[field] ?? "") !== String(changes[field] ?? ""));
   const rebaselining = had && changed;
-  const problem = !draft.baselinePeriodStart || !draft.baselinePeriodEnd ? "Give the baseline period."
+  const hasFigures = baselineZeroFields.some((field) => changes[field] !== null);
+  // Rule 4: 0 is not "pending" — each figure typed as 0 needs its confirm; a held 0 stands.
+  const zeros = baselineZeroFields.filter((field) => changes[field] === 0 && (profile[field] ?? null) !== 0);
+  const confirm = (field: BaselineZeroField, on: boolean) => setZeroConfirmed((current) => on ? [...current.filter((item) => item !== field), field] : current.filter((item) => item !== field));
+  const problem = !draft.baselinePeriodStart || !draft.baselinePeriodEnd ? "Give the baseline year (its period)."
     : draft.baselinePeriodEnd <= draft.baselinePeriodStart ? "The baseline period must end after it starts."
     : Object.values(changes).some((value) => typeof value === "number" && !Number.isFinite(value)) ? "Baseline figures must be numbers."
+    : zeros.some((field) => !zeroConfirmed.includes(field)) ? "Confirm each 0, or leave it blank while the figure is not known."
     : rebaselining && !reason.trim() ? "Give a reason for the re-baseline."
     : null;
   const denied = access.state !== "allowed" ? access.reason : null;
-  return <DrawerFrame kicker="Baseline & targets" title={had ? "Re-baseline" : "Set the baseline"} onClose={onClose}
+  const supplier = baselineYear?.supplyingJob ?? null;
+  const fromSnapshot = supplier?.snapshotId && baselineYear?.figuresFrom?.snapshotId !== supplier.snapshotId ? supplier : null;
+  const useSnapshot = async () => {
+    if (!fromSnapshot) return;
+    setSnapshotPending(true); setSnapshotError(null);
+    const result = await putBrowserCommandWithReason<{ jobNumber: string }>(`/api/isolated/clients/${encodeURIComponent(client.id)}/baseline/from-snapshot`,
+      { snapshotId: fromSnapshot.snapshotId, expectedVersion: client.version }, crypto.randomUUID(), had ? reason : "");
+    setSnapshotPending(false);
+    if (result.state !== "success") { setSnapshotError(errorText(result)); return; }
+    onClose(); router.refresh(); onSaved?.(`Baseline set from ${fromSnapshot.jobNumber}'s reviewed figures.`);
+  };
+  const title = had ? "Re-baseline" : "Set baseline";
+  return <DrawerFrame kicker="Baseline & targets" title={title} onClose={onClose}
     footer={<GatedButton className="nz-btn pri" blocked={pending || denied !== null || problem !== null} blockedReason={pending ? "Saving…" : denied ?? problem ?? undefined} reasonClassName="hint nz-gated-reason"
-      onClick={() => void save(changes, rebaselining ? reason : "")}>{pending ? "Saving…" : had ? "Record baseline change" : "Set baseline"}</GatedButton>}>
-    <p className="nz-hint" style={{ marginTop: 0 }}>The baseline is the past anchor every target and every trend is measured against. Forward targets are set separately, in Reduction targets.</p>
+      onClick={() => void save({ ...changes, baselineZeroConfirmed: zeros.filter((field) => zeroConfirmed.includes(field)) }, rebaselining ? reason : "").then((ok) => {
+        if (ok) onSaved?.(hasFigures ? (had ? "Baseline change recorded." : "Baseline set.") : "Baseline year saved · figures pending");
+      })}>{pending ? "Saving…" : had ? "Record baseline change" : "Set baseline"}</GatedButton>}>
+    <p className="nz-hint" style={{ marginTop: 0 }}>The baseline is the past anchor every target and every trend is measured against. Set the baseline year first: its figures can follow, from the year&rsquo;s job or typed in. Forward targets are set separately, in Reduction targets.</p>
     <div className="nz-two">
       <label className="nz-fl"><span>Period start<span className="nz-req">*</span></span><input className="nz-inp" type="date" value={draft.baselinePeriodStart} onChange={(event) => set({ baselinePeriodStart: event.target.value })} /></label>
       <label className="nz-fl"><span>Period end<span className="nz-req">*</span></span><input className="nz-inp" type="date" value={draft.baselinePeriodEnd} onChange={(event) => set({ baselinePeriodEnd: event.target.value })} /></label>
     </div>
+    {fromSnapshot ? <div className="nz-banner info" role="status"><div>
+      <b>{fromSnapshot.jobNumber} is this baseline year&rsquo;s job</b> and has a reviewed snapshot.
+      <div style={{ marginTop: 6 }}><button type="button" className="nz-btn" disabled={snapshotPending || denied !== null || (had && !reason.trim())} onClick={() => void useSnapshot()}>{snapshotPending ? "Saving…" : `Use ${fromSnapshot.jobNumber} figures as the baseline`}</button>
+        {had ? <span className="nz-hint"> · replacing figures is a re-baseline: give the reason below first.</span> : null}</div>
+      {snapshotError ? <div className="nz-banner warn" role="alert">{snapshotError}</div> : null}
+    </div></div> : supplier && !supplier.snapshotId ? <p className="nz-hint">{supplier.jobNumber} is this baseline year&rsquo;s job; its figures can be used once it has a reviewed snapshot.</p> : null}
     <div className="nz-three">
-      <label className="nz-fl"><span>Scope 1</span><input className="nz-inp num" inputMode="decimal" value={draft.baselineScope1Tco2e} onChange={(event) => set({ baselineScope1Tco2e: event.target.value })} /></label>
-      <label className="nz-fl"><span>Scope 2</span><input className="nz-inp num" inputMode="decimal" value={draft.baselineScope2Tco2e} onChange={(event) => set({ baselineScope2Tco2e: event.target.value })} /></label>
-      <label className="nz-fl"><span>Scope 3</span><input className="nz-inp num" inputMode="decimal" value={draft.baselineScope3Tco2e} onChange={(event) => set({ baselineScope3Tco2e: event.target.value })} /></label>
+      <label className="nz-fl"><span>Scope 1</span><input className="nz-inp num" inputMode="decimal" placeholder="pending" value={draft.baselineScope1Tco2e} onChange={(event) => set({ baselineScope1Tco2e: event.target.value })} /></label>
+      <label className="nz-fl"><span>Scope 2</span><input className="nz-inp num" inputMode="decimal" placeholder="pending" value={draft.baselineScope2Tco2e} onChange={(event) => set({ baselineScope2Tco2e: event.target.value })} /></label>
+      <label className="nz-fl"><span>Scope 3</span><input className="nz-inp num" inputMode="decimal" placeholder="pending" value={draft.baselineScope3Tco2e} onChange={(event) => set({ baselineScope3Tco2e: event.target.value })} /></label>
     </div>
-    <label className="nz-fl"><span>Baseline total</span><input className="nz-inp num" inputMode="decimal" value={draft.baselineTotalTco2e} onChange={(event) => set({ baselineTotalTco2e: event.target.value })} />
-      <span className="nz-hint">Leave blank to use the sum of the scopes.</span></label>
-    {rebaselining ? <label className="nz-fl"><span>Reason for the re-baseline<span className="nz-req">*</span></span>
+    <label className="nz-fl"><span>Baseline total</span><input className="nz-inp num" inputMode="decimal" placeholder="pending" value={draft.baselineTotalTco2e} onChange={(event) => set({ baselineTotalTco2e: event.target.value })} />
+      <span className="nz-hint">Leave blank to use the sum of the scopes. A figure not known yet stays blank: it shows as pending, never as 0.</span></label>
+    {zeros.map((field) => <label key={field} className="nz-check"><input type="checkbox" checked={zeroConfirmed.includes(field)} onChange={(event) => confirm(field, event.target.checked)} />
+      {" "}{field === "baselineTotalTco2e" ? "The baseline total is zero, not unknown" : `${field.replace("baseline", "").replace("Tco2e", "").replace("Scope", "Scope ")}: ${BASELINE_ZERO_CONFIRM_TEXT}`}</label>)}
+    {rebaselining || (had && fromSnapshot) ? <label className="nz-fl"><span>Reason for the re-baseline<span className="nz-req">*</span></span>
       <input className="nz-inp" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Acquisition of Site B restated the base year" />
       <span className="nz-hint">Recorded on the baseline record and in the audit log.</span></label> : null}
     {error ? <div className="nz-banner warn" role="alert">{error}</div> : null}

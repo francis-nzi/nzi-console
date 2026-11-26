@@ -53,7 +53,8 @@ describe("setting the forward targets", () => {
     assert.equal(insert.values?.[2], 1, "version");
     assert.deepEqual(insert.values?.slice(3, 7), [2030, 50, 2045, 90]);
     assert.deepEqual(insert.values?.slice(13, 15), [2023, 1842], "the benchmark year and total are stamped from the baseline");
-    assert.equal(insert.values?.[21], false, "not a restatement");
+    assert.equal(insert.values?.[15], false, "stamped with figures, not pending (0238)");
+    assert.equal(insert.values?.[22], false, "not a restatement");
     assert.ok(calls.some((call) => call.sql.includes("INSERT INTO nzi_console.audit_events") && call.values?.[4] === "client_targets_set"));
   });
 
@@ -117,8 +118,8 @@ describe("a re-baseline holds the targets (NZC-068)", () => {
     assert.equal(result.data.restatedBenchmark, true);
     const insert = calls.find((call) => call.sql.includes("INSERT INTO nzi_console.client_targets"))!;
     assert.equal(insert.values?.[14], 1950, "stamped against the new benchmark");
-    assert.equal(insert.values?.[21], true);
-    assert.equal(insert.values?.[20], "Base year restated after the HQ relocation");
+    assert.equal(insert.values?.[22], true);
+    assert.equal(insert.values?.[21], "Base year restated after the HQ relocation");
     const governed = calls.find((call) => call.sql.includes("INSERT INTO nzi_console.audit_events") && call.values?.[4] === "client_targets_restated")!;
     assert.ok(governed, "the restatement is audited in its own right");
     assert.deepEqual(JSON.parse(String(governed.values?.[10])), { benchmarkYear: 2023, benchmarkTotalTco2e: 1842 });

@@ -4,6 +4,7 @@ import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "
 import { clientRiskIncludesJob, milestoneRisk, riskOf, worstRisk, type ClientRiskJobSet, type RiskMilestone } from "./milestoneRisk";
 import { IMPORT_ACTOR, SOURCE_SYSTEM } from "./v7ClientImport";
 import type { V7Row } from "./v7ClientExtract";
+import { observeV7Date } from "./jobDateRecords";
 
 /**
  * The milestone backfill (docs/LIST_PARITY_DESIGN.md, PR 2): v7's `job_plan` → `job_milestones`, for jobs already
@@ -205,13 +206,13 @@ export async function loadV7Milestones(pool: PoolLike, organisationId: string, p
   return outcome;
 }
 
-type StoredMilestone = { kind: MilestoneKind; source_system: string | null; legacy_values: LegacyMilestoneValues | null; updated_by: string };
+type StoredMilestone = { kind: MilestoneKind; source_system: string | null; legacy_values: LegacyMilestoneValues | null; updated_by: string; due_date: string | null; completed_at: string | null };
 
 /** One job: decide every kind first; write only if none conflicts, so a refused job is refused whole. */
 async function loadJob(db: Queryable, org: string, job: ConsoleJob, planned: PlannedJobMilestones, members: readonly Member[],
   runId: string, counts: { inserted: number; updated: number; unchanged: number }): Promise<MilestoneConflict[]> {
   const { rows } = await db.query<StoredMilestone>(
-    `SELECT kind, source_system, legacy_values, updated_by FROM nzi_console.job_milestones WHERE organisation_id = $1 AND job_id = $2`, [org, job.jobId]);
+    `SELECT kind, source_system, legacy_values, updated_by, due_date::text AS due_date, completed_at::text AS completed_at FROM nzi_console.job_milestones WHERE organisation_id = $1 AND job_id = $2`, [org, job.jobId]);
   const stored = new Map(rows.map((row) => [row.kind, row]));
   const writes: Array<{ action: "insert" | "update"; milestone: PlannedMilestone }> = [];
   const conflicts: MilestoneConflict[] = [];
@@ -230,6 +231,12 @@ async function loadJob(db: Queryable, org: string, job: ConsoleJob, planned: Pla
     if (same(row.legacy_values, current)) { unchanged += 1; continue; }
     if (row.updated_by.startsWith(MILESTONE_RUN_PREFIX)) {
       writes.push({ action: "update", milestone: milestone ?? { kind, legacyDbId: `${planned.v7JobId}:${kind}`, dueDate: null, completedAt: null, completedByLabel: null, legacyValues: NOTHING } });
+    } else if ((milestone?.completedAt ?? null) === null) {
+      // Addendum B.2 (ruled 25 Nov 2026): a due date edited in the console is the console's. V7's is recorded (and the job
+      // shows the difference, with Use V7's / Keep the console's) but not written. Its completion is still V7's to report:
+      // a completion V7 records on a console-edited milestone stays a conflict, for a person.
+      await observeV7Date(db, org, job.jobId, `milestone:${kind}`, milestone?.dueDate ?? null, null, runId);
+      unchanged += 1;
     } else {
       conflicts.push({ jobNumber: job.jobNumber, kind, reason: "changed in v7 since the last load, and edited in the console since" });
     }

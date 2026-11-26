@@ -54,7 +54,10 @@ const hasIssued = async (db: Queryable, organisationId: string, jobId: string) =
   `SELECT 1 FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND job_id = $2
    UNION ALL SELECT 1 FROM nzi_console.report_versions WHERE organisation_id = $1 AND job_id = $2 AND status = 'published' LIMIT 1`, [organisationId, jobId])).rows.length > 0;
 
-async function planSeries(db: Queryable, organisationId: string, jobId: string, update: DatasetUpdate, resolutions: CommandInputMap["job.datasets.update"]["resolutions"]): Promise<SeriesPlan & { moves: Array<{ row: RowRecord; factorId: string }>; versions: Map<string, number> }> {
+export type SeriesMovePlan = SeriesPlan & { moves: Array<{ row: RowRecord; factorId: string }>; versions: Map<string, number> };
+
+/** Also used by job.update's period move (Addendum B.3): the same planning, the same blocks, the same row move. */
+export async function planSeries(db: Queryable, organisationId: string, jobId: string, update: DatasetUpdate, resolutions: CommandInputMap["job.datasets.update"]["resolutions"]): Promise<SeriesPlan & { moves: Array<{ row: RowRecord; factorId: string }>; versions: Map<string, number> }> {
   const { rows } = await db.query<RowRecord>(
     `SELECT scope_row_id, version, scope, unit, quantity::text AS quantity, factor_id, factor_label, source_label, report_label, review_status, override_tco2e::text AS override_tco2e, source_id, reingested_from_row_id
        FROM nzi_console.job_scope_rows
@@ -126,10 +129,20 @@ async function applySeries(db: Queryable, context: CommandContext, jobId: string
   await deactivateRows(db, context, jobId, plan, reason);
 }
 
+/**
+ * Addendum B.3 (0238): job.update's period move — each planned row re-pointed to the same factor in the series' edition the new
+ * period chooses and recalculated by the one row calculation, then each deactivation. The selections are job.update's own
+ * (it re-derives them all), so nothing here touches them.
+ */
+export async function moveSeriesRows(db: Queryable, context: CommandContext, jobId: string, plan: SeriesMovePlan, reason: string | null, moveNote: { title: string; detail: string }): Promise<void> {
+  await moveRows(db, context, jobId, plan, moveNote);
+  await deactivateRows(db, context, jobId, plan, reason);
+}
+
 /** Re-point each row to the same factor in the new edition, then the one row calculation (the swap, as before). */
-async function moveRows(db: Queryable, context: CommandContext, jobId: string, plan: SeriesPlan & { moves: Array<{ row: RowRecord; factorId: string }> }): Promise<void> {
+async function moveRows(db: Queryable, context: CommandContext, jobId: string, plan: SeriesPlan & { moves: Array<{ row: RowRecord; factorId: string }> },
+  moveNote = { title: "Moved to a newer edition", detail: `${plan.fromLabel} → ${plan.toLabel} · run ${context.correlationId}` }): Promise<void> {
   const org = context.organisationId;
-  const moveNote = { title: "Moved to a newer edition", detail: `${plan.fromLabel} → ${plan.toLabel} · run ${context.correlationId}` };
   const target = (await db.query<{ version: string }>(`SELECT version FROM nzi_console.emission_factor_datasets WHERE organisation_id = $1 AND dataset_id = $2`, [org, plan.toDatasetId])).rows[0]!;
   for (const { row, factorId } of plan.moves) {
     const label = (await db.query<{ label: string }>(`SELECT label FROM nzi_console.emission_factors_display WHERE organisation_id = $1 AND dataset_id = $2 AND factor_id = $3`, [org, plan.toDatasetId, factorId])).rows[0]!.label;

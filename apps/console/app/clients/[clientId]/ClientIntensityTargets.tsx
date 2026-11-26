@@ -28,7 +28,9 @@ export function ClientIntensityTargets({ metrics, targets, access, onEdit }: {
         return <div key={metric.key} className="nz-kv">
           <span className="k">{metric.label} <span className="muted">· tCO₂e per {metric.unitWording}</span></span>
           <span className="v">{target
-            ? [`from ${target.baselineIntensity.toLocaleString("en-GB", { maximumFractionDigits: 6 })} (${target.baselineYear})`, milestone(target.interimYear, target.interimReductionPct), milestone(target.targetYear, target.targetReductionPct)].filter(Boolean).join(" → ")
+            ? [target.baselineIntensity === null
+                ? `from ${target.baselineYear} · baseline intensity pending`
+                : `from ${target.baselineIntensity.toLocaleString("en-GB", { maximumFractionDigits: 6 })} (${target.baselineYear}${target.baselineIntensitySource === "derived" ? ", from the baseline figures" : ""})`, milestone(target.interimYear, target.interimReductionPct), milestone(target.targetYear, target.targetReductionPct)].filter(Boolean).join(" → ")
             : <span className="muted">No target</span>}
             {access.state === "allowed" ? <> · <button type="button" className="nz-editlink" onClick={() => onEdit(metric.key)} aria-label={`${target ? "Edit" : "Set"} the ${metric.label} target`}>{target ? "Edit" : "Set"}</button></> : null}</span>
         </div>;
@@ -43,7 +45,8 @@ export function IntensityTargetForm({ clientId, metric, target, access, onClose,
 }) {
   const field = (value: number | null | undefined) => value === null || value === undefined ? "" : String(value);
   const [baselineYear, setBaselineYear] = useState(field(target?.baselineYear));
-  const [baselineIntensity, setBaselineIntensity] = useState(field(target?.baselineIntensity));
+  // 0236: only a stated intensity prefills — a derived one stays derived (and moves with the baseline) unless typed over.
+  const [baselineIntensity, setBaselineIntensity] = useState(field(target?.baselineIntensitySource === "stated" ? target.baselineIntensity : null));
   const [interimYear, setInterimYear] = useState(field(target?.interimYear));
   const [interimPct, setInterimPct] = useState(field(target?.interimReductionPct));
   const [targetYear, setTargetYear] = useState(field(target?.targetYear));
@@ -61,9 +64,11 @@ export function IntensityTargetForm({ clientId, metric, target, access, onClose,
     interimYear: num(interimYear), interimReductionPct: num(interimPct), targetYear: num(targetYear), targetReductionPct: num(targetPct),
   };
   // Moving the baseline of a held target restates what the client committed to measure from — the write asks why.
-  const movesBaseline = target !== null && (input.baselineYear !== target.baselineYear || input.baselineIntensity !== target.baselineIntensity);
+  // Stating an intensity that was pending (or derived) is adding it, not moving it (0236).
+  const heldStated = target?.baselineIntensitySource === "stated" ? target.baselineIntensity : null;
+  const movesBaseline = target !== null && (input.baselineYear !== target.baselineYear || (heldStated !== null && input.baselineIntensity !== heldStated));
   const problem = (() => {
-    if (input.baselineYear === null || input.baselineIntensity === null) return "Give the baseline year and its intensity.";
+    if (input.baselineYear === null) return "Give the baseline year.";
     if ((input.interimYear === null) !== (input.interimReductionPct === null)) return "The interim needs both a year and a reduction, or neither.";
     if ((input.targetYear === null) !== (input.targetReductionPct === null)) return "The target needs both a year and a reduction, or neither.";
     if (input.interimYear === null && input.targetYear === null) return "Set an interim or a final target.";
@@ -96,8 +101,9 @@ export function IntensityTargetForm({ clientId, metric, target, access, onClose,
       <p className="sub">Measured as tCO₂e per {metric.unitWording}. Each job records the year&rsquo;s Value; the intensity is its emissions divided by that.</p>
       <div className="nz-two">
         <label className="nz-fl"><span>Baseline year<span className="nz-req">*</span></span><input className="nz-inp" inputMode="numeric" value={baselineYear} onChange={(e) => setBaselineYear(e.target.value)} /></label>
-        <label className="nz-fl"><span>Baseline intensity<span className="nz-req">*</span></span><input className="nz-inp num" inputMode="decimal" value={baselineIntensity} onChange={(e) => setBaselineIntensity(e.target.value)} /></label>
+        <label className="nz-fl"><span>Baseline intensity</span><input className="nz-inp num" inputMode="decimal" value={baselineIntensity} placeholder="pending" onChange={(e) => setBaselineIntensity(e.target.value)} /></label>
       </div>
+      <span className="nz-hint">Leave it blank while the baseline&rsquo;s figures are pending: the reductions are the record, and the intensity is worked out from the baseline figures and the baseline year&rsquo;s value once both exist.</span>
       <div className="nz-two">
         <label className="nz-fl"><span>Interim year</span><input className="nz-inp" inputMode="numeric" value={interimYear} onChange={(e) => setInterimYear(e.target.value)} /></label>
         <label className="nz-fl"><span>Interim reduction %</span><input className="nz-inp num" inputMode="decimal" value={interimPct} onChange={(e) => setInterimPct(e.target.value)} /></label>

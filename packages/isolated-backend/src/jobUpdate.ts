@@ -1,13 +1,15 @@
+import { randomUUID } from "node:crypto";
 import {
-  anchorOf, familyHasReportingPeriod, jobDateIssues, planReschedule, reportingYearForPeriod, type CommandContext, type CommandInputMap, type ReschedulePreview,
+  anchorOf, datasetSeriesKey, familyHasReportingPeriod, isSamePeriod, jobDateIssues, planReschedule, reportingYearForPeriod, type CommandContext, type CommandInputMap, type ReschedulePreview,
   type WorkflowJobFamily,
 } from "@nzi/contracts";
 import { automaticDatasetsFor, datasetCoverageWarnings, selectAutomaticDatasets, type ReportingWindow } from "./datasetSelection";
 import { clientCountryOf, jobCountryScope } from "./datasetScope";
 import { VersionConflictError } from "./errors";
+import { moveSeriesRows, planSeries, type SeriesMovePlan } from "./jobDatasetUpdate";
 import { applyReschedule, milestoneStatesOf, readScheduleRows, templateForReschedule, type MilestoneState, type MilestoneTemplateWithItems } from "./milestoneCommands";
-import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
-import type { PoolLike, Queryable } from "./postgres";
+import { CommandValidationError, recalculateScopeRowInTransaction, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
+import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 
 /**
  * job.update — edit a job's start date, reporting period and milestone template (ruled `job-update-plan.md`, J1–J6).
@@ -81,6 +83,9 @@ export const JOB_TABLE_CLASSIFICATION: Readonly<Record<string, { periodBound: bo
   job_emissions_config: { periodBound: false, why: "the window itself — moved by this command (J2)" },
   job_dataset_selections: { periodBound: false, why: "re-derived by this command (J2)" },
   job_milestones: { periodBound: false, why: "re-anchored by this command (J6)" },
+  // Addendum B (0238): who owns each of the job's dates, and what V7 last said they were — about the dates, not the period's data.
+  job_date_owners: { periodBound: false, why: "who owns each of the job's dates (the console or the previous system) — written by this command" },
+  job_v7_date_observations: { periodBound: false, why: "what the previous system last said the job's dates were — dates only" },
   job_stage_history: { periodBound: false, why: "a record of stage moves, not of the period" },
   portal_access_grants: { periodBound: false, why: "who may see the job, not what it measured" },
   portal_files: { periodBound: false, why: "a document shared for the job, not data measured for the period" },
@@ -186,6 +191,8 @@ export type JobUpdatePlan = {
   /** Refusals, as field issues. Empty ⇒ the command may apply the plan. */
   issues: Array<{ field: string; code: string; message: string }>;
   periodBound: PeriodBoundFinding[];
+  /** Addendum B.3: the period moves over recorded data — the rows on a re-chosen dataset are re-priced, and the reason is required. */
+  periodHasData: boolean;
   datasets: DatasetChange | null;
   /** What happens to the milestones (the same planReschedule the panel previews), or null when nothing re-anchors. */
   reschedule: ReschedulePreview | null;
@@ -220,18 +227,30 @@ export async function planJobUpdate(db: Queryable, organisationId: string, input
 
   if (!changed.startDate && !changed.period && !changed.template) issues.push({ field: "jobId", code: "NO_CHANGE", message: "Nothing to change." });
   if (CLOSED.has(job.status)) issues.push({ field: "jobId", code: "JOB_CLOSED", message: `This job is ${job.status}; reopen it before changing its schedule.` });
-  if (imported && changed.startDate) issues.push({ field: "startDate", code: "IMPORTED_FROM_V7", message: "This job was imported, so its start date can’t be changed here." });
-  if (imported && changed.period) issues.push({ field: "reportingPeriodStart", code: "IMPORTED_FROM_V7", message: "This job was imported, so its reporting period can’t be changed here." });
+  // Addendum B (ruled 25 Nov 2026): an imported job's dates are editable here too — the console then owns the date it edits
+  // (job_date_owners, 0238) and a later sync flags V7's difference instead of overwriting it. J3's IMPORTED_FROM_V7 is retired.
   if (!withPeriod && changed.period) issues.push({ field: "reportingPeriodStart", code: "NO_PERIOD_FOR_FAMILY", message: "Only a carbon-reporting job has a reporting period." });
-  if ((changed.startDate || changed.period) && !imported) {
+  if (changed.startDate || changed.period) {
     for (const issue of jobDateIssues({ startDate: next.startDate ?? "", dueDate: job.due_date ?? "", reportingPeriodStart: next.reportingPeriodStart, reportingPeriodEnd: next.reportingPeriodEnd }, { family: job.job_family })) {
+      // An imported job's due date is V7's and may predate a date it never checked; only the dates this save moves are judged.
+      if (imported && issue.field === "dueDate") continue;
       issues.push(issue);
     }
   }
   const periodBound = changed.period ? await periodBoundData(db, organisationId, input.jobId) : [];
-  if (periodBound.length) {
+  // Addendum B.3: a period with data may move, with a reason — the datasets are re-chosen and the rows re-priced (below, in
+  // the command). Still refused, fail-closed (J1): a table nobody has classified, or one that cannot be read.
+  const unclassified = periodBound.filter((finding) => !finding.classified || finding.rows === null);
+  if (unclassified.length) {
     issues.push({ field: "reportingPeriodStart", code: "PERIOD_HAS_DATA",
-      message: `The reporting period cannot move once data is recorded for it: ${periodBound.map((finding) => `${finding.table} (${finding.rows === null ? "unreadable" : `${finding.rows} row${finding.rows === 1 ? "" : "s"}`})`).join(", ")}.` });
+      message: `The reporting period cannot move while data it cannot classify is recorded for it: ${unclassified.map((finding) => `${finding.table} (${finding.rows === null ? "unreadable" : `${finding.rows} row${finding.rows === 1 ? "" : "s"}`})`).join(", ")}.` });
+  }
+  // …and a job whose figures are issued (a reviewed snapshot or a published report): the issued figures are for the period they
+  // name. Moving it goes through the supersession route (#655, a newer import superseding the snapshot), not here.
+  const issued = changed.period ? await jobHasIssuedFigures(db, organisationId, input.jobId) : false;
+  if (issued) {
+    issues.push({ field: "reportingPeriodStart", code: "PERIOD_ISSUED",
+      message: "This job has a reviewed snapshot or a published report for its period, so the period can’t move here. Supersede the snapshot first (the bring-in route), then move the period." });
   }
   let template: MilestoneTemplateWithItems | null = null;
   try { template = await templateForReschedule(db, organisationId, next.milestoneTemplateId); }
@@ -281,20 +300,48 @@ export async function planJobUpdate(db: Queryable, organisationId: string, input
     template,
     plan: {
       jobId: input.jobId, jobVersion: job.version, clientId: job.client_id, family: job.job_family, imported, status: job.status,
-      before, after, changed, issues, periodBound, datasets, reschedule, reasonRequired: changed.period,
+      before, after, changed, issues, periodBound, periodHasData: periodBound.length > 0, datasets, reschedule, reasonRequired: changed.period,
     },
   };
 }
 
 // ── The command ────────────────────────────────────────────────────────────────────────────────────────────────
 
+/** The job has issued figures: a reviewed snapshot, or a published report (as job.datasets.update asks it). */
+export async function jobHasIssuedFigures(db: Queryable, organisationId: string, jobId: string): Promise<boolean> {
+  return (await db.query(
+    `SELECT 1 FROM nzi_console.reviewed_crp_snapshots WHERE organisation_id = $1 AND job_id = $2
+     UNION ALL SELECT 1 FROM nzi_console.report_versions WHERE organisation_id = $1 AND job_id = $2 AND status = 'published' LIMIT 1`, [organisationId, jobId])).rows.length > 0;
+}
+
+/** The job's enabled totals per scope, as the preview and the audit show them before and after a period move. */
+export type ScopeTotals = { scope1: number; scope2: number; scope3: number; total: number };
+async function scopeTotals(db: Queryable, organisationId: string, jobId: string): Promise<ScopeTotals> {
+  const { rows } = await db.query<{ scope: string; tco2e: string }>(
+    `SELECT split_part(scope, '.', 1) AS scope, coalesce(sum(coalesce(override_tco2e, calculated_tco2e, 0)), 0)::text AS tco2e
+       FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2 AND enabled GROUP BY 1`, [organisationId, jobId]);
+  const of = (scope: string) => Number(rows.find((row) => row.scope === scope)?.tco2e ?? 0);
+  const totals = { scope1: of("1"), scope2: of("2"), scope3: of("3") };
+  return { ...totals, total: totals.scope1 + totals.scope2 + totals.scope3 };
+}
+
+/** Where the change came from: a person in the console (who then owns the dates they edit), or the V7 sync following V7. */
+export type JobUpdateOrigin = "console" | "v7-sync";
+
 export type JobUpdateResult = {
   jobId: string; clientId: string; version: number;
   schedule: ScheduleFields; datasets: DatasetChange | null; reschedule: ReschedulePreview | null; milestones: MilestoneState[];
+  /** Addendum B.3: rows re-priced onto a re-chosen dataset, and the totals per scope before and after. */
+  repriced: { rows: number; series: Array<{ from: string; to: string }> };
+  totals: { before: ScopeTotals; after: ScopeTotals };
+  /** Addendum B.4: the job is its client's baseline year — the client's baseline period can move with it (a re-baseline). */
+  baselineYearJob: boolean;
+  /** Addendum B.2: the dates this save made the console's. */
+  ownedDates: string[];
 };
 
-export function updateJob(pool: PoolLike, input: CommandInputMap["job.update"], context: CommandContext): Promise<StoredOutcome<JobUpdateResult>> {
-  return runPostgresCommand(pool, "job.update", input, context, async (db) => {
+function jobUpdateHandler(input: CommandInputMap["job.update"], context: CommandContext, origin: JobUpdateOrigin) {
+  return async (db: Queryable) => {
     const org = context.organisationId;
     const planned = await planJobUpdate(db, org, input, { lock: true });
     if (!planned) throw new CommandValidationError([{ field: "jobId", code: "NOT_FOUND", message: "That job is not here." }]);
@@ -302,9 +349,15 @@ export function updateJob(pool: PoolLike, input: CommandInputMap["job.update"], 
     // The job's version, checked once — nothing below checks or bumps it again (J6).
     if (plan.jobVersion !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, plan.jobVersion);
     const issues = [...plan.issues];
-    if (plan.reasonRequired && !context.reason?.trim()) issues.push({ field: "reason", code: "REQUIRED", message: "Say why the reporting period is changing — its label and window move with it." });
+    if (plan.reasonRequired && !context.reason?.trim()) {
+      issues.push({ field: "reason", code: "REQUIRED", message: plan.periodHasData
+        ? "Say why the reporting period is changing — data is recorded for it, so its datasets are re-chosen and its rows re-priced."
+        : "Say why the reporting period is changing — its label and window move with it." });
+    }
     if (issues.length) throw new CommandValidationError(issues);
     const milestonesBefore = await milestoneStatesOf(db, org, input.jobId);
+    const totalsBefore = await scopeTotals(db, org, input.jobId);
+    const baselineYearJob = plan.changed.period ? await wasBaselineYearJob(db, org, input.jobId) : false;
 
     const { rows: [saved] } = await db.query<{ version: number }>(
       `UPDATE nzi_console.jobs SET start_date = $4::date, reporting_period_start = $5::date, reporting_period_end = $6::date, reporting_year = $7,
@@ -313,6 +366,7 @@ export function updateJob(pool: PoolLike, input: CommandInputMap["job.update"], 
       [org, input.jobId, input.expectedVersion, plan.after.startDate, plan.after.reportingPeriodStart, plan.after.reportingPeriodEnd, plan.after.reportingYear, plan.after.milestoneTemplateId]);
     if (!saved) throw new VersionConflictError(input.expectedVersion, plan.jobVersion + 1);
 
+    const repriced: JobUpdateResult["repriced"] = { rows: 0, series: [] };
     if (plan.datasets?.window) {
       const window = plan.datasets.window.after;
       if (plan.datasets.window.before) {
@@ -322,6 +376,32 @@ export function updateJob(pool: PoolLike, input: CommandInputMap["job.update"], 
         await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id, job_id, reporting_from, reporting_to, country_code) VALUES ($1, $2, $3, $4, $5)`,
           [org, input.jobId, window.from, window.to, plan.datasets.country]);
       }
+      // Addendum B.3: the rows priced on an automatic edition that the new period does not choose, planned against the
+      // edition of the same series it does choose — before the selections change, so the plan reads the rows as they stand.
+      const removed = plan.datasets.automaticRemoved.filter((old) => !plan.datasets!.automaticAdded.some((added) => added.datasetId === old.datasetId));
+      const moves: SeriesMovePlan[] = [];
+      const stranded: string[] = [];
+      for (const old of removed) {
+        // Per calendar year (#662) the new period may choose two editions of the series; a row moves to the latest (the end
+        // year's), and monthly pricing then prices each month at its own year's edition.
+        const successor = plan.datasets.automaticAdded.filter((added) => datasetSeriesKey(added.datasetId) === datasetSeriesKey(old.datasetId))
+          .sort((a, b) => b.datasetId.localeCompare(a.datasetId))[0];
+        const onIt = Number((await db.query<{ n: string }>(
+          `SELECT count(*)::text AS n FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND factor_source = 'dataset' AND dataset_id = $3`,
+          [org, input.jobId, old.datasetId])).rows[0]!.n);
+        if (onIt === 0) continue;
+        if (!successor) { stranded.push(`${old.name} (${onIt} row${onIt === 1 ? "" : "s"})`); continue; }
+        moves.push(await planSeries(db, org, input.jobId, { seriesKey: datasetSeriesKey(old.datasetId), countryCode: plan.datasets.country, fromDatasetId: old.datasetId, toDatasetId: successor.datasetId,
+          fromLabel: old.name, toLabel: successor.name, years: null, keepFrom: false }, []));
+      }
+      if (stranded.length) {
+        throw new CommandValidationError([{ field: "reportingPeriodStart", code: "ROWS_ON_UNCHOSEN_DATASET",
+          message: `The new period chooses no edition of ${stranded.join(", ")} — those rows have nothing to be re-priced on. Choose that dataset by hand first, then move the period.` }]);
+      }
+      const blocked = moves.flatMap((move) => move.blocked.map((row) => ({ field: "reportingPeriodStart", code: "SERIES_BLOCKED",
+        message: `${row.label} (${row.reason}) can’t be re-priced on ${move.toLabel}. Resolve it on the job, then move the period.` })));
+      if (blocked.length) throw new CommandValidationError(blocked);
+
       // J2: automatic selections are derived state — deleted and re-derived, for the country the config row holds; the
       // audit records both sets.
       await db.query(`DELETE FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2 AND selection_source = 'automatic'`, [org, input.jobId]);
@@ -330,6 +410,30 @@ export function updateJob(pool: PoolLike, input: CommandInputMap["job.update"], 
         await db.query(`UPDATE nzi_console.job_dataset_selections SET warnings_json = $4::jsonb WHERE organisation_id = $1 AND job_id = $2 AND dataset_id = $3`,
           [org, input.jobId, manual.datasetId, JSON.stringify(manual.warningsAfter)]);
       }
+      // Re-priced by the one row calculation, which since #662 prices a window by month, each month at its year's selected
+      // edition (DESIGN-datasets-by-period-and-site). First the rows on an edition the new period does not choose move to the
+      // series' edition it does; then every other live, dataset-priced row is recalculated — its months are the new window's.
+      const note = (detail: string) => ({ title: "Re-priced for a new reporting period", detail: `${detail}${detail ? " · " : ""}${plan.before.reportingPeriodStart ?? "—"}–${plan.before.reportingPeriodEnd ?? "—"} → ${plan.after.reportingPeriodStart}–${plan.after.reportingPeriodEnd} · run ${context.correlationId}` });
+      const moved = new Set<string>();
+      for (const move of moves) {
+        await moveSeriesRows(db, context, input.jobId, move, context.reason?.trim() || null, note(`${move.fromLabel} → ${move.toLabel}`));
+        for (const row of move.moved) moved.add(row.rowId);
+        repriced.rows += move.moved.filter((row) => row.recalculated).length;
+        repriced.series.push({ from: move.fromDatasetId, to: move.toDatasetId });
+      }
+      if (plan.periodHasData) {
+        // Not a register-managed row (it follows its source) nor a re-ingested one (V7's own vintage, attest-only), as planSeries holds.
+        const { rows: live } = await db.query<{ scope_row_id: string; version: number }>(
+          `SELECT scope_row_id, version FROM nzi_console.job_scope_rows
+            WHERE organisation_id = $1 AND job_id = $2 AND origin = 'live' AND enabled AND factor_source = 'dataset'
+              AND quantity IS NOT NULL AND unit IS NOT NULL AND source_id IS NULL AND reingested_from_row_id IS NULL
+            ORDER BY scope_row_id`, [org, input.jobId]);
+        for (const row of live) {
+          if (moved.has(row.scope_row_id)) continue;
+          await recalculateScopeRowInTransaction(db, { jobId: input.jobId, rowId: row.scope_row_id, expectedVersion: row.version }, context, [note("")]);
+          repriced.rows += 1;
+        }
+      }
     }
 
     // J6: PR 3's reschedule, called directly — it touches milestone rows (each versions on its own), never the job row.
@@ -337,12 +441,77 @@ export function updateJob(pool: PoolLike, input: CommandInputMap["job.update"], 
       ? await applyReschedule(db, org, context.actorId, { jobId: input.jobId, startDate: plan.after.startDate, periodStart: plan.after.reportingPeriodStart }, template)
       : null;
 
+    // Addendum B.2: an imported job's date edited here is the console's from now on; a later sync flags V7's instead.
+    const ownedDates = origin === "console" && plan.imported
+      ? [...(plan.changed.startDate ? ["start_date"] : []), ...(plan.changed.period ? ["reporting_period"] : [])]
+      : [];
+    for (const dateKey of ownedDates) await recordDateOwner(db, context, input.jobId, dateKey, "console", "edited", null);
+
+    const totalsAfter = await scopeTotals(db, org, input.jobId);
     return {
       data: { jobId: input.jobId, clientId: plan.clientId, version: saved.version, schedule: plan.after, datasets: plan.datasets, reschedule,
-        milestones: await milestoneStatesOf(db, org, input.jobId) },
+        milestones: await milestoneStatesOf(db, org, input.jobId), repriced, totals: { before: totalsBefore, after: totalsAfter }, baselineYearJob, ownedDates },
       entityType: "job", entityId: input.jobId, topic: "job.updated",
       before: { schedule: plan.before, window: plan.datasets?.window?.before ?? null, automaticDatasets: plan.datasets?.automaticRemoved ?? null,
         manualWarnings: plan.datasets?.manual.map((m) => ({ datasetId: m.datasetId, warnings: m.warningsBefore })) ?? null, milestones: milestonesBefore },
     };
-  });
+  };
+}
+
+/** Whether the job's period, before this change, was its client's baseline period (Addendum B.4). */
+async function wasBaselineYearJob(db: Queryable, organisationId: string, jobId: string): Promise<boolean> {
+  const row = (await db.query<{ from: string | null; to: string | null; start: string | null; end: string | null }>(
+    `SELECT coalesce(j.reporting_period_start, c.reporting_from)::text AS "from", coalesce(j.reporting_period_end, c.reporting_to)::text AS "to",
+            cl.baseline_period_start::text AS start, cl.baseline_period_end::text AS "end"
+       FROM nzi_console.jobs j JOIN nzi_console.clients cl ON (cl.organisation_id, cl.client_id) = (j.organisation_id, j.client_id)
+       LEFT JOIN nzi_console.job_emissions_config c ON (c.organisation_id, c.job_id) = (j.organisation_id, j.job_id)
+      WHERE j.organisation_id = $1 AND j.job_id = $2`, [organisationId, jobId])).rows[0];
+  return Boolean(row?.from && row.to && row.start && row.end && isSamePeriod(row.from, row.to, row.start, row.end));
+}
+
+/** One owner row (append-only, 0238). The command's own audit event carries the change; this records whose the date is now. */
+export async function recordDateOwner(db: Queryable, context: CommandContext, jobId: string, dateKey: string, owner: "console" | "v7", cause: "edited" | "kept" | "use-v7", acknowledged: number | null): Promise<void> {
+  await db.query(
+    `INSERT INTO nzi_console.job_date_owners (organisation_id, job_id, date_key, owner, cause, acknowledged_observation_no, set_by, correlation_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [context.organisationId, jobId, dateKey, owner, cause, acknowledged, context.actorId, context.correlationId]);
+}
+
+export function updateJob(pool: PoolLike, input: CommandInputMap["job.update"], context: CommandContext): Promise<StoredOutcome<JobUpdateResult>> {
+  return runPostgresCommand(pool, "job.update", input, context, jobUpdateHandler(input, context, "console"));
+}
+
+/** The same command inside a caller's transaction — the V7 date sync and "Use V7's dates" apply V7's dates through it. */
+export function updateJobInTransaction(db: Queryable, input: CommandInputMap["job.update"], context: CommandContext, origin: JobUpdateOrigin): Promise<StoredOutcome<JobUpdateResult>> {
+  return runPostgresCommandInTransaction(db, "job.update", input, context, jobUpdateHandler(input, context, origin));
+}
+
+class PreviewRollback extends Error {}
+
+/** What a period move would do to the figures: the command itself, run and rolled back (Addendum B.3's preview). */
+export type JobUpdatePreview = { plan: JobUpdatePlan; outcome: { totals: JobUpdateResult["totals"]; repriced: JobUpdateResult["repriced"] } | null; refusal: Array<{ field: string; code: string; message: string }> };
+
+export async function previewJobUpdate(pool: PoolLike, input: Omit<CommandInputMap["job.update"], "expectedVersion">, context: CommandContext): Promise<JobUpdatePreview | null> {
+  let preview: JobUpdatePreview | null = null;
+  try {
+    await withTenantWrite(pool, context.organisationId, async (db) => {
+      const planned = await planJobUpdate(db, context.organisationId, input, { lock: false });
+      if (!planned) return;
+      preview = { plan: planned.plan, outcome: null, refusal: planned.plan.issues };
+      if (planned.plan.issues.length === 0) {
+        try {
+          const outcome = await updateJobInTransaction(db, { ...input, expectedVersion: planned.plan.jobVersion },
+            { ...context, idempotencyKey: `preview-${randomUUID()}`, reason: context.reason?.trim() || "preview" }, "console");
+          preview = { ...preview, outcome: { totals: outcome.data.totals, repriced: outcome.data.repriced } };
+        } catch (error) {
+          if (!(error instanceof CommandValidationError)) throw error;
+          preview = { ...preview, refusal: error.issues };
+        }
+      }
+      throw new PreviewRollback();
+    });
+  } catch (error) {
+    if (!(error instanceof PreviewRollback)) throw error;
+  }
+  return preview;
 }

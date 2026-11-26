@@ -3,7 +3,8 @@
 import { useRef, useState } from "react";
 import { GatedButton, InfoTip } from "@nzi/ui";
 import { putBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
-import { forwardTargetFields, netZeroPctLabel, type ForwardTargetModel, type TargetBenchmark, type TargetMilestone, type TargetScope } from "@nzi/contracts";
+import { forwardTargetFields, netZeroPctLabel, type BaselineYearState, type ForwardTargetModel, type TargetMilestone, type TargetScope } from "@nzi/contracts";
+import { formatDate } from "../../lib/formatDate";
 import { netZeroDraft } from "../netZeroDefault";
 import type { ClientTargetsReadModel } from "@nzi/isolated-backend";
 import type { EditAccess } from "../../lib/useEditAccess";
@@ -19,6 +20,11 @@ type Draft = Record<(typeof forwardTargetFields)[number], { year: string; pct: s
 
 const SCOPE_LABEL: Record<TargetScope, string> = { "1": "Scope 1", "2": "Scope 2", "3": "Scope 3" };
 const FY = (year: number) => `FY${String(year).slice(-2)}`;
+/** Addendum A: "Baseline year 2024/25" — the period's start and end years (one year when the period is a calendar year). */
+const baselineYearLabel = (year: BaselineYearState) => {
+  const start = Number(year.periodStart.slice(0, 4)), end = Number(year.periodEnd.slice(0, 4));
+  return `Baseline year ${end > start ? `${start}/${String(end).slice(-2)}` : start}`;
+};
 const tonnes = (value: number) => `${Math.round(value).toLocaleString("en-GB")} tCO₂e`;
 const pct = (value: number) => `−${Number.isInteger(value) ? value : value.toFixed(1)}%`;
 const errorText = (result: BrowserCommandResult<unknown>) =>
@@ -37,28 +43,41 @@ export function ClientTargets({ targets, access, onEdit, hideHead = false }: { t
   const benchmark = targets.benchmark ?? targets.benchmarkInForce;
   const model = targets.model;
   const scopeLine = (["1", "2", "3"] as const)
-    .map((scope) => { const milestone = model?.scopes[scope]; return milestone ? `${SCOPE_LABEL[scope].replace("Scope ", "S")} ${pct(milestone.pct)} by ${milestone.year}` : null; })
+    .map((scope) => {
+      const milestone = model?.scopes[scope];
+      if (!milestone) return null;
+      const value = targets.milestones.find((entry) => entry.kind === `scope${scope}`);
+      return `${SCOPE_LABEL[scope].replace("Scope ", "S")} ${pct(milestone.pct)} by ${milestone.year} · ${value?.tco2e == null ? "pending" : tonnes(value.tco2e)}`;
+    })
     .filter(Boolean).join(" · ");
 
-  const editButton = <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || !targets.benchmarkInForce}
-        blockedReason={access.state === "allowed" ? (targets.benchmarkInForce ? undefined : "Set the client's baseline before its targets.") : access.reason}
+  // 0238: targets can be set as percentages once the baseline year exists, its figures pending or not.
+  const year = targets.baselineYear;
+  const canSet = Boolean(targets.benchmarkInForce || year);
+  const editButton = <GatedButton className="nz-editlink" blocked={access.state !== "allowed" || !canSet}
+        blockedReason={access.state === "allowed" ? (canSet ? undefined : "Set the baseline year first — use Set baseline below.") : access.reason}
         reasonClassName="hint nz-gated-reason" onClick={onEdit}>Edit</GatedButton>;
+  // The tCO₂e a milestone implies: worked out from the baseline's figures, "pending" until they exist — never 0.
+  const valueOf = (kind: string) => { const value = targets.milestones.find((entry) => entry.kind === kind); return value ? (value.tco2e === null ? "pending" : tonnes(value.tco2e)) : null; };
   return <section className={hideHead ? "nz-panel bare" : "nz-panel"}>
     {hideHead
       ? <div className="nz-card-b" style={{ paddingBottom: 0, display: "flex", justifyContent: "flex-end" }}>{editButton}</div>
       : <div className="nz-card-h"><h2>Baseline &amp; targets</h2><span className="sp" />{editButton}</div>}
     <div className="nz-card-b">
       <div className="nz-kv"><span className="k">Baseline in force</span><span className="v">{targets.benchmarkInForce
-        ? <>{FY(targets.benchmarkInForce.year)} · {tonnes(targets.benchmarkInForce.totalTco2e)}</>
+        ? <>{year ? baselineYearLabel(year) : FY(targets.benchmarkInForce.year)} · {tonnes(targets.benchmarkInForce.totalTco2e)}{year?.figuresFrom ? <> · from {year.figuresFrom.jobNumber}</> : null}</>
+        : year ? <>Baseline year {formatDate(year.periodStart)} – {formatDate(year.periodEnd)} · figures pending</>
         : "Not set"}</span></div>
-      {targets.benchmarkInForce ? null : <p className="nz-maps">No baseline, so no targets yet.<InfoTip label="targets">Targets are reductions against the baseline, so the baseline comes first — set it on the client record.</InfoTip></p>}
+      {!targets.benchmarkInForce && year
+        ? <p className="nz-maps">{year.supplyingJob ? <>{year.supplyingJob.jobNumber} will supply the figures{year.supplyingJob.snapshotId ? " — its reviewed figures can be used now, from Set baseline below" : " once it has a reviewed snapshot"}.</> : "No job covers this period yet; the figures can be typed in, from Set baseline below."}</p>
+        : !targets.benchmarkInForce ? <p className="nz-maps">No baseline, so no targets yet.<InfoTip label="targets">Targets are reductions against the baseline, so the baseline year comes first — use Set baseline below.</InfoTip></p> : null}
 
       {model
         ? <>
-          <div className="nz-kv" style={{ marginTop: 10 }}><span className="k">Targets</span><span className="v">{benchmark ? `vs ${FY(benchmark.year)} benchmark` : ""}</span></div>
+          <div className="nz-kv" style={{ marginTop: 10 }}><span className="k">Targets</span><span className="v">{benchmark ? `vs ${FY(benchmark.year)} benchmark` : year ? `vs ${FY(year.year)} baseline year · figures pending` : ""}</span></div>
           <div className="nz-tgt">
-            {model.nearTerm ? <span className="nz-tgtchip">Near-term <b>{model.nearTerm.year} · {pct(model.nearTerm.pct)}</b></span> : null}
-            {model.netZero ? <span className="nz-tgtchip">Net zero <b>{model.netZero.year} · {pct(model.netZero.pct)}</b></span> : null}
+            {model.nearTerm ? <span className="nz-tgtchip">Near-term <b>{model.nearTerm.year} · {pct(model.nearTerm.pct)}</b> · {valueOf("near-term")}</span> : null}
+            {model.netZero ? <span className="nz-tgtchip">Net zero <b>{model.netZero.year} · {pct(model.netZero.pct)}</b> · {valueOf("net-zero")}</span> : null}
           </div>
           {scopeLine ? <div className="nz-scopetgts">{scopeLine}</div> : null}
           {targets.latestGap && targets.latestGap.targetTco2e !== null
@@ -93,8 +112,11 @@ export function TargetsForm({ clientId, targets, access, onClose, onSaved, heldN
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const key = useRef<string | null>(null);
-  const benchmark = targets.benchmarkInForce as TargetBenchmark;
+  // 0238: against the baseline in force, or the baseline year whose figures are pending (the percentages are the record).
+  const inForce = targets.benchmarkInForce;
+  const benchmark = { year: inForce?.year ?? targets.baselineYear?.year ?? 0, label: inForce ? tonnes(inForce.totalTco2e) : "figures pending" };
   const stale = targets.benchmarkStale && targets.model !== null;
+  const heldLabel = targets.benchmark ? `FY${targets.benchmark.year} · ${tonnes(targets.benchmark.totalTco2e)}` : "a baseline year whose figures were pending";
 
   const set = (field: keyof Draft, part: "year" | "pct", value: string) => setDraft((current) => ({ ...current, [field]: { ...current[field], [part]: value } }));
   const milestone = (field: keyof Draft) => {
@@ -147,8 +169,8 @@ export function TargetsForm({ clientId, targets, access, onClose, onSaved, heldN
     <div className="nz-db">
       <p className="nz-hint" style={{ marginTop: 0 }}>The forward commitment. These drive the reduction pathway and the gap engine. The <b>baseline</b> — the past anchor — is set separately through Re-baseline; change it there, not here.</p>
       <label className="nz-fl"><span>Benchmark year</span>
-        <input className="nz-inp" value={`FY${benchmark.year} · ${tonnes(benchmark.totalTco2e)}`} disabled readOnly />
-        <span className="nz-hint">Read from the baseline in force. Targets are measured as reductions against this.</span>
+        <input className="nz-inp" value={`FY${benchmark.year} · ${benchmark.label}`} disabled readOnly />
+        <span className="nz-hint">{inForce ? "Read from the baseline in force. Targets are measured as reductions against this." : "The baseline year's figures are pending. The percentages are saved as the record; their tCO₂e is worked out once the figures are in."}</span>
       </label>
       <div className="nz-sect">Near-term target</div>
       {pair("nearTerm", "Target")}
@@ -162,7 +184,7 @@ export function TargetsForm({ clientId, targets, access, onClose, onSaved, heldN
 
       {stale ? <div className="nz-banner warn" role="status" style={{ marginTop: 12 }}>
         <div><b>The benchmark has moved since these targets were set.</b>
-          <div style={{ marginTop: 4 }}>They are held against {FY(targets.benchmark!.year)} · {tonnes(targets.benchmark!.totalTco2e)}. Saving restates them against {FY(benchmark.year)} · {tonnes(benchmark.totalTco2e)}, which changes the pathway and the gap.</div>
+          <div style={{ marginTop: 4 }}>They are held against {heldLabel}. Saving restates them against FY{benchmark.year} · {benchmark.label}, which changes the pathway and the gap.</div>
           <label className="nz-check"><input type="checkbox" checked={restate} onChange={(event) => setRestate(event.target.checked)} /> Restate these targets against the new benchmark</label>
           {restate ? <label className="nz-fl" style={{ marginTop: 8 }}><span>Reason for restating</span><input className="nz-inp" value={reason} onChange={(event) => setReason(event.target.value)} placeholder="e.g. Base year restated after the London HQ relocation" /></label> : null}
         </div>

@@ -2711,3 +2711,24 @@ details.nz-job-report-link{white-space:normal}
 @media (max-width:680px){.nz-crm-task-add{grid-template-columns:1fr 1fr}}
 .nz-crm-task-add .nz-banner{grid-column:1/-1}
 .nz-crm-task-done{text-decoration:line-through;color:var(--t3)}
+/* Narrow width (about 550px, the desktop browser pane; BRIEF-baseline-year-and-pending-targets): the nav and the header only,
+   the content below the tabs already reflows. Placed last so it outranks `.nz-app.with-areas` (1100px), which kept a 236px
+   column on the client workspace below 900px — the sideways page scroll and the empty dark band. */
+@media (max-width:900px){
+  .nz-app.with-areas,.nz-app.with-areas.no-drawer{grid-template-columns:minmax(0,1fr)}
+  /* One column: rows sized to their content, so the rail is not stretched into an empty dark band above the page. */
+  .nz-app{overflow-x:clip;align-content:start}
+  .nz-rail{overflow-x:visible;flex-wrap:wrap}
+  .nz-nav{flex:1 1 0;flex-wrap:wrap;min-width:0}
+  .nz-topbar{min-width:0}
+}
+@media (max-width:680px){
+  /* The rail keeps its labels and wraps — never an unlabelled icon strip with a scrollbar. */
+  .nz-nav a{font-size:12px;gap:6px;padding:7px 8px}
+  .nz-nav a svg{width:16px;height:16px}
+  /* The search stays a legible field in the space the crumbs leave (a placeholder cannot be hidden with display). */
+  .nz-search{width:auto;flex:1 1 150px;min-width:0;max-width:270px}
+  .nz-search input{width:100%;padding:0 10px 0 34px;color:var(--t1)}
+  .nz-search input::placeholder{color:var(--t3)}
+  .nz-search:focus-within{width:auto}
+}

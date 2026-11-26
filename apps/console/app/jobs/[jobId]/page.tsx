@@ -10,7 +10,7 @@ import { CrpScopeWorkspace } from "../CrpScopeWorkspace";
 import { LcaWorkspace } from "../lca/LcaWorkspace";
 import { TrainingWorkspace } from "../training/TrainingWorkspace";
 import { jobModuleEnabled } from "../../lib/jobModuleFlags";
-import { JobMilestonesPanel } from "../JobMilestonesPanel";
+import { JobDatesSection, JobMilestonesPanel } from "../JobMilestonesPanel";
 import { JobTimePanel } from "../JobTimePanel";
 import { ImportRefreshPanel } from "../ImportRefreshPanel";
 import { WithCurrencyDirectory } from "../../lib/currencyDirectory";
@@ -62,6 +62,9 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     ? milestonesResult.data.view ? <JobMilestonesPanel view={milestonesResult.data.view} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"} /> : null
     : milestonesResult.state === "loading" || milestonesResult.state === "empty" ? null
     : <section className="nz-body nz-milestones-body"><div className="nz-panel nz-milestones"><div className="nz-banner warn" role="alert"><div>The milestones could not be read just now, so none are shown — this is not "Not set".</div></div></div></section>;
+  // Addendum B.1: the job's dates — start, reporting period, each milestone's due date — edited in Setup, imported jobs included.
+  const milestonesView = milestonesResult.state === "success" || milestonesResult.state === "degraded" ? milestonesResult.data.view : null;
+  const datesPanel = milestonesView ? <JobDatesSection view={milestonesView} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"} /> : null;
   // E1: the annual metrics read their units in the organisation's own currency symbols.
   return <WithCurrencyDirectory><ScreenState result={result} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(data) => {
     const job = data.jobs.find((candidate) => candidate.header.id === jobId || candidate.header.number === jobId.toUpperCase());
@@ -70,7 +73,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
     const timePanel = <JobTimePanel jobId={job.header.id} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"} />;
     // Refresh from the previous system (import.refresh): shown only on a job imported from it, to someone who may refresh.
     const importPanel = <ImportRefreshPanel jobId={job.header.id} />;
-    const panels = <>{milestones}{timePanel}{importPanel}</>;
+    const panels = <>{datesPanel ? <section className="nz-body">{datesPanel}</section> : null}{milestones}{timePanel}{importPanel}</>;
     // Phase 2 job shell (`job-shell`): the two panels apart, and the milestones its Milestones button summarises —
     // null when the read failed, so the button says "unavailable" rather than "Not set".
     const milestoneStates = milestonesResult.state === "success" || milestonesResult.state === "degraded" ? milestonesResult.data.view?.milestones ?? [] : null;
@@ -79,7 +82,7 @@ export default async function JobPage({ params }: { params: Promise<{ jobId: str
       logInPlace={{ jobLabel: `${job.header.client} · ${job.header.number}`, today: todayInLondon() }} />;
     // The shell renders none of `panels`: each piece it shows is handed to it by name — the refresh panel included (it was
     // dropped here once, so an imported job under the shell had no Refresh from the previous system).
-    const shell = { milestonesPanel: milestones, timePanel: shellTimePanel, importPanel, milestoneStates };
+    const shell = { milestonesPanel: milestones, datesPanel, baselineYearJob: milestonesView?.baselineYearJob ?? false, timePanel: shellTimePanel, importPanel, milestoneStates };
     if (job.header.family === "crp") return <ScreenState result={emissions} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(emissionsData) => <ScreenState result={scopeRows} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(scopeData) => <ScreenState result={factors} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(factorData) => <ScreenState result={target} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{targetData=><ScreenState result={intensity} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{intensityData=><ScreenState result={sites} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{siteData=><ScreenState result={categories} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{categoryData=><CrpScopeWorkspace milestones={panels} shell={shell} specs={specs} job={job} rows={scopeData.rows} qa={scopeData.qa} factors={factorData.factors} datasets={factorData.datasets} datasetUpdates={factorData.updates ?? []} countryNotes={factorData.countryNotes ?? []} target={targetData.target} intensityTarget={intensityData.target} sites={siteData.sites} purchasedGoodsCategories={categoryData.categories} emissions={emissionsData} writeEnabled={process.env.NZI_WRITE_API_ENABLED === "true"}/>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>}</ScreenState>;
     if ((job.header.family === "lca" || job.header.family === "pcf") && jobModuleEnabled("job-module-lca")) return <ScreenState result={lca} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(lcaData) => <ScreenState result={factors} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(factorData) => <ScreenState result={lcaComponents} chrome={{ activeId: "jobs", label: "Jobs", href: "/jobs" }}>{(componentData) => <LcaWorkspace milestones={panels} job={job} assessments={lcaData.assessments} factors={factorData.factors} components={componentData.components} categories={componentData.categories}/>}</ScreenState>}</ScreenState>}</ScreenState>;
     // Track C — the training module, behind `job-module-training`; FamilyWorkspace still

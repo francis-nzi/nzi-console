@@ -43,14 +43,17 @@ export function BaselineTargetsCard({ workspace, access, onDrawer }: {
   workspace: ClientWorkspaceReadModel; access: EditAccess; onDrawer: (request: DrawerRequest) => void;
 }) {
   const { targets } = workspace;
+  // 0238: a baseline year with its figures pending is never "No baseline"; the first baseline is "Set baseline", and
+  // Re-baseline appears only once the baseline has figures.
+  const pendingYear = !targets.benchmarkInForce && targets.baselineYear?.pending ? targets.baselineYear : null;
   return <Collapsible className="nz-panel nz-collapsible-card" headingClassName="nz-card-h"
     title={<h2>Baseline &amp; targets</h2>}
-    count={targets.model ? "Targets set" : targets.benchmarkInForce ? "No targets set" : "No baseline"}>
+    count={targets.model ? "Targets set" : targets.benchmarkInForce ? "No targets set" : pendingYear ? "Figures pending" : "No baseline"}>
     <ClientTargets targets={targets} access={access} onEdit={() => onDrawer({ kind: "targets" })} hideHead />
     {/* Phase 1b — the intensity targets live beside net zero; the job keeps only the year's Value. */}
     <ClientIntensityTargets metrics={workspace.intensityMetrics ?? []} targets={workspace.intensityTargets ?? []} access={access} onEdit={(metricKey) => onDrawer({ kind: "intensity-target", metricKey })} />
     <div className="nz-card-b" style={{ paddingTop: 0 }}>
-      <button type="button" className="nz-editlink" onClick={() => onDrawer({ kind: "rebaseline" })}>⇄ Re-baseline / recalculate</button>
+      <button type="button" id="set-baseline" className="nz-editlink" onClick={() => onDrawer({ kind: "rebaseline" })}>{targets.benchmarkInForce ? "⇄ Re-baseline / recalculate" : "Set baseline"}</button>
       <InfoTip label="the baseline record">The dated baseline record and its history timeline arrive with <code>client_baselines</code>; the baseline in force is shown above.</InfoTip>
     </div>
   </Collapsible>;
