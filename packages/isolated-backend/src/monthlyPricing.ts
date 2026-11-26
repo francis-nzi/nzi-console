@@ -1,4 +1,4 @@
-import { DATASET_EDITION_SUFFIX, datasetLabelFromId, datasetSeriesKey } from "@nzi/contracts";
+import { DATASET_EDITION_SUFFIX, datasetLabelFromId, datasetSeriesKey, monthsBetween } from "@nzi/contracts";
 import { DESNZ_SERIES, internationalDefaultAllows, siteCountry, windowMonths, windowYearParts } from "./datasetScope";
 import type { Queryable } from "./postgres";
 
@@ -165,6 +165,94 @@ export const pricingProvenance = (pricing: RowPricing) => ({
   spans: pricing.spans.map((span) => ({ from: span.from, to: span.to, months: span.months, datasetId: span.datasetId, factorVersion: span.factorVersion,
     kgCo2ePerUnit: span.kgCo2ePerUnit, ...(span.substitutedFor ? { substitutedFor: span.substitutedFor } : {}) })),
 });
+
+// ── The previous system's rows, priced by month from its own spans (Datasets Part 2, increment 2) ─────────────────────────────────
+
+/** One edition of a candidate's series, as a span is priced from it: its factor (the candidate's id) and whether the job selects it. */
+export type SpanEdition = { datasetId: string; year: number; selected: boolean; factor: { kg: number; unit: string; active: boolean } | null };
+
+/**
+ * A run of the previous system's months, as the console prices it with one candidate factor: the edition of the candidate's series
+ * for the span's dataset year, its rate, the figure, V7's own figure for the span, and why it would not be brought in so (`issue`):
+ *   dataset-not-on-job — the job does not select that edition (or the series has none for the year), so the chain prices those
+ *                        months at another; unit — the edition prices the factor per another unit; no-match — the edition lacks the
+ *                        factor; custom-factor — V7 priced the span from a client's custom value, which no edition holds.
+ */
+export type V7SpanPart = {
+  from: string; to: string; months: number; year: number | null; datasetId: string | null; kg: number | null;
+  tco2e: number | null; previous: number; agrees: boolean;
+  issue: "dataset-not-on-job" | "unit" | "no-match" | "custom-factor" | null;
+};
+
+const r6 = (value: number) => Math.round(value * 1e6) / 1e6;
+
+/**
+ * One previous-system row priced with one candidate, span by span from V7's own spans (each span's dataset year → the candidate's
+ * edition of that year). The row's months are V7's `month_N`, **calendar month N** (as V7's resolver and the re-ingest read them);
+ * a row with no monthly figures is annual, and V7 prices it as one span, so its whole quantity goes to that span. Pure.
+ *
+ * Returns the parts and the row's figure (Σ parts), or a null figure when any part cannot be priced. The console's figure for a
+ * part is Σ months (q × kgCO₂e) ÷ 1000 × apply%, as the one row calculation prices a spanning row (`planRowPricing`).
+ */
+export function priceByV7Spans(input: {
+  quantity: number | null; months: ReadonlyArray<number | null> | null; applyPct: number;
+  /** The row's unit against an edition's unit for the factor, by the import's own rule (`v7UnitAgainstFactor`). */
+  sameUnit: (editionUnit: string) => boolean;
+  spans: ReadonlyArray<{ from: string | null; to: string | null; dataset_year: number | null; dataset_id: number | null; tco2e: number }>;
+  editions: ReadonlyMap<number, SpanEdition>;
+}): { tco2e: number | null; parts: V7SpanPart[] } {
+  const hasMonths = (input.months ?? []).some((value) => value !== null && value !== 0);
+  const parts = input.spans.map((span): V7SpanPart => {
+    const range = span.from && span.to ? monthsBetween(`${span.from}-01`, `${span.to}-01`, 240) : [];
+    const base = { from: span.from ?? "", to: span.to ?? "", months: range.length, year: span.dataset_year, previous: span.tco2e };
+    if (span.dataset_id === null) return { ...base, datasetId: null, kg: null, tco2e: null, agrees: false, issue: "custom-factor" };
+    const edition = span.dataset_year === null ? undefined : input.editions.get(span.dataset_year);
+    if (!edition) return { ...base, datasetId: null, kg: null, tco2e: null, agrees: false, issue: "dataset-not-on-job" };
+    if (!edition.factor || !edition.factor.active) return { ...base, datasetId: edition.datasetId, kg: null, tco2e: null, agrees: false, issue: "no-match" };
+    const sameUnit = input.sameUnit(edition.factor.unit);
+    // The span's quantity: its months' figures (calendar month N), or — an annual row, priced as one span — the whole quantity.
+    const quantity = hasMonths ? range.reduce((sum, month) => sum + (input.months![Number(month.slice(5, 7)) - 1] ?? 0), 0)
+      : input.spans.length === 1 ? input.quantity : null;
+    if (quantity === null) return { ...base, datasetId: edition.datasetId, kg: edition.factor.kg, tco2e: null, agrees: false, issue: "no-match" };
+    const tco2e = r6(quantity * edition.factor.kg / 1000 * (input.applyPct / 100));
+    const issue = !edition.selected ? "dataset-not-on-job" as const : !sameUnit ? "unit" as const : null;
+    return { ...base, datasetId: edition.datasetId, kg: edition.factor.kg, tco2e, agrees: Math.abs(tco2e - span.tco2e) < 0.05 - 1e-12, issue };
+  });
+  const priced = parts.every((part) => part.tco2e !== null) ? r6(parts.reduce((sum, part) => sum + part.tco2e!, 0)) : null;
+  return { tco2e: priced, parts };
+}
+
+/**
+ * Every active edition of each candidate's series in the candidate dataset's country, keyed by its year, with the candidate's factor
+ * in it and whether the job selects it: what `priceByV7Spans` prices each span from. Keyed by `datasetId|factorId`.
+ */
+export async function v7SpanEditions(db: Queryable, organisationId: string, jobId: string,
+  candidates: ReadonlyArray<{ datasetId: string; factorId: string }>): Promise<Map<string, Map<number, SpanEdition>>> {
+  const out = new Map<string, Map<number, SpanEdition>>();
+  const pairs = [...new Map(candidates.map((candidate) => [`${candidate.datasetId}|${candidate.factorId}`, candidate])).values()];
+  if (!pairs.length) return out;
+  const { rows } = await db.query<{ anchor: string; factor_id: string; dataset_id: string; year: number; selected: boolean; kg: string | null; unit: string | null; active: boolean | null }>(
+    `SELECT x.anchor, x.factor_id, d.dataset_id, extract(year FROM d.valid_from)::int AS year, s.dataset_id IS NOT NULL AS selected,
+            f.kgco2e_per_unit::text AS kg, f.activity_unit AS unit, f.active
+       FROM unnest($3::text[], $4::text[]) AS x(anchor, factor_id)
+       JOIN nzi_console.emission_factor_datasets a ON a.organisation_id = $1 AND a.dataset_id = x.anchor
+       JOIN nzi_console.emission_factor_datasets d ON d.organisation_id = a.organisation_id AND d.country_code = a.country_code AND d.status = 'active'
+        AND regexp_replace(d.dataset_id, '${DATASET_EDITION_SUFFIX}', '') = regexp_replace(x.anchor, '${DATASET_EDITION_SUFFIX}', '')
+       LEFT JOIN nzi_console.job_dataset_selections s ON (s.organisation_id, s.job_id, s.dataset_id) = (d.organisation_id, $2, d.dataset_id)
+       LEFT JOIN nzi_console.emission_factors_display f ON (f.organisation_id, f.dataset_id, f.factor_id) = (d.organisation_id, d.dataset_id, x.factor_id)
+      ORDER BY d.valid_from, d.dataset_id`,
+    [organisationId, jobId, pairs.map((pair) => pair.datasetId), pairs.map((pair) => pair.factorId)]);
+  for (const row of rows) {
+    const key = `${row.anchor}|${row.factor_id}`;
+    const byYear = out.get(key) ?? new Map<number, SpanEdition>();
+    // One edition a year; a selected one wins where a series has two of a year.
+    const held = byYear.get(row.year);
+    if (!held || (!held.selected && row.selected)) byYear.set(row.year, { datasetId: row.dataset_id, year: row.year, selected: row.selected,
+      factor: row.kg === null ? null : { kg: Number(row.kg), unit: row.unit ?? "", active: row.active === true } });
+    out.set(key, byYear);
+  }
+  return out;
+}
 
 /**
  * Site resolution (§2): a dataset factor serves a row only for its site's country (the job's, for a row with no site or a

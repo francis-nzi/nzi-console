@@ -21,7 +21,7 @@ const REASON: Record<string, string> = {
   "not-found": "the previous system does not hold this job", "cannot-compute": "the previous system could not work it out", busy: "the previous system was busy",
   contract: "the previous system's answer was not in the agreed form", refused: "the connection to the previous system is refused",
 };
-const TRIGGER: Record<string, string> = { admin: "Check now", publish: "Before publish", nightly: "Nightly" };
+const TRIGGER: Record<string, string> = { admin: "Check now", publish: "Before publish", nightly: "Nightly", "bring-in": "After bring-in" };
 const SCOPES = ["1", "2", "3"] as const;
 const FIGURES = [["here", "Here"], ["previous", "Previous system"], ["difference", "Difference"]] as const;
 

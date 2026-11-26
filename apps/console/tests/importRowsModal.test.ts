@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { before, describe, it } from "node:test";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { v7MatchCandidate, type V7MatchFactor } from "@nzi/contracts";
+import { v7MatchCandidate, V7_IMPORT_TWO_DATASET_YEARS_UNREAD, type V7MatchFactor } from "@nzi/contracts";
 import { v7ImportRowsAcceptIssues, type V7ImportCandidate, type V7ImportRows, type V7ImportRowsRow } from "@nzi/isolated-backend";
 import { ADMIN_ITEMS } from "../app/admin/adminNav";
 import {
@@ -27,7 +27,7 @@ const candidate = (label: string, over: Partial<V7MatchFactor> & { code?: string
   const full: V7MatchFactor = { rate: 0.23818, scopes: [scope], categories: [scope === "3" ? "3.6" : "1.company-vehicles"], sameUnit: true, ...factor };
   return { datasetId: "uk-ghg-gb-2024", factorId: `uk-ghg-${code}`, code, label, unit: full.sameUnit ? "miles" : "km", rate: full.rate!, dataset: "DESNZ GB 2024",
     identity: false, exactCode: false, anchor: false, year: 2024, scopes: [...full.scopes], categories: [...full.categories],
-    match: v7MatchCandidate({ scope, quantity, applyPct: 100, previousTco2e: previous, categories: rowCategories }, full, []), unitRefusal: null, invalid: null };
+    match: v7MatchCandidate({ scope, quantity, applyPct: 100, previousTco2e: previous, categories: rowCategories }, full, []), unitRefusal: null, invalid: null, parts: null };
 };
 const RIGHT = candidate("Business travel · Car · Petrol · Small · per mile", { code: "25_301_3069_9_2" });
 const WRONG = candidate("Passenger vehicles · Small car · Petrol · per mile", { code: "4_301_3069_9_2", scopes: ["1"], categories: ["1.company-vehicles"] });
@@ -38,7 +38,7 @@ const row = (over: Partial<V7ImportRowsRow>): V7ImportRowsRow => ({
   previous: { label: "Delivery vehicles — HGV (all diesel)", siteName: "Head office", quantity: 20_563, unit: "miles", factorCode: "5_304_3140_9_1", factor: 1.40489,
     factorUnit: "kgCO2e", tco2e: 28.888, enabled: true },
   intended: { categoryCode: null, datasetId: null, factorId: null, withdraw: false }, source: "none", flag: "NEW", resolution: "unresolved", decision: null, invalid: null,
-  lane: "pre-accepted", applyPct: 100, categories: ["1.company-vehicles"], v7Category: null, pairGroup: null, carry: null, candidates: [], pick: null, totalStillCounted: false, held: null, ...over,
+  lane: "pre-accepted", applyPct: 100, categories: ["1.company-vehicles"], v7Category: null, pairGroup: null, carry: null, candidates: [], pick: null, totalStillCounted: false, held: null, previousSystem: null, ...over,
 });
 const HGV = candidate("HGV all · average laden · diesel", { code: "5_304_3140_9_1", quantity: 20_563, previous: 28.888, scope: "1", rate: 1.40489, rowCategories: ["1.company-vehicles"] });
 const ROWS: V7ImportRowsRow[] = [
@@ -55,7 +55,7 @@ const ROWS: V7ImportRowsRow[] = [
 const TOTALS = { "1": { consoleRows: 1, consoleTco2e: 1052.6, v7Rows: 3, v7Tco2e: 69.878 }, "2": { consoleRows: 1, consoleTco2e: 15.3, v7Rows: 1, v7Tco2e: 4.5 },
   "3": { consoleRows: 1, consoleTco2e: 195.7, v7Rows: 2, v7Tco2e: 3.653432 } };
 const DATA: V7ImportRows = { jobId: "v7-job-424", legacyJobNumber: "J000434", verdict: "needs-mapping", scopeTotals: TOTALS, summaryCurrent: false, firstTimeMapping: true,
-  rows: ROWS, familyless: [], periodRefusal: null };
+  rows: ROWS, familyless: [], periodRefusal: null, ownFigures: false };
 const props = (over: Partial<Parameters<typeof import("../app/jobs/ImportRowsModal").ImportRowsView>[0]> = {}) => ({
   data: DATA, pass: 2, busy: false, canResolve: true, writeEnabled: true, commitGated: false, error: null, notice: null, filter: "", onFilter: () => undefined,
   collapseDone: true, onCollapse: () => undefined, openRow: null, onOpenRow: () => undefined, preview: null, notAutomatic: null, reason: "", onReason: () => undefined,
@@ -123,7 +123,7 @@ describe("the reconcile strip — the scope totals, in plain words", () => {
 });
 
 describe("the two-dataset-year guard (J000265): refused at the top, before anything is tried, and nothing shown as agreeing", () => {
-  const TWO_YEAR = "This job spans two dataset years. It can't be brought in until monthly pricing is live. Nothing was written.";
+  const TWO_YEAR = V7_IMPORT_TWO_DATASET_YEARS_UNREAD;
   it("says so at the top in the reconcile strip's place, holds Accept & bring in, and shows no tick on any row", () => {
     const clean: V7ImportRows = { ...DATA, rows: [ROWS[0]!, ROWS[6]!], periodRefusal: TWO_YEAR,
       scopeTotals: { ...TOTALS, "1": { ...TOTALS["1"], v7Tco2e: 40.988 }, "2": { ...TOTALS["2"], v7Tco2e: 0 }, "3": { ...TOTALS["3"], v7Tco2e: 0 } } };
@@ -138,6 +138,43 @@ describe("the two-dataset-year guard (J000265): refused at the top, before anyth
     const open = { ...ROWS[1]!, candidates: mergeCandidates([], [RIGHT, WRONG, KM]) };
     const markup = html({ data: { ...DATA, rows: [open], periodRefusal: TWO_YEAR }, openRow: "10382" });
     assert.ok(markup.includes(`data-verdict="reproduces"`) && markup.includes("matches the previous system’s factor") && !markup.includes("✓"));
+  });
+});
+
+describe("a spanning job with the previous system's own figures read (Datasets Part 2, increment 2): judged against them, in yearly parts", () => {
+  // J000265's row 9278: UK electricity, Apr 2025 – Mar 2026, V7 at 0.177 for 2025 and 0.13096 for 2026 = 15.3.
+  const parts = [
+    { from: "2025-04", to: "2025-12", months: 9, year: 2025, datasetId: "uk-ghg-gb-2025", kg: 0.177, tco2e: 9.679068, previous: 9.679068, agrees: true, issue: null },
+    { from: "2026-01", to: "2026-03", months: 3, year: 2026, datasetId: "uk-ghg-gb-2026", kg: 0.13096, tco2e: 5.627613, previous: 5.627613, agrees: true, issue: null },
+  ] as NonNullable<V7ImportCandidate["parts"]>;
+  const ELEC: V7ImportCandidate = { ...candidate("Electricity · UK", { code: "elec-uk", quantity: 97_656, previous: 15.306681, scope: "2", rate: 0.177, rowCategories: ["2.purchased-electricity"],
+    categories: ["2.purchased-electricity"], priced: 15.306681 }), datasetId: "uk-ghg-gb-2025", factorId: "uk-ghg-elec-uk", parts };
+  const SPANNING = row({ legacyDbId: "9278", scope: "2", candidates: [ELEC], pick: ELEC, categories: ["2.purchased-electricity"],
+    previous: { ...row({}).previous, label: "UK electricity", quantity: 97_656, unit: "kWh", factorCode: "elec-uk", tco2e: 17.285112 },
+    previousSystem: { tco2e: 15.306681, blended: true, customFactor: false, spans: [{ from: "2025-04", to: "2025-12", year: 2025, tco2e: 9.679068 }, { from: "2026-01", to: "2026-03", year: 2026, tco2e: 5.627613 }] } });
+  const OWN: V7ImportRows = { ...DATA, jobId: "v7-job-256", legacyJobNumber: "J000265", rows: [SPANNING], periodRefusal: null, ownFigures: true };
+
+  it("the row: the console's monthly-priced figure against the previous system's own, with its tick, and each yearly part ticked", () => {
+    const markup = html({ data: OWN });
+    assert.ok(markup.includes("15.3 <span>vs 15.3 the previous system’s figure ✓</span>"), "its own figure, not the single-factor 17.3");
+    assert.ok(markup.includes("Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 ✓"));
+    assert.ok(!markup.includes("worked out from the previous system’s factor"), "never the single-factor recompute");
+  });
+  it("the strip: the scope totals are the previous system's own; nothing at the top holds the job back", () => {
+    const markup = html({ data: OWN });
+    assert.ok(!markup.includes(`data-outcome="refused"`));
+    assert.deepEqual(scopeLines(OWN, null).map((line) => [line.scope, line.previous, line.agrees]), [["1", 0, true], ["2", 15.306681, true], ["3", 0, true]]);
+    assert.ok(markup.includes("✓ Scope totals match the previous system’s own, to 1 decimal place"));
+  });
+  it("a part on an edition the job does not hold says so, with no tick", () => {
+    const held = { ...ELEC, parts: [parts[0]!, { ...parts[1]!, issue: "dataset-not-on-job" as const, agrees: true }] };
+    const markup = html({ data: { ...OWN, rows: [{ ...SPANNING, pick: held, candidates: [held] }] } });
+    assert.ok(markup.includes("Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 — not on the job"));
+  });
+  it("a search hit on a row priced over two editions has no figure to compare: one rate cannot be its figure", () => {
+    const hit = judgeHit(SPANNING, { datasetId: "uk-ghg-gb-2025", factorId: "uk-ghg-elec-uk", code: "elec-uk", label: "Electricity · UK", unit: "kWh", rate: 0.177, dataset: "DESNZ GB 2025",
+      scopes: ["2"], categories: ["2.purchased-electricity"], sameUnit: true, unitRefusal: null }, []);
+    assert.equal(hit.match.verdict, "no-figure");
   });
 });
 

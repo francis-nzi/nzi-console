@@ -27,7 +27,7 @@ import type { CommandContext, V7ImportRefreshCommitted, V7ImportRefreshPreview }
 import { readImportPolicy } from "./organisationSettings";
 import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError } from "./postgresCommands";
-import { commitV7ImportRefresh, previewV7ImportRefresh, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
+import { commitV7ImportRefresh, previewV7ImportRefresh, readSpanningFigures, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
 
 export const V7_IMPORT_FAST_PATH_REASON = "Fast path: no issued report, no manual edits, nothing flagged.";
 
@@ -79,7 +79,9 @@ export async function refreshV7ImportFastPath(pool: PoolLike, source: V7ImportRe
   given: V7ImportRefreshOptions = {}): Promise<V7ImportFastPathResult> {
   // Never a bring-in on a snapshotted job (BRIEF-v7-import-j000663 §B): that is a person's act, in the deliberate flow. Without it the
   // chain refuses a snapshotted job (SNAPSHOT_EXISTS), so its preview is flagged and it falls back.
-  const options: V7ImportRefreshOptions = { ...given, allowSnapshotted: false };
+  // A spanning job's own figures (endpoint 2) are read once, for the preview and its commit alike: one call per bring-in.
+  const spanningFigures = given.spanningFigures ?? await readSpanningFigures(pool, context.organisationId, jobId, given.rowFigures);
+  const options: V7ImportRefreshOptions = { ...given, allowSnapshotted: false, spanningFigures };
   let signals = null as V7ImportFastPathSignals | null;
   let adminGateBlocks = true;
   const preview = await previewV7ImportRefresh(pool, source, { jobId, mode: "preview" }, context, { ...options,

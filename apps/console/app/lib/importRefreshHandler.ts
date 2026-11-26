@@ -30,6 +30,11 @@ export type ImportRefreshDeps = {
   /** Phase D: the preview, and the commit with the system reason when the job is eligible (`refreshV7ImportFastPath`). */
   fastPath: typeof refreshV7ImportFastPath;
   success: (outcome: { data: Record<string, unknown>; auditEventId: string; correlationId: string; replayed: boolean }) => Response;
+  /**
+   * Straight after a job is brought in (a commit, or the fast path's): a drift check of it, stored (Datasets Part 2, increment 2). Awaited,
+   * so the panel reads a check of what was brought in; it never throws. Not on a replay: that bring-in was checked when it happened.
+   */
+  afterBringIn?: (principal: StaffPrincipal, jobId: string, correlationId: string) => Promise<void>;
   failure: (error: unknown) => Response;
   log?: (message: string, error: unknown) => void;
 };
@@ -58,13 +63,16 @@ export async function handleImportRefresh(request: Request, jobId: string, deps:
     const context = deps.context(request, principal);
     if (rest.mode === "commit") {
       const input = { ...rest, jobId } as Extract<CommandInputMap["import.refresh"], { mode: "commit" }>;
-      return deps.success(await deps.commit(deps.pool(), source, input, context, options));
+      const committed = await deps.commit(deps.pool(), source, input, context, options);
+      if (!committed.replayed) await deps.afterBringIn?.(principal, jobId, committed.correlationId);
+      return deps.success(committed);
     }
     // Phase D: one action. `auto` is the route's, never the command's — the command still sees a preview, then (eligible) a
     // commit, each with its own unchanged input. A body that names anything else alongside it is refused, not ignored.
     if (rest.mode === "auto") {
       if (Object.keys(rest).length !== 1) return invalid("UNKNOWN_FIELD", "A refresh in one action names the job only.");
       const result = await deps.fastPath(deps.pool(), source, jobId, context, options);
+      if (result.fastPath === "refreshed" && !result.replayed) await deps.afterBringIn?.(principal, jobId, result.correlationId);
       const data: FastPathOutcome = result; // the panel reads exactly what the backend returns
       return Response.json({ data, ...(result.fastPath === "refreshed" ? { auditEventId: result.auditEventId, correlationId: result.correlationId } : {}) },
         { status: result.fastPath === "refreshed" && !result.replayed ? 201 : 200, headers: { "Cache-Control": "private, no-store" } });

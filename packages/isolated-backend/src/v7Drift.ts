@@ -15,8 +15,8 @@
 // The audit holds ids, the outcome and the scopes behind — never a figure; the figures are in the check row.
 import { randomUUID } from "node:crypto";
 import {
-  v7BehindLine, v7DriftOf, v7DriftPublishIssue, v7FiguresJobTotalsIssue, v7PeriodSpansTwoYears, v7TotalsOf, V7_DRIFT_UNKNOWN_LINE,
-  type V7DriftLatest, type V7DriftOutcome, type V7DriftScope, type V7DriftTrigger, type V7DriftUnknownReason, type V7FiguresJobTotals, type V7ScopeTotals,
+  v7BehindLine, v7DriftOf, v7DriftPublishIssue, v7FiguresJobTotalsIssue, v7FiguresRowsIssue, v7PeriodSpansTwoYears, v7TotalsOf, V7_DRIFT_UNKNOWN_LINE,
+  type V7DriftLatest, type V7DriftOutcome, type V7DriftScope, type V7DriftTrigger, type V7DriftUnknownReason, type V7FiguresJobTotals, type V7FiguresRowFigures, type V7ScopeTotals,
 } from "@nzi/contracts";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { CommandValidationError } from "./postgresCommands";
@@ -37,16 +37,23 @@ export class V7FiguresConnectionRefused extends Error {}
  * The service's client on the contract's endpoint 1. Refused (thrown) when the URL is not HTTPS or names the console itself; absent,
  * a client that answers `not-configured` without calling anything, so a check is honestly unknown until V7 provides the endpoint.
  */
-export function v7FiguresClientFromEnv(env: Readonly<Record<string, string | undefined>> = process.env, fetchImpl: typeof fetch = fetch): V7FiguresClient {
+/** The endpoints' root and token from the service's environment, null when unset; thrown when the URL is not HTTPS or is the console's. */
+function figuresEndpoint(env: Readonly<Record<string, string | undefined>>): { root: string; token: string } | null {
   const raw = env.NZI_V7_FIGURES_URL?.trim();
   const token = env.NZI_V7_FIGURES_TOKEN?.trim();
-  if (!raw || !token) return async () => ({ ok: false, reason: "not-configured" });
+  if (!raw || !token) return null;
   let base: URL;
   try { base = new URL(raw); } catch { throw new V7FiguresConnectionRefused("NZI_V7_FIGURES_URL is not a URL."); }
   if (base.protocol !== "https:") throw new V7FiguresConnectionRefused("NZI_V7_FIGURES_URL must be HTTPS.");
   const own = env.NZI_ISOLATED_API_URL?.trim();
   if (own) { try { if (new URL(own).host === base.host) throw new V7FiguresConnectionRefused("NZI_V7_FIGURES_URL names the console itself; it must name the previous system."); } catch (error) { if (error instanceof V7FiguresConnectionRefused) throw error; } }
-  const root = base.href.replace(/\/+$/, "");
+  return { root: base.href.replace(/\/+$/, ""), token };
+}
+
+export function v7FiguresClientFromEnv(env: Readonly<Record<string, string | undefined>> = process.env, fetchImpl: typeof fetch = fetch): V7FiguresClient {
+  const endpoint = figuresEndpoint(env);
+  if (!endpoint) return async () => ({ ok: false, reason: "not-configured" });
+  const { root, token } = endpoint;
   return async ({ v7JobId, legacyJobNumber }) => {
     if (!/^\d{1,12}$/.test(v7JobId)) return { ok: false, reason: "not-found" };
     let response: Response;
@@ -63,6 +70,61 @@ export function v7FiguresClientFromEnv(env: Readonly<Record<string, string | und
     let body: unknown;
     try { body = await response.json(); } catch { return { ok: false, reason: "contract" }; }
     return v7FiguresJobTotalsIssue(body, legacyJobNumber) === null ? { ok: true, body: body as V7FiguresJobTotals } : { ok: false, reason: "contract" };
+  };
+}
+
+export type V7RowFiguresRead = { ok: true; body: V7FiguresRowFigures } | { ok: false; reason: V7DriftUnknownReason };
+/** Endpoint 2 for one job: the previous system's job id (the reply must name the same). */
+export type V7RowFiguresClient = (job: { v7JobId: string }) => Promise<V7RowFiguresRead>;
+
+/**
+ * The pace every row-figures call in this process goes through (the contract's load rule; the batch's floor): one call at a time,
+ * and each starts at least `V7_IMPORT_BATCH_PACING.pauseMs` after the last one ended. `sleep` and `now` are injectable for tests.
+ */
+export function v7FiguresPacer(floorMs: number = V7_IMPORT_BATCH_PACING.pauseMs as number, sleep: (ms: number) => Promise<void> = (ms) => new Promise((done) => setTimeout(done, ms)), now: () => number = Date.now) {
+  let tail: Promise<unknown> = Promise.resolve();
+  let lastEnded = -Infinity;
+  return <T>(call: () => Promise<T>): Promise<T> => {
+    const run = tail.then(async () => {
+      const wait = lastEnded + floorMs - now();
+      if (wait > 0) await sleep(wait);
+      try { return await call(); } finally { lastEnded = now(); }
+    });
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}
+// Made on first use (this module and the refresh import each other; nothing of either is read while they load).
+let processPacerHeld: ReturnType<typeof v7FiguresPacer> | null = null;
+const processPacer = <T>(call: () => Promise<T>): Promise<T> => (processPacerHeld ??= v7FiguresPacer())(call);
+
+/**
+ * The service's client on the contract's endpoint 2, under the same guard as endpoint 1's (HTTPS, never the console itself; unset →
+ * `not-configured` without calling anything) and through the process's pace. One bounded call, outside any transaction.
+ */
+export function v7RowFiguresClientFromEnv(env: Readonly<Record<string, string | undefined>> = process.env, fetchImpl: typeof fetch = fetch,
+  pace: <T>(call: () => Promise<T>) => Promise<T> = processPacer): V7RowFiguresClient {
+  const endpoint = figuresEndpoint(env);
+  if (!endpoint) return async () => ({ ok: false, reason: "not-configured" });
+  const { root, token } = endpoint;
+  return async ({ v7JobId }) => {
+    if (!/^\d{1,12}$/.test(v7JobId)) return { ok: false, reason: "not-found" };
+    return pace(async (): Promise<V7RowFiguresRead> => {
+      let response: Response;
+      try {
+        response = await fetchImpl(`${root}/api/console-import/v1/jobs/${v7JobId}/row-figures`, {
+          method: "GET", headers: { authorization: `Bearer ${token}`, accept: "application/json" }, redirect: "error", signal: AbortSignal.timeout(V7_FIGURES_TIMEOUT_MS) });
+      } catch (error) {
+        return { ok: false, reason: (error as { name?: string })?.name === "TimeoutError" || (error as { name?: string })?.name === "AbortError" ? "timeout" : "unreachable" };
+      }
+      if (response.status === 404) return { ok: false, reason: "not-found" };
+      if (response.status === 422) return { ok: false, reason: "cannot-compute" };
+      if (response.status === 503 || response.status === 429) return { ok: false, reason: "busy" };
+      if (response.status !== 200) return { ok: false, reason: "refused" };
+      let body: unknown;
+      try { body = await response.json(); } catch { return { ok: false, reason: "contract" }; }
+      return v7FiguresRowsIssue(body, Number(v7JobId)) === null ? { ok: true, body: body as V7FiguresRowFigures } : { ok: false, reason: "contract" };
+    });
   };
 }
 
