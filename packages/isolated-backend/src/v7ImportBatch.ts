@@ -159,7 +159,7 @@ async function landedCommit(db: Queryable, org: string, runId: string, jobId: st
 }
 
 /** The skip predicate (ruled §4): the latest import record is a committed refresh, and nothing in 0229 or 0228 is newer. */
-async function currentLocally(db: Queryable, org: string, jobId: string): Promise<boolean> {
+export async function currentLocally(db: Queryable, org: string, jobId: string): Promise<boolean> {
   return (await db.query<{ current: boolean }>(
     `WITH latest AS (SELECT kind, created_at FROM nzi_console.v7_import_ingests WHERE organisation_id = $1 AND job_id = $2 ORDER BY created_at DESC, ingest_id DESC LIMIT 1)
      SELECT EXISTS (SELECT 1 FROM latest WHERE kind = 'ingest'
