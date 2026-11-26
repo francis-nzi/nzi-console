@@ -18,6 +18,8 @@ const JOB = "job-d3";
 const STAFF = "staff-d3";
 const VIEWER = "staff-d3-viewer";
 const DS = "d3-dataset";
+/** The French factors live in a French dataset on the job: a dataset factor serves its own country's site only (datasets by period and site §2). */
+const DS_FR = "d3-dataset-fr";
 
 describe("Data entry D3: a site's own currency, local emissions, and an FX rate only for money", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
@@ -49,12 +51,16 @@ describe("Data entry D3: a site's own currency, local emissions, and an FX rate 
     await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id, job_id, reporting_from, reporting_to, country_code) VALUES ($1, $2, '2026-01-01', '2026-12-31', 'GB')`, [ORG, JOB]);
     await db.query(
       `INSERT INTO nzi_console.emission_factor_datasets (organisation_id, dataset_id, name, version, valid_from, valid_to, country_code, status, source_name, licence)
-       VALUES ($1, $2, 'D3 test factors', 'd3', '2026-01-01', '2026-12-31', 'GB', 'active', 'Test', 'Test only')`, [ORG, DS]);
+       VALUES ($1, $2, 'D3 test factors', 'd3', '2026-01-01', '2026-12-31', 'GB', 'active', 'Test', 'Test only'),
+              ($1, $3, 'D3 test factors (France)', 'd3', '2026-01-01', '2026-12-31', 'FR', 'active', 'Test', 'Test only')`, [ORG, DS, DS_FR]);
     await db.query(
       `INSERT INTO nzi_console.emission_factors (organisation_id, dataset_id, factor_id, label, activity_unit, kgco2e_per_unit, scopes) VALUES
-         ($1, $2, 'd3-fr-services', 'Services — France, spend (test)', 'EUR', 0.2, ARRAY['3']),
-         ($1, $2, 'd3-uk-services', 'Services — UK, spend (test)', 'GBP', 0.3, ARRAY['3'])`, [ORG, DS]);
-    await db.query(`INSERT INTO nzi_console.job_dataset_selections (organisation_id, job_id, dataset_id, selection_source, reason, selected_by) VALUES ($1, $2, $3, 'manual', 'Test', 'test')`, [ORG, JOB, DS]);
+         ($1, $3, 'd3-fr-services', 'Services — France, spend (test)', 'EUR', 0.2, ARRAY['3']),
+         ($1, $2, 'd3-uk-services', 'Services — UK, spend (test)', 'GBP', 0.3, ARRAY['3']),
+         ($1, $2, 'd3-fr-in-gb', 'Services — France, spend, held in a GB dataset (test)', 'EUR', 0.2, ARRAY['3'])`, [ORG, DS, DS_FR]);
+    for (const dataset of [DS, DS_FR]) {
+      await db.query(`INSERT INTO nzi_console.job_dataset_selections (organisation_id, job_id, dataset_id, selection_source, reason, selected_by) VALUES ($1, $2, $3, 'manual', 'Test', 'test')`, [ORG, JOB, dataset]);
+    }
     paris = (await createClientSite(database.pool, { clientId: CLIENT, name: "Paris office", inServiceFrom: null, country: "FR", currency: "EUR" } as never, context())).data.siteId;
     leeds = (await createClientSite(database.pool, { clientId: CLIENT, name: "Leeds depot", inServiceFrom: null, country: "GB" } as never, context())).data.siteId;
   });
@@ -74,12 +80,23 @@ describe("Data entry D3: a site's own currency, local emissions, and an FX rate 
 
   it("R1: a spend line at the Paris site is captured in EUR and priced by the French factor — emissions are local × local", async () => {
     const row = await createScopeRow(database.pool, { jobId: JOB, scope: "3.1", categoryCode: "3.1", sourceLabel: "Paris consultancy", siteId: paris, quantity: 10000, unit: "EUR",
-      datasetId: DS, factorId: "d3-fr-services", factorVersion: "d3", factorLabel: "Services FR", qualityTier: "spend-based", entryBasis: "spend" }, context());
+      datasetId: DS_FR, factorId: "d3-fr-services", factorVersion: "d3", factorLabel: "Services FR", qualityTier: "spend-based", entryBasis: "spend" }, context());
     await calculateScopeRow(database.pool, { jobId: JOB, rowId: row.data.rowId, expectedVersion: await version(row.data.rowId) }, context());
     assert.equal(await tonnes(row.data.rowId), 2, "€10,000 × 0.2 kg/€ = 2 t — no exchange rate anywhere");
     // A EUR line cannot be priced by the UK factor: it would need converting, and the carbon maths never converts.
     assert.deepEqual(await issues(createScopeRow(database.pool, { jobId: JOB, scope: "3.1", categoryCode: "3.1", sourceLabel: "x", siteId: paris, quantity: 1, unit: "EUR",
       datasetId: DS, factorId: "d3-uk-services", factorVersion: "d3", factorLabel: "x", qualityTier: "spend-based" }, context())), ["UNIT_INCOMPATIBLE"]);
+  });
+
+  it("a French factor held in a GB dataset is refused at the Paris site: FACTOR_COUNTRY_MISMATCH, named in the refusal", async () => {
+    const row = await createScopeRow(database.pool, { jobId: JOB, scope: "3.1", categoryCode: "3.1", sourceLabel: "Paris consultancy, GB-held factor", siteId: paris, quantity: 10000, unit: "EUR",
+      datasetId: DS, factorId: "d3-fr-in-gb", factorVersion: "d3", factorLabel: "Services FR (GB dataset)", qualityTier: "spend-based", entryBasis: "spend" }, context());
+    const refusal = await calculateScopeRow(database.pool, { jobId: JOB, rowId: row.data.rowId, expectedVersion: await version(row.data.rowId) }, context())
+      .then(() => null, (error: { issues?: Array<{ field: string; code: string; message: string }> }) => error);
+    assert.ok(refusal, "a GB dataset's factor cannot price a French site's row");
+    assert.deepEqual(refusal.issues?.map((item) => [item.field, item.code]), [["factorId", "FACTOR_COUNTRY_MISMATCH"]], "the refusal names the country mismatch, not a generic failure");
+    assert.notEqual(refusal.issues![0]!.message.trim(), "", "with its reason in words");
+    assert.equal((await db.query(`SELECT calculated_tco2e FROM nzi_console.job_scope_rows WHERE scope_row_id = $1`, [row.data.rowId])).rows[0]!.calculated_tco2e, null, "nothing priced");
   });
 
   it("R1/R7: the CRM sets Paris's FX rate for the job — versioned, audited — and the emissions do not move", async () => {

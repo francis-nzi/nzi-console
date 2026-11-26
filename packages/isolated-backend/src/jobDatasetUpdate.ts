@@ -18,7 +18,7 @@
 // and after — emissions figures, no money, rates or person (NZC-120).
 import { randomUUID } from "node:crypto";
 import type { CommandContext, CommandInputMap } from "@nzi/contracts";
-import { jobDatasetUpdates, ON_DAY_REASON, type DatasetUpdate } from "./datasetSelection";
+import { jobDatasetUpdates, ON_DAY_REASON, yearReason, type DatasetUpdate } from "./datasetSelection";
 import { VersionConflictError } from "./errors";
 import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { CommandValidationError, recalculateScopeRowInTransaction, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
@@ -82,6 +82,15 @@ async function planSeries(db: Queryable, organisationId: string, jobId: string, 
     // Known by its link, never its provenance; checked before any resolution, which would be a write to it.
     if (row.reingested_from_row_id) { await block("REINGESTED"); continue; }
     if (resolution?.action === "deactivate") { plan.deactivated.push(row.scope_row_id); continue; }
+    // R1, per year: the old edition still serves an earlier year, so the row keeps it as its own and is recalculated —
+    // its months in the new edition's year price there (a factor that edition lacks is flagged in pricing, D-C).
+    if (update.keepFrom) {
+      if (resolution?.action === "factor") throw new CommandValidationError([{ field: "resolutions", code: "INVALID_RESOLUTION", message: `${label}: it keeps its own factor; ${update.toLabel} is added beside it.` }]);
+      plan.moves.push({ row, factorId: row.factor_id ?? "" });
+      plan.moved.push({ rowId: row.scope_row_id, version: row.version, label, factorLabel: row.factor_label, reviewStatus: row.review_status, hasOverride: row.override_tco2e !== null,
+        recalculated: row.quantity !== null && row.unit !== null });
+      continue;
+    }
     const factorId = resolution?.action === "factor" ? resolution.factorId! : row.factor_id;
     const target = factorId ? await factorIn(factorId) : null;
     const reason: BlockReason | null = !target ? "FACTOR_MISSING"
@@ -101,9 +110,25 @@ async function planSeries(db: Queryable, organisationId: string, jobId: string, 
 /** Apply one series: the swap, then each row re-pointed and recalculated, each deactivation. */
 async function applySeries(db: Queryable, context: CommandContext, jobId: string, plan: SeriesPlan & { moves: Array<{ row: RowRecord; factorId: string }>; versions: Map<string, number> }, reason: string | null): Promise<void> {
   const org = context.organisationId;
-  await db.query(`DELETE FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2 AND dataset_id = $3 AND selection_source = 'automatic'`, [org, jobId, plan.fromDatasetId]);
+  // Per year (R1): where the old edition still serves an earlier year it stays, and the new one is added for its year(s).
+  if (!plan.keepFrom) await db.query(`DELETE FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2 AND dataset_id = $3 AND selection_source = 'automatic'`, [org, jobId, plan.fromDatasetId]);
+  const window = (await db.query<{ to: string }>(`SELECT reporting_to::text AS to FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`, [org, jobId])).rows[0];
+  const endYear = window ? Number(window.to.slice(0, 4)) : null;
+  const selectedWhy = plan.years && endYear !== null && !plan.years.includes(endYear) ? yearReason(Math.min(...plan.years)) : ON_DAY_REASON;
   await db.query(`INSERT INTO nzi_console.job_dataset_selections (organisation_id, job_id, dataset_id, selection_source, reason, selected_by) VALUES ($1, $2, $3, 'automatic', $4, $5) ON CONFLICT DO NOTHING`,
-    [org, jobId, plan.toDatasetId, ON_DAY_REASON, context.actorId]);
+    [org, jobId, plan.toDatasetId, selectedWhy, context.actorId]);
+  if (plan.keepFrom) {
+    const addNote = { title: "Newer edition added for its year", detail: `${plan.toLabel} for ${(plan.years ?? []).join(", ")}, beside ${plan.fromLabel} · run ${context.correlationId}` };
+    for (const { row } of plan.moves) {
+      if (row.quantity !== null && row.unit !== null) await recalculateScopeRowInTransaction(db, { jobId, rowId: row.scope_row_id, expectedVersion: row.version }, context, [addNote]);
+    }
+  } else await moveRows(db, context, jobId, plan);
+  await deactivateRows(db, context, jobId, plan, reason);
+}
+
+/** Re-point each row to the same factor in the new edition, then the one row calculation (the swap, as before). */
+async function moveRows(db: Queryable, context: CommandContext, jobId: string, plan: SeriesPlan & { moves: Array<{ row: RowRecord; factorId: string }> }): Promise<void> {
+  const org = context.organisationId;
   const moveNote = { title: "Moved to a newer edition", detail: `${plan.fromLabel} → ${plan.toLabel} · run ${context.correlationId}` };
   const target = (await db.query<{ version: string }>(`SELECT version FROM nzi_console.emission_factor_datasets WHERE organisation_id = $1 AND dataset_id = $2`, [org, plan.toDatasetId])).rows[0]!;
   for (const { row, factorId } of plan.moves) {
@@ -117,6 +142,10 @@ async function applySeries(db: Queryable, context: CommandContext, jobId: string
     // The one calculation, for every row that has what it needs; a draft with no quantity is re-pointed only.
     if (row.quantity !== null && row.unit !== null) await recalculateScopeRowInTransaction(db, { jobId, rowId: row.scope_row_id, expectedVersion: repointed.rows[0].version }, context, [moveNote]);
   }
+}
+
+async function deactivateRows(db: Queryable, context: CommandContext, jobId: string, plan: SeriesPlan & { versions: Map<string, number> }, reason: string | null): Promise<void> {
+  const org = context.organisationId;
   for (const rowId of plan.deactivated) {
     const note = { title: "Deactivated: not carried to the newer edition", detail: `${plan.toLabel}${reason ? ` · ${reason}` : ""} · run ${context.correlationId}` };
     const version = plan.versions.get(rowId)!;

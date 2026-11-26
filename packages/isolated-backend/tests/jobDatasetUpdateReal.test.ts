@@ -48,13 +48,14 @@ describe("job.datasets.update: move to the reporting year's edition, previewed t
     await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, 'admin-cu', 'admin', 'active', 'Ada')`, [ORG]);
     await q(`INSERT INTO nzi_console.clients (organisation_id, client_id, name, status) VALUES ($1, 'c1', 'Alpha', 'active')`, [ORG]);
     await q(`UPDATE nzi_console.emission_factor_datasets SET status = 'superseded' WHERE organisation_id = $1`, [ORG]);
-    // 2026 editions only: a 2026–27 job falls back to them.
+    // 2026 editions only: a calendar-2027 job falls back to them. (A window over two calendar years adds the new edition for
+    // its year instead of swapping: datasetsByPeriodReal.)
     await dataset("uk-ghg-gb-2026", 2026, "upload-a.csv", "DESNZ"); await dataset("nzi-gb-2026", 2026, "upload-b.csv", "NZI");
     await factor("uk-ghg-gb-2026", "uk-ghg-gas", "Natural gas", "kWh", 0.2); await factor("uk-ghg-gb-2026", "uk-ghg-elec", "Grid electricity", "kWh", 0.3, "2");
     await factor("uk-ghg-gb-2026", "uk-ghg-gone", "Retired fuel", "kWh", 0.5); await factor("uk-ghg-gb-2026", "uk-ghg-oil", "Fuel oil", "litres", 2.5);
     await factor("nzi-gb-2026", "nzi-x", "NZI gas", "kWh", 0.21);
-    jobId = (await createJob(database.pool, { clientId: "c1", family: "crp", title: "CRP", workflowStage: "Setup", owner: "Ada", startDate: "2026-04-01", dueDate: "2027-09-30",
-      reportingPeriodStart: "2026-04-01", reportingPeriodEnd: "2027-03-31" }, ctx())).data.jobId;
+    jobId = (await createJob(database.pool, { clientId: "c1", family: "crp", title: "CRP", workflowStage: "Setup", owner: "Ada", startDate: "2027-01-01", dueDate: "2027-09-30",
+      reportingPeriodStart: "2027-01-01", reportingPeriodEnd: "2027-12-31" }, ctx())).data.jobId;
     const ds = (id: string) => ({ dataset_id: "uk-ghg-gb-2026", factor_id: id });
     await scopeRow("gas", { ...ds("uk-ghg-gas"), quantity: 1000, unit: "kWh" }); await calc("gas");
     await q(`UPDATE nzi_console.job_scope_rows SET review_status = 'approved', reviewed_by = 'rev', reviewed_at = now(), reviewed_row_version = version WHERE scope_row_id = 'gas'`);

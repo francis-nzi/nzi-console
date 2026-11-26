@@ -181,6 +181,7 @@ export function CrpScopeWorkspace({
   writeEnabled,
   milestones,
   datasetUpdates = [],
+  countryNotes = [],
   shell,
 }: {
   /** The governed input spec (NZC-102), loaded server-side. Keyed by category code. */
@@ -207,6 +208,8 @@ export function CrpScopeWorkspace({
   milestones?: ReactNode;
   /** DATASET-CURRENCY §3: the newer editions this job could move to (a soft read — none when it fails). */
   datasetUpdates?: DatasetUpdate[];
+  /** Datasets by period and site (D-D, R3, D-A): what the job says about its countries (a soft read — none when it fails). */
+  countryNotes?: string[];
   /**
    * Phase 2 job shell (`job-shell`): the Milestones and Time panels apart, so each has its own place, and the
    * milestones the Milestones button summarises (null when that read failed). `importPanel`: Refresh from the previous system
@@ -546,7 +549,7 @@ export function CrpScopeWorkspace({
       <ClientFactorPanel jobId={job.header.id} clientId={job.header.clientId} factors={factors} notice={setNotice}/>
     </>
   );
-  const datasetPanel = <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice} writeEnabled={writeEnabled}/>;
+  const datasetPanel = <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} countryNotes={countryNotes} notice={setNotice} writeEnabled={writeEnabled}/>;
   const dataEntrySurface = accordionOn ? (
     <CrpDataEntryAccordion
       specs={specs}
@@ -697,7 +700,7 @@ export function CrpScopeWorkspace({
     intensity: { kicker: "Job", title: "Intensity", body: <JobAnnualMetrics jobId={job.header.id} reportingYear={reportingYear} writeEnabled={writeEnabled} clientId={job.header.clientId}/> },
     datasets: { kicker: "Job", title: "Datasets", body: <>
       <DatasetUpdateBanner jobId={job.header.id} updates={datasetUpdates} writeEnabled={writeEnabled} />
-      <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} notice={setNotice} showReasons writeEnabled={writeEnabled}/>
+      <DatasetPanel jobId={job.header.id} datasets={datasets} updates={datasetUpdates} countryNotes={countryNotes} notice={setNotice} showReasons writeEnabled={writeEnabled}/>
     </> },
   };
   const shellDrawerView = shellDrawer ? shellDrawerBody[shellDrawer] : null;
@@ -853,6 +856,7 @@ function DatasetPanel({
   jobId,
   datasets,
   updates = [],
+  countryNotes = [],
   notice,
   showReasons = false,
   writeEnabled,
@@ -860,6 +864,7 @@ function DatasetPanel({
   jobId: string;
   datasets: DatasetOption[];
   updates?: DatasetUpdate[];
+  countryNotes?: string[];
   notice: (n: { kind: "ok" | "warn"; text: string }) => void;
   showReasons?: boolean;
   writeEnabled: boolean;
@@ -915,6 +920,11 @@ function DatasetPanel({
           </span>
         )}
       </div>
+      {countryNotes.length ? (
+        <ul className="nz-dataset-notes sub" aria-label="Dataset countries">
+          {countryNotes.map((note) => <li key={note}>{note}</li>)}
+        </ul>
+      ) : null}
       {/* DATASET-CURRENCY §2: the selected datasets by name a person can read — source, country, year — not the
           imported file name, which stays as the tooltip. */}
       {datasets.some((d) => d.selected) ? (

@@ -2,7 +2,8 @@ import {
   anchorOf, familyHasReportingPeriod, jobDateIssues, planReschedule, reportingYearForPeriod, type CommandContext, type CommandInputMap, type ReschedulePreview,
   type WorkflowJobFamily,
 } from "@nzi/contracts";
-import { automaticDatasetsFor, datasetCoverageWarnings, jobCountryCode, NEW_JOB_COUNTRY, selectAutomaticDatasets, type ReportingWindow } from "./datasetSelection";
+import { automaticDatasetsFor, datasetCoverageWarnings, selectAutomaticDatasets, type ReportingWindow } from "./datasetSelection";
+import { clientCountryOf, jobCountryScope } from "./datasetScope";
 import { VersionConflictError } from "./errors";
 import { applyReschedule, milestoneStatesOf, readScheduleRows, templateForReschedule, type MilestoneState, type MilestoneTemplateWithItems } from "./milestoneCommands";
 import { CommandValidationError, runPostgresCommand, type StoredOutcome } from "./postgresCommands";
@@ -175,6 +176,8 @@ export type DatasetChange = {
   automaticAdded: Array<{ datasetId: string; name: string }>;
   /** Manual selections, kept, with their coverage warnings before and after. */
   manual: Array<{ datasetId: string; name: string; warningsBefore: string[]; warningsAfter: string[] }>;
+  /** R4: the job's country after the move — its client's, GB assumed where that is not known (D-D). */
+  country: string;
 };
 export type JobUpdatePlan = {
   jobId: string; jobVersion: number; clientId: string; family: WorkflowJobFamily; imported: boolean; status: string;
@@ -249,17 +252,20 @@ export async function planJobUpdate(db: Queryable, organisationId: string, input
          FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
         WHERE s.organisation_id = $1 AND s.job_id = $2 ORDER BY s.dataset_id`, [organisationId, input.jobId]);
     const manual = selected.filter((row) => row.selection_source === "manual");
-    // The config's country; a job without one gets the country job.update writes when it creates the config.
-    const jobCountry = config?.country_code ?? NEW_JOB_COUNTRY;
+    // R4: a moved window re-reads the client's country — the country written to the config below and chosen for, with each
+    // included site's. Where the client's is not known, the config keeps the country it holds (GB for a job without one, D-D).
+    const client = await clientCountryOf(db, organisationId, job.client_id);
+    const jobCountry = client.assumed ? config?.country_code ?? client.code : client.code;
+    const scope = await jobCountryScope(db, organisationId, input.jobId, jobCountry);
     const windowBefore = config ? { from: config.reporting_from, to: config.reporting_to } : null;
     datasets = {
-      window: { before: windowBefore, after: window },
+      window: { before: windowBefore, after: window }, country: jobCountry,
       automaticRemoved: selected.filter((row) => row.selection_source === "automatic").map((row) => ({ datasetId: row.dataset_id, name: row.name })),
       // A dataset already chosen by hand keeps its manual selection (job.create's ON CONFLICT DO NOTHING).
-      automaticAdded: (await automaticDatasetsFor(db, organisationId, window, jobCountry)).filter((candidate) => !manual.some((row) => row.dataset_id === candidate.datasetId)),
+      automaticAdded: (await automaticDatasetsFor(db, organisationId, window, jobCountry, scope)).filter((candidate) => !manual.some((row) => row.dataset_id === candidate.datasetId)),
       manual: manual.map((row) => {
         const dataset = { validFrom: row.valid_from, validTo: row.valid_to, country: row.country_code, status: row.status };
-        return { datasetId: row.dataset_id, name: row.name, warningsBefore: windowBefore ? datasetCoverageWarnings(dataset, windowBefore, jobCountry) : [],
+        return { datasetId: row.dataset_id, name: row.name, warningsBefore: windowBefore ? datasetCoverageWarnings(dataset, windowBefore, config?.country_code ?? jobCountry) : [],
           warningsAfter: datasetCoverageWarnings(dataset, window, jobCountry) };
       }),
     };
@@ -310,16 +316,16 @@ export function updateJob(pool: PoolLike, input: CommandInputMap["job.update"], 
     if (plan.datasets?.window) {
       const window = plan.datasets.window.after;
       if (plan.datasets.window.before) {
-        await db.query(`UPDATE nzi_console.job_emissions_config SET reporting_from = $3, reporting_to = $4, version = version + 1 WHERE organisation_id = $1 AND job_id = $2`,
-          [org, input.jobId, window.from, window.to]);
+        await db.query(`UPDATE nzi_console.job_emissions_config SET reporting_from = $3, reporting_to = $4, country_code = $5, version = version + 1 WHERE organisation_id = $1 AND job_id = $2`,
+          [org, input.jobId, window.from, window.to, plan.datasets.country]);
       } else {
         await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id, job_id, reporting_from, reporting_to, country_code) VALUES ($1, $2, $3, $4, $5)`,
-          [org, input.jobId, window.from, window.to, NEW_JOB_COUNTRY]);
+          [org, input.jobId, window.from, window.to, plan.datasets.country]);
       }
       // J2: automatic selections are derived state — deleted and re-derived, for the country the config row holds; the
       // audit records both sets.
       await db.query(`DELETE FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2 AND selection_source = 'automatic'`, [org, input.jobId]);
-      await selectAutomaticDatasets(db, org, input.jobId, window, (await jobCountryCode(db, org, input.jobId)) ?? NEW_JOB_COUNTRY, context.actorId);
+      await selectAutomaticDatasets(db, org, input.jobId, window, plan.datasets.country, context.actorId);
       for (const manual of plan.datasets.manual) {
         await db.query(`UPDATE nzi_console.job_dataset_selections SET warnings_json = $4::jsonb WHERE organisation_id = $1 AND job_id = $2 AND dataset_id = $3`,
           [org, input.jobId, manual.datasetId, JSON.stringify(manual.warningsAfter)]);

@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { generateMilestones, templateForNewJob, type MilestoneState } from "./milestoneCommands";
-import { datasetCoverageWarnings, NEW_JOB_COUNTRY, selectAutomaticDatasets } from "./datasetSelection";
+import { datasetCoverageWarnings, selectAutomaticDatasets } from "./datasetSelection";
+import { clientCountryOf } from "./datasetScope";
+import { factorCountryIssue, planRowPricing, pricingLineage, pricingProvenance, type RowPricing } from "./monthlyPricing";
 import { applyIntensityDefaultsToClient, readOrganisationBrand } from "./organisationSettings";
 import { assertClientCurrency } from "./commercialLookups";
 import { refuseArchivedSiteChange } from "./siteArchiveGuard";
@@ -647,12 +649,15 @@ export async function createJob(
       // shrug.
       const reportingFrom = input.reportingPeriodStart!;
       const reportingTo = input.reportingPeriodEnd!;
+      // R4 (ruled 24 Nov): the job's country is its client's registered country; not recorded or not matched, GB assumed
+      // and the job flagged (D-D, read by jobCountryNotes).
+      const country = (await clientCountryOf(db, context.organisationId, input.clientId)).code;
       await db.query(
         `INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,$5)`,
-        [context.organisationId, jobId, reportingFrom, reportingTo, NEW_JOB_COUNTRY],
+        [context.organisationId, jobId, reportingFrom, reportingTo, country],
       );
-      // The rule selects for the country just written to the config.
-      await selectAutomaticDatasets(db, context.organisationId, jobId, { from: reportingFrom, to: reportingTo }, NEW_JOB_COUNTRY, context.actorId);
+      // The rule selects for the country just written to the config, and each included site's.
+      await selectAutomaticDatasets(db, context.organisationId, jobId, { from: reportingFrom, to: reportingTo }, country, context.actorId);
       // Phase 3b (ruled): a CRP job whose client has a reporting template in force starts with its lines as entry rows,
       // seeded in this transaction against the editions just selected. No template, nothing done; a refused line is
       // skipped, never failing the create. Loaded on call, because the seeding module writes through this one.
@@ -2043,8 +2048,10 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     apply_pct: string;
     monthly_activity_json:Array<{month:string;quantity:number|null}>;
     provenance_json?: Record<string, unknown> | null;
+    site_id: string | null;
+    imported: boolean;
   }>(
-    `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,apply_pct,monthly_activity_json,provenance_json FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
+    `SELECT version,quantity,unit,scope,dataset_id,factor_id,factor_source,client_factor_id,override_tco2e,override_reason,apply_pct,monthly_activity_json,provenance_json,site_id,(reingested_from_row_id IS NOT NULL OR origin='migrated') AS imported FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 FOR UPDATE`,
     [context.organisationId, input.jobId, input.rowId],
   );
   const row = found.rows[0];
@@ -2088,7 +2095,7 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     synthetic: boolean;
     evidence_hash:string|null;
   }>(
-    `SELECT f.label,f.activity_unit,f.kgco2e_per_unit,d.version,d.synthetic,NULL::text AS evidence_hash FROM nzi_console.emission_factors_display f
+    `SELECT f.label,f.activity_unit,f.kgco2e_per_unit,d.version,d.synthetic,NULL::text AS evidence_hash,f.scopes FROM nzi_console.emission_factors_display f
   JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id,d.dataset_id)=(f.organisation_id,f.dataset_id)
   JOIN nzi_console.job_dataset_selections s ON (s.organisation_id,s.dataset_id)=(f.organisation_id,f.dataset_id) AND s.job_id=$2
   WHERE f.organisation_id=$1 AND f.dataset_id=$3 AND f.factor_id=$4 AND f.active=true AND (split_part($5,'.',1)=ANY(f.scopes))`,
@@ -2130,6 +2137,17 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
         message: `Activity unit must be ${matched.activity_unit} for the selected factor.`,
       },
     ]);
+  // Datasets by period and site (§2, ruled 25 Nov): a dataset factor serves its row's own country only, and a window over
+  // two or more calendar years is priced by month, each at its year's edition. A client factor is priced as before.
+  let pricing: RowPricing | null = null;
+  if (row.factor_source === "dataset") {
+    const countryIssue = await factorCountryIssue(db, context.organisationId, { jobId: input.jobId, siteId: row.site_id, datasetId: row.dataset_id!, factorId: row.factor_id,
+      factorLabel: matched.label, scopes: (matched as { scopes?: string[] }).scopes ?? [] });
+    if (countryIssue) throw new CommandValidationError([{ field: "factorId", code: "FACTOR_COUNTRY_MISMATCH", message: countryIssue }]);
+    pricing = await planRowPricing(db, context.organisationId, { rowId: input.rowId, jobId: input.jobId, scope: row.scope, unit: row.unit, datasetId: row.dataset_id!,
+      factorId: row.factor_id, imported: row.imported }, { version: matched.version, kg: matched.kgco2e_per_unit });
+  }
+  const byMonth = pricing?.kind === "spans" ? pricing : null;
   const lineage = [
     {
       title: "Activity data captured",
@@ -2139,9 +2157,10 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
       title: row.factor_source==="client"?"Client factor resolved":"Factor resolved",
       detail: `${matched.label} · ${matched.version}`,
     },
+    ...(pricing ? pricingLineage(pricing) : []),
     {
       title: "Emissions calculated",
-      detail: "quantity × kgCO₂e per unit ÷ 1,000",
+      detail: byMonth ? "Σ months (quantity × kgCO₂e per unit) ÷ 1,000" : "quantity × kgCO₂e per unit ÷ 1,000",
     },
     // RULING-apply-pct: `quantity` is the source's full amount and `apply_pct` the share attributed to this row, applied
     // once, here. A group roll-up arrives already scaled, at 100. A real 0% is 0 — v7's "0 means 100" is not carried over.
@@ -2167,6 +2186,7 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     synthetic: matched.synthetic,
     applyPct: Number(row.apply_pct),
     monthlyActivity:row.monthly_activity_json??[],
+    ...(pricing && pricing.spans.length ? pricingProvenance(pricing) : {}),
     // Dedup slice 3: what was measured (the base, above) and how it was classified survives the calculation, as who captured it
     // does. Absent on every row not filed by applicability, so their calculated provenance is exactly as before.
     ...((row.provenance_json as { filedUnder?: unknown } | null)?.filedUnder ? { filedUnder: (row.provenance_json as { filedUnder: unknown }).filedUnder } : {}),
@@ -2175,7 +2195,9 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     version: number;
     calculated_tco2e: string;
   }>(
-    `UPDATE nzi_console.job_scope_rows SET factor_version=$4,factor_label=$5,calculated_tco2e=quantity*$6::numeric/1000*apply_pct/100,provenance_json=$7::jsonb,lineage_json=$8::jsonb,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$9 RETURNING version,calculated_tco2e`,
+    `UPDATE nzi_console.job_scope_rows SET factor_version=$4,factor_label=$5,calculated_tco2e=CASE WHEN $10::numeric[] IS NULL THEN quantity*$6::numeric/1000*apply_pct/100
+      -- By month: Σ (each month's quantity, or the quantity ÷ the window's months for an annual split, × its edition's kgCO₂e).
+      ELSE (SELECT sum(coalesce(t.q, quantity / $12::numeric) * t.k) FROM unnest($10::numeric[], $11::numeric[]) AS t(q, k))/1000*apply_pct/100 END,provenance_json=$7::jsonb,lineage_json=$8::jsonb,review_status='pending',reviewed_row_version=NULL,reviewed_by=NULL,reviewed_at=NULL,reviewer_note=NULL,version=version+1,updated_at=now() WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3 AND version=$9 RETURNING version,calculated_tco2e`,
     [
       context.organisationId,
       input.jobId,
@@ -2186,6 +2208,7 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
       JSON.stringify(provenance),
       JSON.stringify(lineage),
       input.expectedVersion,
+      byMonth ? byMonth.monthQuantities : null, byMonth ? byMonth.monthKg : null, byMonth ? byMonth.splitOver : null,
     ],
   );
   if (!updated.rows[0]) throw new VersionConflictError();

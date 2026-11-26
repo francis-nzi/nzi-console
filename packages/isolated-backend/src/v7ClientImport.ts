@@ -3,6 +3,7 @@ import { sha256Hex, type LegacyReportParticulars } from "./legacyReportSeal";
 import type { Finding } from "./v7ReferenceImport";
 import { EXTRACT_CONTRACT, missingColumns, type V7Extract, type V7Row, type V7Table } from "./v7ClientExtract";
 import { pyFloat, registerSourceFigure, scopeRowFigure, scopeTotals, type NotReplayable } from "./v7EmissionsFormula";
+import { countryCodeFor } from "./v7Countries";
 
 /**
  * The v7 client-and-job transform (docs/CLIENT_JOB_IMPORT_DESIGN.md): an extract in, a validated plan out. Pure — no
@@ -82,7 +83,8 @@ export type MigratedFlag = (typeof MIGRATED_FLAGS)[number];
 export type MigratedRecord = {
   qty: number | null; uom: string | null; months?: Array<number | null>; apply_pct: number | null;
   factor: number | null; ghg_unit: string | null; original_id: string | null; factor_db_id?: string | null;
-  dataset?: { id: string; year: number | null; version: string | null };
+  /** `country`: the V7 dataset's own country as an ISO code (or GLOBAL / ROW), when the extract carried one (datasets by period §4). */
+  dataset?: { id: string; year: number | null; version: string | null; country?: string };
   reported_tco2e: number; stored_calc_tco2e?: number | null; override_tco2e?: number | null;
   data_source: string; data_confidence?: "H" | "M" | "L" | null; enabled: boolean; review_status?: string | null;
   register?: { source_id: string; group_id: string | null; source_type: string | null; source_subtype: string | null };
@@ -94,7 +96,7 @@ export type MigratedRecord = {
 };
 
 type Leaf = "number" | "number|null" | "boolean" | "id" | "id|null" | "unit|null" | "code|null" | "token|null"
-  | "data-source" | "confidence|null" | "review|null" | "version|null" | "currency" | "flag";
+  | "data-source" | "confidence|null" | "review|null" | "version|null" | "currency" | "flag" | "country";
 type Shape = Leaf | { object: Readonly<Record<string, Shape>> } | { array: Shape; length?: number };
 
 /**
@@ -106,7 +108,7 @@ export const MIGRATED_RECORD_SHAPE: { object: Readonly<Record<string, Shape>> } 
   object: {
     qty: "number|null", uom: "unit|null", months: { array: "number|null", length: 12 }, apply_pct: "number|null",
     factor: "number|null", ghg_unit: "unit|null", original_id: "code|null", factor_db_id: "id|null",
-    dataset: { object: { id: "id", year: "number|null", version: "version|null" } },
+    dataset: { object: { id: "id", year: "number|null", version: "version|null", country: "country" } },
     reported_tco2e: "number", stored_calc_tco2e: "number|null", override_tco2e: "number|null",
     data_source: "data-source", data_confidence: "confidence|null", enabled: "boolean", review_status: "review|null",
     register: { object: { source_id: "id", group_id: "id|null", source_type: "token|null", source_subtype: "token|null" } },
@@ -136,6 +138,7 @@ const LEAF_RULES: Record<Leaf, (value: unknown) => boolean> = {
   "review|null": (value) => value === null || value === "other" || (REVIEW_STATUSES as readonly unknown[]).includes(value),
   "version|null": (value) => value === null || (typeof value === "string" && /^[A-Za-z0-9 ._-]{1,40}$/.test(value)),
   currency: (value) => typeof value === "string" && /^[A-Z]{3}$/.test(value),
+  country: (value) => typeof value === "string" && /^([A-Z]{2}|GLOBAL|ROW)$/.test(value),
   flag: (value) => (MIGRATED_FLAGS as readonly unknown[]).includes(value),
 };
 
@@ -614,7 +617,12 @@ export function planV7ClientImport(input: PlanInput): ClientImportPlan {
         const dataset = datasets.get(datasetId);
         if (!dataset) report("dataset-missing", "a row's v7 dataset is not in the extract; its year and version are not recorded", `dataset ${datasetId}`);
         const version = text(dataset?.version);
-        return { id: datasetId, year: integer(dataset?.year), version: version && /^[A-Za-z0-9 ._-]{1,40}$/.test(version) ? version : null };
+        // Datasets by period §4: the dataset's own country, which an imported row is priced for. Named in words in v7; a name
+        // that does not match is reported and left out, never guessed.
+        const countryName = text(dataset?.country);
+        const country = countryName === null ? null : countryCodeFor(countryName);
+        if (countryName !== null && country === null) report("dataset-country-unmatched", "a v7 dataset's country is not a recognised country; the row carries no dataset country", `dataset ${datasetId}`);
+        return { id: datasetId, year: integer(dataset?.year), version: version && /^[A-Za-z0-9 ._-]{1,40}$/.test(version) ? version : null, ...(country ? { country } : {}) };
       };
 
       // Evidence: spend entries v7 pushed into 'Spend Data' rows, and commuting sources behind the consolidated rows.

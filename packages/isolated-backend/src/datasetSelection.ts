@@ -1,24 +1,28 @@
 import { DATASET_EDITION_SUFFIX, datasetDisplayLabel, datasetPreferenceRank, datasetSeriesKey } from "@nzi/contracts";
+import { DESNZ_SERIES, INTERNATIONAL_DEFAULT_LABEL, jobCountryScope, windowYearParts, type YearPart } from "./datasetScope";
 import type { Queryable } from "./postgres";
 
 /**
  * A CRP job's emission-factor datasets, chosen against its reporting window (NZC-070's boundary) — said once, for
  * job.create (the first choice), dataset.override.add (a manual choice's warnings) and job.update (a window that
  * moves, ruled J2). Automatic selections are derived state, chosen **per series** — one source family in one country,
- * published as yearly editions (`datasetSeriesKey`) — of the job's own country (`job_emissions_config.country_code`)
- * and GLOBAL, the complement for any country:
+ * published as yearly editions (`datasetSeriesKey`) — of the countries in scope (the job's, and its included sites',
+ * DESIGN-datasets-by-period-and-site §1) and GLOBAL, the complement for any country:
  *
- * - the edition **valid on the last day of the window** — the reporting year's edition, the year the period ends (JW-13,
- *   ruled: "reporting year = end year"); requiring an edition to cover the whole window chose nothing for a period that
- *   straddles two calendar years;
+ * - **per calendar year the window touches** (R1, ruled 24 Nov): for each year, the edition **valid on the last day of
+ *   that year's part of the window** — for the window's last year that is the reporting year's edition (JW-13, ruled:
+ *   "reporting year = end year"); a calendar-year window touches one year, so its choice is exactly the single-edition
+ *   rule's;
  * - else, **the latest edition already published** in that series (the greatest `valid_to` among editions starting on or
- *   before the window's end) — editions lag publication (DESNZ publishes a year's factors in June), so a current or
- *   future reporting year uses the latest available until its own is published (DATASET-CURRENCY, ruled 6 Oct). A
- *   series never borrows another country's edition: GB falls back to GB, never to GLOBAL.
+ *   before that day) — editions lag publication (DESNZ publishes a year's factors in June), so a current or future
+ *   reporting year uses the latest available until its own is published (DATASET-CURRENCY, ruled 6 Oct). A series never
+ *   borrows another country's edition: GB falls back to GB, never to GLOBAL;
+ * - **GB only where the UK is** (R4): a job with no UK in scope takes DESNZ alone, as the **international default** for
+ *   activity categories (D-A, ruled 25 Nov) — never NZI, ICE or CEDA GB, and never for electricity or spend.
  *
  * Every series' pick is selected; the job country's preferred source (`DATASET_SOURCES.preferredFor` — DESNZ for GB) is
- * ordered first (`datasetPreferenceRank`). Manual
- * selections are a person's choice, carrying the warnings that choice was made with.
+ * ordered first (`datasetPreferenceRank`). Manual selections are a person's choice, carrying the warnings that choice was
+ * made with.
  */
 
 export type ReportingWindow = { from: string; to: string };
@@ -27,20 +31,38 @@ export type ReportingWindow = { from: string; to: string };
 export const ON_DAY_REASON = "Matched the reporting year (the edition valid on the period's last day) and geography.";
 export const fallbackReason = (editionYear: number) =>
   `The reporting year's edition is not published yet; the latest available (${editionYear}) is used until it is.`;
+/** The reason an edition chosen for an earlier calendar year of the window records (R1). */
+export const yearReason = (year: number) =>
+  `Matched ${year} in the reporting period (the edition valid on that year's last day in the period) and geography.`;
 
-/** Each series' pick for a window: the edition valid on its last day, else the latest already published. */
+/**
+ * Each series' pick for one day: the edition valid on it, else the latest already published. $2 is the day, $3 the
+ * countries in scope (GLOBAL among them), $4 one series to keep to (null: every series) — the international default's.
+ */
 const SERIES_PICKS = `
   SELECT dataset_id, name, valid_to, on_day, country_code FROM (
     SELECT d.dataset_id, d.name, d.valid_to, d.country_code, d.valid_to >= $2::date AS on_day,
            row_number() OVER (PARTITION BY regexp_replace(d.dataset_id, '${DATASET_EDITION_SUFFIX}', ''), d.country_code
                               ORDER BY (d.valid_to >= $2::date) DESC, d.valid_from DESC, d.valid_to DESC, d.dataset_id) AS pick
       FROM nzi_console.emission_factor_datasets d
-     WHERE d.organisation_id = $1 AND d.status = 'active' AND d.country_code IN ($3, 'GLOBAL') AND d.valid_from <= $2::date) series
+     WHERE d.organisation_id = $1 AND d.status = 'active' AND d.country_code = ANY($3::text[]) AND d.valid_from <= $2::date
+       AND ($4::text IS NULL OR regexp_replace(d.dataset_id, '${DATASET_EDITION_SUFFIX}', '') = $4)) series
    WHERE pick = 1`;
 
-export type AutomaticDataset = { datasetId: string; name: string; fallback: boolean; editionYear: number; countryCode: string };
+export type AutomaticDataset = {
+  datasetId: string; name: string;
+  /** A fallback in every year it is the pick for: it ends before that year's part of the window does. */
+  fallback: boolean;
+  editionYear: number; countryCode: string;
+  /** The calendar years of the window this edition is the pick for (R1): one, for a calendar-year window. */
+  years: number[];
+  /** Of those years, the ones it stands in for because their own edition is not published yet (it ends before their part does). */
+  fallbackYears: number[];
+  /** DESNZ chosen for a job with no UK in scope, for its activity categories only (D-A). */
+  internationalDefault: boolean;
+};
 
-/** The country a new emissions config is written with — GB until a client's country feeds it (a product question, unruled). */
+/** The country a job's emissions config falls back to when its client's is not known: GB, assumed and flagged (D-D). */
 export const NEW_JOB_COUNTRY = "GB";
 
 /** The job's country, as its emissions config records it — what the rule selects and ranks by. */
@@ -49,57 +71,153 @@ export async function jobCountryCode(db: Queryable, organisationId: string, jobI
     `SELECT country_code FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`, [organisationId, jobId])).rows[0]?.country_code ?? null;
 }
 
-/** The automatic choice for a window and the job's country — what job.create selects and job.update re-derives — the country's preferred source first. */
-export async function automaticDatasetsFor(db: Queryable, organisationId: string, window: ReportingWindow, countryCode: string): Promise<AutomaticDataset[]> {
-  const { rows } = await db.query<{ dataset_id: string; name: string; valid_to: string; on_day: boolean; country_code: string }>(
-    `SELECT dataset_id, name, valid_to::text AS valid_to, on_day, country_code FROM (${SERIES_PICKS}) picks ORDER BY dataset_id`, [organisationId, window.to, countryCode]);
-  return rows.map((row) => ({ datasetId: row.dataset_id, name: row.name, fallback: !row.on_day, editionYear: Number(row.valid_to.slice(0, 4)), countryCode: row.country_code }))
+/** Which countries the rule chooses for: the job's and its included sites' (R3/R4). With none given, the job's alone. */
+export type SelectionScope = { countries: string[]; ukInScope: boolean };
+
+/**
+ * The automatic choice for a window — what job.create selects and job.update re-derives — the job country's preferred
+ * source first, per calendar year (above). `perYear: false` keeps the single-edition rule (the window's last day only):
+ * the fill-blank selection of existing imported jobs (job.datasets.autoSelect), which R2 moves only through the reviewed
+ * backfill.
+ */
+export async function automaticDatasetsFor(db: Queryable, organisationId: string, window: ReportingWindow, countryCode: string,
+  scope?: SelectionScope, options: { perYear?: boolean } = {}): Promise<AutomaticDataset[]> {
+  const countries = scope?.countries.length ? scope.countries : [countryCode];
+  const ukInScope = scope ? scope.ukInScope : countryCode === "GB";
+  const days = options.perYear === false
+    ? [{ year: Number(window.to.slice(0, 4)), to: window.to }]
+    : windowYearParts(window).map((part) => ({ year: part.year, to: part.to }));
+  // D-A: DESNZ stands in only for a country in scope with no activity series of its own (not CEDA, not IEA), and only under
+  // this rule — `perYear: false` is today's rule whole, with no default.
+  const needsDefault = !ukInScope && options.perYear !== false
+    && (await db.query<{ country_code: string }>(
+      `SELECT c AS country_code FROM unnest($2::text[]) c WHERE NOT EXISTS (SELECT 1 FROM nzi_console.emission_factor_datasets d
+          WHERE d.organisation_id = $1 AND d.country_code = c AND d.status = 'active' AND d.dataset_id NOT LIKE 'ceda-%' AND d.dataset_id NOT LIKE 'iea-%')`,
+      [organisationId, countries])).rows.length > 0;
+  const picked = new Map<string, AutomaticDataset>();
+  const pick = async (day: { year: number; to: string }, inScope: string[], series: string | null, internationalDefault: boolean) => {
+    const { rows } = await db.query<{ dataset_id: string; name: string; valid_to: string; on_day: boolean; country_code: string }>(
+      `SELECT dataset_id, name, valid_to::text AS valid_to, on_day, country_code FROM (${SERIES_PICKS}) picks ORDER BY dataset_id`,
+      [organisationId, day.to, inScope, series]);
+    for (const row of rows) {
+      const held = picked.get(row.dataset_id);
+      // Two years resolving to one edition are one selection covering both (never two inserts), each year's fallback kept.
+      if (held) {
+        if (!held.years.includes(day.year)) held.years.push(day.year);
+        if (!row.on_day && !held.fallbackYears.includes(day.year)) held.fallbackYears.push(day.year);
+        held.fallback = held.fallback && !row.on_day; continue;
+      }
+      picked.set(row.dataset_id, { datasetId: row.dataset_id, name: row.name, fallback: !row.on_day, editionYear: Number(row.valid_to.slice(0, 4)),
+        countryCode: row.country_code, years: [day.year], fallbackYears: row.on_day ? [] : [day.year], internationalDefault });
+    }
+  };
+  for (const day of days) {
+    await pick(day, [...countries, "GLOBAL"], null, false);
+    // D-A: no UK in scope, so DESNZ alone, as the international default for activity categories.
+    if (needsDefault) await pick(day, ["GB"], DESNZ_SERIES, true);
+  }
+  return [...picked.values()]
     .sort((a, b) => datasetPreferenceRank(a.datasetId, countryCode) - datasetPreferenceRank(b.datasetId, countryCode) || a.datasetId.localeCompare(b.datasetId));
 }
 
-/** Select the automatic datasets for a window and the job's country. A dataset already selected (by hand) keeps its manual selection. */
-export async function selectAutomaticDatasets(db: Queryable, organisationId: string, jobId: string, window: ReportingWindow, countryCode: string, actorId: string): Promise<void> {
-  for (const pick of await automaticDatasetsFor(db, organisationId, window, countryCode)) {
+/**
+ * The reason a selection records: the reporting year's, an earlier calendar year's, or the fallback's — the international
+ * default's label first where it is one (D-A, "labelled in the job").
+ */
+export function selectionReason(pick: AutomaticDataset, window: ReportingWindow): string {
+  const endYear = Number(window.to.slice(0, 4));
+  // A fallback for the reporting (end) year says so, even where the same edition is also its own year's match.
+  const kind = pick.fallback || pick.fallbackYears.includes(endYear) ? fallbackReason(pick.editionYear)
+    : pick.years.includes(endYear) ? ON_DAY_REASON : yearReason(Math.min(...pick.years));
+  return pick.internationalDefault ? `${INTERNATIONAL_DEFAULT_LABEL}. ${kind}` : kind;
+}
+
+/**
+ * Select the automatic datasets for a window and the job's country. A dataset already selected (by hand) keeps its manual
+ * selection. The countries in scope — the job's and its included sites' — are read here, from the job.
+ */
+export async function selectAutomaticDatasets(db: Queryable, organisationId: string, jobId: string, window: ReportingWindow, countryCode: string, actorId: string,
+  options: { perYear?: boolean } = {}): Promise<void> {
+  // `perYear: false` is today's rule whole: one edition per series, for the job's own country alone.
+  const scope = options.perYear === false ? undefined : await jobCountryScope(db, organisationId, jobId, countryCode);
+  for (const pick of await automaticDatasetsFor(db, organisationId, window, countryCode, scope, options)) {
     await db.query(
       `INSERT INTO nzi_console.job_dataset_selections (organisation_id,job_id,dataset_id,selection_source,reason,selected_by)
        VALUES ($1,$2,$3,'automatic',$4,$5) ON CONFLICT DO NOTHING`,
-      [organisationId, jobId, pick.datasetId, pick.fallback ? fallbackReason(pick.editionYear) : ON_DAY_REASON, actorId]);
+      [organisationId, jobId, pick.datasetId, selectionReason(pick, window), actorId]);
   }
 }
 
 /**
- * DATASET-CURRENCY §3 (ruled 6 Oct): the newer editions a job could move to. For each of the job's **automatic** selections
- * that is a **fallback** — its edition ends before the job's window does — and whose series (the id without its edition
- * tail, in the same country) now has an edition the rule would pick **on the window's last day**, one update: from → to.
+ * DATASET-CURRENCY §3 (ruled 6 Oct), **per calendar year** (R1): the newer editions a job could move to. For each calendar
+ * year of the window, the automatic selection of each series that serves it — the rule run over the job's own automatic
+ * selections — is checked: where it is a **fallback** for that year (it ends before the year's part of the window does)
+ * and the series now has an edition the rule would pick **on that part's last day**, one update: from → to, for that
+ * year. `keepFrom`: the old edition still serves an earlier year of the window, so the new one is **added** beside it
+ * rather than swapped in. A calendar-year window has one part, so its updates are exactly the single-edition banner's.
  * Read at call time from the same series picks as `automaticDatasetsFor`, so the banner never offers an edition the rule
  * would not choose. No stored marker: a fallback is the edition's validity against the window.
  */
-export type DatasetUpdate = { seriesKey: string; countryCode: string; fromDatasetId: string; toDatasetId: string; fromLabel: string; toLabel: string };
+export type DatasetUpdate = {
+  seriesKey: string; countryCode: string; fromDatasetId: string; toDatasetId: string; fromLabel: string; toLabel: string;
+  /** The calendar years of the window the new edition serves; null for a calendar-year window (the banner as before). */
+  years: number[] | null;
+  /** The old edition stays selected: it still serves an earlier year of the window. */
+  keepFrom: boolean;
+};
+type SelectedEdition = { dataset_id: string; country_code: string; valid_from: string; valid_to: string; source_name: string };
+
+/** Which of a job's selected editions serves each series for one year's part of the window: the rule, over what it holds. */
+function servingEditions(selected: SelectedEdition[], part: YearPart): Map<string, SelectedEdition> {
+  const bySeries = new Map<string, SelectedEdition>();
+  const onDay = (edition: SelectedEdition) => edition.valid_to >= part.to;
+  for (const edition of selected) {
+    if (edition.valid_from > part.to) continue;
+    const key = `${datasetSeriesKey(edition.dataset_id)}|${edition.country_code}`;
+    const held = bySeries.get(key);
+    if (!held || (onDay(edition) && !onDay(held)) || (onDay(edition) === onDay(held) && edition.valid_from > held.valid_from)) bySeries.set(key, edition);
+  }
+  return bySeries;
+}
+
 export async function jobDatasetUpdates(db: Queryable, organisationId: string, jobId: string): Promise<DatasetUpdate[]> {
   const config = (await db.query<{ reporting_from: string; reporting_to: string; country_code: string }>(
     `SELECT reporting_from::text AS reporting_from, reporting_to::text AS reporting_to, country_code FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`,
     [organisationId, jobId])).rows[0];
   if (!config) return [];
-  const selected = (await db.query<{ dataset_id: string; country_code: string; valid_from: string; valid_to: string; source_name: string }>(
+  const selected = (await db.query<SelectedEdition>(
     `SELECT d.dataset_id, d.country_code, d.valid_from::text AS valid_from, d.valid_to::text AS valid_to, d.source_name
        FROM nzi_console.job_dataset_selections s JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
-      WHERE s.organisation_id = $1 AND s.job_id = $2 AND s.selection_source = 'automatic' AND d.valid_to < $3::date`,
-    [organisationId, jobId, config.reporting_to])).rows;
-  if (selected.length === 0) return [];
-  const onDay = (await automaticDatasetsFor(db, organisationId, { from: config.reporting_from, to: config.reporting_to }, config.country_code)).filter((pick) => !pick.fallback);
-  const updates: DatasetUpdate[] = [];
-  for (const from of selected) {
-    const seriesKey = datasetSeriesKey(from.dataset_id);
-    const to = onDay.find((pick) => pick.countryCode === from.country_code && datasetSeriesKey(pick.datasetId) === seriesKey && pick.datasetId !== from.dataset_id);
-    if (!to) continue;
-    const target = (await db.query<{ valid_from: string; valid_to: string; source_name: string }>(
-      `SELECT valid_from::text AS valid_from, valid_to::text AS valid_to, source_name FROM nzi_console.emission_factor_datasets WHERE organisation_id = $1 AND dataset_id = $2`,
-      [organisationId, to.datasetId])).rows[0]!;
-    updates.push({ seriesKey, countryCode: from.country_code, fromDatasetId: from.dataset_id, toDatasetId: to.datasetId,
-      fromLabel: datasetDisplayLabel({ datasetId: from.dataset_id, countryCode: from.country_code, validFrom: from.valid_from, validTo: from.valid_to, sourceName: from.source_name }),
-      toLabel: datasetDisplayLabel({ datasetId: to.datasetId, countryCode: to.countryCode, validFrom: target.valid_from, validTo: target.valid_to, sourceName: target.source_name }) });
+      WHERE s.organisation_id = $1 AND s.job_id = $2 AND s.selection_source = 'automatic' ORDER BY d.dataset_id`,
+    [organisationId, jobId])).rows;
+  if (!selected.some((edition) => edition.valid_to < config.reporting_to)) return [];
+  const scope = await jobCountryScope(db, organisationId, jobId, config.country_code);
+  const parts = windowYearParts({ from: config.reporting_from, to: config.reporting_to });
+  const served = parts.map((part) => ({ part, bySeries: servingEditions(selected, part) }));
+  const updates = new Map<string, DatasetUpdate>();
+  for (const { part, bySeries } of served) {
+    const fallbacks = [...bySeries.values()].filter((edition) => edition.valid_to < part.to);
+    if (fallbacks.length === 0) continue;
+    const onDay = (await automaticDatasetsFor(db, organisationId, part, config.country_code, scope)).filter((pick) => !pick.fallback);
+    for (const from of fallbacks) {
+      const seriesKey = datasetSeriesKey(from.dataset_id);
+      const to = onDay.find((pick) => pick.countryCode === from.country_code && datasetSeriesKey(pick.datasetId) === seriesKey && pick.datasetId !== from.dataset_id);
+      if (!to) continue;
+      const key = `${from.dataset_id}>${to.datasetId}`;
+      const held = updates.get(key);
+      if (held) { held.years?.push(part.year); continue; }
+      const target = (await db.query<{ valid_from: string; valid_to: string; source_name: string }>(
+        `SELECT valid_from::text AS valid_from, valid_to::text AS valid_to, source_name FROM nzi_console.emission_factor_datasets WHERE organisation_id = $1 AND dataset_id = $2`,
+        [organisationId, to.datasetId])).rows[0]!;
+      // The old edition stays where it still serves an earlier year of the window — that year's own, or its fallback.
+      const keepFrom = served.some((other) => other.part.year < part.year && [...other.bySeries.values()].some((edition) => edition.dataset_id === from.dataset_id));
+      updates.set(key, { seriesKey, countryCode: from.country_code, fromDatasetId: from.dataset_id, toDatasetId: to.datasetId,
+        fromLabel: datasetDisplayLabel({ datasetId: from.dataset_id, countryCode: from.country_code, validFrom: from.valid_from, validTo: from.valid_to, sourceName: from.source_name }),
+        toLabel: datasetDisplayLabel({ datasetId: to.datasetId, countryCode: to.countryCode, validFrom: target.valid_from, validTo: target.valid_to, sourceName: target.source_name }),
+        years: parts.length > 1 ? [part.year] : null, keepFrom });
+    }
   }
-  return updates.sort((a, b) => datasetPreferenceRank(a.fromDatasetId, a.countryCode) - datasetPreferenceRank(b.fromDatasetId, b.countryCode) || a.toLabel.localeCompare(b.toLabel));
+  return [...updates.values()].sort((a, b) => datasetPreferenceRank(a.fromDatasetId, a.countryCode) - datasetPreferenceRank(b.fromDatasetId, b.countryCode) || a.toLabel.localeCompare(b.toLabel));
 }
 
 /**
