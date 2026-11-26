@@ -1186,6 +1186,10 @@ jobs:
       # one per idempotency key, and still stubbed for a non-NZI recipient on the isolated boundary.
       - name: Templated email renders strictly, multipart, and queues through the phase-1 sender
         run: npx tsx --test packages/isolated-backend/tests/templatedEmailReal.test.ts
+      # Migration 0239 (PLAN-library-2026-dataset-name): the 2026 editions named "DESNZ GHG Conversion Factors 2026", the name only —
+      # the version, cited by rows' provenance, untouched; no other dataset; run again, nothing changes.
+      - name: Migration 0239 names the 2026 editions, never their version or any other dataset
+        run: npx tsx --test packages/isolated-backend/tests/migration0239Real.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
