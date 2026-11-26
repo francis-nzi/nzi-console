@@ -173,7 +173,7 @@ type JobRow = {
   job_id: string; client_id: string; job_family: WorkflowJobFamily; status: string; source_system: string | null; version: number;
   start_date: string | null; due_date: string | null; period_start: string | null; period_end: string | null; reporting_year: number | null; milestone_template_id: string | null;
 };
-export type ScheduleFields = { startDate: string | null; reportingPeriodStart: string | null; reportingPeriodEnd: string | null; reportingYear: number | null; milestoneTemplateId: string | null };
+export type ScheduleFields = { startDate: string | null; dueDate: string | null; reportingPeriodStart: string | null; reportingPeriodEnd: string | null; reportingYear: number | null; milestoneTemplateId: string | null };
 export type DatasetChange = {
   window: { before: ReportingWindow | null; after: ReportingWindow } | null;
   /** J2: the automatic selections deleted, and those re-derived for the new window. */
@@ -187,7 +187,7 @@ export type DatasetChange = {
 export type JobUpdatePlan = {
   jobId: string; jobVersion: number; clientId: string; family: WorkflowJobFamily; imported: boolean; status: string;
   before: ScheduleFields; after: ScheduleFields;
-  changed: { startDate: boolean; period: boolean; template: boolean };
+  changed: { startDate: boolean; dueDate: boolean; period: boolean; template: boolean };
   /** Refusals, as field issues. Empty ⇒ the command may apply the plan. */
   issues: Array<{ field: string; code: string; message: string }>;
   periodBound: PeriodBoundFinding[];
@@ -209,15 +209,18 @@ export async function planJobUpdate(db: Queryable, organisationId: string, input
        FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2 ${options.lock ? "FOR UPDATE" : ""}`, [organisationId, input.jobId]);
   if (!job) return null;
   const has = <K extends keyof typeof input>(key: K) => input[key] !== undefined;
-  const before: ScheduleFields = { startDate: job.start_date, reportingPeriodStart: job.period_start, reportingPeriodEnd: job.period_end, reportingYear: job.reporting_year, milestoneTemplateId: job.milestone_template_id };
+  const before: ScheduleFields = { startDate: job.start_date, dueDate: job.due_date, reportingPeriodStart: job.period_start, reportingPeriodEnd: job.period_end, reportingYear: job.reporting_year, milestoneTemplateId: job.milestone_template_id };
   const next = {
     startDate: has("startDate") ? input.startDate! : job.start_date,
+    // Addendum B, extended 26 Nov (ruled): the job's own due date is edited here too, under the same owner rule.
+    dueDate: has("dueDate") ? input.dueDate! : job.due_date,
     reportingPeriodStart: has("reportingPeriodStart") ? input.reportingPeriodStart ?? null : job.period_start,
     reportingPeriodEnd: has("reportingPeriodEnd") ? input.reportingPeriodEnd ?? null : job.period_end,
     milestoneTemplateId: has("milestoneTemplateId") ? input.milestoneTemplateId ?? null : job.milestone_template_id,
   };
   const changed = {
     startDate: next.startDate !== job.start_date,
+    dueDate: next.dueDate !== job.due_date,
     period: next.reportingPeriodStart !== job.period_start || next.reportingPeriodEnd !== job.period_end,
     template: next.milestoneTemplateId !== job.milestone_template_id,
   };
@@ -225,15 +228,15 @@ export async function planJobUpdate(db: Queryable, organisationId: string, input
   const imported = job.source_system !== null;
   const withPeriod = familyHasReportingPeriod(job.job_family);
 
-  if (!changed.startDate && !changed.period && !changed.template) issues.push({ field: "jobId", code: "NO_CHANGE", message: "Nothing to change." });
+  if (!changed.startDate && !changed.dueDate && !changed.period && !changed.template) issues.push({ field: "jobId", code: "NO_CHANGE", message: "Nothing to change." });
   if (CLOSED.has(job.status)) issues.push({ field: "jobId", code: "JOB_CLOSED", message: `This job is ${job.status}; reopen it before changing its schedule.` });
   // Addendum B (ruled 25 Nov 2026): an imported job's dates are editable here too — the console then owns the date it edits
   // (job_date_owners, 0238) and a later sync flags V7's difference instead of overwriting it. J3's IMPORTED_FROM_V7 is retired.
   if (!withPeriod && changed.period) issues.push({ field: "reportingPeriodStart", code: "NO_PERIOD_FOR_FAMILY", message: "Only a carbon-reporting job has a reporting period." });
-  if (changed.startDate || changed.period) {
-    for (const issue of jobDateIssues({ startDate: next.startDate ?? "", dueDate: job.due_date ?? "", reportingPeriodStart: next.reportingPeriodStart, reportingPeriodEnd: next.reportingPeriodEnd }, { family: job.job_family })) {
-      // An imported job's due date is V7's and may predate a date it never checked; only the dates this save moves are judged.
-      if (imported && issue.field === "dueDate") continue;
+  if (changed.startDate || changed.dueDate || changed.period) {
+    for (const issue of jobDateIssues({ startDate: next.startDate ?? "", dueDate: next.dueDate ?? "", reportingPeriodStart: next.reportingPeriodStart, reportingPeriodEnd: next.reportingPeriodEnd }, { family: job.job_family })) {
+      // An imported job's due date is V7's and may predate a date it never checked; it is judged only when this save moves it.
+      if (imported && issue.field === "dueDate" && !changed.dueDate) continue;
       issues.push(issue);
     }
   }
@@ -361,9 +364,9 @@ function jobUpdateHandler(input: CommandInputMap["job.update"], context: Command
 
     const { rows: [saved] } = await db.query<{ version: number }>(
       `UPDATE nzi_console.jobs SET start_date = $4::date, reporting_period_start = $5::date, reporting_period_end = $6::date, reporting_year = $7,
-              milestone_template_id = $8, version = version + 1, updated_at = now()
+              milestone_template_id = $8, due_date = $9::date, version = version + 1, updated_at = now()
         WHERE organisation_id = $1 AND job_id = $2 AND version = $3 RETURNING version`,
-      [org, input.jobId, input.expectedVersion, plan.after.startDate, plan.after.reportingPeriodStart, plan.after.reportingPeriodEnd, plan.after.reportingYear, plan.after.milestoneTemplateId]);
+      [org, input.jobId, input.expectedVersion, plan.after.startDate, plan.after.reportingPeriodStart, plan.after.reportingPeriodEnd, plan.after.reportingYear, plan.after.milestoneTemplateId, plan.after.dueDate]);
     if (!saved) throw new VersionConflictError(input.expectedVersion, plan.jobVersion + 1);
 
     const repriced: JobUpdateResult["repriced"] = { rows: 0, series: [] };
@@ -443,7 +446,7 @@ function jobUpdateHandler(input: CommandInputMap["job.update"], context: Command
 
     // Addendum B.2: an imported job's date edited here is the console's from now on; a later sync flags V7's instead.
     const ownedDates = origin === "console" && plan.imported
-      ? [...(plan.changed.startDate ? ["start_date"] : []), ...(plan.changed.period ? ["reporting_period"] : [])]
+      ? [...(plan.changed.startDate ? ["start_date"] : []), ...(plan.changed.dueDate ? ["due_date"] : []), ...(plan.changed.period ? ["reporting_period"] : [])]
       : [];
     for (const dateKey of ownedDates) await recordDateOwner(db, context, input.jobId, dateKey, "console", "edited", null);
 

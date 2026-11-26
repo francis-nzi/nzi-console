@@ -231,10 +231,10 @@ async function loadJob(db: Queryable, org: string, job: ConsoleJob, planned: Pla
     if (same(row.legacy_values, current)) { unchanged += 1; continue; }
     if (row.updated_by.startsWith(MILESTONE_RUN_PREFIX)) {
       writes.push({ action: "update", milestone: milestone ?? { kind, legacyDbId: `${planned.v7JobId}:${kind}`, dueDate: null, completedAt: null, completedByLabel: null, legacyValues: NOTHING } });
-    } else if ((milestone?.completedAt ?? null) === null) {
+    } else if ((milestone?.completedAt ?? null) === null && row.completed_at === null) {
       // Addendum B.2 (ruled 25 Nov 2026): a due date edited in the console is the console's. V7's is recorded (and the job
-      // shows the difference, with Use V7's / Keep the console's) but not written. Its completion is still V7's to report:
-      // a completion V7 records on a console-edited milestone stays a conflict, for a person.
+      // shows the difference, with Use V7's / Keep the console's) but not written. Only where neither side records a
+      // completion: a completion on either side of a console-edited milestone stays a conflict, for a person.
       await observeV7Date(db, org, job.jobId, `milestone:${kind}`, milestone?.dueDate ?? null, null, runId);
       unchanged += 1;
     } else {

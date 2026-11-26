@@ -817,8 +817,8 @@ export type CommandInputMap = {
   /** Edit a job's start date, reporting period and milestone template (ruled job-update-plan.md, J1–J6). A field
    *  left out is unchanged. A period change needs a reason (J5). Addendum B (25 Nov 2026): an imported job's dates are
    *  editable too (the console then owns them), and a period with data may move — its datasets re-chosen and rows re-priced —
-   *  unless the job has issued figures. */
-  "job.update": { jobId: string; expectedVersion: number; startDate?: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null; milestoneTemplateId?: string | null };
+   *  unless the job has issued figures. The job's own due date is edited here too, under the same owner rule. */
+  "job.update": { jobId: string; expectedVersion: number; startDate?: string; dueDate?: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null; milestoneTemplateId?: string | null };
   /**
    * Addendum B.2 — a date that differs from V7's: "Use V7's dates" (applied through job.update, or the milestone's due date
    * set; V7 owns the date again) or "Keep the console's" (the console keeps it; that V7 value is acknowledged). The
@@ -2287,16 +2287,17 @@ export const commandDefinitions: { [K in CommandKey]: CommandDefinition<K> } = {
   } },
   // job.update (ruled J1–J6). The guards that need the job and its data (closed, imported, family, period-bound data,
   // and the reason a period change needs) are the command's, where the job is locked; here, only the shape.
-  "job.dates.resolve": { key: "job.dates.resolve", label: "Resolve a date that differs from the previous system", permission: "job.manage", reasonRequired: false, transaction: "date owner + (job.update or milestone due date) + audit + outbox + idempotency", auditAction: "job.dates.resolved", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); if (!(input.dateKey === "start_date" || input.dateKey === "reporting_period" || /^milestone:[a-z0-9_-]+$/.test(input.dateKey ?? ""))) issues.push({ field: "dateKey", code: "INVALID", message: "That is not one of the job's dates." }); if (!isJobDatesChoice(input.choice)) issues.push({ field: "choice", code: "INVALID", message: "Choose the previous system's dates or the console's." }); if (!Number.isInteger(input.observationNo) || input.observationNo < 1) issues.push({ field: "observationNo", code: "INVALID", message: "Which of the previous system's dates is being resolved?" }); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." }); return issues; } },
+  "job.dates.resolve": { key: "job.dates.resolve", label: "Resolve a date that differs from the previous system", permission: "job.manage", reasonRequired: false, transaction: "date owner + (job.update or milestone due date) + audit + outbox + idempotency", auditAction: "job.dates.resolved", validate: (input, context) => { const issues = baseIssues(context, false); required(issues, "jobId", input.jobId); if (!(input.dateKey === "start_date" || input.dateKey === "due_date" || input.dateKey === "reporting_period" || /^milestone:[a-z0-9_-]+$/.test(input.dateKey ?? ""))) issues.push({ field: "dateKey", code: "INVALID", message: "That is not one of the job's dates." }); if (!isJobDatesChoice(input.choice)) issues.push({ field: "choice", code: "INVALID", message: "Choose the previous system's dates or the console's." }); if (!Number.isInteger(input.observationNo) || input.observationNo < 1) issues.push({ field: "observationNo", code: "INVALID", message: "Which of the previous system's dates is being resolved?" }); if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be one or greater." }); return issues; } },
   "job.update": { key: "job.update", label: "Edit a job's schedule", permission: "job.manage", reasonRequired: false, transaction: "job + emissions window + datasets + template milestones + audit + outbox + idempotency", auditAction: "job.updated", validate: (input, context) => {
     const issues = baseIssues(context, false);
     required(issues, "jobId", input.jobId);
     if (!positive(input.expectedVersion)) issues.push({ field: "expectedVersion", code: "INVALID", message: "Expected version must be positive." });
-    for (const field of ["startDate", "reportingPeriodStart", "reportingPeriodEnd"] as const) {
+    for (const field of ["startDate", "dueDate", "reportingPeriodStart", "reportingPeriodEnd"] as const) {
       const value = input[field];
       if (value !== undefined && value !== null && !isCalendarDay(value)) issues.push({ field, code: "INVALID", message: "A date is a calendar date." });
     }
     if (input.startDate === null) issues.push({ field: "startDate", code: "REQUIRED", message: "A job has a start date." });
+    if (input.dueDate === null) issues.push({ field: "dueDate", code: "REQUIRED", message: "A job has a due date." });
     if (input.milestoneTemplateId !== undefined && input.milestoneTemplateId !== null && !text(input.milestoneTemplateId)) issues.push({ field: "milestoneTemplateId", code: "INVALID", message: "Choose a template, or none." });
     return issues;
   } },

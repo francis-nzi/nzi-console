@@ -2,7 +2,7 @@
 // module (no command imports) so the milestone read, the sync and the command can all use it.
 import type { Queryable } from "./postgres";
 
-export type JobDateKey = "start_date" | "reporting_period" | `milestone:${string}`;
+export type JobDateKey = "start_date" | "due_date" | "reporting_period" | `milestone:${string}`;
 
 type Observation = { observation_no: string; v7_from: string | null; v7_to: string | null };
 type Owner = { owner: "console" | "v7"; cause: "edited" | "kept" | "use-v7"; acknowledged_observation_no: string | null };
@@ -43,14 +43,15 @@ const MILESTONE_LABEL = (kind: string) => `${kind.replace(/[-_]/g, " ").replace(
 
 /** The job's dates that differ from V7's latest, unless "Keep the console's" already acknowledged that V7 value. */
 export async function listJobDateDifferences(db: Queryable, org: string, jobId: string): Promise<JobDateDifference[]> {
-  const job = (await db.query<{ start_date: string | null; period_start: string | null; period_end: string | null; source_system: string | null }>(
-    `SELECT start_date::text AS start_date, reporting_period_start::text AS period_start, reporting_period_end::text AS period_end, source_system
+  const job = (await db.query<{ start_date: string | null; due_date: string | null; period_start: string | null; period_end: string | null; source_system: string | null }>(
+    `SELECT start_date::text AS start_date, due_date::text AS due_date, reporting_period_start::text AS period_start, reporting_period_end::text AS period_end, source_system
        FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [org, jobId])).rows[0];
   if (!job || job.source_system === null) return [];
   const milestones = (await db.query<{ kind: string; due_date: string | null }>(
     `SELECT kind, due_date::text AS due_date FROM nzi_console.job_milestones WHERE organisation_id = $1 AND job_id = $2`, [org, jobId])).rows;
   const keys: Array<{ key: JobDateKey; label: string; from: string | null; to: string | null }> = [
     { key: "start_date", label: "Start date", from: job.start_date, to: null },
+    { key: "due_date", label: "Due date", from: job.due_date, to: null },
     { key: "reporting_period", label: "Reporting period", from: job.period_start, to: job.period_end },
     ...milestones.map((m) => ({ key: `milestone:${m.kind}` as JobDateKey, label: MILESTONE_LABEL(m.kind), from: m.due_date, to: null })),
   ];

@@ -48,7 +48,9 @@ export function resolveJobDate(pool: PoolLike, input: CommandInputMap["job.dates
       // and a job with issued figures refuses it — exactly as an edit here would.
       const applied = await updateJobInTransaction(db, {
         jobId: input.jobId, expectedVersion: job.version,
-        ...(input.dateKey === "start_date" ? { startDate: v7.from ?? undefined } : { reportingPeriodStart: v7.from, reportingPeriodEnd: v7.to }),
+        ...(input.dateKey === "start_date" ? { startDate: v7.from ?? undefined }
+          : input.dateKey === "due_date" ? { dueDate: v7.from ?? undefined }
+          : { reportingPeriodStart: v7.from, reportingPeriodEnd: v7.to }),
       }, { ...context, idempotencyKey: `${context.idempotencyKey}:apply` }, "v7-sync");
       version = applied.data.version;
       await recordDateOwner(db, context, input.jobId, input.dateKey, "v7", "use-v7", null);
@@ -65,23 +67,30 @@ export const V7_DATE_SYNC_ACTOR = "system:v7-date-sync";
 export type JobDateSyncOutcome = "unchanged" | "followed" | "held-by-console" | "refused";
 
 /**
- * One imported job's start date and reporting period against V7's, on a sync (the client load calls it for every job it finds
- * already loaded; for a job it has just inserted the dates are V7's and it only records them). The two move in one job.update.
+ * One imported job's start date, due date and reporting period against V7's, on a sync (the client load calls it for every job
+ * it finds already loaded; for a job it has just inserted the dates are V7's and it only records them). What V7 owns moves in
+ * one job.update; what the console owns is left, and the difference is shown.
  */
-export async function syncV7JobDates(db: Queryable, org: string, runId: string, planned: { jobId: string; startDate: string | null; periodStart: string | null; periodEnd: string | null },
+export async function syncV7JobDates(db: Queryable, org: string, runId: string,
+  planned: { jobId: string; startDate: string | null; dueDate?: string | null; periodStart: string | null; periodEnd: string | null },
   inserted: boolean): Promise<{ outcome: JobDateSyncOutcome; refusal?: string }> {
+  const dueDate = planned.dueDate ?? null;
   if (planned.startDate) await observeV7Date(db, org, planned.jobId, "start_date", planned.startDate, null, runId);
+  if (dueDate) await observeV7Date(db, org, planned.jobId, "due_date", dueDate, null, runId);
   if (planned.periodStart && planned.periodEnd) await observeV7Date(db, org, planned.jobId, "reporting_period", planned.periodStart, planned.periodEnd, runId);
   if (inserted) return { outcome: "unchanged" };
-  const job = (await db.query<{ version: number; start_date: string | null; period_start: string | null; period_end: string | null }>(
-    `SELECT version, start_date::text AS start_date, reporting_period_start::text AS period_start, reporting_period_end::text AS period_end
+  const job = (await db.query<{ version: number; start_date: string | null; due_date: string | null; period_start: string | null; period_end: string | null }>(
+    `SELECT version, start_date::text AS start_date, due_date::text AS due_date, reporting_period_start::text AS period_start, reporting_period_end::text AS period_end
        FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [org, planned.jobId])).rows[0];
   if (!job) return { outcome: "unchanged" };
   const startDiffers = planned.startDate !== null && planned.startDate !== job.start_date;
+  const dueDiffers = dueDate !== null && dueDate !== job.due_date;
   const periodDiffers = planned.periodStart !== null && planned.periodEnd !== null && (planned.periodStart !== job.period_start || planned.periodEnd !== job.period_end);
-  const followStart = startDiffers && (await currentDateOwner(db, org, planned.jobId, "start_date"))?.owner !== "console";
-  const followPeriod = periodDiffers && (await currentDateOwner(db, org, planned.jobId, "reporting_period"))?.owner !== "console";
-  if (!followStart && !followPeriod) return { outcome: startDiffers || periodDiffers ? "held-by-console" : "unchanged" };
+  const v7Owns = async (key: string) => (await currentDateOwner(db, org, planned.jobId, key))?.owner !== "console";
+  const followStart = startDiffers && await v7Owns("start_date");
+  const followDue = dueDiffers && await v7Owns("due_date");
+  const followPeriod = periodDiffers && await v7Owns("reporting_period");
+  if (!followStart && !followDue && !followPeriod) return { outcome: startDiffers || dueDiffers || periodDiffers ? "held-by-console" : "unchanged" };
 
   const context: CommandContext = {
     organisationId: org, actorId: V7_DATE_SYNC_ACTOR, principal: "system", idempotencyKey: `${runId}:dates:${planned.jobId}`, correlationId: runId,
@@ -93,6 +102,7 @@ export async function syncV7JobDates(db: Queryable, org: string, runId: string, 
     await updateJobInTransaction(db, {
       jobId: planned.jobId, expectedVersion: job.version,
       ...(followStart ? { startDate: planned.startDate! } : {}),
+      ...(followDue ? { dueDate: dueDate! } : {}),
       ...(followPeriod ? { reportingPeriodStart: planned.periodStart, reportingPeriodEnd: planned.periodEnd } : {}),
     }, context, "v7-sync");
     await db.query("RELEASE SAVEPOINT v7_job_dates");

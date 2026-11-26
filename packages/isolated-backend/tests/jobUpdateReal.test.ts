@@ -329,6 +329,29 @@ describe("job.update on imported jobs (J3), and the v7 loaders after it", { skip
     await assert.rejects(resolveJobDate(database.pool, { jobId: "v7-job-106", expectedVersion: (await job106()).version, dateKey: "reporting_period", observationNo: period!.observationNo + 999, choice: "console" }, context()), issue("observationNo", "OBSERVATION_MOVED"));
   });
 
+  // Ruled 26 Nov: the job's own due date under the same owner rule — V7's recorded and followed where V7 owns it; a console
+  // edit wins and the difference is flagged; the client load no longer compares it.
+  it("the job's own due date: a console edit wins and is flagged; a V7-owned one follows the sync; the load is not refused", async () => {
+    const due = async (jobId: string) => (await q(`SELECT due_date::text AS due FROM nzi_console.jobs WHERE job_id = $1`, [jobId]))[0].due as string | null;
+    const edited = await updateJob(database.pool, { jobId: "v7-job-106", expectedVersion: (await job106()).version, dueDate: "2025-06-30" }, context());
+    assert.deepEqual(edited.data.ownedDates, ["due_date"]);
+    assert.equal(await due("v7-job-106"), "2025-06-30");
+
+    const changed = syntheticRows();
+    Object.assign(changed.jobs.find((row) => row.job_id === "106")!, { reporting_period_start: "2024-03-01", reporting_period_end: "2025-02-28", due_date: "2025-09-30" });
+    // J000613 holds no dates of its own (the extract has none); V7 now gives both, and job.update needs a start beside a due date.
+    Object.assign(changed.jobs.find((row) => row.job_id === "101")!, { start_date: "2026-01-05", due_date: "2027-12-31" });
+    const synced = await loadV7ClientPlan(database.pool, planV7ClientImport({ extract: syntheticExtract(changed), headers: syntheticHeaders(), extractSha256: "s5" }), { commit: true, runId: "clients-5" });
+    assert.deepEqual(synced.clients.filter((client) => client.state === "refused").map((client) => client.refusal), [], "a V7 due-date change no longer refuses the client");
+
+    assert.equal(await due("v7-job-106"), "2025-06-30", "the console's due date is never overwritten");
+    assert.deepEqual((await differences("v7-job-106")).filter((d) => d.dateKey === "due_date").map((d) => [d.owner, d.console.from, d.v7.from]),
+      [["console", "2025-06-30", "2025-09-30"]], "…and V7's is flagged beside it");
+
+    assert.equal(await due("v7-job-101"), "2027-12-31", "a due date the console never edited follows V7");
+    assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE entity_id = 'v7-job-101' AND action = 'job.updated' AND actor_id = $1`, [V7_DATE_SYNC_ACTOR]))[0].n, 1);
+  });
+
   it("the PR 2 backfill refuses a kind job.update generated here, when v7 also records it", async () => {
     const changed = syntheticRows();
     changed.job_plan.push({ ...changed.job_plan.find((row) => row.job_id === "103")!, job_id: "106", final_report_due: "2025-06-30" });

@@ -19,6 +19,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ jobI
     const query = new URL(request.url).searchParams;
     const change: Change = {};
     if (query.has("startDate")) change.startDate = query.get("startDate")!;
+    if (query.has("dueDate")) change.dueDate = query.get("dueDate")!;
     for (const field of ["reportingPeriodStart", "reportingPeriodEnd", "milestoneTemplateId"] as const) {
       if (query.has(field)) change[field] = query.get(field) || null;
     }

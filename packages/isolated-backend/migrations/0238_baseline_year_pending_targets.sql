@@ -46,12 +46,13 @@ ALTER TABLE nzi_console.clients
 -- sync records what V7 says but does not overwrite it, and the job shows the difference with "Use V7's dates" / "Keep the
 -- console's". A date never edited here follows V7 on every sync. Both tables are append-only; the current owner of a date
 -- is its latest row, and a date with no row is V7's (for an imported job).
---   date_key: 'start_date', 'reporting_period' (start and end move together), or 'milestone:<kind>' (a milestone's due date).
+--   date_key: 'start_date', 'due_date' (the job's own), 'reporting_period' (start and end move together), or 'milestone:<kind>'
+--   (a milestone's due date).
 CREATE TABLE nzi_console.job_date_owners (
   organisation_id text NOT NULL,
   owner_no bigint GENERATED ALWAYS AS IDENTITY,
   job_id text NOT NULL,
-  date_key text NOT NULL CHECK (date_key IN ('start_date', 'reporting_period') OR date_key ~ '^milestone:[a-z0-9_-]+$'),
+  date_key text NOT NULL CHECK (date_key IN ('start_date', 'due_date', 'reporting_period') OR date_key ~ '^milestone:[a-z0-9_-]+$'),
   owner text NOT NULL CHECK (owner IN ('console', 'v7')),
   -- edited: a console edit · kept: "Keep the console's" (acknowledges the V7 value it was shown) · use-v7: "Use V7's dates".
   cause text NOT NULL CHECK (cause IN ('edited', 'kept', 'use-v7')),
@@ -70,7 +71,7 @@ CREATE TABLE nzi_console.job_v7_date_observations (
   organisation_id text NOT NULL,
   observation_no bigint GENERATED ALWAYS AS IDENTITY,
   job_id text NOT NULL,
-  date_key text NOT NULL CHECK (date_key IN ('start_date', 'reporting_period') OR date_key ~ '^milestone:[a-z0-9_-]+$'),
+  date_key text NOT NULL CHECK (date_key IN ('start_date', 'due_date', 'reporting_period') OR date_key ~ '^milestone:[a-z0-9_-]+$'),
   v7_from date,
   v7_to date,
   run_id text NOT NULL CHECK (btrim(run_id) <> ''),

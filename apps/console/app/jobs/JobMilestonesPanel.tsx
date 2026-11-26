@@ -271,7 +271,7 @@ function PreviewTable({ preview, caption }: { preview: NonNullable<JobUpdatePlan
   </table>;
 }
 
-type ScheduleChange = { startDate?: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null; milestoneTemplateId?: string | null };
+type ScheduleChange = { startDate?: string; dueDate?: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null; milestoneTemplateId?: string | null };
 const datasetList = (items: Array<{ name: string }>) => items.length ? items.map((item) => item.name).join(", ") : "none";
 
 /** job.update's form: edit, preview (the command's own plan, from the server), then apply. */
@@ -284,6 +284,7 @@ function ScheduleEditor({ view, busy, onCancel, onRun, datesOnly = false }: { vi
   datesOnly?: boolean }) {
   const s = view.schedule;
   const [startDate, setStartDate] = useState(s.startDate ?? "");
+  const [dueDate, setDueDate] = useState(s.dueDate ?? "");
   const [periodStart, setPeriodStart] = useState(s.reportingPeriodStart ?? "");
   const [periodEnd, setPeriodEnd] = useState(s.reportingPeriodEnd ?? "");
   const [templateId, setTemplateId] = useState(view.template?.templateId ?? "");
@@ -295,6 +296,7 @@ function ScheduleEditor({ view, busy, onCancel, onRun, datesOnly = false }: { vi
 
   const change: ScheduleChange = {};
   if (startDate && startDate !== s.startDate) change.startDate = startDate;
+  if (datesOnly && dueDate && dueDate !== s.dueDate) change.dueDate = dueDate;
   if (s.hasPeriod && (periodStart || null) !== s.reportingPeriodStart) change.reportingPeriodStart = periodStart || null;
   if (s.hasPeriod && (periodEnd || null) !== s.reportingPeriodEnd) change.reportingPeriodEnd = periodEnd || null;
   if (!datesOnly && (templateId || null) !== (view.template?.templateId ?? null)) change.milestoneTemplateId = templateId || null;
@@ -318,6 +320,7 @@ function ScheduleEditor({ view, busy, onCancel, onRun, datesOnly = false }: { vi
 
   return <div className="nz-milestones-reschedule">
     <label className="nz-fl">Start date<input className="nz-inp" type="date" value={startDate} required onChange={(event) => edit(setStartDate)(event.target.value)} /></label>
+    {datesOnly ? <label className="nz-fl">Due date<input className="nz-inp" type="date" value={dueDate} required onChange={(event) => edit(setDueDate)(event.target.value)} /></label> : null}
     {s.hasPeriod ? <>
       <label className="nz-fl">Reporting period start<input className="nz-inp" type="date" value={periodStart} onChange={(event) => edit(setPeriodStart)(event.target.value)} /></label>
       <label className="nz-fl">Reporting period end<input className="nz-inp" type="date" value={periodEnd} onChange={(event) => edit(setPeriodEnd)(event.target.value)} /></label>
