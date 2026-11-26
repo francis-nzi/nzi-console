@@ -88,8 +88,9 @@ export function v7FiguresScope(label: string): V7ImportScope | null {
 export const V7_ROW_RECONCILE_REASONS = ["dataset-not-on-job", "unit", "custom-factor", "v7-changed", "no-match"] as const;
 export type V7RowReconcileReason = (typeof V7_ROW_RECONCILE_REASONS)[number];
 /**
- * An edition the previous system priced a row from that the job does not hold, and bringing it in will not add (only the edition the
- * row's factor is from joins the job). The same words on the rows modal's yearly parts and in the bring-in refusal.
+ * An edition the previous system priced a row from that the job does not hold, and bringing it in cannot add: the library holds no
+ * edition of the factor's series for that year (every edition it holds joins the job on bring-in, R1: `v7SpanVintages`). The same
+ * words on the rows modal's yearly parts and in the bring-in refusal.
  */
 export const V7_DATASET_NOT_ON_JOB_WORDS = "add it to the job's datasets first";
 const REASON_WORDS: Record<V7RowReconcileReason, string> = {

@@ -167,13 +167,15 @@ describe("a spanning job with the previous system's own figures read (Datasets P
     assert.deepEqual(scopeLines(OWN, null).map((line) => [line.scope, line.previous, line.agrees]), [["1", 0, true], ["2", 15.306681, true], ["3", 0, true]]);
     assert.ok(markup.includes("✓ Scope totals match the previous system’s own, to 1 decimal place"));
   });
-  it("a part on an edition the job does not hold says what happens, no tick: the pick's own edition joins on accept; another is added first", () => {
+  it("a part on an edition the job does not hold says what happens, no tick: one the library holds joins on accept; a year it holds none of is added first", () => {
     const held = { ...ELEC, parts: [parts[0]!, { ...parts[1]!, issue: "dataset-not-on-job" as const, agrees: true }] };
     const markup = html({ data: { ...OWN, rows: [{ ...SPANNING, pick: held, candidates: [held] }] } });
-    assert.ok(markup.includes("Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 — add it to the job&#x27;s datasets first"));
+    assert.ok(markup.includes("Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 — added to the job when you accept"), "another year's edition, too (R1)");
     assert.ok(!markup.includes("not on the job"));
     const own = { ...ELEC, parts: [{ ...parts[0]!, issue: "dataset-not-on-job" as const }, parts[1]!] };
     assert.equal(partsLine(own), "Apr–Dec 2025 @ DESNZ GB 2025 — added to the job when you accept · Jan–Mar 2026 @ DESNZ GB 2026 ✓");
+    const none = { ...ELEC, parts: [parts[0]!, { ...parts[1]!, datasetId: null, kg: null, tco2e: null, agrees: false, issue: "dataset-not-on-job" as const }] };
+    assert.equal(partsLine(none), "Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 — add it to the job's datasets first", "named as the refusal names it");
   });
   it("a search hit on a row priced over two editions has no figure to compare: one rate cannot be its figure", () => {
     const hit = judgeHit(SPANNING, { datasetId: "uk-ghg-gb-2025", factorId: "uk-ghg-elec-uk", code: "elec-uk", label: "Electricity · UK", unit: "kWh", rate: 0.177, dataset: "DESNZ GB 2025",

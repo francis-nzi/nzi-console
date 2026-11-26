@@ -32,6 +32,7 @@ import {
   type V7RowReconcileReason, type V7SpanningReconcile,
 } from "@nzi/contracts";
 import { AuthorizationError } from "./auth";
+import { v7SpanEditions } from "./monthlyPricing";
 import { readImportPolicy } from "./organisationSettings";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { readConsoleScopeTotals, type V7RowFiguresClient, type V7RowFiguresRead } from "./v7Drift";
@@ -252,16 +253,56 @@ const withOwnTotals = (totals: V7ImportIngestTotals | null, reconcile: V7Spannin
 const notReady = (verdict: string) => ({ field: "jobId", code: "NOT_READY_TO_INGEST",
   message: `The job is ${verdict}, not ready to ingest: every row that differs needs its decision, and every decision must stand.` });
 
+/**
+ * The editions a spanning job's rows were priced from in the previous system (R1: the job's automatic editions, one for each calendar
+ * year its period touches — which a job made before R1 may not hold yet, R2). For each row the plan brings in at a factor: the edition
+ * of that factor's series, in its country, for each of the row's own V7 spans' dataset years, where the library holds one. Bring-in
+ * adds them with the plan's own vintages (ruling 3: added, never removed), so each month is priced at its year's edition, as the
+ * previous system priced it. A year the library holds no edition of is not added; the reconcile names it. Reads only.
+ */
+export async function v7SpanVintages(db: Queryable, organisationId: string, jobId: string,
+  rows: ReadonlyArray<{ v7RowId: string; datasetId?: string | null; factorId?: string | null }>, figures: V7FiguresRowFigures): Promise<string[]> {
+  const atFactor = rows.filter((row) => row.datasetId && row.factorId);
+  if (!atFactor.length) return [];
+  // The plan names the migrated row; its V7 row id is that row's own legacy id (as the reconcile reads it).
+  const legacy = new Map((await db.query<{ scope_row_id: string; legacy_db_id: string | null }>(
+    `SELECT scope_row_id, legacy_db_id FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2 AND scope_row_id = ANY($3::text[])`,
+    [organisationId, jobId, atFactor.map((row) => row.v7RowId)])).rows.map((row) => [row.scope_row_id, row.legacy_db_id]));
+  const own = new Map(figures.rows.map((row) => [v7FiguresRowKey(row), row]));
+  const priced = atFactor.flatMap((row) => {
+    const figure = own.get(legacy.get(row.v7RowId) ?? "");
+    return figure ? [{ datasetId: row.datasetId!, factorId: row.factorId!, figure }] : [];
+  });
+  const editions = await v7SpanEditions(db, organisationId, jobId, priced);
+  const out = new Set<string>();
+  for (const { datasetId, factorId, figure } of priced) for (const span of figure.spans) {
+    // A client's custom value is no edition's (cause 7).
+    if (span.dataset_id === null || span.dataset_year === null) continue;
+    const edition = editions.get(`${datasetId}|${factorId}`)?.get(span.dataset_year);
+    if (edition) out.add(edition.datasetId);
+  }
+  return [...out].sort();
+}
+
 /** The chain, in the caller's transaction, from what `readRefresh` read. Returns whether the re-ingest went through. */
-async function runChain(db: Queryable, read: Refresh, organisationId: string, jobId: string, reason: string, suffix: string, basePlan: Omit<V7ReingestJobInput, "runId">, bringIn = false) {
+async function runChain(db: Queryable, read: Refresh, organisationId: string, jobId: string, reason: string, suffix: string, basePlan: Omit<V7ReingestJobInput, "runId">, bringIn = false,
+  figures: SpanningFigures | null = null) {
   const run: V7ImportIngestRun = { organisationId, jobId, legacyJobNumber: read.legacyJobNumber, reason, extractSha256: read.sourceSha256, rows: read.rows, basePlan };
   const counts: PlanCounts = { committed: 0, decided: 0 };
   const chain = chainInput(run);
   const report: V7RehearsalReport = emptyRehearsalReport(jobId);
   let planSha256: string | null = null;
   const options = chainOptions(run, { decisions: read.decisions, carriedPairGroups: read.resolved.groups.filter((group) => group.moved && group.carried).map((group) => group.pairGroup) }, counts);
+  const own = figures?.spans && figures.read?.ok ? figures.read.body : null;
   const committed = await runV7ResyncChain(db, chain, report, { ...options, reingestReasonSuffix: suffix, bringIn,
-    completePlan: async (db2, replan, superseded) => { const plan = await options.completePlan!(db2, replan, superseded); planSha256 = plan.crosswalkSha256; return plan; } });
+    completePlan: async (db2, replan, superseded) => {
+      const plan = await options.completePlan!(db2, replan, superseded);
+      planSha256 = plan.crosswalkSha256;
+      // A spanning job with the previous system's own figures read: every edition its rows' spans were priced from joins with them.
+      if (!own) return plan;
+      const spanned = await v7SpanVintages(db2, organisationId, jobId, plan.rows, own);
+      return { ...plan, vintageDatasetIds: [...new Set([...plan.vintageDatasetIds, ...spanned])] };
+    } });
   return { committed: committed && report.refusal === null, report, chain, counts, planSha256: planSha256 as string | null };
 }
 
@@ -291,7 +332,7 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
           await tx.query("SAVEPOINT v7_import_refresh_preview");
           try {
             const ran = await runChain(tx, read, context.organisationId, input.jobId, context.reason?.trim() || "import refresh preview", " — refresh preview, rolled back",
-              options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true);
+              options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true, figures);
             // A spanning job: what the chain would bring in, against the previous system's own figures — or refused, the rows named.
             const reconcile = ran.committed ? await assertSpanningReconciles(tx, context.organisationId, input.jobId, figures) : null;
             data = { ...base, outcome: ran.committed ? "would-commit" : "refused",
@@ -330,7 +371,7 @@ export async function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefr
     if (read.resolved.verdict !== "ready-to-ingest") throw new CommandValidationError([notReady(read.resolved.verdict)]);
     await options.within?.(db, "commit");
     const ran = await runChain(db, read, context.organisationId, input.jobId, context.reason!.trim(), " — import refresh",
-      options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true);
+      options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true, figures);
     if (!ran.committed) throw new CommandValidationError(ran.report.refusal?.issues ?? [{ field: "jobId", code: "NOT_COMMITTED", message: "The re-ingest did not commit." }]);
     // A spanning job reconciles with the previous system's own figures or nothing is kept. That is its agreement gate: the recompute
     // the gate below compares with is a single-factor figure, which over two editions is not the previous system's.
