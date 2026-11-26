@@ -25,13 +25,17 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 import {
-  resolveV7Import, v7ImportPeriodIssue, v7ImportSummaryIssues, v7ScopeAgreement,
-  type CommandContext, type V7ImportPeriod, type CommandInputMap, type V7ImportDecision, type V7ImportRefreshCommitted, type V7ImportRefreshException, type V7ImportRefreshPreview,
-  type V7ImportSummary, type V7ReingestJobInput,
+  datasetLabelFromId, datasetSeriesKey, resolveV7Import, v7FiguresRowKey, v7FiguresScope, v7ImportPeriodIssue, v7ImportSummaryIssues, v7PeriodSpansTwoYears, v7ScopeAgreement,
+  v7SpanningReconcile, v7SpanningRefusal, V7_IMPORT_TWO_DATASET_YEARS_UNREAD,
+  type CommandContext, type V7ImportPeriod, type CommandInputMap, type V7FiguresRowFigures, type V7ImportDecision, type V7ImportIngestTotals, type V7ImportRefreshCommitted,
+  type V7ImportRefreshException, type V7ImportRefreshPreview, type V7ImportScope, type V7ImportSummary, type V7ReingestJobInput, type V7RowReconcileInput,
+  type V7RowReconcileReason, type V7SpanningReconcile,
 } from "@nzi/contracts";
 import { AuthorizationError } from "./auth";
 import { readImportPolicy } from "./organisationSettings";
-import { withTenantWrite, type PoolLike, type Queryable } from "./postgres";
+import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
+import { readConsoleScopeTotals, type V7RowFiguresClient, type V7RowFiguresRead } from "./v7Drift";
+import { sameV7Unit } from "./v7Reingest";
 import { CommandValidationError, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
 import type { PlannedRow } from "./v7ClientImport";
 import { currentDecisions, invalidApplied, lockV7Job } from "./v7ImportDecision";
@@ -104,7 +108,34 @@ export type V7ImportRefreshOptions = {
    * (SNAPSHOT_SUPERSEDED), so the report is re-composed from a new snapshot. The job's route sets it; the batch does not.
    */
   allowSnapshotted?: boolean;
+  /**
+   * Datasets Part 2, increment 2: the previous system's own row figures (CONTRACT-v7-import-figures endpoint 2). For a job over two
+   * calendar years they are read once, before the command's transaction, and the preview and the commit reconcile the rows they would
+   * bring in against them (`v7SpanningReconcile`); with no client, or no read, such a job is refused as before. A one-year job never
+   * calls it. The job's routes set it; the batch does not.
+   */
+  rowFigures?: V7RowFiguresClient;
+  /** The read already made for this job (the fast path's preview hands its read to its commit: one call per bring-in). */
+  spanningFigures?: SpanningFigures;
 };
+
+/** What a spanning job's reads and gates are checked against: whether it spans, and the previous system's own figures once read. */
+export type SpanningFigures = { spans: boolean; read: V7RowFiguresRead | null };
+
+/**
+ * For a job over two calendar years: the previous system's own row figures (endpoint 2), read once, outside any transaction. A job in
+ * one year, or with no client to read through, reads nothing. Only the job's V7 id crosses.
+ */
+export async function readSpanningFigures(pool: PoolLike, organisationId: string, jobId: string, client: V7RowFiguresClient | undefined): Promise<SpanningFigures> {
+  const job = await withTenantRead(pool, organisationId, async (db) => ({ period: await readV7ImportPeriod(db, organisationId, jobId),
+    v7JobId: (await db.query<{ legacy_db_id: string | null }>(`SELECT legacy_db_id FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [organisationId, jobId])).rows[0]?.legacy_db_id ?? null }));
+  if (!v7PeriodSpansTwoYears(job.period)) return { spans: false, read: null };
+  if (!client) return { spans: true, read: null };
+  return { spans: true, read: job.v7JobId ? await client({ v7JobId: job.v7JobId }) : { ok: false, reason: "not-found" } };
+}
+
+const spanningFiguresFor = (pool: PoolLike, organisationId: string, jobId: string, options: V7ImportRefreshOptions) =>
+  options.spanningFigures ? Promise.resolve(options.spanningFigures) : readSpanningFigures(pool, organisationId, jobId, options.rowFigures);
 
 export type Refresh = {
   legacyJobNumber: string; sourceSha256: string; rows: readonly PlannedRow[]; v7Categories: V7RowCategories; summary: V7ImportSummary; summarySha256: string;
@@ -148,14 +179,75 @@ export async function readV7ImportPeriod(db: Queryable, organisationId: string, 
 }
 
 /**
- * The two-dataset-year guard (`v7ImportPeriodIssue`): refused before the previous system is read, in the preview and the commit alike
- * — so the modal, the fast path and the batch, which all run through them, are all refused. The command's transaction rolls back:
- * nothing is written.
+ * The period guard (`v7ImportPeriodIssue`), before the previous system's rows are read, in the preview and the commit alike — so the
+ * modal, the fast path and the batch, which all run through them, are all held by it. A job with no period is refused. A job over two
+ * calendar years goes on only with the previous system's own figures in hand (endpoint 2); without them it is refused here, and with
+ * them the chain's result must reconcile with them (`assertSpanningReconciles`). The command's transaction rolls back: nothing written.
  */
-async function assertSingleDatasetYear(db: Queryable, organisationId: string, jobId: string) {
+async function assertPeriodCheckable(db: Queryable, organisationId: string, jobId: string, figures: SpanningFigures) {
   const issue = v7ImportPeriodIssue(await readV7ImportPeriod(db, organisationId, jobId));
-  if (issue) throw new CommandValidationError([issue]);
+  if (!issue) return;
+  if (issue.code === "SPANS_TWO_DATASET_YEARS" && figures.spans && figures.read?.ok) return;
+  throw new CommandValidationError([issue.code === "SPANS_TWO_DATASET_YEARS" ? { ...issue, message: V7_IMPORT_TWO_DATASET_YEARS_UNREAD } : issue]);
 }
+
+/**
+ * The reconcile on a spanning job (Datasets Part 2, increment 2), read back from the table after the chain, in its transaction: the
+ * job's counted rows per scope against the previous system's own enabled rows, and each re-ingested row against its own V7 row. Ids,
+ * scopes and tCO₂e only.
+ */
+export async function reconcileSpanningJob(db: Queryable, organisationId: string, jobId: string, figures: V7FiguresRowFigures): Promise<V7SpanningReconcile> {
+  const live = (await db.query<{ v7_id: string | null; scope: string; tco2e: string | null; dataset_id: string | null; unit: string | null; factor_unit: string | null }>(
+    `SELECT m.legacy_db_id AS v7_id, r.scope, coalesce(r.override_tco2e, r.calculated_tco2e)::text AS tco2e, r.dataset_id, r.unit, f.activity_unit AS factor_unit
+       FROM nzi_console.job_scope_rows r
+       JOIN nzi_console.job_scope_rows m ON (m.organisation_id, m.scope_row_id) = (r.organisation_id, r.reingested_from_row_id)
+       LEFT JOIN nzi_console.emission_factors_display f ON (f.organisation_id, f.dataset_id, f.factor_id) = (r.organisation_id, r.dataset_id, r.factor_id)
+      WHERE r.organisation_id = $1 AND r.job_id = $2 AND r.origin = 'live' AND r.enabled`, [organisationId, jobId])).rows;
+  const selected = (await db.query<{ dataset_id: string; year: number }>(
+    `SELECT d.dataset_id, extract(year FROM d.valid_from)::int AS year FROM nzi_console.job_dataset_selections s
+       JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
+      WHERE s.organisation_id = $1 AND s.job_id = $2`, [organisationId, jobId])).rows;
+  const counted = figures.rows.filter((row) => row.enabled);
+  const previous: Record<V7ImportScope, number> = { "1": 0, "2": 0, "3": 0 };
+  for (const row of counted) { const scope = v7FiguresScope(row.scope); if (scope) previous[scope] += row.tco2e; }
+  const consoleTotals = await readConsoleScopeTotals(db, organisationId, jobId);
+  const byV7 = new Map<string, typeof live>();
+  for (const row of live) if (row.v7_id) byV7.set(row.v7_id, [...(byV7.get(row.v7_id) ?? []), row]);
+  const ownById = new Map(counted.map((row) => [v7FiguresRowKey(row), row]));
+  const ids = [...new Set([...byV7.keys(), ...ownById.keys()])];
+  const rows: V7RowReconcileInput[] = ids.map((id) => {
+    const here = byV7.get(id) ?? [];
+    const own = ownById.get(id) ?? null;
+    const scope = (here[0]?.scope.split(".")[0] ?? (own ? v7FiguresScope(own.scope) : null) ?? "3") as V7ImportScope;
+    const consoleFigure = here.length ? here.reduce((sum, row) => sum + Number(row.tco2e ?? 0), 0) : null;
+    let reason: V7RowReconcileReason | null = null;
+    let detail: string | null = null;
+    if (!here.length || !own) reason = "v7-changed";
+    else if (own.custom_factor) reason = "custom-factor";
+    else {
+      const datasetId = here[0]!.dataset_id;
+      const series = datasetId ? datasetSeriesKey(datasetId) : null;
+      const years = new Set(selected.filter((entry) => series !== null && datasetSeriesKey(entry.dataset_id) === series).map((entry) => entry.year));
+      const missing = series === null ? [] : [...new Set(own.spans.map((span) => span.dataset_year).filter((year): year is number => year !== null && !years.has(year)))];
+      if (missing.length) { reason = "dataset-not-on-job"; detail = missing.map((year) => datasetLabelFromId(`${series}-${year}`)).join(", "); }
+      else if (here.some((row) => row.unit && row.factor_unit && !sameV7Unit(row.unit, row.factor_unit))) reason = "unit";
+    }
+    return { legacyDbId: id, scope, console: consoleFigure, previous: own?.tco2e ?? null, reason, detail };
+  });
+  return v7SpanningReconcile(rows, { console: consoleTotals, previous });
+}
+
+/** Refuses (SPANS_TWO_DATASET_YEARS, the rows named) unless the spanning job's chain reconciles; returns the reconcile when it does. */
+async function assertSpanningReconciles(db: Queryable, organisationId: string, jobId: string, figures: SpanningFigures): Promise<V7SpanningReconcile | null> {
+  if (!figures.spans || !figures.read?.ok) return null;
+  const reconcile = await reconcileSpanningJob(db, organisationId, jobId, figures.read.body);
+  if (!reconcile.reconciles) throw new CommandValidationError(v7SpanningRefusal(reconcile));
+  return reconcile;
+}
+
+/** The preview's and the record's totals on a spanning job: the previous system's own per scope, beside the console's live ones. */
+const withOwnTotals = (totals: V7ImportIngestTotals | null, reconcile: V7SpanningReconcile | null): V7ImportIngestTotals | null => totals && reconcile
+  ? Object.fromEntries(reconcile.scopes.map((entry) => [entry.scope, { v7Tco2e: entry.previous, liveTco2e: totals[entry.scope].liveTco2e }])) as V7ImportIngestTotals : totals;
 
 const notReady = (verdict: string) => ({ field: "jobId", code: "NOT_READY_TO_INGEST",
   message: `The job is ${verdict}, not ready to ingest: every row that differs needs its decision, and every decision must stand.` });
@@ -182,10 +274,11 @@ class PreviewRollback extends Error {}
 export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSource, input: Extract<CommandInputMap["import.refresh"], { mode: "preview" }>,
   context: CommandContext, options: V7ImportRefreshOptions = {}): Promise<V7ImportRefreshPreview> {
   let preview: V7ImportRefreshPreview | null = null;
+  const figures = await spanningFiguresFor(pool, context.organisationId, input.jobId, options);
   try {
     await withTenantWrite(pool, context.organisationId, async (db) => {
       const outcome = await runPostgresCommandInTransaction(db, "import.refresh", input, context, async (tx) => {
-        await assertSingleDatasetYear(tx, context.organisationId, input.jobId);
+        await assertPeriodCheckable(tx, context.organisationId, input.jobId, figures);
         const read = await readRefresh(tx, source, context.organisationId, input.jobId);
         await options.within?.(tx, "preview");
         const base = { mode: "preview" as const, jobId: input.jobId, legacyJobNumber: read.legacyJobNumber, summarySha256: read.summarySha256,
@@ -199,9 +292,11 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
           try {
             const ran = await runChain(tx, read, context.organisationId, input.jobId, context.reason?.trim() || "import refresh preview", " — refresh preview, rolled back",
               options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true);
+            // A spanning job: what the chain would bring in, against the previous system's own figures — or refused, the rows named.
+            const reconcile = ran.committed ? await assertSpanningReconciles(tx, context.organisationId, input.jobId, figures) : null;
             data = { ...base, outcome: ran.committed ? "would-commit" : "refused",
               refusal: ran.committed ? null : ran.report.refusal ?? { stage: "reingest", issues: [{ field: "jobId", code: "NOT_COMMITTED", message: "The re-ingest did not commit." }] },
-              chain: countsOf(ran.report, ran.counts), scopeTotals: ran.committed ? totalsOf(ran.report) : null };
+              chain: countsOf(ran.report, ran.counts), scopeTotals: ran.committed ? withOwnTotals(totalsOf(ran.report), reconcile) : null };
           } finally {
             await tx.query("ROLLBACK TO SAVEPOINT v7_import_refresh_preview");
           }
@@ -222,12 +317,13 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
  * organisation requires an Admin and the caller is not one; when the summary or the decisions moved since the preview; when the
  * job is not ready to ingest; or when any step refuses — D7's reconciliation included.
  */
-export function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSource, input: Extract<CommandInputMap["import.refresh"], { mode: "commit" }>,
+export async function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSource, input: Extract<CommandInputMap["import.refresh"], { mode: "commit" }>,
   context: CommandContext, options: V7ImportRefreshOptions = {}): Promise<StoredOutcome<V7ImportRefreshCommitted>> {
+  const figures = await spanningFiguresFor(pool, context.organisationId, input.jobId, options);
   return runPostgresCommand(pool, "import.refresh", input, context, async (db) => {
     if ((await readImportPolicy(db, context.organisationId)).refreshCommitRequiresAdmin && context.grant?.role !== "admin")
       throw new AuthorizationError("import.refresh", "This organisation requires an Admin to commit a refresh; a preview is still yours to run.");
-    await assertSingleDatasetYear(db, context.organisationId, input.jobId);
+    await assertPeriodCheckable(db, context.organisationId, input.jobId, figures);
     const read = await readRefresh(db, source, context.organisationId, input.jobId);
     if (read.summarySha256 !== input.summarySha256) fail("summarySha256", "SUMMARY_MOVED", "The job's rows have moved since the preview; preview again.");
     if (read.decisionsSha256 !== input.decisionsSha256) fail("decisionsSha256", "DECISIONS_MOVED", "The job's decisions changed since the preview; preview again.");
@@ -236,7 +332,10 @@ export function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSou
     const ran = await runChain(db, read, context.organisationId, input.jobId, context.reason!.trim(), " — import refresh",
       options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true);
     if (!ran.committed) throw new CommandValidationError(ran.report.refusal?.issues ?? [{ field: "jobId", code: "NOT_COMMITTED", message: "The re-ingest did not commit." }]);
-    if (options.requireScopesAgree) {
+    // A spanning job reconciles with the previous system's own figures or nothing is kept. That is its agreement gate: the recompute
+    // the gate below compares with is a single-factor figure, which over two editions is not the previous system's.
+    const reconcile = await assertSpanningReconciles(db, context.organisationId, input.jobId, figures);
+    if (options.requireScopesAgree && !reconcile) {
       // Named by scope, never by figure: the refusal is answered on screen, and the modal shows both totals from its preview.
       const totals = totalsOf(ran.report);
       const off = totals ? v7ScopeAgreement(totals).filter((entry) => !entry.agrees).map((entry) => entry.scope) : ["1", "2", "3"];
@@ -248,7 +347,7 @@ export function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSou
     if (issues.length) throw new CommandValidationError(issues);
     const sessionId = await storeV7ImportSession(db, context, input.jobId, read.summary);
     const record = { sessionId, extractSha256: read.sourceSha256, decisionsSha256: read.decisionsSha256, planSha256: ran.planSha256, outcome: "committed" as const,
-      refusedStage: null, refusalCodes: [], counts: countsOf(ran.report, ran.counts), scopeTotals: totalsOf(ran.report) };
+      refusedStage: null, refusalCodes: [], counts: countsOf(ran.report, ran.counts), scopeTotals: withOwnTotals(totalsOf(ran.report), reconcile) };
     const ingestId = await insertIngest(db, context, input.jobId, "ingest", record, { resync: ran.chain.resyncRunId, reingest: ran.chain.reingestRunId });
     const governedEvents = options.allowSnapshotted ? await supersedeSnapshots(db, context, input.jobId, ingestId) : [];
     const data: V7ImportRefreshCommitted = { mode: "commit", jobId: input.jobId, ingestId, sessionId, resyncRunId: ran.chain.resyncRunId, reingestRunId: ran.chain.reingestRunId,

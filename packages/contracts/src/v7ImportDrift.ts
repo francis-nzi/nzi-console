@@ -18,8 +18,9 @@ export const V7_DRIFT_TOLERANCE_TCO2E = 0.1;
 export const V7_FIGURES_CONTRACT = "v7-import-figures/1";
 
 export type V7DriftOutcome = "level" | "behind" | "unknown";
-export type V7DriftTrigger = "admin" | "publish" | "nightly";
-export const V7_DRIFT_TRIGGERS: readonly V7DriftTrigger[] = ["admin", "publish", "nightly"];
+/** When a check ran: from the Admin list, just before a publish, nightly, or straight after a bring-in (0237). */
+export type V7DriftTrigger = "admin" | "publish" | "nightly" | "bring-in";
+export const V7_DRIFT_TRIGGERS: readonly V7DriftTrigger[] = ["admin", "publish", "nightly", "bring-in"];
 /** Why a check is unknown: a code, never a message from V7. */
 export type V7DriftUnknownReason = "not-configured" | "unreachable" | "timeout" | "not-found" | "cannot-compute" | "busy" | "contract" | "refused";
 

@@ -106,6 +106,22 @@ describe("the refresh route: who, which job, a fail-closed source, then the comm
     const gated = harness({ commit: (async () => { throw new AuthorizationError("import.refresh", "This organisation requires an Admin to commit a refresh."); }) as never });
     assert.equal((await handleImportRefresh(post({ mode: "commit", ...SHAS }), "job-1", gated.deps)).status, 403);
   });
+  it("after a bring-in, a drift check of the job (Datasets Part 2, increment 2): after a commit and after the fast path's — never on a replay, a preview or a refusal", async () => {
+    const checked: Array<[string, string]> = [];
+    const afterBringIn = async (_principal: unknown, jobId: string, correlationId: string) => { checked.push([jobId, correlationId]); };
+    await handleImportRefresh(post({ mode: "commit", ...SHAS }), "job-1", harness({ afterBringIn }).deps);
+    assert.deepEqual(checked, [["job-1", "c"]]);
+    await handleImportRefresh(post({ mode: "commit", ...SHAS }), "job-1", harness({ afterBringIn,
+      commit: (async () => ({ data: { mode: "commit" }, auditEventId: "a", correlationId: "c", replayed: true })) as never }).deps);
+    await handleImportRefresh(post({ mode: "preview" }), "job-1", harness({ afterBringIn }).deps);
+    await handleImportRefresh(post({ mode: "auto" }), "job-1", harness({ afterBringIn }).deps);
+    await handleImportRefresh(post({ mode: "commit", ...SHAS }), "job-1", harness({ afterBringIn,
+      commit: (async () => { throw new CommandValidationError([{ field: "jobId", code: "SPANS_TWO_DATASET_YEARS", message: "x" }]); }) as never }).deps);
+    assert.deepEqual(checked, [["job-1", "c"]], "a replay, a preview, a deliberate fast path and a refusal bring nothing in");
+    await handleImportRefresh(post({ mode: "auto" }), "job-1", harness({ afterBringIn,
+      fastPath: (async () => ({ fastPath: "refreshed", preview: PREVIEW_BASE, committed: {}, auditEventId: "a", correlationId: "fp", replayed: false })) as never }).deps);
+    assert.deepEqual(checked, [["job-1", "c"], ["job-1", "fp"]]);
+  });
 });
 
 describe("Phase D: the fast path is one action at the route, over the unchanged command", () => {
@@ -190,7 +206,11 @@ describe("the committed plan, passed explicitly from a known server location", (
     // BRIEF-v7-import-rows-modal §B: from the job, a commit is refused unless every scope agrees to one decimal place.
     assert.match(route, /requireScopesAgree: true,/);
     // BRIEF-v7-import-j000663 §B: from the job, a person may bring in on a snapshotted job (the batch's route never does).
-    assert.match(route, /allowSnapshotted: true \}\)/);
+    assert.match(route, /allowSnapshotted: true,/);
+    // Datasets Part 2, increment 2: the previous system's own row figures for a spanning job, and a drift check after each bring-in.
+    assert.match(route, /rowFigures: liveRowFiguresClient\(\) \}\)/);
+    assert.match(route, /afterBringIn: checkAfterBringIn,/);
+    assert.match(read("api/isolated/jobs/[jobId]/import-refresh/rows/route.ts"), /rowFigures: liveRowFiguresClient\(\) \}\)/);
   });
 });
 

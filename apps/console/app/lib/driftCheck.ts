@@ -1,5 +1,8 @@
 import "server-only";
-import { checkV7Drift, runV7DriftChecks, v7FiguresClientFromEnv, V7FiguresConnectionRefused, withTenantRead, type StaffPrincipal, type V7FiguresClient } from "@nzi/isolated-backend";
+import {
+  checkV7Drift, runV7DriftChecks, v7FiguresClientFromEnv, V7FiguresConnectionRefused, v7RowFiguresClientFromEnv, withTenantRead,
+  type StaffPrincipal, type V7FiguresClient, type V7RowFiguresClient,
+} from "@nzi/isolated-backend";
 import { isolatedPool } from "./isolatedDatabase";
 
 /**
@@ -12,6 +15,31 @@ export function liveFiguresClient(): V7FiguresClient {
     if (!(error instanceof V7FiguresConnectionRefused)) throw error;
     console.error(JSON.stringify({ event: "v7-figures.refused", reason: error.message }));
     return async () => ({ ok: false, reason: "refused" });
+  }
+}
+
+/**
+ * The contract's endpoint 2 (the previous system's own row figures), for the rows modal and the spanning job's bring-in: the same
+ * credential and guard as endpoint 1, through the process's pace. Refused URL → every read is `refused`, logged by name.
+ */
+export function liveRowFiguresClient(): V7RowFiguresClient {
+  try { return v7RowFiguresClientFromEnv(process.env); } catch (error) {
+    if (!(error instanceof V7FiguresConnectionRefused)) throw error;
+    console.error(JSON.stringify({ event: "v7-figures.refused", reason: error.message }));
+    return async () => ({ ok: false, reason: "refused" });
+  }
+}
+
+/**
+ * Straight after a bring-in (Datasets Part 2, increment 2): a check of the job against the previous system's totals, stored (0237's
+ * `bring-in` trigger), so its banner and the publish gate read what was just brought in. Never throws: the bring-in has happened.
+ */
+export async function checkAfterBringIn(principal: StaffPrincipal, jobId: string, correlationId: string): Promise<void> {
+  try {
+    await checkV7Drift(isolatedPool(), liveFiguresClient(), principal.organisationId, jobId,
+      { trigger: "bring-in", requestedBy: principal.userId, correlationId, principal: "staff" });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "v7-drift.bring-in-check-failed", jobId, error: error instanceof Error ? error.name : "unknown" }));
   }
 }
 

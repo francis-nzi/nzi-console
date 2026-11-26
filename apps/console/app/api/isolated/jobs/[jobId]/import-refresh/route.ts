@@ -2,6 +2,7 @@ import { commitV7ImportRefresh, previewV7ImportRefresh, refreshV7ImportFastPath,
 import { authFailure } from "../../../../../lib/authResponse";
 import { requireCommandPrincipal } from "../../../../../lib/commandAuth";
 import { commandContext, commandFailure, commandSuccess } from "../../../../../lib/commandResponse";
+import { checkAfterBringIn, liveRowFiguresClient } from "../../../../../lib/driftCheck";
 import { importRefreshPlanOptions } from "../../../../../lib/importRefreshPlan";
 import { handleImportRefresh } from "../../../../../lib/importRefreshHandler";
 import { readImportRefreshState } from "../../../../../lib/importRefreshState";
@@ -34,7 +35,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ job
         [principal.organisationId, id])).rows[0]?.legacy_job_number ?? null)), requireScopesAgree: true,
       // BRIEF-v7-import-j000663 §B: bring-in on a snapshotted job, the snapshot kept and recorded as superseded. The fast path never
       // brings in on one (it turns this off itself); only a person's commit here does.
-      allowSnapshotted: true }),
+      allowSnapshotted: true,
+      // Datasets Part 2, increment 2: a job over two calendar years is brought in only once it reconciles with the previous system's
+      // own row figures (endpoint 2), read once per action under the process's pace.
+      rowFigures: liveRowFiguresClient() }),
     preview: previewV7ImportRefresh, commit: commitV7ImportRefresh, fastPath: refreshV7ImportFastPath, success: commandSuccess, failure: commandFailure,
+    afterBringIn: checkAfterBringIn,
   });
 }

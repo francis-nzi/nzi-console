@@ -78,7 +78,14 @@ export type V7MatchRow = {
  * job-year anchor — the previous system's own factor (or, for a variant row, its core code) in the job's reporting-year dataset, at
  * the previous system's own rate.
  */
-export type V7MatchFactor = { rate: number | null; scopes: readonly string[]; categories: readonly string[]; sameUnit: boolean; anchor?: boolean };
+export type V7MatchFactor = {
+  rate: number | null; scopes: readonly string[]; categories: readonly string[]; sameUnit: boolean; anchor?: boolean;
+  /**
+   * The row's figure with this factor priced by month across editions (a job over two calendar years, from the previous system's
+   * own spans: `priceByV7Spans`), in place of quantity × rate. Null when it cannot be priced so; absent on a calendar-year job.
+   */
+  priced?: number | null;
+};
 export type V7MatchResult = {
   /** This row's tCO2e with the factor (quantity × rate × apportionment), or null when it cannot be worked out. */
   tco2e: number | null;
@@ -120,8 +127,8 @@ function basisOf(row: V7MatchRow, factor: V7MatchFactor, familyless: readonly st
 /** One candidate, judged: its figure for this row, the verdict against the previous system's, and its basis. */
 export function v7MatchCandidate(row: V7MatchRow, factor: V7MatchFactor, familyless: readonly string[]): V7MatchResult {
   const basis = basisOf(row, factor, familyless);
-  if (row.quantity === null || factor.rate === null || !Number.isFinite(factor.rate)) return { tco2e: null, delta: null, verdict: "no-figure", ...basis };
-  const tco2e = round6(row.quantity * factor.rate * (row.applyPct / 100) / 1000);
+  if (row.quantity === null || factor.rate === null || !Number.isFinite(factor.rate) || factor.priced === null) return { tco2e: null, delta: null, verdict: "no-figure", ...basis };
+  const tco2e = round6(factor.priced !== undefined ? factor.priced : row.quantity * factor.rate * (row.applyPct / 100) / 1000);
   if (row.previousTco2e === null) return { tco2e, delta: null, verdict: "no-figure", ...basis };
   const delta = round6(tco2e - row.previousTco2e);
   // A zero rate gives a zero whatever it is: it reproduces only as the job-year anchor, never on the figure alone (§4).

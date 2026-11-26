@@ -323,8 +323,8 @@ export {
 } from "./v7ImportDecision";
 export { readV7ImportIngestState, v7ImportDecisionsSha256, type V7ImportIngestEntry, type V7ImportIngestState } from "./v7ImportIngest";
 export {
-  commitV7ImportRefresh, committedV7CrosswalkPlan, previewV7ImportRefresh, v7ImportRefreshSummarySha256, v7ImportViewSource,
-  type V7ImportRefreshOptions, type V7ImportRefreshSource,
+  commitV7ImportRefresh, committedV7CrosswalkPlan, previewV7ImportRefresh, readSpanningFigures, reconcileSpanningJob, v7ImportRefreshSummarySha256, v7ImportViewSource,
+  type SpanningFigures, type V7ImportRefreshOptions, type V7ImportRefreshSource,
 } from "./v7ImportRefresh";
 export {
   readV7ImportMapping, v7JobIsTotalsOnly, V7_SCOPE_TOTAL_CODE,
@@ -332,7 +332,7 @@ export {
 } from "./v7ImportMapping";
 export {
   acceptV7ImportRows, readV7ImportRows, searchV7ImportFactors, v7ImportRowsAcceptIssues, V7_IMPORT_ROW_LANES, V7_IMPORT_ROWS_ACCEPT_MAX,
-  type V7ImportCandidate, type V7ImportFactorHit, type V7ImportRowLane, type V7ImportRows, type V7ImportRowsAcceptInput, type V7ImportRowsAcceptItem,
+  type V7ImportCandidate, type V7ImportFactorHit, type V7ImportPreviousFigure, type V7ImportRowLane, type V7ImportRows, type V7ImportRowsAcceptInput, type V7ImportRowsAcceptItem,
   type V7ImportRowsAcceptResult, type V7ImportRowsRow,
 } from "./v7ImportRows";
 export {
@@ -348,7 +348,7 @@ export {
 } from "./v7ImportBatch";
 export { createV7ImportViewPool, summariseV7JobFromViews, V7ImportViewConnectionRefused, v7ImportViewPoolConfig } from "./v7ImportView";
 export {
-  checkV7Drift, listV7Drift, readConsoleScopeTotals, readLatestV7Drift, readV7DriftBanner, refuseDriftedPublish, runV7DriftChecks, v7FiguresClientFromEnv,
+  checkV7Drift, listV7Drift, readConsoleScopeTotals, readLatestV7Drift, readV7DriftBanner, refuseDriftedPublish, runV7DriftChecks, v7FiguresClientFromEnv, v7FiguresPacer, v7RowFiguresClientFromEnv,
   V7FiguresConnectionRefused, V7_DRIFT_ACTOR, V7_DRIFT_HISTORY_DEPTH, V7_FIGURES_TIMEOUT_MS,
-  type V7DriftBanner, type V7DriftCheck, type V7DriftCheckOptions, type V7DriftHistoryEntry, type V7DriftListItem, type V7DriftRunOptions, type V7DriftRunResult, type V7FiguresClient, type V7FiguresRead,
+  type V7DriftBanner, type V7DriftCheck, type V7DriftCheckOptions, type V7DriftHistoryEntry, type V7DriftListItem, type V7DriftRunOptions, type V7DriftRunResult, type V7FiguresClient, type V7FiguresRead, type V7RowFiguresClient, type V7RowFiguresRead,
 } from "./v7Drift";

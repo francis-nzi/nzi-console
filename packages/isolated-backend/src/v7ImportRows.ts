@@ -14,9 +14,10 @@
 //      command, no new authority: the route takes `import.decision.set`'s principal, and each write is that command's own check.
 import {
   emissionCategoryTaxonomy, familylessCategories, categoriesForLevels, membersOfCategory, parseFactorId, rankV7Candidates, v7ApplyPct, v7AutoPick, v7CategoryCode,
-  v7CodeKeys, v7FactorKeys, v7ImportPeriodIssue, v7MatchCandidate, V7_IMPORT_SOURCE_SYSTEM,
-  type CommandContext, type CommandInputMap, type MembershipFactor, type V7ImportCarryState, type V7ImportScope, type V7MatchResult, type V7MatchRow,
+  v7CodeKeys, v7FactorKeys, v7FiguresRowKey, v7ImportPeriodIssue, v7MatchCandidate, V7_IMPORT_SOURCE_SYSTEM, V7_IMPORT_TWO_DATASET_YEARS_UNREAD,
+  type CommandContext, type CommandInputMap, type MembershipFactor, type V7FiguresRow, type V7ImportCarryState, type V7ImportScope, type V7MatchResult, type V7MatchRow,
 } from "@nzi/contracts";
+import { priceByV7Spans, v7SpanEditions, type V7SpanPart } from "./monthlyPricing";
 import { assertCapabilityOnClient, type CapabilityHolder } from "./access";
 import { AuthorizationError } from "./auth";
 import { listCategoryVariants } from "./factorCategoryVariants";
@@ -26,7 +27,7 @@ import { CommandValidationError } from "./postgresCommands";
 import type { PlannedRow } from "./v7ClientImport";
 import { invalidV7ImportMappings, setV7ImportDecision } from "./v7ImportDecision";
 import { buildV7ImportMapping, V7_SCOPE_TOTAL_CODE, type V7ImportMapping, type V7ImportMappingRow } from "./v7ImportMapping";
-import { readV7ImportPeriod, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
+import { readSpanningFigures, readV7ImportPeriod, type SpanningFigures, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
 import { v7UnitAgainstFactor } from "./v7Reingest";
 
 /**
@@ -63,7 +64,15 @@ export type V7ImportCandidate = {
   unitRefusal: string | null;
   /** Why a mapping to it would not save (the decision command's own check), or would be refused when brought in (its unit); or null. */
   invalid: string | null;
+  /**
+   * On a job over two calendar years, with the previous system's own figures read: the row priced with this factor span by span from
+   * V7's own spans (`priceByV7Spans`) — the yearly parts the modal shows ("Apr–Dec 2025 @ DESNZ 2025 ✓"). Null otherwise.
+   */
+  parts: V7SpanPart[] | null;
 };
+
+/** The previous system's own figure for a row (endpoint 2), with its spans; ids, years and numbers only. */
+export type V7ImportPreviousFigure = { tco2e: number; blended: boolean; customFactor: boolean; spans: Array<{ from: string | null; to: string | null; year: number | null; tco2e: number }> };
 
 export type V7ImportRowsRow = V7ImportMappingRow & {
   lane: V7ImportRowLane;
@@ -85,6 +94,8 @@ export type V7ImportRowsRow = V7ImportMappingRow & {
    * accepted decision included: it goes back to Need a match) — or null. Shown on the row.
    */
   held: string | null;
+  /** The previous system's own figure for the row (endpoint 2), on a job over two calendar years once read; null otherwise. */
+  previousSystem: V7ImportPreviousFigure | null;
 };
 
 export type V7ImportRows = Omit<V7ImportMapping, "rows"> & {
@@ -92,10 +103,14 @@ export type V7ImportRows = Omit<V7ImportMapping, "rows"> & {
   /** The categories no family names: their list is their whole scope, so any factor of it may be filed there. */
   familyless: string[];
   /**
-   * Why the job cannot be brought in for its period (`v7ImportPeriodIssue`: it spans two dataset years, or has none), or null. The
-   * refresh refuses such a job whatever the modal shows; the modal says so at the top and shows no figure as agreeing.
+   * Why the job cannot be brought in for its period, or null: it has none (`v7ImportPeriodIssue`), or it spans two dataset years and
+   * the previous system's own figures could not be read, so nothing can be checked against them. The refresh refuses such a job
+   * whatever the modal shows; the modal says so at the top and shows no figure as agreeing. A spanning job whose figures were read
+   * carries none here: each row is judged against the previous system's own figure, and bringing it in reconciles with them or refuses.
    */
   periodRefusal: string | null;
+  /** The job spans two calendar years and the previous system's own figures were read: each row's `previousSystem` is set. */
+  ownFigures: boolean;
 };
 
 class RowsRollback extends Error {}
@@ -141,12 +156,16 @@ function rowCategories(planned: PlannedRow | undefined, scope: V7ImportScope, ru
  * The rows, for a holder of `import.refresh` on the job (the refresh's own rule), read in a transaction that is always rolled back.
  */
 export async function readV7ImportRows(pool: PoolLike, source: V7ImportRefreshSource, holder: CapabilityHolder, jobId: string,
-  options: Pick<V7ImportRefreshOptions, "basePlan"> = {}): Promise<V7ImportRows> {
+  options: Pick<V7ImportRefreshOptions, "basePlan" | "rowFigures"> = {}): Promise<V7ImportRows> {
+  // A job over two calendar years: the previous system's own figures, read once and outside any transaction — after the caller's
+  // right to read the job is checked, so nobody else's request reaches the previous system.
+  await withTenantRead(pool, holder.organisationId, (db) => assertCapabilityOnClient(db, holder, "import.refresh", { jobId }));
+  const figures = await readSpanningFigures(pool, holder.organisationId, jobId, options.rowFigures);
   let rows: V7ImportRows | null = null;
   try {
     await withTenantWrite(pool, holder.organisationId, async (db) => {
       await assertCapabilityOnClient(db, holder, "import.refresh", { jobId });
-      rows = await buildRows(db, source, holder.organisationId, jobId, options.basePlan);
+      rows = await buildRows(db, source, holder.organisationId, jobId, options.basePlan, figures);
       throw new RowsRollback();
     });
   } catch (error) {
@@ -155,7 +174,7 @@ export async function readV7ImportRows(pool: PoolLike, source: V7ImportRefreshSo
   return rows!;
 }
 
-async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: string, jobId: string, basePlan: V7ImportRefreshOptions["basePlan"]): Promise<V7ImportRows> {
+async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: string, jobId: string, basePlan: V7ImportRefreshOptions["basePlan"], figures: SpanningFigures): Promise<V7ImportRows> {
   const { mapping, read } = await buildV7ImportMapping(db, source, org, jobId, basePlan);
   const planned = new Map(read.rows.map((row) => [row.legacyDbId, row]));
   const library = await categoryReader(db, org);
@@ -192,6 +211,10 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
   // own dataset's year — the edition it priced the row at — not the reporting year's, which prices only the later months.
   const spansYears = jobPeriod?.spans === true;
   const v7CategoryOf = (row: V7ImportMappingRow) => v7CategoryCode(read.v7Categories[row.legacyDbId] ?? planned.get(row.legacyDbId)?.level2 ?? null, row.scope);
+  // Over two calendar years, with the previous system's own figures read (endpoint 2): each row is judged against its own figure, and
+  // each candidate priced by month from that row's own spans — each span's dataset year at the candidate's edition of that year.
+  const ownFigures = figures.read?.ok ? new Map(figures.read.body.rows.map((entry) => [v7FiguresRowKey(entry), entry])) : null;
+  const editions = ownFigures ? await v7SpanEditions(db, org, jobId, factors.map((factor) => ({ datasetId: factor.dataset_id, factorId: factor.factor_id }))) : null;
 
   // Each wanted row's candidates, judged; then whether each would save, in one check.
   const judged = new Map<string, V7ImportCandidate[]>();
@@ -199,7 +222,8 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
     const plan = planned.get(row.legacyDbId)!;
     const record = plan.migratedRecord;
     const keys = keysOf.get(row.legacyDbId)!;
-    const input: V7MatchRow = { scope: row.scope, quantity: record.qty, applyPct: v7ApplyPct(record.apply_pct), previousTco2e: row.previous.tco2e,
+    const ownFigure = ownFigures?.get(row.legacyDbId) ?? null;
+    const input: V7MatchRow = { scope: row.scope, quantity: record.qty, applyPct: v7ApplyPct(record.apply_pct), previousTco2e: ownFigures ? ownFigure?.tco2e ?? null : row.previous.tco2e,
       categories: rowCategories(plan, row.scope, library.rules), v7Category: v7CategoryOf(row) };
     const keyOf = (factor: FactorRow) => factorKeys.get(`${factor.dataset_id}|${factor.factor_id}`)!;
     const isIdentity = (factor: FactorRow) => factor.source_system === V7_IMPORT_SOURCE_SYSTEM && factor.legacy_db_id !== null && factor.legacy_db_id === record.factor_db_id;
@@ -216,12 +240,14 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
       const categories = claimed.get(factor.factor_id) ?? [];
       // The unit, by the rule bringing it in applies (v7UnitAgainstFactor): the same unit, or why it would be refused.
       const unit = v7UnitAgainstFactor(record.uom, factor.activity_unit);
+      const priced = ownFigure && editions ? priceByV7Spans({ quantity: record.qty, months: record.months ?? null, applyPct: input.applyPct, spans: ownFigure.spans,
+        sameUnit: (editionUnit) => v7UnitAgainstFactor(record.uom, editionUnit).sameUnit, editions: editions.get(`${factor.dataset_id}|${factor.factor_id}`) ?? new Map() }) : null;
       return {
         datasetId: factor.dataset_id, factorId: factor.factor_id, code: factor.code, label: factor.label, unit: factor.activity_unit, rate, dataset: factor.dataset,
         identity: isIdentity(factor), exactCode: record.original_id !== null && factor.code.toLowerCase() === record.original_id.trim().toLowerCase(),
         anchor, year: factor.year, scopes: factor.scopes, categories,
-        match: v7MatchCandidate(input, { rate, scopes: factor.scopes, categories, sameUnit: unit.sameUnit, anchor }, library.familyless),
-        unitRefusal: unit.refusal, invalid: null,
+        match: v7MatchCandidate(input, { rate, scopes: factor.scopes, categories, sameUnit: unit.sameUnit, anchor, ...(ownFigures ? { priced: priced?.tco2e ?? null } : {}) }, library.familyless),
+        unitRefusal: unit.refusal, invalid: null, parts: priced?.parts ?? null,
       };
     }));
   }
@@ -266,12 +292,18 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
     return { ...row, lane, held, applyPct: v7ApplyPct(planned.get(row.legacyDbId)?.migratedRecord.apply_pct ?? null),
       categories: rowCategories(planned.get(row.legacyDbId), row.scope, library.rules), v7Category: v7CategoryOf(row),
       pairGroup: summary?.pairGroup ?? null, carry: carryOf.get(row.legacyDbId) ?? null, candidates: needsMap(row) ? candidates : [], pick,
-      totalStillCounted: total && !retiring && row.ownStatus !== "withdrawn" && activityCounted.has(row.scope) };
+      totalStillCounted: total && !retiring && row.ownStatus !== "withdrawn" && activityCounted.has(row.scope),
+      previousSystem: previousFigureOf(ownFigures?.get(row.legacyDbId) ?? null) };
   });
   const { rows: _rows, ...rest } = mapping;
-  const periodRefusal = v7ImportPeriodIssue(await readV7ImportPeriod(db, org, jobId))?.message ?? null;
-  return { ...rest, rows, familyless: library.familyless, periodRefusal };
+  const issue = v7ImportPeriodIssue(await readV7ImportPeriod(db, org, jobId));
+  // A spanning job is held only while its own figures cannot be read; read, each row is judged against them (increment 2).
+  const periodRefusal = issue?.code === "SPANS_TWO_DATASET_YEARS" ? (ownFigures ? null : V7_IMPORT_TWO_DATASET_YEARS_UNREAD) : issue?.message ?? null;
+  return { ...rest, rows, familyless: library.familyless, periodRefusal, ownFigures: ownFigures !== null };
 }
+
+const previousFigureOf = (row: V7FiguresRow | null): V7ImportPreviousFigure | null => row === null ? null
+  : { tco2e: row.tco2e, blended: row.blended, customFactor: row.custom_factor, spans: row.spans.map((span) => ({ from: span.from, to: span.to, year: span.dataset_year, tco2e: span.tco2e })) };
 
 // ── The search ──────────────────────────────────────────────────────────────────────────────────────────────────
 

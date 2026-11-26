@@ -37,7 +37,9 @@ export async function handleImportMapping(request: Request, jobId: string, deps:
       (deps.log ?? console.error)("[import-mapping] refused before reading", error);
       return Response.json({ code: "IMPORT_SOURCE_UNAVAILABLE", message: IMPORT_SOURCE_UNAVAILABLE }, { status: 503, headers: NO_STORE });
     }
-    const mapping = await deps.read(deps.pool(), source, principal, jobId, { basePlan: options.basePlan });
+    // The rows modal's read also takes the previous system's own row figures client, for a job over two calendar years.
+    const readOptions = { basePlan: options.basePlan, rowFigures: options.rowFigures };
+    const mapping = await deps.read(deps.pool(), source, principal, jobId, readOptions);
     return Response.json({ data: mapping }, { headers: NO_STORE });
   } catch (error) { return deps.failure(error); }
 }

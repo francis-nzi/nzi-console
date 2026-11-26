@@ -149,6 +149,7 @@ export * from "./v7ImportIngest";
 export * from "./v7ImportRefresh";
 export * from "./v7ImportBatch";
 export * from "./v7ImportDrift";
+export * from "./v7RowFigures";
 export * from "./v7ImportMatch";
 export * from "./activityDistribution";
 export * from "./reportLabelResolution";
