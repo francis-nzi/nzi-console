@@ -24,8 +24,8 @@ jobs:
   sweep:
     name: every real-DB suite, on main
     runs-on: ubuntu-latest
-    # The suites run one at a time; CI's job takes a quarter of an hour at most. An hour is a hang, not a slow night.
-    timeout-minutes: 60
+    # 90 minutes (Francis, 26 Nov). The suites run one at a time, so this is slower than CI's job; past this it is a hang.
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:16
@@ -60,6 +60,9 @@ jobs:
             echo "NZI_SUBJECT_LINKAGE_KEY=$(openssl rand -base64 32)"
           } >> "$GITHUB_ENV"
       - name: Run every real-DB suite in ci.yml's migrations job, one at a time
+        # Capped inside the job's 90: a step that times out fails, so the issue step below still runs. A job that times out
+        # is cancelled instead, and `failure()` would skip it — a hang would go unreported.
+        timeout-minutes: 80
         run: node scripts/nightly-real-db.mjs --report nightly-report.md
       # Red (or a step before the sweep failed): one open issue carries it. A second red night comments on it rather than
       # opening another; closing the issue is how a person says it is dealt with.
@@ -69,11 +72,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          [ -s nightly-report.md ] || printf 'The nightly real-DB sweep failed before it could report (setup or install).\n\nRun: %s\n' "$RUN_URL" > nightly-report.md
+          [ -s nightly-report.md ] || printf 'The nightly real-DB sweep failed before it could report (setup, install, or the sweep hit its 80-minute cap).\n\nRun: %s\n' "$RUN_URL" > nightly-report.md
           gh label create nightly-real-db --color B60205 --description "The nightly real-DB sweep went red" 2>/dev/null || true
           open=$(gh issue list --label nightly-real-db --state open --limit 1 --json number --jq '.[0].number // empty')
           if [ -n "$open" ]; then
             gh issue comment "$open" --body-file nightly-report.md
           else
-            gh issue create --title "Nightly real-DB sweep red on main ($(date -u +%Y-%m-%d))" --label nightly-real-db --body-file nightly-report.md
+            gh issue create --title "Nightly real-DB sweep red — $(date -u +%Y-%m-%d)" --label nightly-real-db --body-file nightly-report.md
           fi

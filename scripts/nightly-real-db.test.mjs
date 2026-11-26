@@ -72,6 +72,12 @@ describe("the workflow", () => {
     assert.match(WORKFLOW, /if: failure\(\)/);
     assert.match(WORKFLOW, /gh issue list --label nightly-real-db --state open/);
     assert.match(WORKFLOW, /gh issue comment "\$open" --body-file nightly-report\.md/);
-    assert.match(WORKFLOW, /gh issue create .*--label nightly-real-db --body-file nightly-report\.md/);
+    assert.match(WORKFLOW, /gh issue create --title "Nightly real-DB sweep red — \$\(date -u \+%Y-%m-%d\)" --label nightly-real-db --body-file nightly-report\.md/);
+  });
+  it("02:17 UTC, a 90-minute job, and the sweep capped inside it so a hang still reaches the issue step", () => {
+    assert.match(WORKFLOW, /- cron: "17 2 \* \* \*"/);
+    assert.match(WORKFLOW, /^    timeout-minutes: 90$/m);
+    const step = /timeout-minutes: (\d+)\n\s+run: node scripts\/nightly-real-db\.mjs/.exec(WORKFLOW);
+    assert.ok(step && Number(step[1]) < 90, "the sweep step's own cap sits inside the job's");
   });
 });
