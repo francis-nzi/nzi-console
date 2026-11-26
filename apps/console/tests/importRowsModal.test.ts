@@ -7,7 +7,7 @@ import { emissionCategoryTaxonomy, v7MatchCandidate, V7_IMPORT_TWO_DATASET_YEARS
 import { v7ImportRowsAcceptIssues, type V7ImportCandidate, type V7ImportRows, type V7ImportRowsRow } from "@nzi/isolated-backend";
 import { ADMIN_ITEMS } from "../app/admin/adminNav";
 import {
-  bringInBlockers, editionLabel, factorIdentity, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsNamed,
+  BRING_IN_REASON, bringInBlockers, bringInReason, broughtInLine, editionLabel, factorIdentity, manualDecisions, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsNamed,
   rowsProgress, scopeLines, suggestedAccepts, suggestedSummary, verdictWords,
 } from "../app/jobs/importRowsModel";
 
@@ -406,6 +406,84 @@ describe("the accept's shape — closed, as a decision is", () => {
     assert.equal(v7ImportRowsAcceptIssues({ jobId: "j", items: [{ kind: "carry", legacyDbId: "1", categoryCode: "x" }] })[0]!.code, "UNKNOWN_FIELD");
     assert.equal(v7ImportRowsAcceptIssues({ jobId: "j", items: [{ kind: "overwrite", legacyDbId: "1" }] })[0]!.code, "INVALID");
     assert.equal(v7ImportRowsAcceptIssues({ jobId: "j", extra: 1, items: [] })[0]!.code, "UNKNOWN_FIELD");
+  });
+});
+
+describe("the bring-in reason (26 Nov): prefilled from the decisions, its own labelled box, recorded as written", () => {
+  const decision = (entry: V7ImportRowsRow, categoryCode: string, factor: Pick<V7ImportCandidate, "datasetId" | "factorId">) => ({ decisionId: `d-${entry.legacyDbId}`,
+    sourceSystem: "nzi-pro-v7", legacyDbId: entry.legacyDbId, kind: "map", categoryCode, datasetId: factor.datasetId, factorId: factor.factorId, carryOption: null, forPairGroup: null,
+    forStatus: "new", forScope: entry.scope, forCode: null, sessionId: "s", reason: null, decidedBy: "staff-admin", decidedAt: "2026-11-26T10:00:00Z" }) as unknown as V7ImportRowsRow["decision"];
+  const decided = (entry: V7ImportRowsRow, categoryCode: string, factor: V7ImportCandidate): V7ImportRowsRow =>
+    ({ ...entry, lane: "accepted", resolution: "resolved", pick: factor, decision: decision(entry, categoryCode, factor) });
+  // Came in on its own: the pick rule's factor, filed where the matcher files it.
+  const AUTO = decided(row({ legacyDbId: "501", candidates: [HGV] }), HGV.match.categoryCode!, HGV);
+  // The factor reproduces, but the matcher names no category: a person filed it — the category is theirs, the factor is not.
+  const UNFILED = { ...RIGHT, match: { ...RIGHT.match, categoryCode: null } };
+  const filed = (id: string, code: string) => decided(row({ legacyDbId: id, scope: "3", categories: [], candidates: [UNFILED] }), code, UNFILED);
+  const CATEGORY = [..."abcdef"].map((letter) => filed(`60${letter}`, "3.5")).concat(filed("610", "3.9"));
+  // No candidate reproduces it: a person found the factor ("Find a factor"), filed where the matcher files that factor.
+  const HAND = { ...RIGHT, factorId: "uk-ghg-29_600_4000_13_1", match: { ...RIGHT.match, categoryCode: "3.6" } };
+  const SOURCE = decided(row({ legacyDbId: "source:1169", scope: "3", candidates: [] }), "3.6", HAND);
+  // Not decided at all: pre-accepted (it comes in on its own) and matched rows say nothing.
+  const PENDING = row({ legacyDbId: "701", candidates: [HGV], pick: HGV });
+
+  it("the prefill lists exactly the manual decisions: category on 7 rows (3.5 ×6, 3.9 ×1), factor on 1 row (source:1169)", () => {
+    const rows = [AUTO, ...CATEGORY, SOURCE, PENDING, ROWS[6]!];
+    assert.equal(bringInReason(rows), "Imported and reconciled from previous system · manual: category on 7 rows (3.5 ×6, 3.9 ×1), factor on 1 row (source:1169)");
+    assert.deepEqual(manualDecisions(rows).factorRows, ["source:1169"], "the filed rows' factor came in on its own; the automatic row is not listed");
+    assert.equal(bringInReason([AUTO, PENDING]), BRING_IN_REASON, "nothing manual: the first words alone");
+    const many = Array.from({ length: 7 }, (_, at) => decided(row({ legacyDbId: `source:${at}`, scope: "3", candidates: [] }), "3.6", HAND));
+    assert.match(bringInReason(many), /factor on 7 rows \(source:0, source:1, source:2, source:3, source:4 and 2 more\)$/);
+  });
+  it("the reason box: a visible label above, beside Bring it in, its own style — the row filter unchanged", () => {
+    const preview = { mode: "preview" as const, jobId: "v7-job-424", legacyJobNumber: "J000434", outcome: "would-commit" as const, summarySha256: "a".repeat(64), decisionsSha256: "b".repeat(64),
+      counts: { matched: 1, changed: 0, needsMapping: 0, new: 1, withdrawn: 0, linkedPairChanged: 0 }, verdict: "ready-to-ingest" as const, exceptions: [], refusal: null,
+      chain: { resync: { unchanged: 1, superseded: 0, added: 1, withdrawn: 0 }, plan: { committed: 0, decided: 1 } },
+      scopeTotals: { "1": { v7Tco2e: 40.988, liveTco2e: 40.988 }, "2": { v7Tco2e: 0, liveTco2e: 0 }, "3": { v7Tco2e: 0, liveTco2e: 0 } } };
+    const at = (reason: string) => html({ data: { ...DATA, rows: [ROWS[6]!] }, preview, notAutomatic: "Not automatic: manual edits.", reason });
+    const filled = at(`${BRING_IN_REASON} · manual: factor on 1 row (source:1169)`);
+    assert.match(filled, /<div class="nz-irm-ft-r">.*<label class="nz-irm-reason" data-bring-in-reason="true"><span>Reason for bringing it in<\/span><textarea rows="2">Imported and reconciled from previous system · manual: factor on 1 row \(source:1169\)<\/textarea><\/label><button type="button" class="nz-btn pri" data-commit="true">Bring it in<\/button>/s,
+      "the label above the box, the box beside the button, the button enabled");
+    assert.ok(filled.includes(`placeholder="Filter rows — ID, label, site, unit… (e.g. “van diesel miles”)"`) && !/class="nz-inp"[^>]*Reason/.test(filled), "the filter keeps its placeholder; the reason is not a filter-style input");
+    assert.match(readFileSync(new URL("../../../packages/ui/src/styles.css", import.meta.url), "utf8"), /\.nz-irm-reason textarea\{[^}]*border-left:3px solid var\(--pine\)/,
+      "its own style, not the filter's .nz-inp");
+    // An emptied box (or only spaces) holds Bring it in.
+    for (const empty of ["", "   "]) assert.match(at(empty), /data-commit="true" disabled=""/, JSON.stringify(empty));
+  });
+  it("the modal prefills the box once, and never overwrites what the person wrote", () => {
+    const source = read("jobs/ImportRowsModal.tsx");
+    assert.ok(source.includes("setReason((current) => (current.trim() ? current : bringInReason(decided)))"));
+    assert.ok(source.includes(`commitKey.current ??= crypto.randomUUID(), reason.trim())`), "sent as written (trimmed, as every reason is), through the encoded header");
+  });
+});
+
+describe("after a bring-in (26 Nov): the modal closes, the whole job's page catches up, one line says so", () => {
+  it("the line: \"Brought in 15 rows · reconciles with the previous system\" — from the commit's own counts", () => {
+    assert.equal(broughtInLine({ plan: { committed: 3, decided: 12 } }), "Brought in 15 rows · reconciles with the previous system");
+    assert.equal(broughtInLine({ plan: { committed: 0, decided: 1 } }), "Brought in 1 row · reconciles with the previous system");
+    const source = read("jobs/ImportRowsModal.tsx");
+    assert.ok(source.includes(`onBroughtIn(broughtInLine(result.data.committed)); onClose(); return;`), "the automatic path closes the modal");
+    assert.match(source, /onBroughtIn\(broughtInLine\(result\.data\)\);\s*onClose\(\);/, "the deliberate path closes it too");
+  });
+  it("the job's change is heard by this job's readers only — and unsubscribing stops it", async () => {
+    const { announceJobDataChanged, onJobDataChanged } = await import("../app/jobs/jobDataChanged");
+    const target = new EventTarget();
+    const heard: string[] = [];
+    const stop = onJobDataChanged("v7-job-256", () => heard.push("256"), target);
+    onJobDataChanged("v7-job-424", () => heard.push("424"), target);
+    announceJobDataChanged("v7-job-256", target);
+    stop();
+    announceJobDataChanged("v7-job-256", target);
+    assert.deepEqual(heard, ["256"]);
+  });
+  it("on success the panel says the line, refreshes the server's parts and announces the change; each own-read part re-reads on it", () => {
+    const panel = read("jobs/ImportRefreshPanel.tsx");
+    assert.ok(panel.includes("const broughtIn = (line: string) => { setDone(line); router.refresh(); announceJobDataChanged(jobId); };"));
+    assert.ok(panel.includes("useJobDataChanged(jobId, () => setReads((count) => count + 1));") && panel.includes("}, [jobId, reads]);"), "the panel's drift banner re-reads");
+    assert.ok(panel.includes("if (reads === 0 && value.applies"), "?import=rows opens the modal on arrival only");
+    const summary = read("jobs/EmissionsSummary.tsx");
+    assert.ok(summary.includes("useJobDataChanged(jobId, () => setChanges((count) => count + 1));") && summary.includes("[jobId, siteId, emissionsUrl, changes]"), "the totals band re-reads, still narrowed to its site");
+    assert.ok(read("jobs/CrpDataEntryAccordion.tsx").includes("useJobDataChanged(jobId, () => { void load(); });"), "the category list re-reads");
   });
 });
 

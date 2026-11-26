@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ImportRowsModal } from "./ImportRowsModal";
 import type { ImportRefreshState } from "./importRefreshView";
+import { announceJobDataChanged, useJobDataChanged } from "./jobDataChanged";
 
 /**
  * "Refresh from the previous system" on a job imported from it (BRIEF-v7-import-server-side-phase-c §3; `import.refresh`) — now
@@ -33,6 +34,9 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
   const [load, setLoad] = useState<Load>({ state: "loading" });
   const [open, setOpen] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  // Re-read after a bring-in (its drift banner is this read's), keeping the panel on screen meanwhile.
+  const [reads, setReads] = useState(0);
+  useJobDataChanged(jobId, () => setReads((count) => count + 1));
 
   useEffect(() => {
     let live = true;
@@ -43,11 +47,20 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
         if (!response.ok) return setLoad({ state: "failed" });
         const value = await response.json() as ImportRefreshState;
         setLoad(value.applies ? { state: "ready", value } : { state: "hidden" });
-        if (value.applies && new URLSearchParams(window.location.search).get("import") === "rows") setOpen(true);
+        // `?import=rows` opens the modal on arrival only — never again on a re-read after a bring-in.
+        if (reads === 0 && value.applies && new URLSearchParams(window.location.search).get("import") === "rows") setOpen(true);
       })
       .catch(() => { if (live) setLoad({ state: "failed" }); });
     return () => { live = false; };
-  }, [jobId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `reads` is the re-read trigger
+  }, [jobId, reads]);
+
+  /**
+   * Brought in: the modal has closed itself; say so here, and bring the whole page up to date without a reload — `router.refresh()`
+   * for what the server draws (the rows, the datasets chip, the header's stage), the announcement for what reads its own (the totals
+   * band, the category list, this panel's drift banner).
+   */
+  const broughtIn = (line: string) => { setDone(line); router.refresh(); announceJobDataChanged(jobId); };
 
   if (load.state === "hidden" || load.state === "loading") return null;
   if (load.state === "failed") {
@@ -63,6 +76,6 @@ export function ImportRefreshPanel({ jobId }: { jobId: string }) {
     </div>
     <DriftBanner drift={state.drift ?? null} />
     {done ? <div className="nz-banner ok" role="status"><div>{done}</div></div> : null}
-    <ImportRowsModal state={state} open={open} onClose={() => setOpen(false)} onBroughtIn={(line) => { setDone(line); router.refresh(); }} />
+    <ImportRowsModal state={state} open={open} onClose={() => setOpen(false)} onBroughtIn={(line) => broughtIn(line)} />
   </div></section>;
 }

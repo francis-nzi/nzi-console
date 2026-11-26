@@ -6,7 +6,7 @@ import { emissionCategoryTaxonomy, type V7ImportRefreshCommitted, type V7ImportR
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsAcceptResult, V7ImportRowsRow } from "@nzi/isolated-backend";
 import { Drawer } from "@nzi/ui";
 import {
-  bringInBlockers, editionLabel, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsProgress,
+  bringInBlockers, bringInReason, broughtInLine, editionLabel, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsProgress,
   scopeLines, suggestedAccepts, suggestedSummary, verdictWords,
   type BringInOutcome, type RowsGroup,
 } from "./importRowsModel";
@@ -81,7 +81,7 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
   }
   useEffect(() => {
     if (!open) return;
-    setLoad({ state: "loading" }); setPreview(null); setNotAutomatic(null); setError(null); setNotice(null); setRefusal(null);
+    setLoad({ state: "loading" }); setPreview(null); setNotAutomatic(null); setError(null); setNotice(null); setRefusal(null); setReason("");
     void read(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- one read each time the modal opens
   }, [open, state.jobId]);
@@ -136,8 +136,11 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
     const result = await postBrowserCommand<FastPathOutcome>(path, { mode: "auto" }, crypto.randomUUID());
     if (result.state !== "success") { setRefusal(refusedOutcome(failureLines(result))); return; }
     commitKey.current = null;
-    if (result.data.fastPath === "refreshed") { onBroughtIn("Brought in automatically: the job's rows now match the previous system, and wait for a reviewer's attest."); onClose(); return; }
+    if (result.data.fastPath === "refreshed") { onBroughtIn(broughtInLine(result.data.committed)); onClose(); return; }
     setPreview(result.data.preview); setNotAutomatic(notAutomaticLine(result.data));
+    // The reason box starts with what bringing it in is, and what a person chose by hand — theirs to edit or add to; never overwritten.
+    const decided = data?.rows ?? [];
+    setReason((current) => (current.trim() ? current : bringInReason(decided)));
   });
   const commit = () => run(async () => {
     if (!preview || !reason.trim()) return;
@@ -145,7 +148,7 @@ export function ImportRowsModal({ state, open, onClose, onBroughtIn }: {
       { mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 }, commitKey.current ??= crypto.randomUUID(), reason.trim());
     if (result.state !== "success") { if (result.state !== "failed" || !result.retryable) commitKey.current = null; setRefusal(refusedOutcome(failureLines(result))); return; }
     commitKey.current = null; setReason("");
-    onBroughtIn(`Brought in: re-synced ${result.data.resync.superseded + result.data.resync.added + result.data.resync.withdrawn} row(s); the new entries wait for a reviewer's attest.`);
+    onBroughtIn(broughtInLine(result.data));
     onClose();
   });
 
@@ -294,7 +297,11 @@ export function ImportRowsView(props: ImportRowsViewProps) {
       <div className="nz-irm-ft-r">
         <button type="button" className="nz-btn" disabled={busy} onClick={props.onSaveAndClose}>Save &amp; resume later</button>
         {view?.kind === "ready" && allAgree && !props.commitGated ? <>
-          <input className="nz-inp" aria-label="Reason for bringing it in" placeholder="Reason for bringing it in" value={props.reason} onChange={(event) => props.onReason(event.target.value)} />
+          {/* The reason: its own labelled box beside the button it goes with, unlike the row filter — recorded on the audit as written. */}
+          <label className="nz-irm-reason" data-bring-in-reason>
+            <span>Reason for bringing it in</span>
+            <textarea rows={2} value={props.reason} onChange={(event) => props.onReason(event.target.value)} />
+          </label>
           <button type="button" className="nz-btn pri" data-commit disabled={busy || !props.reason.trim() || !writeEnabled} onClick={props.onCommit}>Bring it in</button>
         </> : <button type="button" className="nz-btn pri" data-bring-in disabled={busy || blocked} title={blockers.length ? `Resolve first: ${blockers.join("; ")}` : undefined}
           onClick={props.onBringIn}>Accept &amp; bring in — {ready} ready</button>}
