@@ -1,5 +1,5 @@
 import {
-  agreesToOneDecimalPlace, datasetLabelFromId, emissionCategoryTaxonomy, rankV7Candidates, v7MatchCandidate, V7_DATASET_NOT_ON_JOB_WORDS,
+  agreesToOneDecimalPlace, datasetLabelFromId, datasetSeriesKey, emissionCategoryTaxonomy, rankV7Candidates, v7MatchCandidate, V7_DATASET_NOT_ON_JOB_WORDS,
   type V7ImportIngestTotals, type V7ImportScope, type V7MatchResult, type V7MatchVerdict,
 } from "@nzi/contracts";
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsRow } from "@nzi/isolated-backend";
@@ -220,12 +220,11 @@ const PART_WHY: Record<Exclude<PartIssue, "dataset-not-on-job">, string> = {
   unit: "unit differs", "no-match": "factor not in that edition", "custom-factor": "a client's custom factor",
 };
 /**
- * An edition the job does not hold. Bringing the row in adds the edition its factor is from (ruling 3: the decision's dataset joins
- * the job's selection) — so that one is "added to the job when you accept". Any other edition it is not: it is added on the job's
- * datasets first (the same words as the bring-in refusal's, V7_DATASET_NOT_ON_JOB_WORDS).
+ * An edition the job does not hold. Bringing the row in adds every edition the library holds that its spans were priced from (the
+ * factor's own, ruling 3, and each span year's, R1: `v7SpanVintages`) — "added to the job when you accept". A year the library holds
+ * no edition of cannot be added so: it goes on the job's datasets first (the bring-in refusal's words, V7_DATASET_NOT_ON_JOB_WORDS).
  */
-const notOnJob = (part: NonNullable<V7ImportCandidate["parts"]>[number], own: string | null) =>
-  part.datasetId && part.datasetId === own ? "added to the job when you accept" : part.datasetId ? V7_DATASET_NOT_ON_JOB_WORDS : "no edition of the factor for that year";
+const notOnJob = (part: NonNullable<V7ImportCandidate["parts"]>[number]) => (part.datasetId ? "added to the job when you accept" : V7_DATASET_NOT_ON_JOB_WORDS);
 
 /**
  * A candidate's yearly parts, as the row shows them: "Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 ✓" — each run of
@@ -235,8 +234,9 @@ const notOnJob = (part: NonNullable<V7ImportCandidate["parts"]>[number], own: st
 export function partsLine(candidate: Pick<V7ImportCandidate, "parts" | "datasetId"> | null): string {
   return (candidate?.parts ?? []).map((part) => {
     const when = part.from && part.to ? monthWords(part.from, part.to) : "the period";
-    const at = part.datasetId ? datasetLabelFromId(part.datasetId) : part.year !== null ? `${part.year}` : "no edition";
-    const why = part.issue === "dataset-not-on-job" ? notOnJob(part, candidate!.datasetId) : part.issue ? PART_WHY[part.issue] : null;
+    // A year the library holds no edition of: named as the refusal names it, the factor's series at that year.
+    const at = part.datasetId ? datasetLabelFromId(part.datasetId) : part.year !== null ? datasetLabelFromId(`${datasetSeriesKey(candidate!.datasetId)}-${part.year}`) : "no edition";
+    const why = part.issue === "dataset-not-on-job" ? notOnJob(part) : part.issue ? PART_WHY[part.issue] : null;
     return `${when} @ ${at}${why ? ` — ${why}` : part.agrees ? " ✓" : ` — ${part.tco2e === null ? "no figure" : `here ${rowFigure(part.tco2e)} · previous system ${rowFigure(part.previous)}`}`}`;
   }).join(" · ");
 }

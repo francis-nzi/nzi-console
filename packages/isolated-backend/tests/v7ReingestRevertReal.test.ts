@@ -2820,7 +2820,7 @@ describe("the two-dataset-year guard: a job whose period spans two calendar year
  */
 describe("a spanning job reconciled with the previous system's own figures: the modal by month, the guard lifted per job, a job that differs still refused", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   const SO_ORG = "span-own";
-  const J265 = "so-265", J265B = "so-265b", CAL = "so-cal";
+  const J265 = "so-265", J265B = "so-265b", J265C = "so-265c", CAL = "so-cal";
   let database: DisposableDatabase;
   let db: pg.Client;
   let keys = 0;
@@ -2853,8 +2853,9 @@ describe("a spanning job reconciled with the previous system's own figures: the 
   const ROW_9301 = row("9301", "1", GAS, 10_000, 0.18293, null);
   // The same two rows on J265B, under their own ids there (a V7 row is one job's).
   const ROW_B_9278 = row("19278", "2", ELEC, 97_656, 0.177, MONTHS), ROW_B_9301 = row("19301", "1", GAS, 10_000, 0.18293, null);
+  const ROW_C_9278 = row("29278", "2", ELEC, 97_656, 0.177, MONTHS), ROW_C_9301 = row("29301", "1", GAS, 10_000, 0.18293, null);
   const CAL_ROW = row("9401", "2", ELEC, 50_000, 0.177, null);
-  const holds = new Map<string, readonly PlannedRow[]>([[J265, [ROW_9278, ROW_9301]], [J265B, [ROW_B_9278, ROW_B_9301]], [CAL, [CAL_ROW]]]);
+  const holds = new Map<string, readonly PlannedRow[]>([[J265, [ROW_9278, ROW_9301]], [J265B, [ROW_B_9278, ROW_B_9301]], [J265C, [ROW_C_9278, ROW_C_9301]], [CAL, [CAL_ROW]]]);
   const source: V7ImportRefreshSource = async (_db, job) => ({ sourceSha256: "b".repeat(64), rows: holds.get(job.jobId)! });
   const EMPTY_PLAN = (jobId: string) => ({ jobId, crosswalkVersion: "none", crosswalkSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", vintageDatasetIds: [], rows: [] });
 
@@ -2865,7 +2866,12 @@ describe("a spanning job reconciled with the previous system's own figures: the 
   const OWN_9301 = { row_id: 9301, scope: "Scope 1", enabled: true, tco2e: 1.8293, blended: false, custom_factor: false, spans: [
     { from: "2025-04", to: "2026-03", dataset_id: 1, dataset_year: 2025, factor: 0.18293, ghg_unit: "kgCO2e", tco2e: 1.8293 }] };
   const calls: string[] = [];
-  const figuresOf: Record<string, V7FiguresRowFigures["rows"]> = { "265": [OWN_9278, OWN_9301], "266": [{ ...OWN_9278, row_id: 19278 }, { ...OWN_9301, row_id: 19301 }], "267": [] };
+  // J265C: V7 priced Jan–Mar from a 2024 edition the library holds no copy of — no edition to add, so the reconcile still names it.
+  const OWN_C_9278 = { ...OWN_9278, row_id: 29278, spans: [OWN_9278.spans[0]!, { ...OWN_9278.spans[1]!, dataset_id: 68, dataset_year: 2024 }] };
+  const figuresOf: Record<string, V7FiguresRowFigures["rows"]> = { "265": [OWN_9278, OWN_9301], "266": [{ ...OWN_9278, row_id: 19278 }, { ...OWN_9301, row_id: 19301 }], "267": [],
+    "268": [OWN_C_9278, { ...OWN_9301, row_id: 29301 }] };
+  const selected = async (jobId: string) => (await db.query<{ dataset_id: string }>(
+    `SELECT dataset_id FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2 ORDER BY dataset_id`, [SO_ORG, jobId])).rows.map((entry) => entry.dataset_id);
   const rowFigures: V7RowFiguresClient = async ({ v7JobId }) => {
     calls.push(v7JobId);
     return { ok: true, body: { contract: "v7-import-figures/1", job_id: Number(v7JobId), computed_at: "2026-11-26T10:00:00Z", rows: figuresOf[v7JobId]! } };
@@ -2910,7 +2916,8 @@ describe("a spanning job reconciled with the previous system's own figures: the 
     }
     // J000265's shape over April–March, with both editions (J265) and with 2026's missing (J265B); and a calendar-year job (J000434's shape).
     for (const [jobId, sequence, number, v7Id, from, to, editions] of [[J265, 965, "J000965", "265", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025", "uk-ghg-gb-2026"]],
-      [J265B, 966, "J000966", "266", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025"]], [CAL, 967, "J000967", "267", "2025-01-01", "2025-12-31", ["uk-ghg-gb-2025"]]] as const) {
+      [J265B, 966, "J000966", "266", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025"]], [CAL, 967, "J000967", "267", "2025-01-01", "2025-12-31", ["uk-ghg-gb-2025"]],
+      [J265C, 968, "J000968", "268", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025"]]] as const) {
       await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
         VALUES ($1,$2,'cs',$3,'crp','CRP','open','Data entry',2025,$4,$5,'nzi-pro-v7',$6,$7)`, [SO_ORG, jobId, sequence, from, to, v7Id, number]);
       await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`, [SO_ORG, jobId, from, to]);
@@ -2963,41 +2970,68 @@ describe("a spanning job reconciled with the previous system's own figures: the 
     assert.deepEqual(record.map((entry) => [Number(entry.v2), Number(entry.l2)]), [[15.306681, 15.306681]], "the record holds the previous system's own figure");
   });
 
-  it("a spanning job that does not reconcile is still refused, the row and its reason named — nothing written, at the preview and the commit", async () => {
+  it("a job without the 2026 edition (made before R1): bring-in adds every edition its rows' spans were priced from — the preview rolls it back, the commit keeps it", async () => {
     await upload(J265B, "J000966");
     assert.deepEqual((await acceptAll(J265B)).refused, []);
+    const seen = (await rowsOf(J265B)).rows.find((entry) => entry.legacyDbId === "19278")!;
+    assert.deepEqual(seen.pick?.parts?.map((part) => [part.datasetId, part.issue]), [["uk-ghg-gb-2025", null], ["uk-ghg-gb-2026", "dataset-not-on-job"]],
+      "the modal: 2026 is in the library, not on the job — added when you accept");
     const before = await jobPrint(J265B);
-    await assert.rejects(previewV7ImportRefresh(database.pool, source, { jobId: J265B, mode: "preview" }, context(), { basePlan: EMPTY_PLAN(J265B), rowFigures }), (error) => {
+    const preview = await previewV7ImportRefresh(database.pool, source, { jobId: J265B, mode: "preview" }, context(), { basePlan: EMPTY_PLAN(J265B), rowFigures });
+    assert.deepEqual([preview.outcome, preview.refusal, preview.scopeTotals?.["2"]], ["would-commit", null, { v7Tco2e: 15.306681, liveTco2e: 15.306681 }], "reconciles with 2026 added");
+    assert.deepEqual([await jobPrint(J265B), await selected(J265B)], [before, ["uk-ghg-gb-2025"]], "the preview wrote nothing — the edition included");
+    await commitV7ImportRefresh(database.pool, source, { jobId: J265B, mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 },
+      context("admin", "bring J000966 in (test)"), { basePlan: EMPTY_PLAN(J265B), rowFigures, requireScopesAgree: true });
+    assert.deepEqual(await selected(J265B), ["uk-ghg-gb-2025", "uk-ghg-gb-2026"], "2026 joins the job's datasets, added, never removed");
+    const reason = (await db.query<{ reason: string; source: string }>(`SELECT reason, selection_source AS source FROM nzi_console.job_dataset_selections
+      WHERE organisation_id = $1 AND job_id = $2 AND dataset_id = 'uk-ghg-gb-2026'`, [SO_ORG, J265B])).rows[0]!;
+    assert.match(reason.reason, /bind to v7's dataset vintage/);
+    const live = (await db.query<{ tco2e: string }>(`SELECT r.calculated_tco2e::text AS tco2e FROM nzi_console.job_scope_rows r
+      JOIN nzi_console.job_scope_rows m ON m.scope_row_id = r.reingested_from_row_id WHERE r.job_id = $1 AND r.origin = 'live' AND r.enabled AND m.legacy_db_id = '19278'`, [J265B])).rows;
+    assert.deepEqual(live.map((entry) => round6(Number(entry.tco2e))), [15.306681], "Jan–Mar priced at 2026, as the previous system priced them");
+  });
+
+  it("an edition the library holds no copy of is not added: still refused, the row named with \"add it to the job's datasets first\" — nothing written", async () => {
+    await upload(J265C, "J000968");
+    assert.deepEqual((await acceptAll(J265C)).refused, []);
+    const seen = (await rowsOf(J265C)).rows.find((entry) => entry.legacyDbId === "29278")!;
+    // A part with no edition cannot be priced, so the row has no figure and no auto-pick: a person accepts the factor by hand.
+    const elec = seen.candidates.find((candidate) => candidate.datasetId === "uk-ghg-gb-2025")!;
+    assert.deepEqual([seen.pick, elec.parts?.map((part) => [part.year, part.datasetId, part.issue])], [null, [[2025, "uk-ghg-gb-2025", null], [2024, null, "dataset-not-on-job"]]]);
+    assert.deepEqual((await acceptV7ImportRows(database.pool, { jobId: J265C, items: [{ kind: "map", legacyDbId: "29278", categoryCode: elec.categories[0]!,
+      datasetId: elec.datasetId, factorId: elec.factorId, expectedDecisionId: seen.decision?.decisionId ?? null }] }, context())).refused, []);
+    const before = await jobPrint(J265C);
+    await assert.rejects(previewV7ImportRefresh(database.pool, source, { jobId: J265C, mode: "preview" }, context(), { basePlan: EMPTY_PLAN(J265C), rowFigures }), (error) => {
       const found = issues(error);
-      assert.deepEqual(found.map(([field, code]) => [field, code]), [["jobId", "SPANS_TWO_DATASET_YEARS"], ["rows.19278", "SPANS_TWO_DATASET_YEARS"]]);
+      assert.deepEqual(found.map(([field, code]) => [field, code]), [["jobId", "SPANS_TWO_DATASET_YEARS"], ["rows.29278", "SPANS_TWO_DATASET_YEARS"]]);
       assert.match(found[0]![2]!, /Scope 2 17\.3 here, 15\.3 there/);
-      assert.equal(found[1]![2], "Row 19278 (Scope 2): 17.3 here, 15.3 there — DESNZ GB 2026 — add it to the job's datasets first.");
+      assert.equal(found[1]![2], "Row 29278 (Scope 2): 17.3 here, 15.3 there — DESNZ GB 2024 — add it to the job's datasets first.");
       return true;
     });
-    assert.equal(await jobPrint(J265B), before);
+    assert.equal(await jobPrint(J265C), before);
     // The commit, naming the fingerprints a preview reads (the refresh's own read): the chain runs, and the reconcile refuses — nothing kept.
     const fingerprints = await withTenantWrite(database.pool, SO_ORG, async (client) => {
-      const read = await readRefresh(client, source, SO_ORG, J265B);
+      const read = await readRefresh(client, source, SO_ORG, J265C);
       return { summarySha256: read.summarySha256, decisionsSha256: read.decisionsSha256 };
     });
-    await assert.rejects(commitV7ImportRefresh(database.pool, source, { jobId: J265B, mode: "commit", ...fingerprints }, context("admin", "bring it in (test)"),
-      { basePlan: EMPTY_PLAN(J265B), rowFigures, requireScopesAgree: true }), (error) => {
-      assert.deepEqual(issues(error).map(([field, code]) => [field, code]), [["jobId", "SPANS_TWO_DATASET_YEARS"], ["rows.19278", "SPANS_TWO_DATASET_YEARS"]]);
+    await assert.rejects(commitV7ImportRefresh(database.pool, source, { jobId: J265C, mode: "commit", ...fingerprints }, context("admin", "bring it in (test)"),
+      { basePlan: EMPTY_PLAN(J265C), rowFigures, requireScopesAgree: true }), (error) => {
+      assert.deepEqual(issues(error).map(([field, code]) => [field, code]), [["jobId", "SPANS_TWO_DATASET_YEARS"], ["rows.29278", "SPANS_TWO_DATASET_YEARS"]]);
       return true;
     });
-    assert.equal(await jobPrint(J265B), before);
+    assert.deepEqual([await jobPrint(J265C), await selected(J265C)], [before, ["uk-ghg-gb-2025"]], "nothing kept, no edition added");
   });
 
   it("a row the previous system no longer holds as it was read is named as changed there", async () => {
-    figuresOf["266"] = [{ ...OWN_9278, row_id: 19278 }, { ...OWN_9301, row_id: 19302 }];
+    figuresOf["268"] = [OWN_C_9278, { ...OWN_9301, row_id: 29302 }];
     try {
-      await assert.rejects(previewV7ImportRefresh(database.pool, source, { jobId: J265B, mode: "preview" }, context(), { basePlan: EMPTY_PLAN(J265B), rowFigures }), (error) => {
+      await assert.rejects(previewV7ImportRefresh(database.pool, source, { jobId: J265C, mode: "preview" }, context(), { basePlan: EMPTY_PLAN(J265C), rowFigures }), (error) => {
         const found = issues(error);
-        assert.ok(found.some(([field, , message]) => field === "rows.19301" && /changed since it was read/.test(message!)), "19301: brought in here, not in the previous system's figures");
-        assert.ok(found.some(([field, , message]) => field === "rows.19302" && /not brought in/.test(message!)));
+        assert.ok(found.some(([field, , message]) => field === "rows.29301" && /changed since it was read/.test(message!)), "29301: brought in here, not in the previous system's figures");
+        assert.ok(found.some(([field, , message]) => field === "rows.29302" && /not brought in/.test(message!)));
         return true;
       });
-    } finally { figuresOf["266"] = [{ ...OWN_9278, row_id: 19278 }, { ...OWN_9301, row_id: 19301 }]; }
+    } finally { figuresOf["268"] = [OWN_C_9278, { ...OWN_9301, row_id: 29301 }]; }
   });
 
   it("a calendar-year job (J000434's shape) never reads the previous system's own figures and brings in exactly as before", async () => {
