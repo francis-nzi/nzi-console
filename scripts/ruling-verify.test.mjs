@@ -6,12 +6,13 @@
 // must pass).
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { after, describe, it } from "node:test";
 import { ARTIFACT_PREFIX, decidePostMerge, findRuledHead, GOVERNED_PATHS, governedFiles, verifyMerge } from "./ruling-verify.mjs";
+import { isGovernedPath } from "./ruling-gate.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const GATE = resolve(HERE, "ruling-gate.mjs");
@@ -181,6 +182,25 @@ describe("when a merge with no ruling matters", () => {
     for (const entry of GOVERNED_PATHS) assert.ok(existsSync(join(root, entry.path)), `${entry.path} (${entry.why}) no longer exists`);
     assert.deepEqual(governedFiles(["packages/contracts/src/nested/x.ts", "packages/contracts/README.md", "packages/isolated-backend/src/v7ClientImport.tsx"]),
       ["packages/contracts/src/nested/x.ts"], "prefixes govern beneath them; exact paths match exactly");
+    for (const entry of GOVERNED_PATHS.filter((candidate) => candidate.match)) {
+      assert.ok(readdirSync(join(root, entry.path)).some((name) => entry.match.test(name)), `${entry.path} ${entry.match} (${entry.why}) governs nothing`);
+    }
+  });
+
+  it("the v7 import (ruled 26 Nov 2026): every v7Import*.ts, the re-ingest, the drift guard and monthly pricing — as the gate holds them", () => {
+    const SRC = "packages/isolated-backend/src/";
+    const onDisk = readdirSync(resolve(HERE, "..", SRC)).filter((name) => /^v7Import[^/]*\.ts$/.test(name));
+    assert.ok(onDisk.includes("v7ImportRefresh.ts") && onDisk.includes("v7ImportRows.ts"), "found on disk");
+    const governed = [...onDisk, "v7ImportSomethingNew.ts", "v7Reingest.ts", "v7Drift.ts", "monthlyPricing.ts"].map((name) => `${SRC}${name}`);
+    const notGoverned = [`${SRC}v7ReingestBook.ts`, `${SRC}v7ResyncRehearsal.ts`, `${SRC}v7SiteLinks.ts`, `${SRC}monthlyPricingHelpers.ts`, `${SRC}v7Import/nested.ts`,
+      `${SRC}v7ImportRows.tsx`, "packages/isolated-backend/tests/v7ImportRowsReal.test.ts", "packages/isolated-backend/scripts/v7ImportRefresh.ts", "apps/console/app/jobs/importRowsModel.ts"];
+    assert.deepEqual(governedFiles([...governed, ...notGoverned]), governed);
+    for (const file of governed) assert.equal(isGovernedPath(file), true, `the gate holds ${file} too`);
+    for (const file of notGoverned) assert.equal(isGovernedPath(file), false, `nor does the gate hold ${file}`);
+    // Unruled, a merge touching one fails the post-merge check, naming it.
+    const unruled = decidePostMerge({ prNumber: "700", ruledSha: null, changedFiles: [`${SRC}v7ImportRefresh.ts`], verify: () => ({ pass: true, reason: "" }) });
+    assert.equal(unruled.pass, false);
+    assert.match(unruled.reason, /v7ImportRefresh\.ts/);
   });
 });
 
