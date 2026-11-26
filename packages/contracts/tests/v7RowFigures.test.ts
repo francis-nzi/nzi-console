@@ -53,7 +53,7 @@ describe("the reconcile: within 0.1 t of the previous system's own in every scop
     { console: { ...ZERO, "2": 17.285112 }, previous: { ...ZERO, "2": 15.30668112 } });
     assert.deepEqual(v7SpanningRefusal(off).map((issue) => [issue.field, issue.code, issue.message]), [
       ["jobId", "SPANS_TWO_DATASET_YEARS", "This job spans two dataset years, and its figures don't match the previous system's own: Scope 2 17.3 here, 15.3 there. Nothing was written."],
-      ["rows.9278", "SPANS_TWO_DATASET_YEARS", "Row 9278 (Scope 2): 17.3 here, 15.3 there — a dataset the previous system priced it from is not on the job (DESNZ GB 2026)."],
+      ["rows.9278", "SPANS_TWO_DATASET_YEARS", "Row 9278 (Scope 2): 17.3 here, 15.3 there — DESNZ GB 2026 — add it to the job's datasets first."],
       ["rows.9301", "SPANS_TWO_DATASET_YEARS", "Row 9301 (Scope 1): 1.8 here, none in the previous system — the previous system's row changed since it was read."],
       ["rows.9302", "SPANS_TWO_DATASET_YEARS", "Row 9302 (Scope 1): not brought in, 1.8 there — the previous system's row changed since it was read."]]);
   });

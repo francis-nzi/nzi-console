@@ -2971,7 +2971,7 @@ describe("a spanning job reconciled with the previous system's own figures: the 
       const found = issues(error);
       assert.deepEqual(found.map(([field, code]) => [field, code]), [["jobId", "SPANS_TWO_DATASET_YEARS"], ["rows.19278", "SPANS_TWO_DATASET_YEARS"]]);
       assert.match(found[0]![2]!, /Scope 2 17\.3 here, 15\.3 there/);
-      assert.equal(found[1]![2], "Row 19278 (Scope 2): 17.3 here, 15.3 there — a dataset the previous system priced it from is not on the job (DESNZ GB 2026).");
+      assert.equal(found[1]![2], "Row 19278 (Scope 2): 17.3 here, 15.3 there — DESNZ GB 2026 — add it to the job's datasets first.");
       return true;
     });
     assert.equal(await jobPrint(J265B), before);

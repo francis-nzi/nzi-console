@@ -207,10 +207,19 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-irm-rec b{font-variant-numeric:tabular-nums}
 .nz-irm-tb{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 18px;border-bottom:1px solid var(--line2)}
 .nz-irm-tb .nz-inp{flex:1;min-width:200px}
-.nz-irm-rows{overflow:auto}
+.nz-irm-rows{overflow:auto;flex:1 1 auto;min-height:0}
 .nz-irm-gh{padding:8px 18px;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--t3);background:var(--paper);border-bottom:1px solid var(--line2)}
 .nz-irm-gh span{font-weight:400;text-transform:none;letter-spacing:0}
-.nz-irm-row{display:grid;grid-template-columns:110px minmax(0,1fr) 110px minmax(0,170px) 128px;gap:12px;align-items:start;padding:10px 18px 10px 15px;border-bottom:1px solid var(--line2);border-left:3px solid transparent;font-size:12.5px}
+/* Row · Quantity · Console factor · Status · Here vs previous system: the label narrow, the factor and status wide; no sideways scroll at 1280px. */
+.nz-irm-row,.nz-irm-colhd{display:grid;grid-template-columns:minmax(0,1fr) 90px minmax(0,1.25fr) 168px 160px;gap:12px}
+.nz-irm-row{align-items:start;padding:10px 18px 10px 15px;border-bottom:1px solid var(--line2);border-left:3px solid transparent;font-size:12.5px}
+.nz-irm-colhd{position:sticky;top:0;z-index:1;padding:6px 18px;background:var(--card);border-bottom:1px solid var(--line);font-size:10.5px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em}
+.nz-irm-colhd span:nth-child(2),.nz-irm-colhd span:nth-child(5){text-align:right}
+.nz-irm-fac .nz-irm-t{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.nz-irm-row .num{text-align:right}
+.nz-irm-row>.nz-irm-fig{margin-top:0;text-align:right;overflow-wrap:anywhere}
+.nz-irm-st .nz-irm-pill{white-space:normal}
+.nz-irm-st .nz-irm-act{justify-content:flex-start}
 .nz-irm-row.g{border-left-color:var(--pine)}
 .nz-irm-row.a{border-left-color:#B8860B}
 .nz-irm-row.r{border-left-color:var(--danger)}
@@ -218,7 +227,7 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-irm-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:var(--t3);overflow-wrap:anywhere}
 .nz-irm-t{font-weight:600}
 .nz-irm-s{color:var(--t3);font-size:11.5px;margin-top:2px}
-.nz-irm-st{text-align:right}
+.nz-irm-st{text-align:left}
 .nz-irm-pill{display:inline-block;font-size:11px;font-weight:700;border-radius:999px;padding:1px 9px;white-space:nowrap}
 .nz-irm-pill.g{background:var(--mint);color:var(--pine)}
 .nz-irm-pill.a{background:#FFF4DC;color:#7A5808}

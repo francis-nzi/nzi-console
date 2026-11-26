@@ -87,8 +87,13 @@ export function v7FiguresScope(label: string): V7ImportScope | null {
  */
 export const V7_ROW_RECONCILE_REASONS = ["dataset-not-on-job", "unit", "custom-factor", "v7-changed", "no-match"] as const;
 export type V7RowReconcileReason = (typeof V7_ROW_RECONCILE_REASONS)[number];
+/**
+ * An edition the previous system priced a row from that the job does not hold, and bringing it in will not add (only the edition the
+ * row's factor is from joins the job). The same words on the rows modal's yearly parts and in the bring-in refusal.
+ */
+export const V7_DATASET_NOT_ON_JOB_WORDS = "add it to the job's datasets first";
 const REASON_WORDS: Record<V7RowReconcileReason, string> = {
-  "dataset-not-on-job": "a dataset the previous system priced it from is not on the job", unit: "the unit differs",
+  "dataset-not-on-job": "a dataset the previous system priced it from — add it to the job's datasets first", unit: "the unit differs",
   "custom-factor": "the previous system priced it from a client's custom factor", "v7-changed": "the previous system's row changed since it was read",
   "no-match": "the factor differs",
 };
@@ -115,6 +120,10 @@ export function v7SpanningReconcile(rows: readonly V7RowReconcileInput[], scopeT
 }
 
 const oneDp = (value: number) => value.toLocaleString("en-GB", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+/** A missed row's reason; an edition not on the job is named first, as the rows modal's parts line names it ("DESNZ GB 2026 — add it …"). */
+const reasonWords = (row: Pick<V7RowReconcileMiss, "reason" | "detail">) => row.reason === "dataset-not-on-job" && row.detail
+  ? `${row.detail} — ${row.detail.includes(",") ? V7_DATASET_NOT_ON_JOB_WORDS.replace("add it", "add them") : V7_DATASET_NOT_ON_JOB_WORDS}`
+  : `${REASON_WORDS[row.reason]}${row.detail ? ` (${row.detail})` : ""}`;
 /** At most this many rows are named in one refusal; the rest are counted. */
 export const V7_RECONCILE_ROWS_NAMED = 20;
 
@@ -130,7 +139,7 @@ export function v7SpanningRefusal(reconcile: V7SpanningReconcile): CommandIssue[
   const head = `This job spans two dataset years, and its figures don't match the previous system's own${off.length
     ? `: ${off.map((entry) => `Scope ${entry.scope} ${oneDp(entry.console)} here, ${oneDp(entry.previous)} there`).join(" · ")}` : ""}. Nothing was written.`;
   const named = reconcile.rows.slice(0, V7_RECONCILE_ROWS_NAMED).map((row): CommandIssue => ({ field: `rows.${row.legacyDbId}`, code: "SPANS_TWO_DATASET_YEARS",
-    message: `Row ${row.legacyDbId} (Scope ${row.scope}): ${row.console === null ? "not brought in" : `${oneDp(row.console)} here`}, ${row.previous === null ? "none in the previous system" : `${oneDp(row.previous)} there`} — ${REASON_WORDS[row.reason]}${row.detail ? ` (${row.detail})` : ""}.` }));
+    message: `Row ${row.legacyDbId} (Scope ${row.scope}): ${row.console === null ? "not brought in" : `${oneDp(row.console)} here`}, ${row.previous === null ? "none in the previous system" : `${oneDp(row.previous)} there`} — ${reasonWords(row)}.` }));
   const more = reconcile.rows.length - named.length;
   return [{ field: "jobId", code: "SPANS_TWO_DATASET_YEARS", message: head }, ...named,
     ...(more > 0 ? [{ field: "rows", code: "SPANS_TWO_DATASET_YEARS", message: `…and ${more} more row${more === 1 ? "" : "s"}.` }] : [])];
