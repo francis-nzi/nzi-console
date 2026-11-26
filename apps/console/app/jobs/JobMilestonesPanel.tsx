@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { patchBrowserCommand, patchBrowserCommandWithReason, postBrowserCommand, postBrowserCommandWithReason, putBrowserCommand, putBrowserCommandWithReason, type BrowserCommandResult } from "@nzi/api-client";
-import { MILESTONE_KIND_META, todayInLondon, type MilestoneKind } from "@nzi/contracts";
+import { datasetLabelFromId, MILESTONE_KIND_META, todayInLondon, type MilestoneKind } from "@nzi/contracts";
 import type { JobMilestonesView, JobUpdatePlan } from "@nzi/isolated-backend";
 import { RiskBadge } from "@nzi/ui";
 import { formatDate } from "../lib/formatDate";
@@ -272,7 +272,8 @@ function PreviewTable({ preview, caption }: { preview: NonNullable<JobUpdatePlan
 }
 
 type ScheduleChange = { startDate?: string; dueDate?: string; reportingPeriodStart?: string | null; reportingPeriodEnd?: string | null; milestoneTemplateId?: string | null };
-const datasetList = (items: Array<{ name: string }>) => items.length ? items.map((item) => item.name).join(", ") : "none";
+// A dataset by its edition ("DESNZ GB 2026"), never the file it was imported as (DATASET-CURRENCY §2).
+const datasetList = (items: Array<{ datasetId: string }>) => items.length ? items.map((item) => datasetLabelFromId(item.datasetId)).join(", ") : "none";
 
 /** job.update's form: edit, preview (the command's own plan, from the server), then apply. */
 type ScopeTotals = { scope1: number; scope2: number; scope3: number; total: number };
@@ -339,7 +340,7 @@ function ScheduleEditor({ view, busy, onCancel, onRun, datesOnly = false }: { vi
       {plan.datasets?.window ? <div className="nz-schedule-effects">
         <p>Emissions window: {plan.datasets.window.before ? `${formatDate(plan.datasets.window.before.from)} – ${formatDate(plan.datasets.window.before.to)}` : "none"} → <b>{formatDate(plan.datasets.window.after.from)} – {formatDate(plan.datasets.window.after.to)}</b>.</p>
         <p>Automatic datasets: {datasetList(plan.datasets.automaticRemoved)} → <b>{datasetList(plan.datasets.automaticAdded)}</b>.</p>
-        {plan.datasets.manual.map((manual) => <p key={manual.datasetId}>Chosen by hand, kept: <b>{manual.name}</b>{manual.warningsAfter.length ? ` — ${manual.warningsAfter.join(" ")}` : " — covers the new period."}</p>)}
+        {plan.datasets.manual.map((manual) => <p key={manual.datasetId}>Chosen by hand, kept: <b>{datasetLabelFromId(manual.datasetId)}</b>{manual.warningsAfter.length ? ` — ${manual.warningsAfter.join(" ")}` : " — covers the new period."}</p>)}
       </div> : null}
       {outcome && plan.periodHasData ? <table className="nz-milestones-preview"><caption>Totals before and after ({outcome.repriced.rows} row{outcome.repriced.rows === 1 ? "" : "s"} re-priced)</caption>
         <thead><tr><th scope="col">Scope</th><th scope="col">Before</th><th scope="col">After</th></tr></thead>
