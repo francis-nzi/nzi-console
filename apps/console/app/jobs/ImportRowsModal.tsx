@@ -6,7 +6,7 @@ import { emissionCategoryTaxonomy, type V7ImportRefreshCommitted, type V7ImportR
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsAcceptResult, V7ImportRowsRow } from "@nzi/isolated-backend";
 import { Drawer } from "@nzi/ui";
 import {
-  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowsProgress,
+  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsProgress,
   scopeLines, suggestedAccepts, suggestedSummary, verdictWords,
   type BringInOutcome, type RowsGroup,
 } from "./importRowsModel";
@@ -278,6 +278,7 @@ export function ImportRowsView(props: ImportRowsViewProps) {
     {notice ? <div className="nz-banner ok" role="status" style={{ margin: "10px 18px 0" }}><div>{notice}</div></div> : null}
 
     <div className="nz-irm-rows">
+      {groups.length ? <div className="nz-irm-colhd" data-row-header><span>Previous system row</span><span>Quantity</span><span>Console factor</span><span>Status</span><span>Here vs previous system</span></div> : null}
       {groups.map((group) => <Group key={group.key} group={group} {...props} canWrite={canWrite} />)}
       {groups.length === 0 ? <div className="nz-list-empty" role="status"><b>{filter ? "No row matches the filter." : "The previous system holds no rows for this job."}</b></div> : null}
     </div>
@@ -366,22 +367,21 @@ function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; ca
   const confirm = row.lane === "suggested" && pick && pick.match.categoryCode && !pick.invalid;
   const accept = (candidate: V7ImportCandidate, categoryCode: string) => props.onSave([{ kind: "map", legacyDbId: row.legacyDbId, categoryCode,
     datasetId: candidate.datasetId, factorId: candidate.factorId, expectedDecisionId: row.decision?.decisionId ?? null }]);
+  const label = rowLabel(row);
+  const here = pick?.match.tco2e !== undefined && pick?.match.tco2e !== null && row.lane !== "in-console" ? pick.match.tco2e : null;
   return <div className={`nz-irm-row ${tone}`} data-row={row.legacyDbId} data-lane={row.lane}>
-    <div><div className="nz-irm-id">{row.legacyDbId}</div><div className="nz-irm-id">{row.previous.factorCode ?? "—"}</div></div>
-    <div><div className="nz-irm-t">{row.previous.label ?? "—"}</div><div className="nz-irm-s">{[row.previous.siteName, `Scope ${row.scope}`].filter(Boolean).join(" · ")}
-      {row.resolution === "stale" ? " · the earlier decision no longer stands" : ""}</div></div>
+    <div><div className="nz-irm-t" data-row-label>{label.text}</div><div className="nz-irm-s">{[label.siteInLabel ? null : row.previous.siteName, `Scope ${row.scope}`].filter(Boolean).join(" · ")}
+      {row.resolution === "stale" ? " · the earlier decision no longer stands" : ""}</div>
+      <div className="nz-irm-id">{row.legacyDbId} · {row.previous.factorCode ?? "—"}</div></div>
     <div className="num">{qty(row.previous.quantity)} <span className="nz-irm-s">{row.previous.unit ?? ""}</span></div>
-    <div>{row.lane === "retiring" || row.lane === "in-console" || row.lane === "confirm-off" || row.totalStillCounted
+    <div className="nz-irm-fac">{row.lane === "retiring" || row.lane === "in-console" || row.lane === "confirm-off" || row.totalStillCounted
       ? <div className="nz-irm-s">{row.lane === "retiring" ? "replaced by the activity rows" : row.lane === "confirm-off" ? "switches off when brought in" : row.intended.factorId ? `${categoryName(row.intended.categoryCode)} · ${row.intended.factorId}` : "carried as it stands"}</div>
-      : pick ? <><div className="nz-irm-t">{pick.label}</div><div className="nz-irm-id">{pick.code} · {rate(pick.rate)}{pick.match.categoryCode ? ` · ${categoryName(pick.match.categoryCode)}` : ""}</div>
+      : pick ? <><div className="nz-irm-t" title={pick.label}>{pick.label}</div><div className="nz-irm-id">{pick.code} · {rate(pick.rate)}{pick.match.categoryCode ? ` · ${categoryName(pick.match.categoryCode)}` : ""}</div>
         {row.lane === "switched-off" ? <div className="nz-irm-s">the previous system&rsquo;s own factor · comes in switched off</div> : null}</>
         : <><div className="nz-irm-t" style={{ color: "var(--danger)" }}>— no console factor</div><div className="nz-irm-s">{row.lane === "switched-off" ? "switched off — needs its factor, to come in switched off" : "needs a match"}</div>
           {row.held ? <div className="nz-irm-s" data-held style={{ color: "var(--danger)" }}>{row.held}</div> : null}</>}</div>
     <div className="nz-irm-st">
       <span className={`nz-irm-pill ${pill.tone}`}>{pill.text}</span>
-      <div className="nz-irm-fig">{row.lane === "switched-off" ? <span>not counted</span> : previousFigure === null ? "" : <>{pick?.match.tco2e !== undefined && pick?.match.tco2e !== null && row.lane !== "in-console" ? <>{t(pick.match.tco2e)} <span>vs {t(previousFigure)} {against}{pick.match.verdict === "reproduces" && props.data.periodRefusal === null ? " ✓" : ""}</span></>
-        : <>{t(previousFigure)} <span>tCO₂e, {against}</span></>}</>}
-        {parts ? <div className="nz-irm-s" data-parts={row.legacyDbId}>{parts}</div> : null}</div>
       <div className="nz-irm-act">
         {confirm ? <button type="button" className="nz-btn" disabled={props.busy || !props.canWrite} onClick={() => accept(pick!, pick!.match.categoryCode!)}>Confirm</button> : null}
         {row.lane === "confirm-off" ? <button type="button" className="nz-btn" disabled={props.busy || !props.canWrite}
@@ -390,6 +390,11 @@ function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; ca
           {open ? "Close" : row.lane === "unmatched" || (row.lane === "switched-off" && !pick) ? "Find a factor" : "Change"}</button> : null}
       </div>
     </div>
+    <div className="nz-irm-fig" data-figures={row.legacyDbId}>{row.lane === "switched-off" ? <span>not counted</span> : previousFigure === null ? null : <>
+      {here !== null ? <><span>Here</span> {rowFigure(here)} <span>·</span> </> : null}<span>Previous system</span> {rowFigure(previousFigure)}
+      {here !== null && pick!.match.verdict === "reproduces" && props.data.periodRefusal === null ? " ✓" : ""}
+      <div className="nz-irm-s">tCO₂e, {against}</div></>}
+      {parts ? <div className="nz-irm-s" data-parts={row.legacyDbId}>{parts}</div> : null}</div>
     {open ? <Resolve row={row} familyless={props.data.familyless} periodHeld={props.data.periodRefusal !== null} own={own} busy={props.busy} canWrite={props.canWrite} search={props.search} onUse={accept} /> : null}
   </div>;
 }

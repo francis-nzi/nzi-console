@@ -3,12 +3,12 @@ import { readFileSync } from "node:fs";
 import { before, describe, it } from "node:test";
 import React, { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { v7MatchCandidate, V7_IMPORT_TWO_DATASET_YEARS_UNREAD, type V7MatchFactor } from "@nzi/contracts";
+import { emissionCategoryTaxonomy, v7MatchCandidate, V7_IMPORT_TWO_DATASET_YEARS_UNREAD, type V7MatchFactor } from "@nzi/contracts";
 import { v7ImportRowsAcceptIssues, type V7ImportCandidate, type V7ImportRows, type V7ImportRowsRow } from "@nzi/isolated-backend";
 import { ADMIN_ITEMS } from "../app/admin/adminNav";
 import {
-  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, pendingAccepts, reasonOutcome, refusedOutcome, rowsNamed, rowsProgress, scopeLines, suggestedAccepts,
-  suggestedSummary, verdictWords,
+  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsNamed,
+  rowsProgress, scopeLines, suggestedAccepts, suggestedSummary, verdictWords,
 } from "../app/jobs/importRowsModel";
 
 /**
@@ -116,8 +116,9 @@ describe("the reconcile strip — the scope totals, in plain words", () => {
   });
   it("the previous system's figure is said as what it is: worked out from its factor, never as its own figure", () => {
     const markup = html();
-    assert.ok(markup.includes("vs 28.9 worked out from the previous system’s factor ✓"), "a calendar-year job keeps its tick");
-    assert.ok(markup.includes("12.1 <span>tCO₂e, worked out from the previous system’s factor</span>"));
+    assert.ok(markup.includes(`<span>Here</span> 28.9 <span>·</span> <span>Previous system</span> 28.9 ✓<div class="nz-irm-s">tCO₂e, worked out from the previous system’s factor</div>`),
+      "a calendar-year job keeps its tick");
+    assert.ok(markup.includes(`<span>Previous system</span> 12.1<div class="nz-irm-s">tCO₂e, worked out from the previous system’s factor</div>`));
     assert.ok(!markup.includes("tCO₂e, previous system"));
   });
 });
@@ -131,7 +132,7 @@ describe("the two-dataset-year guard (J000265): refused at the top, before anyth
     assert.ok(markup.includes(`data-outcome="refused"`) && markup.includes(TWO_YEAR.replace(/'/g, "&#x27;")), "the refusal, at the top");
     assert.ok(!markup.includes("data-reconcile="), "no reconcile strip — so no scope said to agree");
     assert.ok(!markup.includes("✓"), "no tick anywhere");
-    assert.ok(markup.includes("vs 28.9 worked out from the previous system’s factor<"), "the row's figure, labelled, without its tick");
+    assert.ok(markup.includes(`<span>Previous system</span> 28.9<div class="nz-irm-s">tCO₂e, worked out from the previous system’s factor</div>`), "the row's figure, labelled, without its tick");
     assert.match(markup, /data-bring-in="true" disabled=""/);
   });
   it("an opened row's candidate table shows no tick either", () => {
@@ -156,7 +157,7 @@ describe("a spanning job with the previous system's own figures read (Datasets P
 
   it("the row: the console's monthly-priced figure against the previous system's own, with its tick, and each yearly part ticked", () => {
     const markup = html({ data: OWN });
-    assert.ok(markup.includes("15.3 <span>vs 15.3 the previous system’s figure ✓</span>"), "its own figure, not the single-factor 17.3");
+    assert.ok(markup.includes(`<span>Here</span> 15.3 <span>·</span> <span>Previous system</span> 15.3 ✓<div class="nz-irm-s">tCO₂e, the previous system’s figure</div>`), "its own figure, not the single-factor 17.3");
     assert.ok(markup.includes("Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 ✓"));
     assert.ok(!markup.includes("worked out from the previous system’s factor"), "never the single-factor recompute");
   });
@@ -166,10 +167,13 @@ describe("a spanning job with the previous system's own figures read (Datasets P
     assert.deepEqual(scopeLines(OWN, null).map((line) => [line.scope, line.previous, line.agrees]), [["1", 0, true], ["2", 15.306681, true], ["3", 0, true]]);
     assert.ok(markup.includes("✓ Scope totals match the previous system’s own, to 1 decimal place"));
   });
-  it("a part on an edition the job does not hold says so, with no tick", () => {
+  it("a part on an edition the job does not hold says what happens, no tick: the pick's own edition joins on accept; another is added first", () => {
     const held = { ...ELEC, parts: [parts[0]!, { ...parts[1]!, issue: "dataset-not-on-job" as const, agrees: true }] };
     const markup = html({ data: { ...OWN, rows: [{ ...SPANNING, pick: held, candidates: [held] }] } });
-    assert.ok(markup.includes("Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 — not on the job"));
+    assert.ok(markup.includes("Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 — add it to the job&#x27;s datasets first"));
+    assert.ok(!markup.includes("not on the job"));
+    const own = { ...ELEC, parts: [{ ...parts[0]!, issue: "dataset-not-on-job" as const }, parts[1]!] };
+    assert.equal(partsLine(own), "Apr–Dec 2025 @ DESNZ GB 2025 — added to the job when you accept · Jan–Mar 2026 @ DESNZ GB 2026 ✓");
   });
   it("a search hit on a row priced over two editions has no figure to compare: one rate cannot be its figure", () => {
     const hit = judgeHit(SPANNING, { datasetId: "uk-ghg-gb-2025", factorId: "uk-ghg-elec-uk", code: "elec-uk", label: "Electricity · UK", unit: "kWh", rate: 0.177, dataset: "DESNZ GB 2025",
@@ -313,6 +317,43 @@ describe("bringing it in: the outcome at the top, and a row the unit rule refuse
     const hit = judgeHit(net, { datasetId: "d", factorId: "f", code: "c", label: "Natural gas", unit: "kWh", rate: 0.2, dataset: "D", scopes: ["1"], categories: ["1.natural-gas"],
       sameUnit: false, unitRefusal: why }, []);
     assert.equal(hit.invalid, why, "a search hit bringing it in would refuse cannot be used either");
+  });
+});
+
+describe("readability (Francis's walk-through of J000265)", () => {
+  const css = readFileSync(new URL("../../../packages/ui/src/styles.css", import.meta.url), "utf8");
+  it("the row label: the site's name, never the previous system's site id; no label → the category and the site", () => {
+    const waste = row({ previous: { ...row({}).previous, label: "Waste disposal — site 374", siteName: "Registered Office" } });
+    assert.deepEqual(rowLabel(waste), { text: "Waste disposal — Registered Office", siteInLabel: true });
+    const markup = html({ data: { ...DATA, rows: [waste] } });
+    assert.ok(markup.includes(">Waste disposal — Registered Office<") && !/site 374/.test(markup));
+    assert.ok(markup.includes(`<div class="nz-irm-s">Scope 1</div>`), "the site is not said twice");
+    const gas = emissionCategoryTaxonomy.find((entry) => entry.code === "1.company-vehicles")!.name;
+    assert.deepEqual(rowLabel(row({ v7Category: "1.company-vehicles", previous: { ...row({}).previous, label: null, siteName: "Registered Office" } })).text, `${gas} — Registered Office`);
+    assert.deepEqual(rowLabel(row({ previous: { ...row({}).previous, label: "Fuels — site 11", siteName: null } })).text, "Fuels", "no site name: the category alone, never the id");
+    assert.deepEqual(rowLabel(row({})).text, "Delivery vehicles — HGV (all diesel)", "a kept label stays as it is");
+  });
+  it("column titles: one sticky header row — Previous system row · Quantity · Console factor · Status · Here vs previous system", () => {
+    assert.match(html(), /<div class="nz-irm-colhd" data-row-header="true"><span>Previous system row<\/span><span>Quantity<\/span><span>Console factor<\/span><span>Status<\/span><span>Here vs previous system<\/span><\/div>/);
+    assert.match(css, /\.nz-irm-colhd\{position:sticky;top:0/);
+    assert.match(css, /\.nz-irm-rows\{overflow:auto;flex:1 1 auto;min-height:0\}/, "the rows are the scroller, so the header sticks");
+  });
+  it("column widths: label narrow, factor and status wide; the factor name two lines at most, in full on hover; no sideways scroll at 1280px", () => {
+    const columns = /\.nz-irm-row,\.nz-irm-colhd\{display:grid;grid-template-columns:([^;]+);gap:(\d+)px\}/.exec(css);
+    assert.ok(columns, "header and rows share one grid");
+    assert.equal(columns[1], "minmax(0,1fr) 90px minmax(0,1.25fr) 168px 160px");
+    // The card is 1040px at 1280px; fixed columns, gaps and padding leave the flexible ones room, and those shrink to nothing before overflowing.
+    const fixed = [90, 168, 160].reduce((sum, width) => sum + width, 0) + 4 * Number(columns[2]) + 18 + 15 + 3;
+    assert.ok(fixed < 1040 - 400, `${fixed}px fixed leaves the label and factor room at 1040px`);
+    assert.match(css, /\.nz-irm-fac \.nz-irm-t\{display:-webkit-box;-webkit-line-clamp:2;/);
+    const picked = html({ data: { ...DATA, rows: [row({ candidates: [HGV], pick: HGV })] } });
+    assert.ok(picked.includes(`<div class="nz-irm-fac"><div class="nz-irm-t" title="HGV all · average laden · diesel">`));
+  });
+  it("figures: both labelled — Here · Previous system — and two decimal places under 1 t", () => {
+    assert.deepEqual([rowFigure(0.009), rowFigure(0.1), rowFigure(0.99), rowFigure(28.888), rowFigure(null)], ["0.01", "0.10", "0.99", "28.9", "—"]);
+    const small = candidate("Waste · landfill", { code: "w", quantity: 0.04, previous: 0.009, scope: "3", rate: 225, rowCategories: ["3.5"], categories: ["3.5"] });
+    const markup = html({ data: { ...DATA, rows: [row({ scope: "3", categories: ["3.5"], candidates: [small], pick: small, previous: { ...row({}).previous, quantity: 0.04, tco2e: 0.009 } })] } });
+    assert.ok(markup.includes("<span>Here</span> 0.01 <span>·</span> <span>Previous system</span> 0.01 ✓"), "0.009 is never 0.0");
   });
 });
 

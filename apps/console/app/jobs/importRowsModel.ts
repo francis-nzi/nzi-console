@@ -1,5 +1,5 @@
 import {
-  agreesToOneDecimalPlace, datasetLabelFromId, emissionCategoryTaxonomy, rankV7Candidates, v7MatchCandidate,
+  agreesToOneDecimalPlace, datasetLabelFromId, emissionCategoryTaxonomy, rankV7Candidates, v7MatchCandidate, V7_DATASET_NOT_ON_JOB_WORDS,
   type V7ImportIngestTotals, type V7ImportScope, type V7MatchResult, type V7MatchVerdict,
 } from "@nzi/contracts";
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsRow } from "@nzi/isolated-backend";
@@ -152,6 +152,29 @@ export function scopeLines(data: Pick<V7ImportRows, "rows" | "scopeTotals"> & { 
 
 export const oneDp = (value: number) => value.toLocaleString("en-GB", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
+/** A row's figure in tCO₂e: one decimal place, two under 1 t — so 0.009 shows as 0.01, never 0.0. */
+export const rowFigure = (value: number | null) => value === null ? "—"
+  : Math.abs(value) < 1 ? value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : oneDp(value);
+
+// ── The row's label ─────────────────────────────────────────────────────────────────────────────────────────────
+
+const categoryNameOf = (code: string | null) => (code ? emissionCategoryTaxonomy.find((entry) => entry.code === code)?.name ?? null : null);
+
+/**
+ * The row's label as the modal shows it — never the previous system's site id. Its extract replaces free text with
+ * "<category> — site <id>": shown as "<category> — <the site's name>". A row with no label: its category and the site's name.
+ * `siteInLabel` says the site is already in it, so the line beneath does not repeat it.
+ */
+export function rowLabel(row: Pick<V7ImportRowsRow, "previous" | "v7Category" | "categories">): { text: string; siteInLabel: boolean } {
+  const site = row.previous.siteName?.trim() || null;
+  const label = row.previous.label?.trim() || null;
+  const scrubbed = label ? /^(.*?)\s+—\s+site\s+\d+$/.exec(label) : null;
+  if (label && !scrubbed) return { text: label, siteInLabel: false };
+  const base = scrubbed ? scrubbed[1]!.trim() : categoryNameOf(row.v7Category) ?? categoryNameOf(row.categories[0] ?? null);
+  if (!base) return { text: site ?? "—", siteInLabel: site !== null };
+  return site ? { text: `${base} — ${site}`, siteInLabel: true } : { text: base, siteInLabel: false };
+}
+
 // ── The resolve control ─────────────────────────────────────────────────────────────────────────────────────────
 
 /** What the verdict says on the candidate table, against the previous system — plain words, no symbols. */
@@ -192,20 +215,29 @@ const monthWords = (from: string, to: string) => {
   const [ty, tm] = [to.slice(0, 4), MONTH[Number(to.slice(5, 7)) - 1]];
   return from === to ? `${fm} ${fy}` : fy === ty ? `${fm}–${tm} ${ty}` : `${fm} ${fy}–${tm} ${ty}`;
 };
-const PART_WHY: Record<NonNullable<V7ImportCandidate["parts"]>[number]["issue"] & string, string> = {
-  "dataset-not-on-job": "not on the job", unit: "unit differs", "no-match": "factor not in that edition", "custom-factor": "a client's custom factor",
+type PartIssue = NonNullable<V7ImportCandidate["parts"]>[number]["issue"] & string;
+const PART_WHY: Record<Exclude<PartIssue, "dataset-not-on-job">, string> = {
+  unit: "unit differs", "no-match": "factor not in that edition", "custom-factor": "a client's custom factor",
 };
+/**
+ * An edition the job does not hold. Bringing the row in adds the edition its factor is from (ruling 3: the decision's dataset joins
+ * the job's selection) — so that one is "added to the job when you accept". Any other edition it is not: it is added on the job's
+ * datasets first (the same words as the bring-in refusal's, V7_DATASET_NOT_ON_JOB_WORDS).
+ */
+const notOnJob = (part: NonNullable<V7ImportCandidate["parts"]>[number], own: string | null) =>
+  part.datasetId && part.datasetId === own ? "added to the job when you accept" : part.datasetId ? V7_DATASET_NOT_ON_JOB_WORDS : "no edition of the factor for that year";
 
 /**
  * A candidate's yearly parts, as the row shows them: "Apr–Dec 2025 @ DESNZ GB 2025 ✓ · Jan–Mar 2026 @ DESNZ GB 2026 ✓" — each run of
  * months at the edition it is priced from, ✓ where that part reproduces the previous system's own part, else why not. Empty when the
  * candidate has no parts (a calendar-year job, or the previous system's figures not read).
  */
-export function partsLine(candidate: Pick<V7ImportCandidate, "parts"> | null): string {
+export function partsLine(candidate: Pick<V7ImportCandidate, "parts" | "datasetId"> | null): string {
   return (candidate?.parts ?? []).map((part) => {
     const when = part.from && part.to ? monthWords(part.from, part.to) : "the period";
     const at = part.datasetId ? datasetLabelFromId(part.datasetId) : part.year !== null ? `${part.year}` : "no edition";
-    return `${when} @ ${at}${part.issue ? ` — ${PART_WHY[part.issue]}` : part.agrees ? " ✓" : ` — ${part.tco2e === null ? "no figure" : `${oneDp(part.tco2e)} vs ${oneDp(part.previous)}`}`}`;
+    const why = part.issue === "dataset-not-on-job" ? notOnJob(part, candidate!.datasetId) : part.issue ? PART_WHY[part.issue] : null;
+    return `${when} @ ${at}${why ? ` — ${why}` : part.agrees ? " ✓" : ` — ${part.tco2e === null ? "no figure" : `here ${rowFigure(part.tco2e)} · previous system ${rowFigure(part.previous)}`}`}`;
   }).join(" · ");
 }
 
