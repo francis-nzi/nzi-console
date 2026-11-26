@@ -56,6 +56,8 @@ export type AutomaticDataset = {
   editionYear: number; countryCode: string;
   /** The calendar years of the window this edition is the pick for (R1): one, for a calendar-year window. */
   years: number[];
+  /** Of those years, the ones it stands in for because their own edition is not published yet (it ends before their part does). */
+  fallbackYears: number[];
   /** DESNZ chosen for a job with no UK in scope, for its activity categories only (D-A). */
   internationalDefault: boolean;
 };
@@ -99,9 +101,14 @@ export async function automaticDatasetsFor(db: Queryable, organisationId: string
       [organisationId, day.to, inScope, series]);
     for (const row of rows) {
       const held = picked.get(row.dataset_id);
-      if (held) { if (!held.years.includes(day.year)) held.years.push(day.year); held.fallback = held.fallback && !row.on_day; continue; }
+      // Two years resolving to one edition are one selection covering both (never two inserts), each year's fallback kept.
+      if (held) {
+        if (!held.years.includes(day.year)) held.years.push(day.year);
+        if (!row.on_day && !held.fallbackYears.includes(day.year)) held.fallbackYears.push(day.year);
+        held.fallback = held.fallback && !row.on_day; continue;
+      }
       picked.set(row.dataset_id, { datasetId: row.dataset_id, name: row.name, fallback: !row.on_day, editionYear: Number(row.valid_to.slice(0, 4)),
-        countryCode: row.country_code, years: [day.year], internationalDefault });
+        countryCode: row.country_code, years: [day.year], fallbackYears: row.on_day ? [] : [day.year], internationalDefault });
     }
   };
   for (const day of days) {
@@ -119,7 +126,9 @@ export async function automaticDatasetsFor(db: Queryable, organisationId: string
  */
 export function selectionReason(pick: AutomaticDataset, window: ReportingWindow): string {
   const endYear = Number(window.to.slice(0, 4));
-  const kind = pick.fallback ? fallbackReason(pick.editionYear) : pick.years.includes(endYear) ? ON_DAY_REASON : yearReason(Math.min(...pick.years));
+  // A fallback for the reporting (end) year says so, even where the same edition is also its own year's match.
+  const kind = pick.fallback || pick.fallbackYears.includes(endYear) ? fallbackReason(pick.editionYear)
+    : pick.years.includes(endYear) ? ON_DAY_REASON : yearReason(Math.min(...pick.years));
   return pick.internationalDefault ? `${INTERNATIONAL_DEFAULT_LABEL}. ${kind}` : kind;
 }
 
