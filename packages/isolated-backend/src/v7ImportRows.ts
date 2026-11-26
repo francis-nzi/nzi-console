@@ -256,7 +256,7 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
         datasetId: factor.dataset_id, factorId: factor.factor_id, code: factor.code, label: factor.label, unit: factor.activity_unit, rate, dataset: factor.dataset,
         identity: isIdentity(factor), exactCode: record.original_id !== null && factor.code.toLowerCase() === record.original_id.trim().toLowerCase(),
         anchor, year: factor.year, scopes: factor.scopes, categories,
-        match: v7MatchCandidate(input, { rate, scopes: factor.scopes, categories, sameUnit: unit.sameUnit, anchor, ...(ownFigures ? { priced: priced?.tco2e ?? null } : {}) }, library.familyless),
+        match: v7MatchCandidate(input, { rate, scopes: factor.scopes, categories, sameUnit: unit.sameUnit, anchor, code: factor.code, ...(ownFigures ? { priced: priced?.tco2e ?? null } : {}) }, library.familyless),
         unitRefusal: unit.refusal, invalid: null, parts: priced?.parts ?? null,
       };
     }));

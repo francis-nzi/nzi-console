@@ -163,4 +163,14 @@ describe("the code's suffix names a category (the registry, 0110), and settles a
     assert.equal(v7MatchCandidate({ ...row, codeCategory: "3.7" }, freight, []).categoryCode, null, "a suffix naming a category that does not fit settles nothing");
     assert.equal(v7MatchCandidate({ ...row, v7Category: "3.4", codeCategory: "3.9" }, freight, []).categoryCode, "3.4");
   });
+  it("waste disposal (approved 26 Nov): a 20_ factor between exactly 3.5 and 3.12 settles on 3.5 — only then, and after V7's category and the suffix", () => {
+    const row: V7MatchRow = { ...ROW, quantity: 24, previousTco2e: 0.023636, categories: [] };
+    const waste: V7MatchFactor = { rate: 0.98485, scopes: ["3"], categories: ["3.5", "3.12"], sameUnit: true, code: "20_500_5226_15_1" };
+    assert.deepEqual([v7MatchCandidate(row, waste, []).categoryCode, v7MatchCandidate(row, waste, []).verdict], ["3.5", "reproduces"]);
+    assert.equal(v7MatchCandidate(row, { ...waste, code: "18_405_4006_1_1" }, []).categoryCode, null, "not a 20_ factor: a person chooses");
+    assert.equal(v7MatchCandidate(row, { ...waste, code: null }, []).categoryCode, null);
+    assert.equal(v7MatchCandidate(row, { ...waste, categories: ["3.5", "3.12", "3.1"] }, []).categoryCode, null, "only between exactly those two");
+    assert.equal(v7MatchCandidate({ ...row, v7Category: "3.12" }, waste, []).categoryCode, "3.12", "V7's own category still first");
+    assert.equal(v7MatchCandidate({ ...row, codeCategory: "3.12" }, waste, []).categoryCode, "3.12", "and the suffix's");
+  });
 });

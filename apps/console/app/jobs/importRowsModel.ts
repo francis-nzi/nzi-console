@@ -258,7 +258,7 @@ export function judgeHit(row: V7ImportRowsRow, hit: V7ImportFactorHit, familyles
   // a row V7 priced over two editions has no figure to compare until its parts are priced (an ID candidate's are).
   const own = row.previousSystem;
   const match = v7MatchCandidate({ scope: row.scope, quantity: row.previous.quantity, applyPct: row.applyPct, previousTco2e: own ? own.tco2e : row.previous.tco2e, categories: row.categories,
-    v7Category: row.v7Category, codeCategory: row.codeCategory }, { rate: hit.rate, scopes: hit.scopes, categories: hit.categories, sameUnit: hit.sameUnit, ...(own?.blended ? { priced: null } : {}) }, familyless);
+    v7Category: row.v7Category, codeCategory: row.codeCategory }, { rate: hit.rate, scopes: hit.scopes, categories: hit.categories, sameUnit: hit.sameUnit, code: hit.code, ...(own?.blended ? { priced: null } : {}) }, familyless);
   return { datasetId: hit.datasetId, factorId: hit.factorId, code: hit.code, label: hit.label, unit: hit.unit, rate: hit.rate, dataset: hit.dataset,
     identity: false, exactCode: false, anchor: false, year: null, scopes: hit.scopes, categories: hit.categories, match, unitRefusal: hit.unitRefusal,
     invalid: hit.unitRefusal, parts: null };
