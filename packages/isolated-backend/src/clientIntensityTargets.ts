@@ -23,7 +23,7 @@ async function insertVersion(db: Queryable, sql: string, values: unknown[], expe
 }
 
 /** The commitment as the audit reads it — the numbers of the target, never money or a person. */
-const summary = (row: { baselineYear: number; baselineIntensity: number; interimYear: number | null; interimReductionPct: number | null; targetYear: number | null; targetReductionPct: number | null; active: boolean }) => ({
+const summary = (row: { baselineYear: number; baselineIntensity: number | null; interimYear: number | null; interimReductionPct: number | null; targetYear: number | null; targetReductionPct: number | null; active: boolean }) => ({
   baselineYear: row.baselineYear, baselineIntensity: row.baselineIntensity,
   interim: row.interimYear === null ? null : `${row.interimYear} · −${row.interimReductionPct}%`,
   target: row.targetYear === null ? null : `${row.targetYear} · −${row.targetReductionPct}%`,
@@ -44,7 +44,9 @@ export function setClientIntensityTarget(pool: PoolLike, input: CommandInputMap[
     if ((previousRow?.version ?? 0) !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, previousRow?.version ?? 0);
     const previous = previousRow ? intensityTargetFromRow(previousRow) : null;
     // Moving a held baseline restates what the client committed to measure from — say why.
-    const movesBaseline = previous !== null && previous.active && (previous.baselineYear !== input.baselineYear || previous.baselineIntensity !== input.baselineIntensity);
+    // 0238: stating a baseline intensity that was pending is adding it, not moving it.
+    const movesBaseline = previous !== null && previous.active && (previous.baselineYear !== input.baselineYear
+      || (previous.baselineIntensity !== null && previous.baselineIntensity !== input.baselineIntensity));
     if (movesBaseline && !context.reason?.trim()) {
       throw new CommandValidationError([{ field: "reason", code: "REASON_REQUIRED", message: "Moving the baseline of a held intensity target needs a reason." }]);
     }

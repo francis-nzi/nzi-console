@@ -283,7 +283,12 @@ export type ClientIntensityTarget = {
   unitWording: string;
   version: number;
   baselineYear: number;
-  baselineIntensity: number;
+  /**
+   * 0238: the intensity the reductions are measured from. `stated` = typed on the target; `derived` = not typed, worked out as
+   * the baseline's total × divider ÷ the baseline period's recorded value; null = pending (shown "pending", never 0).
+   */
+  baselineIntensity: number | null;
+  baselineIntensitySource: "stated" | "derived" | "pending";
   interimYear: number | null;
   interimReductionPct: number | null;
   targetYear: number | null;

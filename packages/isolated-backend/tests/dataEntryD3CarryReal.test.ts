@@ -212,8 +212,11 @@ describe("Data entry D3 (B): financial-year imports, the stored basis, carry-for
         await db.query(`INSERT INTO nzi_console.reviewed_crp_snapshots (organisation_id, snapshot_id, job_id, snapshot_version, job_version, data_hash, payload_json, created_by)
           VALUES ($1, $2, $3, 1, 1, $4, $5::jsonb, 'test')`, [ORG, snapshot, job, `sha256:${"d".repeat(64)}`, JSON.stringify({ jobNumber: job, client: "Harbour Co", reportingYear: year, measurements: [] })]);
       }
-      await db.query(`INSERT INTO nzi_console.job_emissions_targets (organisation_id, job_id, baseline_year, baseline_tco2e, interim_year, interim_reduction_percent, net_zero_year, updated_by)
-        VALUES ($1, $2, 2023, 100, 2030, 50, 2050, 'test')`, [ORG, FY26]);
+      // Addendum A (0238): the baseline year is the client's — its baseline period — not the job's own pathway target.
+      // The start alone names the year (2023); with no end recorded the chain filters no later period by it — as before, when the
+      // baseline year came from the job's row and the client held no period.
+      await db.query(`UPDATE nzi_console.clients SET baseline_period_start = '2023-01-01', baseline_period_end = NULL
+        WHERE organisation_id = $1 AND client_id = (SELECT client_id FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2)`, [ORG, FY26]);
       const read = (await withTenantRead(database.pool, ORG, (tx) => readCategoryLineYears(tx, FY26, "3.1")))!;
       assert.deepEqual(read.years.map((year) => [year.year, year.kind, year.jobId]), [[2023, "baseline", null], [2024, "prior", FY24], [2025, "prior", FY25], [2026, "current", FY26]]);
       const stationery = read.lines.find((entry) => entry.key === "gl:6100")!;

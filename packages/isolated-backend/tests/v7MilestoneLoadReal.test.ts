@@ -172,9 +172,24 @@ describe("the milestone backfill, against a real database", { skip: TEST_DATABAS
     assert.equal((await row("j101", "first_draft")).updated_by, "user:ada");
   });
 
+  it("Addendum B: a due date changed on both sides, with no completion either side, keeps the console's and records v7's", async () => {
+    const dueOnly = plan(...BASE.map((r) => r.job_id === "101"
+      ? { ...r, data_collection_completed_at: "2026-09-25 10:00:00", data_collection_completed_by: "Ada Example", first_draft_due: "2026-11-20" }
+      : r) as Array<Record<string, string | null>>);
+    const outcome = await loadV7Milestones(database.pool, ORG, planV7Milestones(dueOnly), { commit: true, runId: `${MILESTONE_RUN_PREFIX}dueonly` });
+    assert.deepEqual([outcome.updated, outcome.conflicts.length], [0, 0]);
+    const kept = await row("j101", "first_draft");
+    assert.equal(kept.updated_by, "user:ada");
+    const admin = await database.admin();
+    try {
+      const seen = (await admin.query(`SELECT date_key, v7_from::text AS v7_from FROM nzi_console.job_v7_date_observations WHERE organisation_id = $1 AND job_id = 'j101' AND run_id = $2`, [ORG, `${MILESTONE_RUN_PREFIX}dueonly`])).rows;
+      assert.deepEqual(seen, [{ date_key: "milestone:first_draft", v7_from: "2026-11-20" }]);
+    } finally { await admin.end(); }
+  });
+
   it("R3: changed on both sides refuses the whole job, by job and kind — and the other jobs go ahead", async () => {
     const both = plan(...BASE.map((r) => r.job_id === "101"
-      ? { ...r, data_collection_completed_at: null, data_collection_completed_by: null, first_draft_due: "2026-11-15" }
+      ? { ...r, data_collection_completed_at: null, data_collection_completed_by: null, first_draft_due: "2026-11-15", first_draft_completed_at: "2026-11-15 09:00:00", first_draft_completed_by: "Ada Example" }
       : r.job_id === "100" ? { ...r, final_report_due: "2023-09-01" } : r) as Array<Record<string, string | null>>);
     const outcome = await loadV7Milestones(database.pool, ORG, planV7Milestones(both), { commit: true });
     assert.deepEqual(outcome.conflicts.map((c) => [c.jobNumber, c.kind]), [["J000002", "first_draft"]]);

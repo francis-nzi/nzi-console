@@ -1,4 +1,5 @@
 import type { Queryable } from "./postgres";
+import { baselineYearOf } from "@nzi/contracts";
 import { listSrsGapSuggestions, srsFrameworksFor } from "./srsBridging";
 import type {StaffRole} from "./auth";
 import { listClientContacts } from "./clientContactRecords";
@@ -9,7 +10,7 @@ import { readSrsReviewStatus } from "./srsReviewReminders";
 import { readClientSrsThread } from "./portalConversations";
 import { denominatorFor, listClientIntensityMetrics, listClientIntensityValues } from "./intensityMetricRecords";
 import { listClientFiles, listClientMessages, listClientReports, type ClientFileReadModel, type ClientMessageReadModel, type ClientReportReadModel } from "./clientAreaRecords";
-import { getBenchmarkInForce, getClientTargets, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
+import { getBaselineYearState, getBenchmarkInForce, getClientTargets, getJobPathwayTarget, type ClientTargetsReadModel, type TargetActual } from "./clientTargetRecords";
 import { listClientIntensityTargets } from "./clientIntensityTargetRecords";
 import { getClientReportingTemplate, listActiveMasterTemplateChoices, listReportingTemplateCategories } from "./clientReportingTemplateRecords";
 import { readClientReportProfile } from "./reportSectionPlanRecords";
@@ -467,7 +468,8 @@ export async function getClientWorkspace(db: Queryable, clientId: string): Promi
       jobNumber: row.payload_json.jobNumber,
     }))
     .sort((a, b) => a.year - b.year);
-  const targets = await getClientTargets(db, clientId, { benchmarkInForce: await getBenchmarkInForce(db, clientId), actuals });
+  // 0238: the baseline year (pending or with figures) and the job that supplies it travel with the targets.
+  const targets = await getClientTargets(db, clientId, { benchmarkInForce: await getBenchmarkInForce(db, clientId), actuals, baselineYear: await getBaselineYearState(db, clientId) });
   // Each year resolved through the same resolver as the headline figures, newest first.
   const history: ClientYearFigure[] = reportingYears.map((row) => {
     const snapshot = mapSnapshotRow(row);
@@ -772,7 +774,10 @@ export async function getScopeQaReadiness(db:Queryable,jobId:string,rowIds?:read
 
 type TargetRow={job_id:string;baseline_year:number;baseline_tco2e:string;interim_year:number;interim_reduction_percent:string;net_zero_year:number;version:number;updated_by:string;updated_at:Date|string};
 const mapTarget=(row:TargetRow):EmissionsTargetReadModel=>({jobId:row.job_id,baselineYear:row.baseline_year,baselineTco2e:Number(row.baseline_tco2e),interimYear:row.interim_year,interimReductionPercent:Number(row.interim_reduction_percent),netZeroYear:row.net_zero_year,version:row.version,updatedAt:row.updated_at instanceof Date?row.updated_at.toISOString():String(row.updated_at),updatedBy:row.updated_by});
-export async function getJobEmissionsTarget(db:Queryable,jobId:string):Promise<EmissionsTargetReadModel|null>{const {rows}=await db.query<TargetRow>(`SELECT job_id,baseline_year,baseline_tco2e,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_emissions_targets WHERE job_id=$1`,[jobId]);return rows[0]?mapTarget(rows[0]):null;}
+/** The job's own entry (`job_emissions_targets`) — read-only history since Addendum A; the job now reads the client (getJobPathwayTarget). */
+export async function getJobEmissionsTargetHistory(db:Queryable,jobId:string):Promise<EmissionsTargetReadModel|null>{const {rows}=await db.query<TargetRow>(`SELECT job_id,baseline_year,baseline_tco2e,interim_year,interim_reduction_percent,net_zero_year,version,updated_by,updated_at FROM nzi_console.job_emissions_targets WHERE job_id=$1`,[jobId]);return rows[0]?mapTarget(rows[0]):null;}
+/** Addendum A — the job's pathway target, read from the client's baseline and targets (one baseline). */
+export async function getJobEmissionsTarget(db:Queryable,jobId:string):Promise<EmissionsTargetReadModel|null>{return (await getJobPathwayTarget(db,jobId))?.target??null;}
 /**
  * The intensity a job's CRP reports — through the one adapter (Phase 3c, ruled (2)): the client's target on its first
  * targeted standard metric, with this job's Value. No longer `job_intensity_targets`, which stays as read-only history.
@@ -797,7 +802,7 @@ export async function listReportSections(db:Queryable,jobId:string):Promise<Repo
 export async function resolveCrpReportingChain(db: Queryable, jobId: string): Promise<CrpReportingChain | null> {
   const jobResult = await db.query<{
     client_id: string; reporting_year: number | null; start_date: Date | string; job_family: string;
-    period_from: Date | string | null; period_to: Date | string | null; baseline_period_end: Date | string | null;
+    period_from: Date | string | null; period_to: Date | string | null; baseline_period_start: Date | string | null; baseline_period_end: Date | string | null;
   }>(
     // The job's own period (its stored dates, else its emissions-config window) and the client's
     // baseline period end, so "earlier than this job" and "after the baseline" are both asked of
@@ -805,7 +810,7 @@ export async function resolveCrpReportingChain(db: Queryable, jobId: string): Pr
     `SELECT j.client_id, j.reporting_year, j.start_date, j.job_family,
             coalesce(j.reporting_period_start, ec.reporting_from) AS period_from,
             coalesce(j.reporting_period_end,   ec.reporting_to)   AS period_to,
-            c.baseline_period_end
+            c.baseline_period_start, c.baseline_period_end
        FROM nzi_console.jobs j
        LEFT JOIN nzi_console.job_emissions_config ec ON (ec.organisation_id, ec.job_id) = (j.organisation_id, j.job_id)
        JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (j.organisation_id, j.client_id)
@@ -819,8 +824,9 @@ export async function resolveCrpReportingChain(db: Queryable, jobId: string): Pr
     : null;
   const baselinePeriodEnd = job.baseline_period_end ? dateOnly(job.baseline_period_end) : null;
 
-  const [targetResult, priorResult, currentResult] = await Promise.all([
-    db.query<{ baseline_year: number }>(`SELECT baseline_year FROM nzi_console.job_emissions_targets WHERE job_id=$1`, [jobId]),
+  // Addendum A: the baseline year is the client's (one baseline), no longer the job's own pathway target.
+  const clientBaselineYear = baselineYearOf(job.baseline_period_start ? dateOnly(job.baseline_period_start) : null);
+  const [priorResult, currentResult] = await Promise.all([
     // One snapshot per prior reporting period, latest version — the one assured-series selection the issued report's
     // pathway reads too (RF-2). Candidates come back with their periods and are filtered chronologically by the chain
     // builder (NZC-098).
@@ -834,7 +840,7 @@ export async function resolveCrpReportingChain(db: Queryable, jobId: string): Pr
     jobId,
     clientId: job.client_id,
     currentYear,
-    baselineYear: targetResult.rows[0]?.baseline_year ?? null,
+    baselineYear: clientBaselineYear,
     priorSnapshots: priorResult.map((row) => ({ year: row.reportingYear, snapshotId: row.snapshotId, dataHash: row.dataHash, period: row.period })),
     currentPeriod,
     baselinePeriodEnd,

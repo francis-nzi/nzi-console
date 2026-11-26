@@ -24,8 +24,8 @@ function fakeDb(opts: { publishedRow: unknown; chainRows: unknown[]; priorPayloa
       calls.push(sql);
       if (sql.includes("FROM nzi_console.portal_access_grants g") && sql.includes("g.portal_user_id=$1")) return { rows: [{ "?column?": 1 }] };
       if (sql.includes("FROM nzi_console.report_versions r") && sql.includes("r.status='published'")) return { rows: opts.publishedRow ? [opts.publishedRow] : [] };
-      if (sql.includes("FROM nzi_console.jobs j")) return { rows: [{ client_id: "client-a", reporting_year: 2025, start_date: "2025-01-01", job_family: "crp", period_from: null, period_to: null, baseline_period_end: null }] };
-      if (sql.includes("FROM nzi_console.job_emissions_targets")) return { rows: [{ baseline_year: 2020 }] };
+      // Addendum A (0238): the chain's baseline year is the client's baseline period's start year.
+      if (sql.includes("FROM nzi_console.jobs j")) return { rows: [{ client_id: "client-a", reporting_year: 2025, start_date: "2025-01-01", job_family: "crp", period_from: null, period_to: null, baseline_period_start: "2020-01-01", baseline_period_end: null }] };
       if (sql.includes("FROM nzi_console.reviewed_crp_snapshots s") && sql.includes("pj.client_id = $1")) return { rows: opts.chainRows };
       if (sql.includes("SELECT snapshot_id, data_hash FROM nzi_console.reviewed_crp_snapshots WHERE job_id=$1")) return { rows: [{ snapshot_id: "cur", data_hash: "sha256:current" }] };
       if (sql.includes("SELECT snapshot_id, payload_json FROM nzi_console.reviewed_crp_snapshots WHERE snapshot_id = ANY($1)")) {

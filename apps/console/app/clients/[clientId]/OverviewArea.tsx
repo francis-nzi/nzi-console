@@ -103,7 +103,8 @@ function SetupProgress({ workspace, jobs }: { workspace: ClientWorkspaceReadMode
     { label: "Identity", done: Boolean(client.sector?.trim() && client.profile.financialYearEndMonth) },
     { label: "Contacts", done: (contacts?.length ?? 0) > 0 },
     { label: "Sites", done: sites.length > 0 },
-    { label: "Baseline", done: Boolean(targets.benchmarkInForce) },
+    // 0238: the step is done once the baseline has figures; a baseline year alone says its figures are pending.
+    { label: !targets.benchmarkInForce && targets.baselineYear?.pending ? "Baseline (figures pending)" : "Baseline", done: Boolean(targets.benchmarkInForce) },
     { label: "Targets", done: Boolean(targets.model) },
     { label: "Job", done: jobs.length > 0 },
     { label: "Verified year", done: history.length > 0 },

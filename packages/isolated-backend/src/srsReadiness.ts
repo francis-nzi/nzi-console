@@ -261,16 +261,21 @@ export async function resolveNziFacts(db: Queryable, clientId: string): Promise<
   const measurements = latest?.measurements ?? [];
   const provenance = latest?.provenance ?? null;
 
-  const targets = await db.query<{ has_targets: boolean }>(
-    `SELECT (near_term_year IS NOT NULL OR net_zero_year IS NOT NULL) AS has_targets
-     FROM nzi_console.client_targets WHERE client_id=$1 ORDER BY version DESC LIMIT 1`, [clientId]);
+  // 0238: targets set against a pending baseline year are set, but nothing can be measured against them until that year has
+  // figures (the same rule the target read model uses: the stamped year's figures in force).
+  const targets = await db.query<{ has_targets: boolean; measurable: boolean }>(
+    `SELECT (t.near_term_year IS NOT NULL OR t.net_zero_year IS NOT NULL) AS has_targets,
+            (NOT t.benchmark_pending OR (extract(year from c.baseline_period_start)::int = t.benchmark_year
+              AND coalesce(c.baseline_total_tco2e, c.baseline_scope1_tco2e, c.baseline_scope2_tco2e, c.baseline_scope3_tco2e) IS NOT NULL)) AS measurable
+     FROM nzi_console.client_targets t JOIN nzi_console.clients c ON (c.organisation_id, c.client_id) = (t.organisation_id, t.client_id)
+     WHERE t.client_id=$1 ORDER BY t.version DESC LIMIT 1`, [clientId]);
   // Phase 3c (ruled): intensity bases from the client's own model — an active metric with an active client target and a
   // Value recorded on one of the client's jobs. No longer the job's own targets (job_intensity_targets, read-only history).
   const intensity = await db.query<{ bases: string }>(
     `WITH m AS (SELECT DISTINCT ON (metric_key) metric_key, active FROM nzi_console.client_intensity_metrics WHERE client_id=$1 ORDER BY metric_key, version DESC),
-          t AS (SELECT DISTINCT ON (metric_key) metric_key, active FROM nzi_console.client_intensity_targets WHERE client_id=$1 ORDER BY metric_key, version DESC)
+          t AS (SELECT DISTINCT ON (metric_key) metric_key, active, baseline_intensity FROM nzi_console.client_intensity_targets WHERE client_id=$1 ORDER BY metric_key, version DESC)
      SELECT count(*)::text AS bases FROM m JOIN t USING (metric_key)
-      WHERE m.active AND t.active
+      WHERE m.active AND t.active AND t.baseline_intensity IS NOT NULL
         AND EXISTS (SELECT 1 FROM nzi_console.job_intensity_values v JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(v.organisation_id,v.job_id)
                      WHERE j.client_id=$1 AND v.metric_key=m.metric_key AND v.value IS NOT NULL)`, [clientId]);
 
@@ -281,7 +286,7 @@ export async function resolveNziFacts(db: Queryable, clientId: string): Promise<
     provenanceStamped: Boolean(provenance),
     provenanceVerified: provenance?.source === "issued",
     targetsSet: Boolean(targets.rows[0]?.has_targets),
-    targetProgressMeasured: Boolean(targets.rows[0]?.has_targets) && years.size > 0,
+    targetProgressMeasured: Boolean(targets.rows[0]?.has_targets) && Boolean(targets.rows[0]?.measurable) && years.size > 0,
     intensityBasesResolved: Number(intensity.rows[0]?.bases ?? 0),
     // The platform records who reviewed a snapshot, not whether a third party assured it.
     independentlyAssured: false,

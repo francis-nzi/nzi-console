@@ -25,7 +25,10 @@ export function ClientPathway({ client, targets, actuals }: { client: { id: stri
     {!ready
       ? <div className="nz-card-b"><p className="sub" style={{ margin: "8px 0" }}>{targets.benchmarkInForce
         ? "No targets set, so there is no pathway to draw. Set a near-term or net-zero commitment on Baseline & targets."
-        : "No baseline in force, so there is nothing to measure a reduction against yet."}</p></div>
+        // 0238: a pending baseline year is not "no baseline" — the line is drawn once its figures are in, never from 0.
+        : targets.baselineYear?.pending
+          ? `Baseline year ${targets.baselineYear.year} · figures pending, so the pathway's tCO₂e is pending. It is drawn once the baseline has its figures.`
+          : "No baseline in force, so there is nothing to measure a reduction against yet."}</p></div>
       : <>
         <ReductionPathway showChrome={false} data={{
           spec: { id: `client-pathway-${client.id}`, type: "reduction_pathway", title: `${client.name} reduction pathway`, subtitle: `vs ${FY(benchmark!.year)} benchmark`, family: "crp", specVersion: 1 },

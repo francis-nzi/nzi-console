@@ -5,13 +5,13 @@ import {
   benchmarkIsStale, hasForwardTargets,
   type CommandContext, type CommandInputMap, type ForwardTargetModel, type TargetMilestone,
 } from "@nzi/contracts";
-import { benchmarkFromRow, getBenchmarkInForce, modelFromRow, TARGET_COLUMNS, type TargetRow } from "./clientTargetRecords";
+import { benchmarkFromRow, getBaselineYearState, getBenchmarkInForce, modelFromRow, TARGET_COLUMNS, type TargetRow } from "./clientTargetRecords";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
 export * from "./clientTargetRecords";
 
-export type SetClientTargetsResult = { clientId: string; version: number; benchmarkYear: number; restatedBenchmark: boolean };
+export type SetClientTargetsResult = { clientId: string; version: number; benchmarkYear: number; benchmarkPending: boolean; restatedBenchmark: boolean };
 
 const write = (value: { year: number | null; pct: number | null } | undefined) => [value?.year ?? null, value?.pct ?? null];
 
@@ -34,28 +34,36 @@ export function setClientTargetsInTransaction(db: Queryable, input: CommandInput
 function setClientTargetsHandler(input: CommandInputMap["client.targets.set"], context: CommandContext) {
   return async (db: Queryable) => {
     const benchmark = await getBenchmarkInForce(db, input.clientId);
-    if (!benchmark) {
-      throw new CommandValidationError([{ field: "clientId", code: "BASELINE_REQUIRED", message: "Set the client's baseline first — a target is a reduction against it." }]);
+    // 0238 rule 2: a baseline year with its figures pending takes percentage targets. The version stamps the year and
+    // `benchmark_pending`, no figures; its tCO₂e is derived once the baseline has figures (the percentage is the record).
+    const baselineYear = benchmark ? null : await getBaselineYearState(db, input.clientId);
+    if (!benchmark && !baselineYear) {
+      throw new CommandValidationError([{ field: "clientId", code: "BASELINE_REQUIRED", message: "Set the baseline year first — a target is a reduction against it." }]);
     }
+    const benchmarkYear = benchmark?.year ?? baselineYear!.year;
     const current = await db.query<TargetRow>(`SELECT ${TARGET_COLUMNS} FROM nzi_console.client_targets WHERE organisation_id=$1 AND client_id=$2 ORDER BY version DESC LIMIT 1`, [context.organisationId, input.clientId]);
     const previous = current.rows[0] ?? null;
     if ((previous?.version ?? 0) !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, previous?.version ?? 0);
 
-    // Held by default: a moved benchmark is restated only when it is asked for, with a reason.
-    const stale = previous ? benchmarkIsStale(benchmarkFromRow(previous), benchmark) : false;
+    // Held by default: a moved benchmark is restated only when it is asked for, with a reason. A version set against a
+    // pending year is not moved by that year's figures arriving — only by the year changing.
+    const stamped = previous ? benchmarkFromRow(previous) : null;
+    const stale = !previous ? false
+      : stamped ? (benchmark ? benchmarkIsStale(stamped, benchmark) : true)
+      : previous.benchmark_year !== benchmarkYear;
     const restating = stale && hasForwardTargets(modelFromRow(previous!));
     if (restating && !input.restateAgainstBenchmark) {
       throw new CommandValidationError([{
         field: "restateAgainstBenchmark", code: "BENCHMARK_MOVED",
-        message: `These targets were set against the ${previous!.benchmark_year} benchmark, which has since been restated. They are held until you restate them against the ${benchmark.year} benchmark deliberately.`,
+        message: `These targets were set against the ${previous!.benchmark_year} benchmark, which has since been restated. They are held until you restate them against the ${benchmarkYear} benchmark deliberately.`,
       }]);
     }
     if (restating && !context.reason?.trim()) {
       throw new CommandValidationError([{ field: "reason", code: "REASON_REQUIRED", message: "Restating targets onto a new benchmark needs a reason." }]);
     }
     for (const year of [input.nearTerm?.year, input.netZero?.year, input.scope1?.year, input.scope2?.year, input.scope3?.year]) {
-      if (year != null && year <= benchmark.year) {
-        throw new CommandValidationError([{ field: "nearTerm.year", code: "AFTER_BENCHMARK", message: `A target year must come after the ${benchmark.year} benchmark year.` }]);
+      if (year != null && year <= benchmarkYear) {
+        throw new CommandValidationError([{ field: "nearTerm.year", code: "AFTER_BENCHMARK", message: `A target year must come after the ${benchmarkYear} benchmark year.` }]);
       }
     }
 
@@ -64,21 +72,21 @@ function setClientTargetsHandler(input: CommandInputMap["client.targets.set"], c
     const [s1Year, s1Pct] = write(input.scope1), [s2Year, s2Pct] = write(input.scope2), [s3Year, s3Pct] = write(input.scope3);
     await db.query(
       `INSERT INTO nzi_console.client_targets (organisation_id,client_id,version,near_term_year,near_term_pct,net_zero_year,net_zero_pct,scope1_year,scope1_pct,scope2_year,scope2_pct,scope3_year,scope3_pct,
-        benchmark_year,benchmark_total_tco2e,benchmark_scope1_tco2e,benchmark_scope2_tco2e,benchmark_scope3_tco2e,benchmark_source,benchmark_ref,reason,restated_benchmark,set_by,correlation_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+        benchmark_year,benchmark_total_tco2e,benchmark_pending,benchmark_scope1_tco2e,benchmark_scope2_tco2e,benchmark_scope3_tco2e,benchmark_source,benchmark_ref,reason,restated_benchmark,set_by,correlation_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
       [context.organisationId, input.clientId, version, nearYear, nearPct, netYear, netPct, s1Year, s1Pct, s2Year, s2Pct, s3Year, s3Pct,
-        benchmark.year, benchmark.totalTco2e, benchmark.scopes["1"] ?? null, benchmark.scopes["2"] ?? null, benchmark.scopes["3"] ?? null,
-        benchmark.source, benchmark.reference, context.reason?.trim() || null, restating, context.actorId, context.correlationId],
+        benchmarkYear, benchmark?.totalTco2e ?? null, benchmark === null, benchmark?.scopes["1"] ?? null, benchmark?.scopes["2"] ?? null, benchmark?.scopes["3"] ?? null,
+        benchmark?.source ?? "client-record", benchmark?.reference ?? null, context.reason?.trim() || null, restating, context.actorId, context.correlationId],
     );
     const before = previous ? { version: previous.version, benchmarkYear: previous.benchmark_year, ...flatten(modelFromRow(previous)) } : { version: 0 };
     return {
-      data: { clientId: input.clientId, version, benchmarkYear: benchmark.year, restatedBenchmark: restating, ...flatten({ nearTerm: milestoneOf(input.nearTerm), netZero: milestoneOf(input.netZero), scopes: {} }) },
+      data: { clientId: input.clientId, version, benchmarkYear, benchmarkPending: benchmark === null, restatedBenchmark: restating, ...flatten({ nearTerm: milestoneOf(input.nearTerm), netZero: milestoneOf(input.netZero), scopes: {} }) },
       before,
       entityType: "client_targets",
       entityId: input.clientId,
       topic: "client.targets.set",
       // Moving the pathway and the gap onto a different benchmark is its own governed act.
-      ...(restating ? { governedEvents: [{ action: "client_targets_restated", entityType: "client_targets", entityId: input.clientId, before: { benchmarkYear: previous!.benchmark_year, benchmarkTotalTco2e: Number(previous!.benchmark_total_tco2e) }, after: { benchmarkYear: benchmark.year, benchmarkTotalTco2e: benchmark.totalTco2e } }] } : {}),
+      ...(restating ? { governedEvents: [{ action: "client_targets_restated", entityType: "client_targets", entityId: input.clientId, before: { benchmarkYear: previous!.benchmark_year, benchmarkTotalTco2e: previous!.benchmark_total_tco2e === null ? null : Number(previous!.benchmark_total_tco2e) }, after: { benchmarkYear, benchmarkTotalTco2e: benchmark?.totalTco2e ?? null } }] } : {}),
     };
   };
 }

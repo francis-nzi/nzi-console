@@ -172,6 +172,70 @@ export function benchmarkIsStale(stamped: Pick<TargetBenchmark, "year" | "totalT
   return stamped.year !== inForce.year || Math.abs(stamped.totalTco2e - inForce.totalTco2e) > 0.0005;
 }
 
+/**
+ * 0238 (ruled 25 Nov 2026) — a target version stamped while the baseline was pending has the year and no figures. Once the
+ * baseline in force has figures **for that year**, the version is measured against them: figures arriving is not a
+ * re-baseline, so nothing is held and nothing is restated. The percentage is the record; the tCO₂e is derived.
+ * A different year is a moved baseline, and the version is held as `benchmarkIsStale` holds one.
+ */
+export function benchmarkForPendingStamp(stampedYear: number, inForce: TargetBenchmark | null): TargetBenchmark | null {
+  return inForce && inForce.year === stampedYear ? inForce : null;
+}
+
+/** One milestone as the targets list shows it: the percentage (the record) and its tCO₂e, null while the baseline is pending. */
+export type TargetMilestoneValue = { kind: "near-term" | "net-zero" | `scope${TargetScope}`; year: number; pct: number; tco2e: number | null };
+
+/**
+ * Each milestone set, with `benchmark × (1 − pct)` — or null ("pending") when the benchmark has no figures yet. A scope
+ * target needs that scope's figure; a baseline without it leaves that milestone pending, never 0.
+ */
+export function targetMilestoneValues(benchmark: TargetBenchmark | null, model: ForwardTargetModel | null): TargetMilestoneValue[] {
+  if (!model) return [];
+  const values: TargetMilestoneValue[] = [];
+  if (model.nearTerm) values.push({ kind: "near-term", ...model.nearTerm, tco2e: benchmark ? reduce(benchmark.totalTco2e, model.nearTerm.pct) : null });
+  if (model.netZero) values.push({ kind: "net-zero", ...model.netZero, tco2e: benchmark ? reduce(benchmark.totalTco2e, model.netZero.pct) : null });
+  for (const scope of ["1", "2", "3"] as const) {
+    const milestone = model.scopes[scope];
+    if (!milestone) continue;
+    const scopeBenchmark = benchmark?.scopes[scope];
+    values.push({ kind: `scope${scope}`, ...milestone, tco2e: scopeBenchmark === undefined ? null : reduce(scopeBenchmark, milestone.pct) });
+  }
+  return values;
+}
+
+/**
+ * The baseline year as the Carbon tab states it (0238). `pending` = a period with no figures: "Baseline year … · figures
+ * pending", never "No baseline". `supplyingJob` is the client's CRP job whose reporting period is the baseline period —
+ * with its current reviewed snapshot when it has one, which is what "Use J… figures as the baseline" writes from.
+ * `figuresFrom` names the snapshot the figures in force came from, when they did.
+ */
+export type BaselineYearState = {
+  year: number;
+  periodStart: string;
+  periodEnd: string;
+  pending: boolean;
+  figuresFrom: { snapshotId: string; jobId: string; jobNumber: string } | null;
+  supplyingJob: { jobId: string; jobNumber: string; snapshotId: string | null } | null;
+};
+
+/** The year a baseline period is labelled by — the year it starts in (the rule `benchmarkFromClientRecord` uses). Null without a period start. */
+export function baselineYearOf(periodStart: string | null | undefined): number | null {
+  return periodStart && /^\d{4}-\d{2}-\d{2}/.test(periodStart) ? Number(periodStart.slice(0, 4)) : null;
+}
+
+/** Whether the client record's baseline has any figure. A period alone is a pending baseline. */
+export function baselineHasFigures(client: ClientRecordBaseline): boolean {
+  return [client.baselineScope1Tco2e, client.baselineScope2Tco2e, client.baselineScope3Tco2e, client.baselineTotalTco2e].some((value) => typeof value === "number");
+}
+
+/**
+ * 0238 rule 4 — 0 is not "pending". A baseline figure of 0 is a claim that the scope is genuinely zero, so it is accepted only
+ * with an explicit confirm naming it; a blank is pending. The keys a confirm can name:
+ */
+export const baselineZeroFields = ["baselineScope1Tco2e", "baselineScope2Tco2e", "baselineScope3Tco2e", "baselineTotalTco2e"] as const;
+export type BaselineZeroField = (typeof baselineZeroFields)[number];
+export const BASELINE_ZERO_CONFIRM_TEXT = "This scope's baseline is zero, not unknown";
+
 /** The baseline fields carried on the client record — the benchmark source until `client_baselines` (#137) lands. */
 export type ClientRecordBaseline = {
   baselinePeriodStart?: string | null;
@@ -192,8 +256,9 @@ export type ClientRecordBaseline = {
 export function benchmarkFromClientRecord(client: ClientRecordBaseline): TargetBenchmark | null {
   // The label is the year the period starts in — FY23 is 01/04/2023–31/03/2024 for a March
   // year end, the same rule `reportingPeriodForYear` uses. Without a period there is no year.
+  // A period with no figures is a pending baseline (0238): still no benchmark, so no reader can measure against a number.
   const start = client.baselinePeriodStart;
-  if (!start || !/^\d{4}-\d{2}-\d{2}/.test(start)) return null;
+  if (baselineYearOf(start) === null) return null;
   const scopes: Partial<Record<TargetScope, number>> = {};
   if (typeof client.baselineScope1Tco2e === "number") scopes["1"] = client.baselineScope1Tco2e;
   if (typeof client.baselineScope2Tco2e === "number") scopes["2"] = client.baselineScope2Tco2e;
@@ -204,5 +269,5 @@ export function benchmarkFromClientRecord(client: ClientRecordBaseline): TargetB
   }, null);
   const total = typeof client.baselineTotalTco2e === "number" ? client.baselineTotalTco2e : scopeSum;
   if (total === null) return null;
-  return { year: Number(start.slice(0, 4)), totalTco2e: total, scopes, source: "client-record", reference: null };
+  return { year: baselineYearOf(start)!, totalTco2e: total, scopes, source: "client-record", reference: null };
 }

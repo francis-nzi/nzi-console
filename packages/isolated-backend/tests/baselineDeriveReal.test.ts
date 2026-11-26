@@ -95,7 +95,9 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
   it("commits each baseline through client.update — initial or governed — with the rule step and job as the reason, and nothing else changed", async () => {
     const outcome = await loadBaselineDerive(database.pool, ORG, { commit: true });
     assert.deepEqual(outcome.results.map((r) => [r.clientId, r.result, r.governed, r.otherChanges]).sort(), [
-      ["earliest", "written", false, []], ["mixed", "written", false, []], ["only", "written", false, []], ["stated", "written", true, []], ["tie", "written", false, []],
+      // 0238 (ruled 25 Nov 2026): "stated" held a period with no figures — a pending baseline year — so adding its first figures
+      // is the initial baseline, not the governed re-baseline.
+      ["earliest", "written", false, []], ["mixed", "written", false, []], ["only", "written", false, []], ["stated", "written", false, []], ["tie", "written", false, []],
     ], "nothing besides the baseline changes");
     assert.deepEqual(outcome.results[0]!.emptyNormalised, ["contact_email", "contact_name", "contact_role"],
       "client.update's NULL → \"\" on the legacy contact columns is reported apart, not hidden");
@@ -106,11 +108,12 @@ describe("derive:baselines, against a real database", { skip: TEST_DATABASE_URL 
     assert.deepEqual((await baselineOf("tie")).total, 6);
     const audits = await q(`SELECT entity_id, action, reason, principal_type FROM nzi_console.audit_events WHERE actor_id = 'policy:job-derived-baseline' ORDER BY entity_id, action`);
     assert.deepEqual(audits.map((a) => [a.entity_id, a.action, a.principal_type]), [
-      ["earliest", "client_updated", "system"], ["mixed", "client_updated", "system"], ["only", "client_updated", "system"], ["stated", "client_rebaselined", "system"], ["stated", "client_updated", "system"], ["tie", "client_updated", "system"],
-    ], "the governed re-baseline adds its own event where a baseline field was held");
+      ["earliest", "client_updated", "system"], ["mixed", "client_updated", "system"], ["only", "client_updated", "system"], ["stated", "client_updated", "system"], ["tie", "client_updated", "system"],
+    ], "no re-baseline event: none of these held figures (a stated period alone is a pending baseline, 0238)");
     assert.equal(audits.find((a) => a.entity_id === "stated")!.reason, "policy: job-derived baseline, stated benchmark period (job J009303, id j-st-b)",
       "the reason carries the provenance: rule step, job number and job id");
-    assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.baseline_change_events WHERE client_id = 'stated' AND reason LIKE 'policy: job-derived baseline%'`))[0].n, 1);
+    assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.baseline_change_events WHERE client_id = 'stated' AND reason LIKE 'policy: job-derived baseline%'`))[0].n, 0,
+      "no baseline_change_events row: the first figures on a pending baseline year are not a re-baseline (0238)");
     assert.deepEqual(await baselineOf("held"), { ps: "2019-01-01", pe: "2019-12-31", s1: null, s2: null, s3: null, total: null }, "the held client is untouched");
     assert.equal((await baselineOf("inforce")).total, 500, "a baseline in force is never touched");
   });

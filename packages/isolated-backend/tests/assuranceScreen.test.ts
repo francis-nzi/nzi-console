@@ -20,8 +20,8 @@ function screenPool(opts: { depot?: boolean } = {}) {
   const client = {
     async query(sql: string, values: readonly unknown[] = []) {
       if (sql.startsWith("BEGIN") || sql.startsWith("SET LOCAL") || sql.includes("set_config") || sql.startsWith("COMMIT")) return { rows: [] };
-      if (sql.includes("FROM nzi_console.jobs j")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", job_family: "crp" }] };
-      if (sql.includes("job_emissions_targets")) return { rows: [{ baseline_year: 2022 }] };
+      // Addendum A (0238): the chain's baseline year is the client's baseline period's start year.
+      if (sql.includes("FROM nzi_console.jobs j")) return { rows: [{ client_id: "client-a", reporting_year: 2026, start_date: "2026-01-01", job_family: "crp", baseline_period_start: "2022-01-01" }] };
       if (sql.includes("DISTINCT ON") && sql.includes("reviewed_crp_snapshots")) return { rows: [{ snapshot_id: "s-2025", data_hash: "sha256:2025", reporting_year: 2025 }] };
       if (sql.includes("ORDER BY snapshot_version DESC LIMIT 1")) return { rows: [] }; // no current snapshot → live
       if (sql.includes("SELECT snapshot_id, payload_json FROM nzi_console.reviewed_crp_snapshots")) return { rows: [{ snapshot_id: "s-2025", payload_json: priorPayload }] };
