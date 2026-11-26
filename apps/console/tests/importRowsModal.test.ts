@@ -38,7 +38,7 @@ const row = (over: Partial<V7ImportRowsRow>): V7ImportRowsRow => ({
   previous: { label: "Delivery vehicles — HGV (all diesel)", siteName: "Head office", quantity: 20_563, unit: "miles", factorCode: "5_304_3140_9_1", factor: 1.40489,
     factorUnit: "kgCO2e", tco2e: 28.888, enabled: true },
   intended: { categoryCode: null, datasetId: null, factorId: null, withdraw: false }, source: "none", flag: "NEW", resolution: "unresolved", decision: null, invalid: null,
-  lane: "pre-accepted", applyPct: 100, categories: ["1.company-vehicles"], v7Category: null, pairGroup: null, carry: null, candidates: [], pick: null, totalStillCounted: false, held: null, previousSystem: null, ...over,
+  lane: "pre-accepted", applyPct: 100, categories: ["1.company-vehicles"], v7Category: null, codeCategory: null, pairGroup: null, carry: null, candidates: [], pick: null, totalStillCounted: false, held: null, previousSystem: null, ...over,
 });
 const HGV = candidate("HGV all · average laden · diesel", { code: "5_304_3140_9_1", quantity: 20_563, previous: 28.888, scope: "1", rate: 1.40489, rowCategories: ["1.company-vehicles"] });
 const ROWS: V7ImportRowsRow[] = [
@@ -484,6 +484,37 @@ describe("after a bring-in (26 Nov): the modal closes, the whole job's page catc
     const summary = read("jobs/EmissionsSummary.tsx");
     assert.ok(summary.includes("useJobDataChanged(jobId, () => setChanges((count) => count + 1));") && summary.includes("[jobId, siteId, emissionsUrl, changes]"), "the totals band re-reads, still narrowed to its site");
     assert.ok(read("jobs/CrpDataEntryAccordion.tsx").includes("useJobDataChanged(jobId, () => { void load(); });"), "the category list re-reads");
+  });
+});
+
+describe("the category pre-select (26 Nov): a factor's categories narrowed to one are filed there; otherwise the row asks", () => {
+  // Freight, claimed by 3.4 and 3.9: a suggestion whose categories do not narrow carries no category.
+  const FREIGHT = candidate("Freight · HGV · diesel · average laden", { code: "9_402_3401_10_1", categories: ["3.4", "3.9"], rowCategories: ["3.4", "3.9"] });
+  const UNFILED = row({ legacyDbId: "40003", scope: "3", lane: "suggested", categories: ["3.4", "3.9"], candidates: [FREIGHT], pick: FREIGHT });
+  it("the code's suffix settles it where V7's category does not: -u → 3.4; V7's own category still first", () => {
+    assert.equal(FREIGHT.match.categoryCode, null);
+    const base = { scope: "3" as const, quantity: 12_400, applyPct: 100, previousTco2e: 2.953432, categories: ["3.4", "3.9"] };
+    const factor = { rate: 0.23818, scopes: ["3"], categories: ["3.4", "3.9"], sameUnit: true };
+    assert.equal(v7MatchCandidate({ ...base, codeCategory: "3.4" }, factor, []).categoryCode, "3.4");
+    assert.equal(v7MatchCandidate({ ...base, v7Category: "3.9", codeCategory: "3.4" }, factor, []).categoryCode, "3.9", "V7's own category first");
+    assert.equal(judgeHit({ ...UNFILED, codeCategory: "3.9" }, { datasetId: "uk-ghg-gb-2024", factorId: "uk-ghg-9_402_3401_10_1", code: "9_402_3401_10_1", label: "Freight", unit: "miles",
+      rate: 0.23818, dataset: "DESNZ GB 2024", scopes: ["3"], categories: ["3.4", "3.9"], sameUnit: true, unitRefusal: null }, []).match.categoryCode, "3.9", "a search hit is judged with it too");
+  });
+  it("a suggestion with no single category shows \"Choose a category to confirm\" — never no button — and it opens the row's File under", () => {
+    const opened: Array<string | null> = [];
+    const markup = html({ data: { ...DATA, rows: [UNFILED] }, onOpenRow: (id: string | null) => { opened.push(id); } });
+    const at = markup.indexOf(`data-row="40003"`);
+    const rowMarkup = markup.slice(at, markup.indexOf(`data-figures="40003"`));
+    assert.ok(rowMarkup.includes("data-choose-category") && rowMarkup.includes(">Choose a category to confirm<"), rowMarkup);
+    assert.ok(!rowMarkup.includes(">Confirm<") && !rowMarkup.includes(">Change<"), "one button: the choice");
+    const open = html({ data: { ...DATA, rows: [UNFILED] }, openRow: "40003" });
+    assert.ok(open.includes("File under") && open.includes("Choose a Scope 3 category"), "opened, the row's own File under");
+    assert.ok(open.slice(open.indexOf(`data-row="40003"`)).includes(">Close<"));
+  });
+  it("a suggestion filed in one category keeps its Confirm", () => {
+    const filed = { ...FREIGHT, match: { ...FREIGHT.match, categoryCode: "3.4" } };
+    const markup = html({ data: { ...DATA, rows: [{ ...UNFILED, candidates: [filed], pick: filed }] } });
+    assert.ok(markup.includes(">Confirm<") && !markup.includes("data-choose-category"));
   });
 });
 

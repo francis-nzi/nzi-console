@@ -872,6 +872,10 @@ jobs:
       # nothing; a commit brings in only a job that reconciles in every scope with no manual edits, then checks it for drift.
       - name: The spanning batch brings in only what reconciles, and a dry run writes nothing
         run: npx tsx --test packages/isolated-backend/tests/v7ImportSpanningBatchReal.test.ts
+      # BRIEF-v7-import-spanning-batch, the category pre-select: a freight factor (3.4 and 3.9) filed by its code's -u/-d suffix; with
+      # neither, no category, for a person to choose.
+      - name: A factor's categories narrowed by its code's suffix are filed there; otherwise a person chooses
+        run: npx tsx --test packages/isolated-backend/tests/v7ImportCategoryPreselectReal.test.ts
       # RULING-v7-reingest-row-protection 1: a re-ingested row (known by its link) is attest-only — every write refused, naming
       # the remedy; gap resolution, approve/reject, the revert and the re-ingest's own create and re-run still go through.
       - name: A re-ingested row is attest-only, and review, the revert and the re-run still go through

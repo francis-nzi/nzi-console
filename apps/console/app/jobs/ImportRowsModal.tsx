@@ -372,6 +372,8 @@ function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; ca
   const against = own ? OWN_FIGURE : FROM_FACTOR;
   const parts = own && row.lane !== "in-console" ? partsLine(pick) || null : null;
   const confirm = row.lane === "suggested" && pick && pick.match.categoryCode && !pick.invalid;
+  // A suggestion whose categories do not narrow to one: the person chooses where it is filed, in the row's own File under.
+  const chooseCategory = row.lane === "suggested" && pick !== null && !pick.match.categoryCode && !pick.invalid;
   const accept = (candidate: V7ImportCandidate, categoryCode: string) => props.onSave([{ kind: "map", legacyDbId: row.legacyDbId, categoryCode,
     datasetId: candidate.datasetId, factorId: candidate.factorId, expectedDecisionId: row.decision?.decisionId ?? null }]);
   const label = rowLabel(row);
@@ -393,7 +395,9 @@ function Row({ row, ...props }: ImportRowsViewProps & { row: V7ImportRowsRow; ca
         {confirm ? <button type="button" className="nz-btn" disabled={props.busy || !props.canWrite} onClick={() => accept(pick!, pick!.match.categoryCode!)}>Confirm</button> : null}
         {row.lane === "confirm-off" ? <button type="button" className="nz-btn" disabled={props.busy || !props.canWrite}
           onClick={() => props.onSave([{ kind: "withdraw", legacyDbId: row.legacyDbId, expectedDecisionId: row.decision?.decisionId ?? null }])}>Confirm it goes off</button> : null}
-        {needsMap && row.lane !== "retiring" ? <button type="button" className="nz-btn" aria-expanded={open} onClick={() => props.onOpenRow(open ? null : row.legacyDbId)}>
+        {chooseCategory ? <button type="button" className="nz-btn" data-choose-category aria-expanded={open} disabled={!props.canWrite}
+          onClick={() => props.onOpenRow(open ? null : row.legacyDbId)}>{open ? "Close" : "Choose a category to confirm"}</button> : null}
+        {needsMap && row.lane !== "retiring" && !chooseCategory ? <button type="button" className="nz-btn" aria-expanded={open} onClick={() => props.onOpenRow(open ? null : row.legacyDbId)}>
           {open ? "Close" : row.lane === "unmatched" || (row.lane === "switched-off" && !pick) ? "Find a factor" : "Change"}</button> : null}
       </div>
     </div>

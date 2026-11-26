@@ -13,7 +13,7 @@
 //      command (0228), keyed by the row id, under its own idempotency key and audit, exactly as the one-row control writes it. No new
 //      command, no new authority: the route takes `import.decision.set`'s principal, and each write is that command's own check.
 import {
-  emissionCategoryTaxonomy, familylessCategories, categoriesForLevels, membersOfCategory, parseFactorId, rankV7Candidates, v7ApplyPct, v7AutoPick, v7CategoryCode,
+  emissionCategoryTaxonomy, familylessCategories, categoriesForLevels, membersOfCategory, parseFactorId, rankV7Candidates, v7ApplyPct, v7AutoPick, v7CategoryCode, v7CodeCategory,
   v7CodeKeys, v7FactorKeys, v7FiguresRowKey, v7ImportPeriodIssue, v7MatchCandidate, V7_IMPORT_SOURCE_SYSTEM, V7_IMPORT_TWO_DATASET_YEARS_UNREAD,
   type CommandContext, type CommandInputMap, type MembershipFactor, type V7FiguresRow, type V7ImportCarryState, type V7ImportScope, type V7MatchResult, type V7MatchRow,
 } from "@nzi/contracts";
@@ -82,6 +82,8 @@ export type V7ImportRowsRow = V7ImportMappingRow & {
   categories: string[];
   /** The console category the previous system's own category names for the row, or null (it settles a two-category factor). */
   v7Category: string | null;
+  /** The category the row's own factor code names by its suffix (`-u` → 3.4, `-d` → 3.9), or null; it settles one V7's category does not. */
+  codeCategory: string | null;
   pairGroup: string | null; carry: V7ImportCarryState | null;
   /** Ranked, best first; at most eight. Empty for a row that needs no mapping. */
   candidates: V7ImportCandidate[];
@@ -130,7 +132,7 @@ async function categoryReader(db: Queryable, organisationId: string) {
   const pairedCategories = await pairedCategoriesLookup(db, organisationId, registry);
   const parse = (factorId: string) => parseFactorId(factorId, registry);
   return {
-    rules, suffixes: registry.map((variant) => variant.suffixCode), familyless: familylessCategories(rules),
+    rules, registry, suffixes: registry.map((variant) => variant.suffixCode), familyless: familylessCategories(rules),
     /** Each factor id's claimed categories (every category whose family names it). */
     claimed(factors: readonly MembershipFactor[]): Map<string, string[]> {
       const out = new Map<string, string[]>(factors.map((factor) => [factor.factorId, []]));
@@ -217,6 +219,7 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
     const own = row.legacyDbId.startsWith("source:") ? plan?.level3 : plan?.level2;
     return v7CategoryCode(read.v7Categories[row.legacyDbId] ?? own ?? null, row.scope);
   };
+  const codeCategoryOf = (row: V7ImportMappingRow) => v7CodeCategory(planned.get(row.legacyDbId)?.migratedRecord.original_id ?? null, row.scope, library.registry);
   // Over two calendar years, with the previous system's own figures read (endpoint 2): each row is judged against its own figure, and
   // each candidate priced by month from that row's own spans — each span's dataset year at the candidate's edition of that year.
   const ownFigures = figures.read?.ok ? new Map(figures.read.body.rows.map((entry) => [v7FiguresRowKey(entry), entry])) : null;
@@ -230,7 +233,7 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
     const keys = keysOf.get(row.legacyDbId)!;
     const ownFigure = ownFigures?.get(row.legacyDbId) ?? null;
     const input: V7MatchRow = { scope: row.scope, quantity: record.qty, applyPct: v7ApplyPct(record.apply_pct), previousTco2e: ownFigures ? ownFigure?.tco2e ?? null : row.previous.tco2e,
-      categories: rowCategories(plan, row.scope, library.rules), v7Category: v7CategoryOf(row) };
+      categories: rowCategories(plan, row.scope, library.rules), v7Category: v7CategoryOf(row), codeCategory: codeCategoryOf(row) };
     const keyOf = (factor: FactorRow) => factorKeys.get(`${factor.dataset_id}|${factor.factor_id}`)!;
     const isIdentity = (factor: FactorRow) => factor.source_system === V7_IMPORT_SOURCE_SYSTEM && factor.legacy_db_id !== null && factor.legacy_db_id === record.factor_db_id;
     // The ID, in order (§3): the core first; the unitless fallback only when the core finds nothing — never both.
@@ -297,7 +300,7 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
     else if (best) { lane = "suggested"; pick = best; }
     else { lane = "unmatched"; held = (ownFactor ?? candidates.find((candidate) => candidate.match.rightBasis))?.unitRefusal ?? null; }
     return { ...row, lane, held, applyPct: v7ApplyPct(planned.get(row.legacyDbId)?.migratedRecord.apply_pct ?? null),
-      categories: rowCategories(planned.get(row.legacyDbId), row.scope, library.rules), v7Category: v7CategoryOf(row),
+      categories: rowCategories(planned.get(row.legacyDbId), row.scope, library.rules), v7Category: v7CategoryOf(row), codeCategory: codeCategoryOf(row),
       pairGroup: summary?.pairGroup ?? null, carry: carryOf.get(row.legacyDbId) ?? null, candidates: needsMap(row) ? candidates : [], pick,
       totalStillCounted: total && !retiring && row.ownStatus !== "withdrawn" && activityCounted.has(row.scope),
       previousSystem: previousFigureOf(ownFigures?.get(row.legacyDbId) ?? null) };
