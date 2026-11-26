@@ -27,6 +27,7 @@ import type { InputSpecCategory } from "@nzi/contracts";
 import { emissionEntryDraftToScopeRow, type EntryFactorRef } from "./emissionEntryModel";
 import { JobTemplateSeeding } from "./JobTemplateSeeding";
 import { Drawer, InfoTip, Tabs, TabPanel, type TabDescriptor } from "@nzi/ui";
+import { useJobDataChanged } from "./jobDataChanged";
 
 const KIND_NOTE: Record<string, string> = {
   spend: "Spend adapter — ledger value, VAT, GL code & PG&S category. Consultant maps factors and syncs to Scope 3.1.",
@@ -142,6 +143,8 @@ export function CrpDataEntryAccordion({ specs, jobId, rows, selectedRowId, onOpe
     }
   }, [jobId, given, siteId]);
   useEffect(() => { void load(); }, [load]);
+  // Its categories are its own read: re-read them when the job's data changes under it (a bring-in).
+  useJobDataChanged(jobId, () => { void load(); });
   // E: open what holds the row being revealed, then scroll to it once it is drawn.
   useEffect(() => {
     if (!revealRowId || !applicable) return;

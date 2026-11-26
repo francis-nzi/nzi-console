@@ -30,6 +30,8 @@ import { resumeV7ImportBatch, startV7ImportBatch } from "../src/v7ImportBatchCom
 import { readV7ImportBatch, runV7ImportBatch, V7_IMPORT_BATCH_PACING, v7ImportBatchIdempotencyKey, v7ImportBatchJobOutcome, v7ImportBatchPauseAfter } from "../src/v7ImportBatch";
 import { readV7ImportMapping, v7JobIsTotalsOnly } from "../src/v7ImportMapping";
 import { acceptV7ImportRows, readV7ImportRows, searchV7ImportFactors } from "../src/v7ImportRows";
+import { commandReason, commandReasonHeaders } from "@nzi/api-client";
+import { readJobEmissions } from "../src/emissionsAggregation";
 import { checkV7Drift, listV7Drift, V7_DRIFT_HISTORY_DEPTH, readConsoleScopeTotals, readV7DriftBanner, refuseDriftedPublish, runV7DriftChecks, type V7FiguresClient, type V7FiguresRead, type V7RowFiguresClient } from "../src/v7Drift";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
@@ -2972,6 +2974,26 @@ describe("a spanning job reconciled with the previous system's own figures: the 
     assert.deepEqual(hotel.pick?.parts?.map((part) => [part.from, part.to, part.datasetId, part.tco2e, part.agrees, part.issue]), [
       ["2025-04", "2025-12", "uk-ghg-gb-2025", 0.2262, true, null], ["2026-01", "2026-03", "uk-ghg-gb-2025", 0.0754, true, null]],
       "both parts ✓ — never \"factor not in that edition\" or \"no figure to compare\"");
+  });
+
+  it("bringing J000969 in: the edited reason reaches the audit byte for byte, and the job's figures — the totals band's own read — move", async () => {
+    await upload(J265D, "J000969");
+    assert.deepEqual((await acceptAll(J265D)).refused, []);
+    const before = await readJobEmissions(database.pool, { organisationId: SO_ORG, jobId: J265D });
+    const preview = await previewV7ImportRefresh(database.pool, source, { jobId: J265D, mode: "preview" }, context(), { basePlan: EMPTY_PLAN(J265D), rowFigures });
+    assert.equal(preview.outcome, "would-commit");
+    // The modal's prefill, then edited by the person — sent as the browser sends it (percent-encoded), read as the route reads it.
+    const reason = "Imported and reconciled from previous system · manual: factor on 1 row (source:1169) — checked against V7’s 0.30 t ×1";
+    const carried = commandReason(new Headers(commandReasonHeaders(reason)));
+    const committed = await commitV7ImportRefresh(database.pool, source, { jobId: J265D, mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 },
+      context("admin", carried), { basePlan: EMPTY_PLAN(J265D), rowFigures, requireScopesAgree: true });
+    const audit = (await db.query<{ reason: string }>(`SELECT reason FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.refreshed' AND entity_id = $2`, [SO_ORG, J265D])).rows;
+    assert.equal(audit.length, 1);
+    assert.deepEqual(Buffer.from(audit[0]!.reason, "utf8"), Buffer.from(reason, "utf8"), "byte for byte");
+    assert.deepEqual(committed.data.plan, { committed: 0, decided: 1 }, "what the confirmation says: 1 row brought in");
+    const after = await readJobEmissions(database.pool, { organisationId: SO_ORG, jobId: J265D });
+    assert.notDeepEqual(after, before, "the job's figures moved: what the totals band re-reads after a bring-in");
+    assert.ok(JSON.stringify(after).includes("0.3016"), "the hotel's 0.3016 t is in the job's totals");
   });
 
   it("with no read of the previous system's own figures, the modal holds the job and says why — never a tick", async () => {

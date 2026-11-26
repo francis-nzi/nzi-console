@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { JobEmissions } from "@nzi/isolated-backend";
 import { formatTco2e } from "../lib/formatNumber";
+import { useJobDataChanged } from "./jobDataChanged";
 
 /**
  * The emissions summary strip: the headline, the scope split and the three scope tiles (NZC-144).
@@ -65,6 +66,9 @@ export function EmissionsSummary(
 ) {
   const [emissions, setEmissions] = useState(initial);
   const [stale, setStale] = useState(false);
+  // Re-read, too, when the job's data changes under it (a bring-in): its figures are this component's own read, not the page's props.
+  const [changes, setChanges] = useState(0);
+  useJobDataChanged(jobId, () => setChanges((count) => count + 1));
 
   // Re-read when the site changes. The figures are always this one read's, narrowed server-side, rather
   // than this component slicing a wider payload — so the narrowed total is computed by the same rule as
@@ -80,7 +84,7 @@ export function EmissionsSummary(
       // showing a zero or an empty strip — a wrong number is worse than a stale one that admits it.
       .catch(() => { if (live) setStale(true); });
     return () => { live = false; };
-  }, [jobId, siteId, emissionsUrl]);
+  }, [jobId, siteId, emissionsUrl, changes]);
 
   const split = bands(emissions);
   const headline = emissions.headline;

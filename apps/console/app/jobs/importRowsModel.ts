@@ -1,8 +1,63 @@
 import {
-  agreesToOneDecimalPlace, datasetLabelFromId, datasetSeriesKey, emissionCategoryTaxonomy, rankV7Candidates, v7MatchCandidate, V7_DATASET_NOT_ON_JOB_WORDS,
-  type V7ImportIngestTotals, type V7ImportScope, type V7MatchResult, type V7MatchVerdict,
+  agreesToOneDecimalPlace, datasetLabelFromId, datasetSeriesKey, emissionCategoryTaxonomy, rankV7Candidates, v7AutoPick, v7MatchCandidate, V7_DATASET_NOT_ON_JOB_WORDS,
+  type V7ImportIngestTotals, type V7ImportRefreshCommitted, type V7ImportScope, type V7MatchResult, type V7MatchVerdict,
 } from "@nzi/contracts";
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsRow } from "@nzi/isolated-backend";
+
+// ── The bring-in reason, and what bringing it in said ──────────────────────────────────────────────────────────
+
+/** The reason's first words, always: the person edits it or adds to it. */
+export const BRING_IN_REASON = "Imported and reconciled from previous system";
+const ROWS_NAMED = 5;
+const rowsWord = (n: number) => `${n} row${n === 1 ? "" : "s"}`;
+
+/**
+ * What a person chose by hand, from the decisions as they stand — never what came in on its own. For each row brought in on a mapping:
+ *   the factor is a person's when it is not the one the row would come in pre-accepted with (`v7AutoPick` over its candidates: none,
+ *   or another);
+ *   the category is a person's when it is not the one the matcher files that factor under for the row (they chose "File under").
+ */
+export function manualDecisions(rows: readonly V7ImportRowsRow[]): { category: Array<{ code: string; rows: number }>; categoryRows: number; factorRows: string[] } {
+  const byCode = new Map<string, number>();
+  const factorRows: string[] = [];
+  let categoryRows = 0;
+  for (const row of rows) {
+    const decision = row.decision;
+    if (decision?.kind !== "map" || !decision.categoryCode) continue;
+    // The factor the pick rule names, the category set aside: a factor that reproduces is not a person's choice merely because
+    // the matcher could not name its category (that is the category's choice, counted below).
+    const auto = v7AutoPick(row.candidates.map((candidate) => ({ ...candidate, match: { ...candidate.match, categoryCode: candidate.match.categoryCode ?? "unfiled" } })));
+    if (!auto || auto.datasetId !== decision.datasetId || auto.factorId !== decision.factorId) factorRows.push(row.legacyDbId);
+    const decided = row.candidates.find((candidate) => candidate.datasetId === decision.datasetId && candidate.factorId === decision.factorId) ?? row.pick;
+    if ((decided?.match.categoryCode ?? null) !== decision.categoryCode) {
+      categoryRows += 1;
+      byCode.set(decision.categoryCode, (byCode.get(decision.categoryCode) ?? 0) + 1);
+    }
+  }
+  const category = [...byCode].map(([code, n]) => ({ code, rows: n })).sort((a, b) => b.rows - a.rows || a.code.localeCompare(b.code));
+  return { category, categoryRows, factorRows };
+}
+
+/**
+ * The reason box's first contents: "Imported and reconciled from previous system", and what was manual, written from the decisions —
+ * "· manual: category on 7 rows (3.5 ×6, 3.9 ×1), factor on 1 row (source:1169)". Nothing manual: the first words alone.
+ */
+export function bringInReason(rows: readonly V7ImportRowsRow[]): string {
+  const manual = manualDecisions(rows);
+  const parts: string[] = [];
+  if (manual.categoryRows) parts.push(`category on ${rowsWord(manual.categoryRows)} (${manual.category.map((entry) => `${entry.code} ×${entry.rows}`).join(", ")})`);
+  if (manual.factorRows.length) {
+    const named = manual.factorRows.slice(0, ROWS_NAMED).join(", ");
+    const more = manual.factorRows.length - ROWS_NAMED;
+    parts.push(`factor on ${rowsWord(manual.factorRows.length)} (${named}${more > 0 ? ` and ${more} more` : ""})`);
+  }
+  return parts.length ? `${BRING_IN_REASON} · manual: ${parts.join(", ")}` : BRING_IN_REASON;
+}
+
+/** The confirmation once it is in: "Brought in 15 rows · reconciles with the previous system" — a commit is kept only when it does. */
+export function broughtInLine(committed: Pick<V7ImportRefreshCommitted, "plan">): string {
+  return `Brought in ${rowsWord(committed.plan.committed + committed.plan.decided)} · reconciles with the previous system`;
+}
 
 /**
  * The import rows modal, as data (BRIEF-v7-import-rows-modal §C; the mockup in _handoff). Pure: no hooks, no requests — the modal

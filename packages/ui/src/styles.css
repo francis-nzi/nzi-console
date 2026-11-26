@@ -258,8 +258,13 @@ table.nz-tbl{width:100%;border-collapse:collapse}
 .nz-irm-opt .nz-btn{height:28px;font-size:12px;padding:0 8px}
 .nz-irm-ft{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-top:1px solid var(--line2);background:var(--paper)}
 .nz-irm-ft-l{font-size:12px;color:var(--t2);max-width:520px}
-.nz-irm-ft-r{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.nz-irm-ft-r{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
 .nz-irm-ft .nz-inp{min-width:240px}
+/* The bring-in reason: a labelled note beside its button, recorded on the audit — not the row filter's search box. */
+.nz-irm-reason{display:flex;flex-direction:column;gap:4px;flex:1 1 360px;min-width:min(360px,100%)}
+.nz-irm-reason span{font-size:11px;font-weight:700;color:var(--t2)}
+.nz-irm-reason textarea{font:inherit;font-size:12.5px;line-height:1.4;color:var(--t1);background:var(--card);border:1px solid var(--line);border-left:3px solid var(--pine);border-radius:8px;padding:6px 9px;resize:vertical;min-height:44px}
+.nz-irm-reason textarea:focus{outline:2px solid var(--mint);border-color:var(--pine)}
 @media (max-width:760px){
   .nz-irm-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .nz-irm-row>*:first-child{grid-column:1 / -1}
