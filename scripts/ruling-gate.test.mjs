@@ -6,7 +6,7 @@
 // backdated push — ruled, then a commit whose author and committer dates claim to precede the ruling, and red anyway.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -122,6 +122,46 @@ describe("the command and permission surface", () => {
     for (const changedFiles of [[], [`${SRC}access.ts`], ["apps/console/app/page.tsx"]]) {
       assert.equal(decide({ ...base, branch: "hold/x", action: "labeled", labelName: RULED_LABEL, labels: [RULED_LABEL], changedFiles }).pass, false);
     }
+  });
+});
+
+// ── The v7 import is governed (ruled 26 Nov 2026) ────────────────────────────────────────────────────────────────
+
+describe("the v7 import", () => {
+  const SRC = "packages/isolated-backend/src/";
+  const base = { branch: "feat/x", action: "synchronize", labelName: "", labels: [] };
+  // Every v7Import*.ts in the backend today, plus one that does not exist yet (matched by prefix), and the three named files.
+  const IMPORT = readdirSync(resolve(HERE, `../${SRC}`)).filter((name) => /^v7Import[^/]*\.ts$/.test(name));
+  const governed = [...IMPORT, "v7ImportSomethingNew.ts", "v7Reingest.ts", "v7Drift.ts", "monthlyPricing.ts"].map((name) => `${SRC}${name}`);
+  const notGoverned = [`${SRC}v7ReingestBook.ts`, `${SRC}v7ResyncRehearsal.ts`, `${SRC}v7SiteLinks.ts`, `${SRC}monthlyPricingHelpers.ts`, `${SRC}v7Import/nested.ts`,
+    `${SRC}v7ImportRows.tsx`, "packages/isolated-backend/tests/v7ImportRowsReal.test.ts", "packages/isolated-backend/scripts/v7ImportRefresh.ts", "apps/console/app/jobs/importRowsModel.ts"];
+
+  it("finds the backend's v7Import*.ts files, so the list below is today's", () => {
+    for (const name of ["v7ImportRefresh.ts", "v7ImportRows.ts", "v7ImportIngest.ts", "v7ImportBatchCommands.ts"]) assert.ok(IMPORT.includes(name), name);
+  });
+
+  for (const file of governed) {
+    const name = file.split("/").pop();
+    it(`${name}: held without a ruling, named in the reason; passes only when ruled is applied; held again by a push after`, () => {
+      assert.equal(isGovernedPath(file), true, file);
+      const held = decide({ ...base, changedFiles: [file] });
+      assert.equal(held.pass, false);
+      assert.ok(held.reason.includes(name), held.reason);
+      assert.equal(decide({ ...base, labels: [RULED_LABEL], changedFiles: [file] }).pass, false, "the label merely present on a push");
+      assert.equal(decide({ ...base, action: "labeled", labelName: RULED_LABEL, labels: [RULED_LABEL], changedFiles: [file] }).pass, true);
+    });
+  }
+
+  it("names the import as the import, and a v7 import command once, as a command", () => {
+    assert.match(decide({ ...base, changedFiles: [`${SRC}v7ImportRefresh.ts`, `${SRC}monthlyPricing.ts`] }).reason,
+      /carries the governed v7 import \(v7ImportRefresh\.ts, monthlyPricing\.ts\), which needs a ruling/);
+    const command = decide({ ...base, changedFiles: [`${SRC}v7ImportBatchCommands.ts`] }).reason;
+    assert.match(command, /governed command\/permission surface \(v7ImportBatchCommands\.ts\)/);
+    assert.doesNotMatch(command, /v7 import \(/);
+  });
+
+  it("does not govern its neighbours: tests, scripts, the console, nested or near-miss names", () => {
+    for (const file of notGoverned) assert.equal(isGovernedPath(file), false, file);
   });
 });
 
