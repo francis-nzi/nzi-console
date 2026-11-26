@@ -210,7 +210,13 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
   // Datasets by period §4 (D-B): on a period over two calendar years, the anchor is the previous system's own factor in its
   // own dataset's year — the edition it priced the row at — not the reporting year's, which prices only the later months.
   const spansYears = jobPeriod?.spans === true;
-  const v7CategoryOf = (row: V7ImportMappingRow) => v7CategoryCode(read.v7Categories[row.legacyDbId] ?? planned.get(row.legacyDbId)?.level2 ?? null, row.scope);
+  // The previous system's own category: a scope row's at its level 2; a register source's (`source:<id>`) is its own category, which
+  // the import holds at level 3 — level 2 there is the register's name ("Business Travel Register"), no category.
+  const v7CategoryOf = (row: V7ImportMappingRow) => {
+    const plan = planned.get(row.legacyDbId);
+    const own = row.legacyDbId.startsWith("source:") ? plan?.level3 : plan?.level2;
+    return v7CategoryCode(read.v7Categories[row.legacyDbId] ?? own ?? null, row.scope);
+  };
   // Over two calendar years, with the previous system's own figures read (endpoint 2): each row is judged against its own figure, and
   // each candidate priced by month from that row's own spans — each span's dataset year at the candidate's edition of that year.
   const ownFigures = figures.read?.ok ? new Map(figures.read.body.rows.map((entry) => [v7FiguresRowKey(entry), entry])) : null;
@@ -241,7 +247,8 @@ async function buildRows(db: Queryable, source: V7ImportRefreshSource, org: stri
       // The unit, by the rule bringing it in applies (v7UnitAgainstFactor): the same unit, or why it would be refused.
       const unit = v7UnitAgainstFactor(record.uom, factor.activity_unit);
       const priced = ownFigure && editions ? priceByV7Spans({ quantity: record.qty, months: record.months ?? null, applyPct: input.applyPct, spans: ownFigure.spans,
-        sameUnit: (editionUnit) => v7UnitAgainstFactor(record.uom, editionUnit).sameUnit, editions: editions.get(`${factor.dataset_id}|${factor.factor_id}`) ?? new Map() }) : null;
+        sameUnit: (editionUnit) => v7UnitAgainstFactor(record.uom, editionUnit).sameUnit, editions: editions.get(`${factor.dataset_id}|${factor.factor_id}`) ?? new Map(),
+        ownDatasetId: factor.dataset_id }) : null;
       return {
         datasetId: factor.dataset_id, factorId: factor.factor_id, code: factor.code, label: factor.label, unit: factor.activity_unit, rate, dataset: factor.dataset,
         identity: isIdentity(factor), exactCode: record.original_id !== null && factor.code.toLowerCase() === record.original_id.trim().toLowerCase(),

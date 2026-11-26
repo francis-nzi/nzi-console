@@ -39,6 +39,12 @@ describe("one rule from the modal to the final check", () => {
     assert.deepEqual(unit, { planUnit: "kWh", sameUnit: true, refusal: null });
     assert.equal(v7PlanUnitRefusal(unit.planUnit, normaliseV7Unit("kWh (Gross CV)")), null);
   });
+  it("J000265 source:1169: the previous system's \"Room per night\" is the console's \"nights\" — the same unit, in any case, never refused", () => {
+    for (const uom of ["Room per night", "room per night", " ROOM PER NIGHT "]) {
+      assert.deepEqual(v7UnitAgainstFactor(uom, "nights"), { planUnit: "nights", sameUnit: true, refusal: null }, uom);
+      assert.equal(v7PlanUnitRefusal("nights", normaliseV7Unit(uom)), null, `${uom}: the final check agrees`);
+    }
+  });
   it("net CV on a factor in kWh: not the same unit, and bringing it in is refused — said before, in the modal", () => {
     const unit = v7UnitAgainstFactor("kWh (Net CV)", "kWh");
     assert.equal(unit.sameUnit, false);

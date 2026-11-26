@@ -6,7 +6,7 @@ import { emissionCategoryTaxonomy, type V7ImportRefreshCommitted, type V7ImportR
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsAcceptResult, V7ImportRowsRow } from "@nzi/isolated-backend";
 import { Drawer } from "@nzi/ui";
 import {
-  bringInBlockers, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsProgress,
+  bringInBlockers, editionLabel, fileableCategories, filterRows, groupRows, judgeHit, mergeCandidates, oneDp, pairGroups, partsLine, pendingAccepts, reasonOutcome, refusedOutcome, rowFigure, rowLabel, rowsProgress,
   scopeLines, suggestedAccepts, suggestedSummary, verdictWords,
   type BringInOutcome, type RowsGroup,
 } from "./importRowsModel";
@@ -429,7 +429,7 @@ function Resolve({ row, familyless, periodHeld, own = false, busy, canWrite, sea
   return <div className="nz-irm-resolve" data-resolve={row.legacyDbId}>
     <div className="nz-irm-cue">{cue}</div>
     <input className="nz-inp" aria-label={`Search the factor library for row ${row.legacyDbId}`} placeholder="Search — ID, any words, unit (e.g. “car petrol small km”)" value={query} onChange={(event) => setQuery(event.target.value)} />
-    <div className="nz-irm-s" style={{ margin: "4px 0 6px" }}>{searchError ?? (query.trim().length >= 2 ? `${hits.length} match${hits.length === 1 ? "" : "es"} in the library` : `${row.candidates.length} found by the row's ID`)}</div>
+    <div className="nz-irm-s" style={{ margin: "4px 0 6px" }}>{searchError ?? (query.trim().length >= 2 ? `${hits.length} match${hits.length === 1 ? "" : "es"} in the library` : `${mergeCandidates(row.candidates, []).length} found by the row's ID`)}</div>
     <div className="nz-irm-opthd"><span>Console factor</span><span>This row → tCO₂e</span><span>Factor rate</span><span>Use</span></div>
     {list.length === 0 ? <div className="nz-irm-s" style={{ padding: "6px 10px" }}>Nothing found yet — search the library by any words of the factor.</div> : null}
     {list.map((candidate) => {
@@ -440,7 +440,7 @@ function Resolve({ row, familyless, periodHeld, own = false, busy, canWrite, sea
       const options = fileableCategories(row, candidate, familyless);
       const chosen = filing?.key === key ? filing.category : candidate.match.categoryCode ?? "";
       return <div key={key} className={`nz-irm-opt${candidate === best ? " sel" : ""}`} data-candidate={key} data-verdict={candidate.match.verdict}>
-        <div>{candidate.label}<div className="c">{candidate.code} · {candidate.dataset}</div>
+        <div>{candidate.label}<div className="c">{candidate.code} · {editionLabel(candidate)}</div>
           {!candidate.match.categoryCode && options.length ? <label className="nz-irm-s">File under <select className="nz-sel" value={chosen} onChange={(event) => setFiling({ key, category: event.target.value })}>
             <option value="">Choose a Scope {row.scope} category</option>{options.map((option) => <option key={option.code} value={option.code}>{option.name}</option>)}</select></label> : null}
           {candidate.invalid ? <div className="nz-irm-s">{candidate.invalid}</div> : null}</div>

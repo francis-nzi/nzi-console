@@ -241,12 +241,28 @@ export function partsLine(candidate: Pick<V7ImportCandidate, "parts" | "datasetI
   }).join(" · ");
 }
 
-/** The ID candidates and the search's hits, as one ranked list, each factor once (the ID candidate kept: it carries its save check). */
+/** A factor's identity across a series' editions: the series and the factor — DESNZ's hotel night in 2022, 2025 and 2026 is one factor. */
+export const factorIdentity = (candidate: Pick<V7ImportCandidate, "datasetId" | "factorId">) => `${datasetSeriesKey(candidate.datasetId)}|${candidate.factorId}`;
+
+/**
+ * The ID candidates and the search's hits, as one ranked list, each factor once (the ID candidate kept: it carries its save check)
+ * — and one row per factor identity, not one per edition: the best-ranked edition stands for it (the job-year anchor first), named by
+ * its edition (`editionLabel`), its yearly parts naming the editions by the job's months.
+ */
 export function mergeCandidates(own: readonly V7ImportCandidate[], hits: readonly V7ImportCandidate[]): V7ImportCandidate[] {
   const key = (candidate: V7ImportCandidate) => `${candidate.datasetId}|${candidate.factorId}`;
   const seen = new Set(own.map(key));
-  return rankV7Candidates([...own, ...hits.filter((hit) => !seen.has(key(hit)))]);
+  const identities = new Set<string>();
+  return rankV7Candidates([...own, ...hits.filter((hit) => !seen.has(key(hit)))]).filter((candidate) => {
+    const identity = factorIdentity(candidate);
+    if (identities.has(identity)) return false;
+    identities.add(identity);
+    return true;
+  });
 }
+
+/** A candidate's edition, as the modal names it — "DESNZ GB 2025" — never the file it was loaded from. */
+export const editionLabel = (candidate: Pick<V7ImportCandidate, "datasetId">) => datasetLabelFromId(candidate.datasetId);
 
 /** Where a candidate may be filed for this row: its claimed categories of the row's scope, and the scope's family-less ones. */
 export function fileableCategories(row: Pick<V7ImportRowsRow, "scope">, candidate: Pick<V7ImportCandidate, "categories">, familyless: readonly string[]) {

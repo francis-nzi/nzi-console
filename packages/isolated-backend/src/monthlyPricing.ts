@@ -191,8 +191,14 @@ const r6 = (value: number) => Math.round(value * 1e6) / 1e6;
  * edition of that year). The row's months are V7's `month_N`, **calendar month N** (as V7's resolver and the re-ingest read them);
  * a row with no monthly figures is annual, and V7 prices it as one span, so its whole quantity goes to that span. Pure.
  *
+ * An annual row over several of V7's spans (a register source, say: a hotel's 29 nights, Apr 2025 – Mar 2026) is priced as bringing
+ * it in prices it, D-B: one price, at the candidate's own edition (`ownDatasetId`) — each span its share of the quantity by its months.
+ *
  * Returns the parts and the row's figure (Σ parts), or a null figure when any part cannot be priced. The console's figure for a
  * part is Σ months (q × kgCO₂e) ÷ 1000 × apply%, as the one row calculation prices a spanning row (`planRowPricing`).
+ *
+ * Each part's issue names what is wrong, and nothing else: no-match only where the edition lacks the factor; the unit before the
+ * edition's place on the job (a unit that differs is refused whatever the job holds).
  */
 export function priceByV7Spans(input: {
   quantity: number | null; months: ReadonlyArray<number | null> | null; applyPct: number;
@@ -200,22 +206,30 @@ export function priceByV7Spans(input: {
   sameUnit: (editionUnit: string) => boolean;
   spans: ReadonlyArray<{ from: string | null; to: string | null; dataset_year: number | null; dataset_id: number | null; tco2e: number }>;
   editions: ReadonlyMap<number, SpanEdition>;
+  /** The candidate's own edition: an annual row over several spans is priced once, at it (D-B). */
+  ownDatasetId?: string | null;
 }): { tco2e: number | null; parts: V7SpanPart[] } {
   const hasMonths = (input.months ?? []).some((value) => value !== null && value !== 0);
+  const monthsOf = (span: { from: string | null; to: string | null }) => (span.from && span.to ? monthsBetween(`${span.from}-01`, `${span.to}-01`, 240) : []);
+  // D-B: an annual row over several spans — one price, at the candidate's own edition; each span its months' share.
+  const annualSplit = !hasMonths && input.spans.length > 1;
+  const ownEdition = annualSplit ? [...input.editions.values()].find((edition) => edition.datasetId === input.ownDatasetId) : undefined;
+  const allMonths = input.spans.reduce((sum, span) => sum + monthsOf(span).length, 0);
   const parts = input.spans.map((span): V7SpanPart => {
-    const range = span.from && span.to ? monthsBetween(`${span.from}-01`, `${span.to}-01`, 240) : [];
+    const range = monthsOf(span);
     const base = { from: span.from ?? "", to: span.to ?? "", months: range.length, year: span.dataset_year, previous: span.tco2e };
     if (span.dataset_id === null) return { ...base, datasetId: null, kg: null, tco2e: null, agrees: false, issue: "custom-factor" };
-    const edition = span.dataset_year === null ? undefined : input.editions.get(span.dataset_year);
+    const edition = annualSplit ? ownEdition : span.dataset_year === null ? undefined : input.editions.get(span.dataset_year);
     if (!edition) return { ...base, datasetId: null, kg: null, tco2e: null, agrees: false, issue: "dataset-not-on-job" };
     if (!edition.factor || !edition.factor.active) return { ...base, datasetId: edition.datasetId, kg: null, tco2e: null, agrees: false, issue: "no-match" };
     const sameUnit = input.sameUnit(edition.factor.unit);
-    // The span's quantity: its months' figures (calendar month N), or — an annual row, priced as one span — the whole quantity.
+    // The span's quantity: its months' figures (calendar month N); an annual row priced as one span, the whole quantity; an annual
+    // row over several, its months' share of it. A quantity it cannot be given is no figure — never "not in that edition".
     const quantity = hasMonths ? range.reduce((sum, month) => sum + (input.months![Number(month.slice(5, 7)) - 1] ?? 0), 0)
-      : input.spans.length === 1 ? input.quantity : null;
-    if (quantity === null) return { ...base, datasetId: edition.datasetId, kg: edition.factor.kg, tco2e: null, agrees: false, issue: "no-match" };
+      : !annualSplit ? input.quantity : input.quantity !== null && allMonths > 0 ? input.quantity * range.length / allMonths : null;
+    const issue = !sameUnit ? "unit" as const : !edition.selected ? "dataset-not-on-job" as const : null;
+    if (quantity === null) return { ...base, datasetId: edition.datasetId, kg: edition.factor.kg, tco2e: null, agrees: false, issue };
     const tco2e = r6(quantity * edition.factor.kg / 1000 * (input.applyPct / 100));
-    const issue = !edition.selected ? "dataset-not-on-job" as const : !sameUnit ? "unit" as const : null;
     return { ...base, datasetId: edition.datasetId, kg: edition.factor.kg, tco2e, agrees: Math.abs(tco2e - span.tco2e) < 0.05 - 1e-12, issue };
   });
   const priced = parts.every((part) => part.tco2e !== null) ? r6(parts.reduce((sum, part) => sum + part.tco2e!, 0)) : null;

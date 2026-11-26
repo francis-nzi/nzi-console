@@ -86,4 +86,33 @@ describe("a previous-system row priced span by span from its own spans", () => {
     const custom = priceByV7Spans({ ...base, spans: [{ ...SPAN_2025, dataset_id: null }, SPAN_2026] });
     assert.deepEqual([custom.tco2e, custom.parts[0]!.issue], [null, "custom-factor"]);
   });
+
+  // J000265 source:1169: a hotel stay, 29 "Room per night", no monthly figures, V7 at 10.4 over Apr 2025 – Mar 2026 = 0.3016 t.
+  const HOTEL = new Map<number, SpanEdition>([[2025, { datasetId: "uk-ghg-gb-2025", year: 2025, selected: true, factor: { kg: 10.4, unit: "nights", active: true } }],
+    [2026, { datasetId: "uk-ghg-gb-2026", year: 2026, selected: true, factor: { kg: 10.4, unit: "nights", active: true } }]]);
+  const HOTEL_SPANS = [{ ...SPAN_2025, factor: 10.4, tco2e: 0.2262 }, { ...SPAN_2026, factor: 10.4, tco2e: 0.0754 }];
+  const hotel = { quantity: 29, months: null, applyPct: 100, sameUnit: (unit: string) => unit === "nights", spans: HOTEL_SPANS, editions: HOTEL, ownDatasetId: "uk-ghg-gb-2025" };
+
+  it("an annual row over two spans (J000265 source:1169): one price at its own edition (D-B), each span its months' share — 0.30 t, both parts ✓", () => {
+    const priced = priceByV7Spans(hotel);
+    assert.equal(priced.tco2e, 0.3016, "29 nights × 10.4 kg = 0.3016 t, as the previous system");
+    assert.deepEqual(priced.parts.map((part) => [part.from, part.to, part.datasetId, part.tco2e, part.agrees, part.issue]), [
+      ["2025-04", "2025-12", "uk-ghg-gb-2025", 0.2262, true, null], ["2026-01", "2026-03", "uk-ghg-gb-2025", 0.0754, true, null]],
+      "priced once at its own edition, as bringing it in prices it — never \"factor not in that edition\"");
+    // At its own edition, whatever another year's edition charges: bringing it in prices it so (planRowPricing, D-B).
+    const dearer = new Map([...HOTEL, [2026, { ...HOTEL.get(2026)!, factor: { kg: 99, unit: "nights", active: true } }]]);
+    assert.equal(priceByV7Spans({ ...hotel, editions: dearer }).tco2e, 0.3016);
+  });
+  it("a part's issue names what is wrong: a unit that differs is \"unit\", never no-match — and before the job's editions", () => {
+    assert.deepEqual(priceByV7Spans({ ...hotel, sameUnit: () => false }).parts.map((part) => part.issue), ["unit", "unit"]);
+    const unheld = new Map([...HOTEL, [2025, { ...HOTEL.get(2025)!, selected: false }]]);
+    assert.deepEqual(priceByV7Spans({ ...hotel, editions: unheld, sameUnit: () => false }).parts.map((part) => part.issue), ["unit", "unit"], "the unit first");
+    assert.deepEqual(priceByV7Spans({ ...base, sameUnit: () => false, editions: new Map([...editions, [2026, { ...editions.get(2026)!, selected: false }]]) }).parts.map((part) => part.issue),
+      ["unit", "unit"]);
+    // "no-match" only where the edition lacks the factor.
+    const lacking = new Map([...HOTEL, [2025, { ...HOTEL.get(2025)!, factor: null }]]);
+    assert.deepEqual(priceByV7Spans({ ...hotel, editions: lacking }).parts.map((part) => part.issue), ["no-match", "no-match"], "its own edition lacks it");
+    assert.deepEqual(priceByV7Spans({ ...hotel, ownDatasetId: "uk-ghg-gb-2019" }).parts.map((part) => [part.datasetId, part.issue]),
+      [[null, "dataset-not-on-job"], [null, "dataset-not-on-job"]], "its own edition not in the series' editions read");
+  });
 });

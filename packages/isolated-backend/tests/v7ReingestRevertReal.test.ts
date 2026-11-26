@@ -2820,7 +2820,7 @@ describe("the two-dataset-year guard: a job whose period spans two calendar year
  */
 describe("a spanning job reconciled with the previous system's own figures: the modal by month, the guard lifted per job, a job that differs still refused", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   const SO_ORG = "span-own";
-  const J265 = "so-265", J265B = "so-265b", J265C = "so-265c", CAL = "so-cal";
+  const J265 = "so-265", J265B = "so-265b", J265C = "so-265c", J265D = "so-265d", CAL = "so-cal";
   let database: DisposableDatabase;
   let db: pg.Client;
   let keys = 0;
@@ -2855,7 +2855,16 @@ describe("a spanning job reconciled with the previous system's own figures: the 
   const ROW_B_9278 = row("19278", "2", ELEC, 97_656, 0.177, MONTHS), ROW_B_9301 = row("19301", "1", GAS, 10_000, 0.18293, null);
   const ROW_C_9278 = row("29278", "2", ELEC, 97_656, 0.177, MONTHS), ROW_C_9301 = row("29301", "1", GAS, 10_000, 0.18293, null);
   const CAL_ROW = row("9401", "2", ELEC, 50_000, 0.177, null);
-  const holds = new Map<string, readonly PlannedRow[]>([[J265, [ROW_9278, ROW_9301]], [J265B, [ROW_B_9278, ROW_B_9301]], [J265C, [ROW_C_9278, ROW_C_9301]], [CAL, [CAL_ROW]]]);
+  // J000265 source:1169: a business-travel register source — a hotel stay, 29 "Room per night", no monthly figures, V7 at 10.4.
+  // The import holds a register source's own category at level 3 ("Business Travel"); level 2 is the register's name.
+  const HOTEL = { code: "29_600_4000_13_1", levels: ["Hotel stay", "Hotel stay", "UK"], label: "Hotel stay — UK" };
+  const hotelBase = plannedRow({ id: "x", scope: "3", label: "Business Travel", qty: 29, unit: "Room per night", reported: 0.3016 });
+  const SOURCE_1169: PlannedRow = { ...hotelBase, scopeRowId: "v7-source-1169", legacyDbId: "source:1169", scope: "3", v7Scope: "Scope 3",
+    level1: "Scope 3", level2: "Business Travel Register", level3: "Business Travel",
+    migratedRecord: { ...(hotelBase.migratedRecord as unknown as Record<string, unknown>), original_id: HOTEL.code, factor: 10.4, factor_db_id: `f-${HOTEL.code}`,
+      dataset: { id: "1", year: 2025, version: null } } as unknown as PlannedRow["migratedRecord"] };
+  const holds = new Map<string, readonly PlannedRow[]>([[J265, [ROW_9278, ROW_9301]], [J265B, [ROW_B_9278, ROW_B_9301]], [J265C, [ROW_C_9278, ROW_C_9301]], [CAL, [CAL_ROW]],
+    [J265D, [SOURCE_1169]]]);
   const source: V7ImportRefreshSource = async (_db, job) => ({ sourceSha256: "b".repeat(64), rows: holds.get(job.jobId)! });
   const EMPTY_PLAN = (jobId: string) => ({ jobId, crosswalkVersion: "none", crosswalkSha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", vintageDatasetIds: [], rows: [] });
 
@@ -2869,7 +2878,11 @@ describe("a spanning job reconciled with the previous system's own figures: the 
   // J265C: V7 priced Jan–Mar from a 2024 edition the library holds no copy of — no edition to add, so the reconcile still names it.
   const OWN_C_9278 = { ...OWN_9278, row_id: 29278, spans: [OWN_9278.spans[0]!, { ...OWN_9278.spans[1]!, dataset_id: 68, dataset_year: 2024 }] };
   const figuresOf: Record<string, V7FiguresRowFigures["rows"]> = { "265": [OWN_9278, OWN_9301], "266": [{ ...OWN_9278, row_id: 19278 }, { ...OWN_9301, row_id: 19301 }], "267": [],
-    "268": [OWN_C_9278, { ...OWN_9301, row_id: 29301 }] };
+    "268": [OWN_C_9278, { ...OWN_9301, row_id: 29301 }],
+    // V7's own figure for the hotel: 0.3016 t, over two spans (9 months at its 2025 edition, 3 at 2026's — both 10.4).
+    "269": [{ row_id: "source:1169", scope: "Scope 3", enabled: true, tco2e: 0.3016, blended: true, custom_factor: false, spans: [
+      { from: "2025-04", to: "2025-12", dataset_id: 1, dataset_year: 2025, factor: 10.4, ghg_unit: "kgCO2e", tco2e: 0.2262 },
+      { from: "2026-01", to: "2026-03", dataset_id: 69, dataset_year: 2026, factor: 10.4, ghg_unit: "kgCO2e", tco2e: 0.0754 }] }] };
   const selected = async (jobId: string) => (await db.query<{ dataset_id: string }>(
     `SELECT dataset_id FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2 ORDER BY dataset_id`, [SO_ORG, jobId])).rows.map((entry) => entry.dataset_id);
   const rowFigures: V7RowFiguresClient = async ({ v7JobId }) => {
@@ -2914,10 +2927,16 @@ describe("a spanning job reconciled with the previous system's own figures: the 
                       VALUES ($1,$2,$3,$4,'kWh',$5,ARRAY[$6::text],$7::text[],$8,$9,$10)`,
         [SO_ORG, ds, `uk-ghg-${family.code}`, family.label, rate, scope, family.levels, lookup ? "nzi-pro-v7" : null, lookup ? `f-${family.code}` : null, family.code]);
     }
+    // The hotel night, in both editions at 10.4 per night (staging's own: uk-ghg-29_600_4000_13_1, "nights").
+    for (const [ds, lookup] of [["uk-ghg-gb-2025", true], ["uk-ghg-gb-2026", false]] as const) {
+      await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels,source_system,legacy_db_id,legacy_original_id)
+                      VALUES ($1,$2,$3,$4,'nights',10.4,ARRAY['3'],$5::text[],$6,$7,$8)`,
+        [SO_ORG, ds, `uk-ghg-${HOTEL.code}`, HOTEL.label, HOTEL.levels, lookup ? "nzi-pro-v7" : null, lookup ? `f-${HOTEL.code}` : null, HOTEL.code]);
+    }
     // J000265's shape over April–March, with both editions (J265) and with 2026's missing (J265B); and a calendar-year job (J000434's shape).
     for (const [jobId, sequence, number, v7Id, from, to, editions] of [[J265, 965, "J000965", "265", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025", "uk-ghg-gb-2026"]],
       [J265B, 966, "J000966", "266", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025"]], [CAL, 967, "J000967", "267", "2025-01-01", "2025-12-31", ["uk-ghg-gb-2025"]],
-      [J265C, 968, "J000968", "268", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025"]]] as const) {
+      [J265C, 968, "J000968", "268", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025"]], [J265D, 969, "J000969", "269", "2025-04-01", "2026-03-31", ["uk-ghg-gb-2025", "uk-ghg-gb-2026"]]] as const) {
       await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
         VALUES ($1,$2,'cs',$3,'crp','CRP','open','Data entry',2025,$4,$5,'nzi-pro-v7',$6,$7)`, [SO_ORG, jobId, sequence, from, to, v7Id, number]);
       await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`, [SO_ORG, jobId, from, to]);
@@ -2939,6 +2958,20 @@ describe("a spanning job reconciled with the previous system's own figures: the 
     assert.equal(Number(elec.pick!.match.tco2e!.toFixed(1)), 15.3, "row 9278 = 15.3, not the single factor's 17.3");
     const gas = seen.rows.find((entry) => entry.legacyDbId === "9301")!;
     assert.deepEqual([gas.lane, gas.pick?.match.tco2e, gas.pick?.parts?.length], ["pre-accepted", 1.8293, 1], "an annual row: one span, at its own edition");
+  });
+
+  it("J000265 source:1169, a hotel stay (29 \"Room per night\"): nights, priced 0.30 t at its own edition with both parts ✓, filed under Business Travel", async () => {
+    const seen = await rowsOf(J265D);
+    const hotel = seen.rows.find((entry) => entry.legacyDbId === "source:1169")!;
+    assert.deepEqual([hotel.v7Category, hotel.previousSystem?.tco2e], ["3.6", 0.3016], "the previous system's own category, from the register source's level 3");
+    // One factor, in both editions: a candidate each (the modal shows it once), each priced once at its own edition (D-B).
+    assert.deepEqual(hotel.candidates.map((candidate) => [candidate.datasetId, candidate.unit, candidate.match.tco2e, candidate.match.verdict, candidate.match.categoryCode]).sort(), [
+      ["uk-ghg-gb-2025", "nights", 0.3016, "reproduces", "3.6"], ["uk-ghg-gb-2026", "nights", 0.3016, "reproduces", "3.6"]]);
+    assert.deepEqual([hotel.lane, hotel.pick?.datasetId, hotel.pick?.match.tco2e, hotel.pick?.unitRefusal], ["pre-accepted", "uk-ghg-gb-2025", 0.3016, null],
+      "the job-year anchor reproduces: it comes in pre-accepted, its unit the same");
+    assert.deepEqual(hotel.pick?.parts?.map((part) => [part.from, part.to, part.datasetId, part.tco2e, part.agrees, part.issue]), [
+      ["2025-04", "2025-12", "uk-ghg-gb-2025", 0.2262, true, null], ["2026-01", "2026-03", "uk-ghg-gb-2025", 0.0754, true, null]],
+      "both parts ✓ — never \"factor not in that edition\" or \"no figure to compare\"");
   });
 
   it("with no read of the previous system's own figures, the modal holds the job and says why — never a tick", async () => {
