@@ -2406,6 +2406,36 @@ th[aria-sort="ascending"] .nz-sort,th[aria-sort="descending"] .nz-sort{color:var
 .nz-admin .nz-datalist-pager .nz-fl{margin:0;font-size:11.5px;color:var(--a-ink-2)}
 .nz-admin .nz-datalist-page{font-size:12.5px;color:var(--a-ink-2);align-self:center;font-family:var(--a-mono)}
 
+/* "Against the previous system", made reviewable (BRIEF-drift-investigation-and-review-page Part C): the admin table, compact, with a
+   two-row header, each figure its own right-aligned column, the header sticky in its own scroll box and Job + Client sticky when the
+   box scrolls sideways (below about 1280px; at 1280px and wider it fits). Admin tokens only. */
+.nz-a-drift-filters .nz-a-drift-text{flex:1 1 260px;display:grid;gap:3px}.nz-a-drift-filters .nz-a-drift-text input{width:100%}
+.nz-a-drift-filters label{display:grid;gap:3px}.nz-a-drift-min{width:110px}
+.nz-a-drift-actions{display:flex;gap:8px;margin-left:auto}
+.nz-admin .nz-a-drift-chips{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 10px;align-self:flex-start}
+.nz-a-drift-wrap{overflow:auto;max-height:calc(100vh - 230px);border:1px solid var(--a-line);border-radius:var(--a-r);background:var(--a-surface)}
+.nz-admin .nz-a-drift{min-width:940px;border-collapse:separate;border-spacing:0}
+.nz-admin .nz-a-drift th,.nz-admin .nz-a-drift td{padding:6px 5px;font-size:12px;white-space:nowrap}
+.nz-admin .nz-a-drift th:first-child,.nz-admin .nz-a-drift td:first-child{padding-left:9px}
+.nz-admin .nz-a-drift thead th{position:sticky;top:0;z-index:2;font-size:10.5px;letter-spacing:.02em}
+.nz-admin .nz-a-drift thead tr:first-child th{height:29px}
+.nz-admin .nz-a-drift thead tr:nth-child(2) th{top:29px;white-space:normal;line-height:1.2;vertical-align:bottom;text-transform:none;letter-spacing:0;font-size:11px}
+.nz-admin .nz-a-drift thead th .nz-sort{gap:2px}
+.nz-admin .nz-a-drift thead th.group{text-align:center;border-bottom:1px solid var(--a-line-2)}
+.nz-admin .nz-a-drift th.first,.nz-admin .nz-a-drift td.first,.nz-admin .nz-a-drift thead th.group{border-left:1px solid var(--a-line)}
+.nz-admin .nz-a-drift th.num .nz-sort{justify-content:flex-end;text-align:right}
+.nz-admin .nz-a-drift tbody th{text-transform:none;letter-spacing:0;font-weight:600;color:var(--a-ink);background:var(--a-surface);border-bottom:1px solid var(--a-line-2)}
+.nz-admin .nz-a-drift .job{position:sticky;left:0;z-index:1;width:124px;min-width:124px;max-width:124px;background:var(--a-surface)}
+.nz-admin .nz-a-drift .client{position:sticky;left:124px;z-index:1;max-width:104px;overflow:hidden;text-overflow:ellipsis;background:var(--a-surface)}
+.nz-admin .nz-a-drift thead .job,.nz-admin .nz-a-drift thead .client{z-index:3;background:var(--a-surface-2)}
+.nz-admin .nz-a-drift tbody th .nz-a-prov{margin-left:5px;padding:1px 4px;font-size:9px;vertical-align:1px}
+.nz-a-drift-diff{font-weight:600}.nz-a-drift-diff.even{color:var(--a-ink-3);font-weight:400}
+.nz-a-drift-diff.lower{color:var(--a-bad)}.nz-a-drift-diff.higher{color:var(--a-warn)}
+.nz-a-drift-when{border:0;background:none;padding:0;font:inherit;color:var(--a-accent-ink);cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
+.nz-admin .nz-a-drift tr.nz-a-drift-history>td{white-space:normal;background:var(--a-surface-2);padding:10px 12px 12px}
+.nz-admin .nz-a-drift tr.nz-a-drift-history .nz-tbl{margin-top:6px;width:auto;min-width:0}
+.nz-admin .nz-a-drift tr.nz-a-drift-history .nz-tbl th{position:static;background:none}
+
 @media (max-width:920px){
   .nz-a-app{grid-template-columns:1fr}
   .nz-a-rail{position:fixed;left:0;top:0;bottom:0;width:246px;z-index:50;transform:translateX(-100%);transition:transform .2s}
