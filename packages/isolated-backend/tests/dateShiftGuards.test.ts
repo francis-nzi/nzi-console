@@ -134,11 +134,13 @@ describe("a date keeps its day (NZC-106)", { skip: DATABASE_URL ? false : "NZI_T
 
   it("still records a rebaseline when the baseline period really moves", async () => {
     // The other half of the guarantee: the fix must not have made the governed event
-    // unreachable. A real change is still a governed act.
-    const created = await createClient(pool, { ...identity, name: "Moved", ...profile }, context("client-create-2"));
+    // unreachable. A real change is still a governed act. 0238: a baseline is governed once it has
+    // figures — without them, moving the period is still the initial baseline — so this one has them.
+    const withFigures = { ...profile, baselineScope1Tco2e: 100, baselineScope2Tco2e: 200, baselineScope3Tco2e: 700 };
+    const created = await createClient(pool, { ...identity, name: "Moved", ...withFigures }, context("client-create-2"));
     const clientId = created.data.clientId;
     await updateClient(pool, {
-      clientId, expectedVersion: await versionOf(clientId), ...identity, name: "Moved", ...profile,
+      clientId, expectedVersion: await versionOf(clientId), ...identity, name: "Moved", ...withFigures,
       baselinePeriodStart: "2023-04-01", baselinePeriodEnd: "2024-03-31",
     }, { ...context("client-update-2"), reason: "Restated to the audited period" });
 
