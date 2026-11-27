@@ -23,7 +23,7 @@
 // Ineligible → the preview, unchanged, and why it was not automatic: Phase C's deliberate flow carries on from there.
 //
 // One job per call, so the batch queue (Phase E) can call it per job unchanged.
-import type { CommandContext, V7ImportRefreshCommitted, V7ImportRefreshPreview } from "@nzi/contracts";
+import { V7_DERIVED_SOURCE_SYSTEM, type CommandContext, type V7ImportRefreshCommitted, type V7ImportRefreshPreview } from "@nzi/contracts";
 import { readImportPolicy } from "./organisationSettings";
 import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError } from "./postgresCommands";
@@ -52,9 +52,10 @@ export async function readV7ImportFastPathSignals(db: Queryable, organisationId:
                     ON r.organisation_id = a.organisation_id AND r.scope_row_id = a.entity_id
                   WHERE a.organisation_id = $1 AND r.job_id = $2 AND a.entity_type = 'scope_row' AND a.principal_type IN ('staff', 'portal'))
        OR EXISTS (SELECT 1 FROM nzi_console.job_scope_rows r WHERE r.organisation_id = $1 AND r.job_id = $2
-                   AND r.origin = 'live' AND r.reingested_from_row_id IS NULL)
+                   AND r.origin = 'live' AND r.reingested_from_row_id IS NULL AND r.source_system IS DISTINCT FROM $3)
          AS manual_edits`,
-    [organisationId, jobId])).rows[0];
+    // A row the previous system derives (cause 8) is the bring-in's own, never a person's.
+    [organisationId, jobId, V7_DERIVED_SOURCE_SYSTEM])).rows[0];
   return { issuedReport: row?.issued_report !== false, manualEdits: row?.manual_edits !== false };
 }
 
@@ -79,8 +80,9 @@ export async function previewV7ImportFastPath(pool: PoolLike, source: V7ImportRe
   given: V7ImportRefreshOptions = {}): Promise<{ preview: V7ImportRefreshPreview; because: V7ImportFastPathBlocker[]; options: V7ImportRefreshOptions }> {
   // Never a bring-in on a snapshotted job (BRIEF-v7-import-j000663 §B): that is a person's act, in the deliberate flow. Without it the
   // chain refuses a snapshotted job (SNAPSHOT_EXISTS), so its preview is flagged and it falls back.
-  // A spanning job's own figures (endpoint 2) are read once, for the preview and its commit alike: one call per bring-in.
-  const spanningFigures = given.spanningFigures ?? await readSpanningFigures(pool, context.organisationId, jobId, given.rowFigures);
+  // The job's own figures (endpoint 2) are read once, for the preview and its commit alike: one call per bring-in. Any period: a
+  // one-year job's derived rows (cause 8) are on endpoint 2 alone.
+  const spanningFigures = given.spanningFigures ?? await readSpanningFigures(pool, context.organisationId, jobId, given.rowFigures, { anyPeriod: true });
   const options: V7ImportRefreshOptions = { ...given, allowSnapshotted: false, spanningFigures };
   let signals = null as V7ImportFastPathSignals | null;
   let adminGateBlocks = true;

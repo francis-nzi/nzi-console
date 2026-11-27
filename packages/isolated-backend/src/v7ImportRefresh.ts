@@ -26,7 +26,7 @@ import { fileURLToPath } from "node:url";
 import type { Pool } from "pg";
 import {
   datasetLabelFromId, datasetSeriesKey, resolveV7Import, v7FiguresRowKey, v7FiguresScope, v7ImportPeriodIssue, v7ImportSummaryIssues, v7PeriodSpansTwoYears, v7ScopeAgreement,
-  v7SpanningReconcile, v7SpanningRefusal, V7_IMPORT_TWO_DATASET_YEARS_UNREAD,
+  v7SpanningReconcile, v7SpanningRefusal, V7_DERIVED_SOURCE_SYSTEM, V7_IMPORT_TWO_DATASET_YEARS_UNREAD,
   type CommandContext, type V7ImportPeriod, type CommandInputMap, type V7FiguresRowFigures, type V7ImportDecision, type V7ImportIngestTotals, type V7ImportRefreshCommitted,
   type V7ImportRefreshException, type V7ImportRefreshPreview, type V7ImportScope, type V7ImportSummary, type V7ReingestJobInput, type V7RowReconcileInput,
   type V7RowReconcileReason, type V7SpanningReconcile,
@@ -35,6 +35,7 @@ import { AuthorizationError } from "./auth";
 import { v7SpanEditions } from "./monthlyPricing";
 import { readImportPolicy } from "./organisationSettings";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
+import { carryV7DerivedRows, type V7DerivedCarry } from "./v7DerivedRows";
 import { readConsoleScopeTotals, type V7RowFiguresClient, type V7RowFiguresRead } from "./v7Drift";
 import { sameV7Unit } from "./v7Reingest";
 import { CommandValidationError, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
@@ -125,18 +126,25 @@ export type SpanningFigures = { spans: boolean; read: V7RowFiguresRead | null };
 
 /**
  * For a job over two calendar years: the previous system's own row figures (endpoint 2), read once, outside any transaction. A job in
- * one year, or with no client to read through, reads nothing. Only the job's V7 id crosses.
+ * one year reads nothing — unless `anyPeriod` (a bring-in: its derived rows, cause 8, are on endpoint 2 alone). With no client to read
+ * through, nothing is read. Only the job's V7 id crosses.
  */
-export async function readSpanningFigures(pool: PoolLike, organisationId: string, jobId: string, client: V7RowFiguresClient | undefined): Promise<SpanningFigures> {
+export async function readSpanningFigures(pool: PoolLike, organisationId: string, jobId: string, client: V7RowFiguresClient | undefined,
+  { anyPeriod = false }: { anyPeriod?: boolean } = {}): Promise<SpanningFigures> {
   const job = await withTenantRead(pool, organisationId, async (db) => ({ period: await readV7ImportPeriod(db, organisationId, jobId),
     v7JobId: (await db.query<{ legacy_db_id: string | null }>(`SELECT legacy_db_id FROM nzi_console.jobs WHERE organisation_id = $1 AND job_id = $2`, [organisationId, jobId])).rows[0]?.legacy_db_id ?? null }));
-  if (!v7PeriodSpansTwoYears(job.period)) return { spans: false, read: null };
-  if (!client) return { spans: true, read: null };
-  return { spans: true, read: job.v7JobId ? await client({ v7JobId: job.v7JobId }) : { ok: false, reason: "not-found" } };
+  const spans = v7PeriodSpansTwoYears(job.period);
+  if ((!spans && !anyPeriod) || !client) return { spans, read: null };
+  return { spans, read: job.v7JobId ? await client({ v7JobId: job.v7JobId }) : { ok: false, reason: "not-found" } };
 }
 
 const spanningFiguresFor = (pool: PoolLike, organisationId: string, jobId: string, options: V7ImportRefreshOptions) =>
-  options.spanningFigures ? Promise.resolve(options.spanningFigures) : readSpanningFigures(pool, organisationId, jobId, options.rowFigures);
+  options.spanningFigures ? Promise.resolve(options.spanningFigures) : readSpanningFigures(pool, organisationId, jobId, options.rowFigures, { anyPeriod: true });
+
+/** The totals with the job's derived rows in (cause 8): V7 counts them, and so, once carried, does the console. */
+const withDerived = (totals: V7ImportIngestTotals | null, derived: V7DerivedCarry | null): V7ImportIngestTotals | null => totals && derived
+  ? Object.fromEntries((["1", "2", "3"] as const).map((scope) => [scope, { v7Tco2e: totals[scope].v7Tco2e + derived.scopeTotals[scope],
+    liveTco2e: totals[scope].liveTco2e + derived.scopeTotals[scope] }])) as V7ImportIngestTotals : totals;
 
 export type Refresh = {
   legacyJobNumber: string; sourceSha256: string; rows: readonly PlannedRow[]; v7Categories: V7RowCategories; summary: V7ImportSummary; summarySha256: string;
@@ -203,7 +211,12 @@ export async function reconcileSpanningJob(db: Queryable, organisationId: string
        FROM nzi_console.job_scope_rows r
        JOIN nzi_console.job_scope_rows m ON (m.organisation_id, m.scope_row_id) = (r.organisation_id, r.reingested_from_row_id)
        LEFT JOIN nzi_console.emission_factors_display f ON (f.organisation_id, f.dataset_id, f.factor_id) = (r.organisation_id, r.dataset_id, r.factor_id)
-      WHERE r.organisation_id = $1 AND r.job_id = $2 AND r.origin = 'live' AND r.enabled`, [organisationId, jobId])).rows;
+      WHERE r.organisation_id = $1 AND r.job_id = $2 AND r.origin = 'live' AND r.enabled
+     UNION ALL
+     -- Cause 8: a derived row is linked to its V7 row by its own import identity, <V7 job id>:<V7 row id>.
+     SELECT split_part(d.legacy_db_id, ':', 2), d.scope, d.override_tco2e::text, NULL, NULL, NULL FROM nzi_console.job_scope_rows d
+      WHERE d.organisation_id = $1 AND d.job_id = $2 AND d.origin = 'live' AND d.enabled AND d.source_system = $3`,
+    [organisationId, jobId, V7_DERIVED_SOURCE_SYSTEM])).rows;
   const selected = (await db.query<{ dataset_id: string; year: number }>(
     `SELECT d.dataset_id, extract(year FROM d.valid_from)::int AS year FROM nzi_console.job_dataset_selections s
        JOIN nzi_console.emission_factor_datasets d ON (d.organisation_id, d.dataset_id) = (s.organisation_id, s.dataset_id)
@@ -303,7 +316,11 @@ async function runChain(db: Queryable, read: Refresh, organisationId: string, jo
       const spanned = await v7SpanVintages(db2, organisationId, jobId, plan.rows, own);
       return { ...plan, vintageDatasetIds: [...new Set([...plan.vintageDatasetIds, ...spanned])] };
     } });
-  return { committed: committed && report.refusal === null, report, chain, counts, planSha256: planSha256 as string | null };
+  const ok = committed && report.refusal === null;
+  // Cause 8: the rows the previous system derives, from its own figures when they were read — after the chain, in its transaction.
+  const derived = ok && figures?.read?.ok
+    ? await carryV7DerivedRows(db, { organisationId, jobId, reason: `${reason}${suffix}`, figures: figures.read.body }) : null;
+  return { committed: ok, report, chain, counts, planSha256: planSha256 as string | null, derived };
 }
 
 class PreviewRollback extends Error {}
@@ -337,7 +354,9 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
             const reconcile = ran.committed ? await assertSpanningReconciles(tx, context.organisationId, input.jobId, figures) : null;
             data = { ...base, outcome: ran.committed ? "would-commit" : "refused",
               refusal: ran.committed ? null : ran.report.refusal ?? { stage: "reingest", issues: [{ field: "jobId", code: "NOT_COMMITTED", message: "The re-ingest did not commit." }] },
-              chain: countsOf(ran.report, ran.counts), scopeTotals: ran.committed ? withOwnTotals(totalsOf(ran.report), reconcile) : null };
+              chain: countsOf(ran.report, ran.counts), scopeTotals: ran.committed ? withOwnTotals(withDerived(totalsOf(ran.report), ran.derived), reconcile) : null,
+              // Only when its own figures were read: an unread bring-in's preview and audit are as they were.
+              ...(ran.derived ? { derived: ran.derived.carried } : {}) };
           } finally {
             await tx.query("ROLLBACK TO SAVEPOINT v7_import_refresh_preview");
           }
@@ -388,11 +407,11 @@ export async function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefr
     if (issues.length) throw new CommandValidationError(issues);
     const sessionId = await storeV7ImportSession(db, context, input.jobId, read.summary);
     const record = { sessionId, extractSha256: read.sourceSha256, decisionsSha256: read.decisionsSha256, planSha256: ran.planSha256, outcome: "committed" as const,
-      refusedStage: null, refusalCodes: [], counts: countsOf(ran.report, ran.counts), scopeTotals: withOwnTotals(totalsOf(ran.report), reconcile) };
+      refusedStage: null, refusalCodes: [], counts: countsOf(ran.report, ran.counts), scopeTotals: withOwnTotals(withDerived(totalsOf(ran.report), ran.derived), reconcile) };
     const ingestId = await insertIngest(db, context, input.jobId, "ingest", record, { resync: ran.chain.resyncRunId, reingest: ran.chain.reingestRunId });
-    const governedEvents = options.allowSnapshotted ? await supersedeSnapshots(db, context, input.jobId, ingestId) : [];
+    const governedEvents = [...(options.allowSnapshotted ? await supersedeSnapshots(db, context, input.jobId, ingestId) : []), ...(ran.derived?.event ? [ran.derived.event] : [])];
     const data: V7ImportRefreshCommitted = { mode: "commit", jobId: input.jobId, ingestId, sessionId, resyncRunId: ran.chain.resyncRunId, reingestRunId: ran.chain.reingestRunId,
-      resync: record.counts.resync!, plan: record.counts.plan ?? { committed: 0, decided: 0 } };
+      resync: record.counts.resync!, plan: record.counts.plan ?? { committed: 0, decided: 0 }, ...(ran.derived ? { derived: ran.derived.carried } : {}) };
     return { data, entityType: "job", entityId: input.jobId, topic: "import.refreshed", ...(governedEvents.length ? { governedEvents } : {}) };
   });
 }

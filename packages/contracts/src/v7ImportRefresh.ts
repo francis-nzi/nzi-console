@@ -2,6 +2,7 @@ import type { CommandIssue } from "./commands";
 import type { V7ImportCarryState, V7ImportResolution, V7ImportResolvedVerdict } from "./v7ImportDecision";
 import type { V7ImportIngestCounts, V7ImportIngestStage, V7ImportIngestTotals } from "./v7ImportIngest";
 import type { V7ImportCounts, V7ImportRowStatus, V7ImportScope } from "./v7ImportSummary";
+import type { V7DerivedRowsCarried } from "./v7RowFigures";
 
 /**
  * The import, server-side — Phase B (BRIEF-v7-import-server-side-phase-b; R-3, R-6): `import.refresh`, one command, run in the
@@ -41,14 +42,18 @@ export type V7ImportRefreshPreview = {
   exceptions: V7ImportRefreshException[];
   refusal: { stage: V7ImportIngestStage; issues: Array<{ field: string; code: string; message: string }> } | null;
   chain: V7ImportIngestCounts;
-  /** Σ previous system and Σ live per scope, as D7 reconciled them; null unless it would commit. */
+  /** Σ previous system and Σ live per scope, as D7 reconciled them (the derived rows included); null unless it would commit. */
   scopeTotals: V7ImportIngestTotals | null;
+  /** Cause 8: what the bring-in does to the rows the previous system derives; absent when its own figures weren't read. */
+  derived?: V7DerivedRowsCarried;
 };
 
 /** The commit's result — and so its audit: ids and counts, no figures. Σ per scope is in its 0229 record. */
 export type V7ImportRefreshCommitted = {
   mode: "commit"; jobId: string; ingestId: string; sessionId: string; resyncRunId: string; reingestRunId: string;
   resync: { unchanged: number; superseded: number; added: number; withdrawn: number }; plan: { committed: number; decided: number };
+  /** Cause 8, counts only; absent when the previous system's own figures weren't read. */
+  derived?: V7DerivedRowsCarried;
 };
 
 /**

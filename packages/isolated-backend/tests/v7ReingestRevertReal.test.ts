@@ -3092,7 +3092,7 @@ describe("a spanning job reconciled with the previous system's own figures: the 
     } finally { figuresOf["268"] = [OWN_C_9278, { ...OWN_9301, row_id: 29301 }]; }
   });
 
-  it("a calendar-year job (J000434's shape) never reads the previous system's own figures and brings in exactly as before", async () => {
+  it("a calendar-year job (J000434's shape) reads the previous system's own figures only for its derived rows, and brings in exactly as before", async () => {
     calls.length = 0;
     const seen = await rowsOf(CAL);
     assert.deepEqual([seen.periodRefusal, seen.ownFigures, seen.rows.map((entry) => entry.pick?.parts ?? null)], [null, false, [null]]);
@@ -3103,7 +3103,10 @@ describe("a spanning job reconciled with the previous system's own figures: the 
     const committed = await commitV7ImportRefresh(database.pool, source, { jobId: CAL, mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 },
       context("admin", "bring J000967 in (test)"), { basePlan: EMPTY_PLAN(CAL), rowFigures, requireScopesAgree: true });
     assert.equal(committed.data.mode, "commit");
-    assert.deepEqual(calls, [], "a one-year job never calls endpoint 2");
+    // Cause 8 (ruled 27 Nov): a bring-in reads endpoint 2 on any period, for the rows the previous system derives — once per command.
+    // The rows modal still never reads it for a one-year job (above). This job has none, so nothing else moves.
+    assert.deepEqual(calls, ["267", "267"], "the preview and the commit each read endpoint 2, for derived rows only");
+    assert.deepEqual(committed.data.derived, { added: 0, updated: 0, unchanged: 0, switchedOff: 0 });
   });
 });
 

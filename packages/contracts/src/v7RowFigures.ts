@@ -71,6 +71,21 @@ export function v7FiguresRowsIssue(body: unknown, expectedV7JobId: number): stri
 
 /** The row's id as the console keys the previous system's rows (`legacyDbId`): the digits, or `source:<id>`. */
 export const v7FiguresRowKey = (row: Pick<V7FiguresRow, "row_id">): string => String(row.row_id);
+/**
+ * Cause 8 (ruled by Francis, 25 and 27 Nov): a row the previous system derives — its consolidated commuting and travel rows — has a
+ * negative id on endpoint 2 and is stored nowhere in its tables, so the view set never carries it. An imported job carries each as a
+ * live row of its own import identity (`V7_DERIVED_SOURCE_SYSTEM`, legacy id `<V7 job id>:<row id>`), at the previous system's own
+ * figure, marked in its lineage. Bring-in keeps them current: never a second row for one, and one V7 no longer derives is switched
+ * off, never deleted.
+ */
+export const isV7DerivedRow = (row: Pick<V7FiguresRow, "row_id">): boolean => typeof row.row_id === "number" && row.row_id < 0;
+export const V7_DERIVED_SOURCE_SYSTEM = "nzi-pro-v7-derived";
+/** The override's reason on a derived row: its figure is the previous system's, not a calculation here. */
+export const V7_DERIVED_OVERRIDE_REASON = "derived in the previous system (record of account)";
+export const V7_DERIVED_LINEAGE_TITLE = "Derived in the previous system";
+/** What one bring-in did to the job's derived rows. Counts only. */
+export type V7DerivedRowsCarried = { added: number; updated: number; unchanged: number; switchedOff: number };
+
 /** V7's scope label as the console's top-level scope, or null when it names none. */
 export function v7FiguresScope(label: string): V7ImportScope | null {
   const found = /^\s*scope\s*([123])\b/i.exec(label);

@@ -47,7 +47,7 @@ import { defaultReportSectionPlan, normaliseReportPlanKeys, type ReportNarrative
 import { appendReportVersionEdit } from "./reportVersionEdits";
 import { carryNarrativeForward, IN_FLIGHT_STATUSES, reportEditRefusal, STAFF_NARRATIVE_EDITABLE_STATUSES, staffMayEditNarrative } from "@nzi/contracts";
 import { normaliseReportSectionPlan, readActiveReportProfile } from "./reportSectionPlanRecords";
-import { isV7ReportedTotalReason, V7_REINGEST_ACTOR } from "@nzi/contracts";
+import { isV7ReportedTotalReason, V7_DERIVED_SOURCE_SYSTEM, V7_REINGEST_ACTOR } from "@nzi/contracts";
 import { BUSINESS_TRAVEL_CODE, factorServesTravelMode, normaliseCommutingDetail, normaliseTravelDetail, travelModeLabel, travelPatternOf } from "@nzi/contracts";
 import { isPortalProfileKey, isPortalProfileValue, isPortalScope } from "@nzi/contracts";
 import { isCurrencyUnit, rowScopeForCategory, spendCarryKey } from "@nzi/contracts";
@@ -873,11 +873,12 @@ export const reingestedRowMessage = (act: string) =>
   `This row was re-ingested and reproduces the previous record of account, so it can't be ${act}. In review it is attest-only: resolve its gaps, then approve or reject it. To change it, revert the re-ingest and re-run it with a corrected plan.`;
 export async function refuseReingestedRow(db: Queryable, context: CommandContext, jobId: string, rowId: string, act: string): Promise<void> {
   if (isV7ReingestPrincipal(context)) return;
-  const found = await db.query<{ reingested_from_row_id: string | null }>(
-    "SELECT reingested_from_row_id FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3",
-    [context.organisationId, jobId, rowId],
+  // A row the previous system derives (cause 8) is held the same way: its figure is V7's, kept current only by bring-in.
+  const found = await db.query<{ reingested_from_row_id: string | null; derived: boolean }>(
+    "SELECT reingested_from_row_id, source_system IS NOT DISTINCT FROM $4 AS derived FROM nzi_console.job_scope_rows WHERE organisation_id=$1 AND job_id=$2 AND scope_row_id=$3",
+    [context.organisationId, jobId, rowId, V7_DERIVED_SOURCE_SYSTEM],
   );
-  if (found.rows[0]?.reingested_from_row_id)
+  if (found.rows[0]?.reingested_from_row_id || found.rows[0]?.derived)
     throw new CommandValidationError([{ field: "rowId", code: REINGESTED_ROW_ATTEST_ONLY, message: reingestedRowMessage(act) }]);
 }
 
