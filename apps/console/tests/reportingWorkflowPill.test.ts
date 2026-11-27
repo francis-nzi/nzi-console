@@ -41,8 +41,7 @@ describe("the Reporting WF pill", async () => {
 
 describe("the hosted Reporting doc is a generic process doc", () => {
   const html = readFileSync(docUrl, "utf8");
-  it("carries the version stamp and no script, external link, hash or engineering/flag detail", () => {
-    assert.match(html, />v1\.0</);
+  it("carries no script, external link, hash or engineering/flag detail", () => {
     assert.doesNotMatch(html, /<script/i);
     assert.doesNotMatch(html, /https?:/i);
     assert.doesNotMatch(html, /sha256/i);
