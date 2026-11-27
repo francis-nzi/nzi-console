@@ -326,8 +326,17 @@ describe("the v7 re-sync supersedes a changed job's v7 rows, and every reader le
     assert.deepEqual(events.map((event) => event.action).sort(),
       ["v7.resync.job", "v7_row_resync_added", "v7_row_resync_added", "v7_row_resync_superseded", "v7_row_resync_withdrawn"]);
     for (const event of events) assert.deepEqual([event.actor_id, event.principal_type], [V7_RESYNC_ACTOR, "system"]);
-    const text = JSON.stringify(events.map((event) => [event.before_json, event.after_json]));
-    for (const figure of ["1200", "1000", "0.24", "0.2", "500", "0.1", "2.19", "0.0015"]) assert.ok(!text.includes(figure), `no figure (${figure}) in the audit`);
+    // Match each audited value exactly, not a substring of the whole JSON: the audit carries random
+    // UUIDs, and "500" or "1000" turns up inside one about one run in three. A number must not equal a
+    // figure; a string must not hold it as a whole token (no word character, dot or hyphen either side,
+    // so a UUID segment such as "-1000-" is never one).
+    const leaves = (value: unknown): unknown[] => value !== null && typeof value === "object" ? Object.values(value).flatMap(leaves) : [value];
+    const values = events.flatMap((event) => [event.before_json, event.after_json]).flatMap(leaves);
+    for (const figure of ["1200", "1000", "0.24", "0.2", "500", "0.1", "2.19", "0.0015"]) {
+      const token = new RegExp(`(?<![\\w.-])${figure.replace(".", "\\.")}(?![\\w.-])`);
+      const hit = values.find((value) => typeof value === "number" ? value === Number(figure) : typeof value === "string" && token.test(value));
+      assert.equal(hit, undefined, `no figure (${figure}) in the audit`);
+    }
   });
 
   it("R1: one completed re-sync per job — a second is refused until the first is reverted", async () => {
