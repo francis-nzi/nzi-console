@@ -195,7 +195,9 @@ export type PlannedFactor = {
  * and scopes as its base in the same dataset, so it is not a different factor — only the base used under another category. No
  * value row is written for it; it is kept here, every field, for the dry run and the import's audit event.
  */
-export type PlannedFold = PlannedFactor & { base: string; suffixCode: string };
+export type PlannedFold = PlannedFactor & { base: string; suffixCode: string;
+  /** V7's value, where the row was the freight -d defect and was set to its base's (`freight-d-corrected`). */
+  correctedFrom?: string };
 /**
  * One (base, suffix) pair the fold records, with the variant identity's curated strings — the exact ones its identity would have
  * carried — and where it came from: the variant's v7 code, verbatim, and the lowest db_id folded into it (as an identity's).
@@ -219,6 +221,7 @@ export const EXCLUSION_REASONS = {
   "retired-w": "a code ending in -w, the retired waste variant",
   "duplicate-upload-unit-conflict": "a ruled duplicate-upload row whose unit contradicts the xlsx edition at a value of 0: the xlsx row loads",
   "air-without-rf": "a business-travel flight priced without radiative forcing: air is always reported with RF (ruled 28 Oct 2026), so only the with-RF id loads",
+  "freight-d-corrected": "a downstream-freight -d variant carrying its per-mile sibling's value in place of its base's (0170's defect, ruled 19 Oct 2026): set to its base's value and folded into the base, as 0170 corrected the GB sets — no value row loads at V7's number",
 } as const;
 
 /**
@@ -601,6 +604,8 @@ export function planV7Load(
 
   // 6. Variants: every id that parses as one should have its base beside it, at the same value and unit.
   const byDatasetId = new Map((kept as Row[]).map((row) => [`${row.datasetId}|${row.factorId}`, row]));
+  /** Freight -d rows corrected to their base's value: V7's value, by dataset and id, for the fold's lineage. */
+  const corrected = new Map<string, string>();
   for (const row of kept as Row[]) {
     const parsed = parseFactorId(row.factorId, registry);
     if (!parsed.variant) {
@@ -610,6 +615,19 @@ export function planV7Load(
     const base = byDatasetId.get(`${row.datasetId}|${parsed.base}`);
     if (!base) report("variant-without-base", "a variant whose base is not in the same dataset", `${row.datasetId}: ${row.factorId}`);
     else if (base.kgco2ePerUnit !== row.kgco2ePerUnit || base.activityUnit !== row.activityUnit) {
+      // 0170's freight -d defect (ruled 19 Oct 2026), as 0170 characterised it: a `-d` in km or tonne.km, in its base's unit,
+      // carrying its per-mile sibling's value (the same code with unit segment 9, in miles, same dataset). 0170 corrected it in
+      // the GB sets; V7's UAE sets still carry it. Set to its base's value, as 0170 did, so step 7 folds it; listed row by row.
+      const perMile = byDatasetId.get(`${row.datasetId}|${parsed.base.replace(/^(.*_)\d+(_\d+)$/, (_, head: string, tail: string) => `${head}9${tail}`)}`);
+      if (parsed.variant.suffixCode === "-d" && row.activityUnit === base.activityUnit && (row.activityUnit === "km" || row.activityUnit === "tonne.km")
+        && perMile && perMile.factorId !== parsed.base && perMile.activityUnit === "miles" && sameDecimal(perMile.kgco2ePerUnit, row.kgco2ePerUnit)) {
+        const detail = `${row.datasetId}: ${row.factorId} ${row.kgco2ePerUnit} per ${row.activityUnit} → ${base.kgco2ePerUnit} (base ${parsed.base}; per-mile ${perMile.factorId} = ${perMile.kgco2ePerUnit})`;
+        note(exclusions, "freight-d-corrected", EXCLUSION_REASONS["freight-d-corrected"], `${row.legacyDbId}: ${detail}`);
+        excluded.push({ dbId: row.legacyDbId, reason: "freight-d-corrected", originalId: row.legacyOriginalId, source: row.sourceName, detail });
+        corrected.set(`${row.datasetId}|${row.factorId}`, row.kgco2ePerUnit);
+        row.kgco2ePerUnit = base.kgco2ePerUnit;
+        continue;
+      }
       report("variant-differs", "a variant whose value or unit differs from its base", `${row.datasetId}: ${row.factorId}`);
     }
   }
@@ -639,7 +657,8 @@ export function planV7Load(
         report("variant-not-folded-retired", "a variant under a retired suffix: loaded as its own row, since nothing new is filed under a retired category", `${row.datasetId}: ${row.factorId}`);
         continue;
       }
-      folded.push({ ...asFactor(row), base: parsed.base, suffixCode: parsed.variant.suffixCode });
+      const correctedFrom = corrected.get(`${row.datasetId}|${row.factorId}`);
+      folded.push({ ...asFactor(row), base: parsed.base, suffixCode: parsed.variant.suffixCode, ...(correctedFrom ? { correctedFrom } : {}) });
       report("variant-folded", "a variant at its base's value, unit and scopes: recorded as the base's applicability, with the variant's labels, and no value row", `${row.datasetId}: ${row.factorId} → ${parsed.base} under ${parsed.variant.suffixCode}`);
     }
   }

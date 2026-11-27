@@ -61,7 +61,25 @@ export type LoadOutcome = {
 
 const BATCH = 2000;
 
-export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOutcome> {
+/** Carries a rehearsal's outcome out of its transaction, so the transaction rolls back. */
+class Rehearsed extends Error { constructor(readonly outcome: LoadOutcome) { super("rehearsed: rolled back"); } }
+
+/**
+ * `rehearse`: the dry run's write pass (added after the 27 Nov staging commit failed on 0170's guard, which the dry run never reached). Every write the load would make, in its one transaction,
+ * then rolled back — so the database's own checks (0170's variant guard, the identity trigger, every constraint) refuse a plan
+ * before a `--commit` does, and nothing is left behind.
+ */
+export async function loadV7Plan(pool: PoolLike, plan: LoadPlan, options: { rehearse?: boolean } = {}): Promise<LoadOutcome> {
+  if (!options.rehearse) return writeV7Plan(pool, plan, false);
+  try {
+    return await writeV7Plan(pool, plan, true);
+  } catch (error) {
+    if (error instanceof Rehearsed) return error.outcome;
+    throw error;
+  }
+}
+
+async function writeV7Plan(pool: PoolLike, plan: LoadPlan, rehearse: boolean): Promise<LoadOutcome> {
   if (plan.refusals.length > 0) {
     throw new V7LoadRefused(`The plan carries ${plan.refusals.length} refusal(s): ${plan.refusals.map((finding) => finding.code).join(", ")}. Nothing was written.`);
   }
@@ -201,7 +219,7 @@ export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOu
             ...(written ? { reportLabel: written.report_label, label: written.label } : {}),
             folded: rows.map((row) => ({ datasetId: row.datasetId, factorId: row.factorId, legacyDbId: row.legacyDbId, legacyOriginalId: row.legacyOriginalId,
               kgco2ePerUnit: row.kgco2ePerUnit, activityUnit: row.activityUnit, scopes: row.scopes, label: row.label,
-              sourceCategory: row.sourceCategory, sourceLevels: row.sourceLevels })),
+              sourceCategory: row.sourceCategory, sourceLevels: row.sourceLevels, ...(row.correctedFrom ? { correctedFrom: row.correctedFrom } : {}) })),
           })]);
       }
     }
@@ -218,6 +236,7 @@ export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOu
         unchanged: plan.datasets.filter((dataset) => !fresh.has(dataset.datasetId)).map((dataset) => dataset.datasetId),
         superseded: supersessions,
       })]);
+    if (rehearse) throw new Rehearsed(outcome);
     return outcome;
   }).catch((error: { code?: string; constraint?: string }) => {
     if (error?.code === "23503" && /organisation/.test(error.constraint ?? "")) {

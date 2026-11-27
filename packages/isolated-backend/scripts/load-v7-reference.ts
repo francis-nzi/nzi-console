@@ -3,8 +3,9 @@
  *
  *   npm run load:v7-reference -- <factor_lookup.csv> [--precedence <file.json>] [--organisation <id>] [--commit]
  *
- * A dry run unless `--commit`: it reads the extract, builds the plan, and prints every refusal, exclusion and report —
- * nothing is written to the database. Every excluded row (a fixed list of named reasons) is written, dry run or not, to
+ * A dry run unless `--commit`: it reads the extract, builds the plan, and prints every refusal, exclusion and report; then,
+ * with no refusal, it rehearses the writes in the load's one transaction and rolls them back, so the database's own checks
+ * (0170's variant guard among them) refuse a plan in the dry run, with nothing left written. Every excluded row (a fixed list of named reasons) is written, dry run or not, to
  * `<extract>.exclusions.csv` beside the extract, as the auditable exclusion report. With `--commit`, and only when the plan carries no refusal, it writes the plan in one transaction into the
  * target organisation (net-zero-international unless told otherwise). Re-running is safe: a dataset already loaded with
  * the same content is left alone, one loaded with different content is refused.
@@ -73,14 +74,14 @@ async function main(): Promise<void> {
     if (onlyV7Datasets) log(`  planning ${onlyV7Datasets.size} V7 datasets only (--only ${only}); every other row is read as reference`);
     const plan = planV7Load(rows, registry, { organisationId, precedence, onlyV7Datasets });
 
-    log(`\nv7 reference load into ${organisationId} — ${commit ? "COMMIT" : "dry run, nothing will be written"}`);
+    log(`\nv7 reference load into ${organisationId} — ${commit ? "COMMIT" : "dry run: the writes are rehearsed and rolled back, nothing is kept"}`);
     log(`  extracted ${plan.summary.extracted} · identical repeats collapsed ${plan.summary.duplicatesCollapsed} · not kgCO2e ${plan.summary.skippedNotKgco2e} · read as reference only ${plan.summary.readNotPlanned}`);
     log(`  null spellings read as NULL: ${Object.entries(plan.summary.nulledCells).map(([spelling, n]) => `"${spelling}" ${n}`).join(" · ") || "none"} cells, in ${plan.summary.rowsWithNulledCells} rows`);
     log(`  empty region by family: ${Object.entries(plan.summary.emptyRegionByFamily).map(([family, n]) => `${family} ${n}`).join(" · ")}`);
     log(`  datasets ${plan.datasets.length} (${plan.datasets.filter((d) => d.status === "superseded").length} superseded) · identities ${plan.identities.length} · value rows ${plan.factors.length}`);
     log(`  dedup fold: ${plan.folded.length} variant rows folded into ${plan.applicability.length} (factor, category) pairs`);
     printFindings("REFUSALS — the load will not run until each is resolved", plan.refusals);
-    printFindings(`Excluded — ${plan.excluded.length} rows skipped for a named reason, not blocking`, plan.exclusions);
+    printFindings(`Excluded — ${plan.excluded.length} rows listed for a named reason (skipped, or corrected as the reason says), not blocking`, plan.exclusions);
     printFindings("Reports — shown, not blocking", plan.reports);
 
     // Per series (family, country, edition): what the plan carries, and what its load would supersede (library, ruled 27 Nov).
@@ -108,7 +109,19 @@ async function main(): Promise<void> {
     log(`\nExclusion report (every excluded row): ${exclusionReport}`);
 
     if (plan.refusals.length > 0) { process.exitCode = 1; return; }
-    if (!commit) { log("\nDry run complete. Re-run with --commit to write."); return; }
+    if (!commit) {
+      // The writes themselves, in the load's one transaction, rolled back: the database's checks refuse here, not at --commit.
+      try {
+        const rehearsed = await loadV7Plan(pool, plan, { rehearse: true });
+        log(`\nRehearsed and rolled back — the database accepted every write: datasets +${rehearsed.datasetsInserted} (=${rehearsed.datasetsUnchanged} unchanged, ${rehearsed.datasetsSuperseded} superseded) · identities +${rehearsed.identitiesInserted} (=${rehearsed.identitiesKept} kept) · value rows +${rehearsed.factorsInserted} · folded ${rehearsed.factorsFolded} into applicability +${rehearsed.applicabilityInserted} (=${rehearsed.applicabilityKept} kept)`);
+      } catch (error) {
+        log(`\nDATABASE REFUSAL in the rehearsal (rolled back; --commit would fail the same way): ${error instanceof Error ? error.message : String(error)}`);
+        process.exitCode = 1;
+        return;
+      }
+      log("\nDry run complete. Re-run with --commit to write.");
+      return;
+    }
     const outcome = await loadV7Plan(pool, plan);
     log(`\nWritten: datasets +${outcome.datasetsInserted} (=${outcome.datasetsUnchanged} unchanged, ${outcome.datasetsSuperseded} superseded) · identities +${outcome.identitiesInserted} (=${outcome.identitiesKept} kept) · value rows +${outcome.factorsInserted} · folded ${outcome.factorsFolded} into applicability +${outcome.applicabilityInserted} (=${outcome.applicabilityKept} kept)`);
   } finally {
