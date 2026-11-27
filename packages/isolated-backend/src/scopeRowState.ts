@@ -1,4 +1,4 @@
-import type { CommandContext, CommandInputMap } from "@nzi/contracts";
+import { V7_DERIVED_SOURCE_SYSTEM, type CommandContext, type CommandInputMap } from "@nzi/contracts";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { CommandValidationError, isV7ReingestPrincipal, REINGESTED_ROW_ATTEST_ONLY, reingestedRowMessage, requireCrpJob, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
@@ -22,7 +22,7 @@ import { CommandValidationError, isV7ReingestPrincipal, REINGESTED_ROW_ATTEST_ON
 type StateRow = {
   version: number; origin: string; enabled: boolean; quantity: string | null; monthly: unknown; calculated: string | null;
   override: string | null; review_status: string; reviewed_by: string | null; source_id: string | null;
-  is_auto_generated: boolean; auto_pair_kind: string | null; scope: string; category_code: string | null; reingested_from_row_id: string | null;
+  is_auto_generated: boolean; auto_pair_kind: string | null; scope: string; category_code: string | null; reingested_from_row_id: string | null; derived: boolean;
 };
 type RowRef = CommandInputMap["scope.row.discard"];
 export type ScopeRowStateResult = { jobId: string; rowId: string; version: number | null; enabled: boolean | null; discarded: boolean };
@@ -32,15 +32,16 @@ async function lockRow(db: Queryable, context: CommandContext, input: RowRef, ac
   const row = (await db.query<StateRow>(
     `SELECT version, origin, enabled, quantity::text AS quantity, monthly_activity_json AS monthly, calculated_tco2e::text AS calculated,
             override_tco2e::text AS override, review_status, reviewed_by, source_id, coalesce(is_auto_generated, false) AS is_auto_generated,
-            auto_pair_kind, scope, category_code, reingested_from_row_id
+            auto_pair_kind, scope, category_code, reingested_from_row_id, source_system IS NOT DISTINCT FROM $4 AS derived
        FROM nzi_console.job_scope_rows WHERE organisation_id = $1 AND job_id = $2 AND scope_row_id = $3 FOR UPDATE`,
-    [context.organisationId, input.jobId, input.rowId])).rows[0];
+    [context.organisationId, input.jobId, input.rowId, V7_DERIVED_SOURCE_SYSTEM])).rows[0];
   if (!row) throw new CommandValidationError([{ field: "rowId", code: "NOT_FOUND", message: "Scope row was not found for this job." }]);
   if (row.version !== input.expectedVersion) throw new VersionConflictError(input.expectedVersion, row.version);
   if (row.origin === "migrated") {
     throw new CommandValidationError([{ field: "rowId", code: "ROW_LOCKED", message: "This row was imported — it is fixed history and cannot be removed or deactivated here." }]);
   }
-  if (row.reingested_from_row_id && !isV7ReingestPrincipal(context)) {
+  // A row the previous system derives (cause 8) is held as a re-ingested one is: only bring-in switches it.
+  if ((row.reingested_from_row_id || row.derived) && !isV7ReingestPrincipal(context)) {
     throw new CommandValidationError([{ field: "rowId", code: REINGESTED_ROW_ATTEST_ONLY, message: reingestedRowMessage(act) }]);
   }
   return row;

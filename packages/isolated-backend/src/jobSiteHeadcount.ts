@@ -34,11 +34,13 @@ export type CommutingRowFigure = { siteId: string | null; tco2e: number };
 
 /**
  * The rows the uplift reads: enabled, not rejected, live 3.7 rows. (At the snapshot every enabled row is approved, so the
- * respondents the CRM saw while validating are the respondents that lock.)
+ * respondents the CRM saw while validating are the respondents that lock.) Never a row the previous system derives (cause 8):
+ * that is V7's own consolidated figure, already whole, so the console's calculation can't count it twice.
  */
 const COMMUTING_ROWS_SQL = `SELECT site_id, coalesce(override_tco2e, calculated_tco2e) AS tco2e
   FROM nzi_console.job_scope_rows
- WHERE organisation_id = $1 AND job_id = $2 AND scope = '3.7' AND origin = 'live' AND enabled AND review_status <> 'rejected'`;
+ WHERE organisation_id = $1 AND job_id = $2 AND scope = '3.7' AND origin = 'live' AND enabled AND review_status <> 'rejected'
+   AND source_system IS DISTINCT FROM 'nzi-pro-v7-derived'`;
 
 /** A site's uplift from its rows and its held record. Pure over its inputs (the arithmetic is `computeSiteUplift`). */
 export function upliftForSite(rows: readonly CommutingRowFigure[], siteId: string, held: Pick<HeadcountRow, "employees" | "company_car_users" | "uplift_enabled" | "agreed_uplift_headcount"> | null) {
