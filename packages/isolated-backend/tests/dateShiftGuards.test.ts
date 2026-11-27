@@ -41,10 +41,15 @@ const context = (key: string) => ({
 });
 
 const identity = { name: "Client", status: "active" as const, sector: "Food and Drink", location: "Wick, UK", owner: "D. Hawes" };
-/** A baseline period starting on the first of a month — where the shift lands on a month edge. */
+/**
+ * A baseline period starting on the first of a month — where the shift lands on a month edge.
+ * With figures: since 0238 a baseline only *exists* (and moving it is a governed re-baseline)
+ * once it has figures; a period alone is still the initial baseline, an ordinary edit.
+ */
 const profile = {
   financialYearEndMonth: 3,
   baselinePeriodStart: "2022-04-01", baselinePeriodEnd: "2023-03-31",
+  baselineTotalTco2e: 850,
 };
 
 describe("a date keeps its day (NZC-106)", { skip: DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
