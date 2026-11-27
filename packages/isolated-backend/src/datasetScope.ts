@@ -116,14 +116,9 @@ export function isGridElectricity(factor: { label: string; scopes: string[] }): 
 
 /**
  * UAE Activity & Spend (library L-5, ruled 27 Nov): V7's own UAE series, which is DESNZ content, so it carries the UK grid's
- * lines. How AE electricity is priced waits for Francis's ruling, and the filter is switchable until then:
- * `NZI_AE_GRID_ELECTRICITY=iea` keeps the series' electricity off AE rows (they take IEA AE); unset, or anything else, keeps
- * V7's own binding — today's behaviour, under which an imported Dubai row reproduces as V7 priced it.
+ * lines. AE grid electricity always takes IEA AE (Francis, 27 Nov): the series' grid-electricity lines never serve an AE row.
  */
 export const UAE_SERIES = "uk-ghg-ae";
-export type AeGridElectricity = "iea" | "v7";
-export const aeGridElectricity = (env: Readonly<Record<string, string | undefined>> = process.env): AeGridElectricity =>
-  env.NZI_AE_GRID_ELECTRICITY?.trim().toLowerCase() === "iea" ? "iea" : "v7";
 
 /** The label a DESNZ international-default selection carries in the job and the methodology (D-A, ruled). */
 export const INTERNATIONAL_DEFAULT_LABEL = "DESNZ (international default: no national factor)";

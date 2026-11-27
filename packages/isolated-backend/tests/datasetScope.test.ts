@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { aeGridElectricity, internationalDefaultAllows, isGridElectricity, registeredCountryCode, windowMonths, windowYearParts } from "../src/datasetScope";
+import { internationalDefaultAllows, isGridElectricity, registeredCountryCode, windowMonths, windowYearParts } from "../src/datasetScope";
 import { migratedRecordProblems } from "../src/v7ClientImport";
 import { EXTRACT_CONTRACT } from "../src/v7ClientExtract";
 
@@ -22,8 +22,7 @@ describe("datasets by period: the pure parts", () => {
       .map(registeredCountryCode), ["GB", "GB", "GB", "GB", "IE", "AE", "US", "KE", "NL", "GB", null, null, null]);
   });
 
-  it("library L-5: the AE electricity switch is V7's binding unless set to iea; grid electricity is Scope 2 or the UK grid's lines", () => {
-    assert.deepEqual([{}, { NZI_AE_GRID_ELECTRICITY: "" }, { NZI_AE_GRID_ELECTRICITY: "v7" }, { NZI_AE_GRID_ELECTRICITY: " IEA " }].map(aeGridElectricity), ["v7", "v7", "v7", "iea"]);
+  it("library L-5: grid electricity is Scope 2 or the UK grid's lines; spend is not", () => {
     assert.equal(isGridElectricity({ label: "Electricity", scopes: ["2"] }), true);
     assert.equal(isGridElectricity({ label: "Transmission and distribution - T&D- UK electricity", scopes: ["3"] }), true);
     assert.equal(isGridElectricity({ label: "Land transport services", scopes: ["3"] }), false);

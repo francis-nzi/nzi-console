@@ -199,19 +199,12 @@ describe("the library matches V7: Cornerstone, the UAE's Activity & Spend, CEDA 
       assert.ok(!effNotes.some((note) => note.startsWith(NO_NATIONAL_SPEND_LABEL)), effNotes.join(" | "));
     });
 
-    it("L-5: AE electricity on the UAE's A&S is V7's binding by default, and IEA AE with the switch on; spend is unaffected", async () => {
+    it("L-5 (ruled): AE grid electricity always takes IEA AE — the UAE A&S's grid lines are refused; its spend and activity are not", async () => {
       const eff = await job("c-eff", "2026-01-01", "2026-12-31");
-      const electricity = () => issue(eff, "s-ae", "uk-ghg-ae-2026", "uk-ghg-7_400_4000_5_1", "UK electricity - Electricity generated - Electricity: UK - kWh", ["2"]);
-      const previous = process.env.NZI_AE_GRID_ELECTRICITY;
-      try {
-        delete process.env.NZI_AE_GRID_ELECTRICITY;
-        assert.equal(await electricity(), null);
-        process.env.NZI_AE_GRID_ELECTRICITY = "iea";
-        assert.match((await electricity())!, /IEA AE/);
-        assert.equal(await issue(eff, "s-ae", "uk-ghg-ae-2026", "uk-ghg-SPEND-SIC-49.3-5", "Land transport services", ["3"]), null);
-      } finally {
-        if (previous === undefined) delete process.env.NZI_AE_GRID_ELECTRICITY; else process.env.NZI_AE_GRID_ELECTRICITY = previous;
-      }
+      assert.match((await issue(eff, "s-ae", "uk-ghg-ae-2026", "uk-ghg-7_400_4000_5_1", "UK electricity - Electricity generated - Electricity: UK - kWh", ["2"]))!, /IEA AE/);
+      assert.equal(await issue(eff, "s-ae", "uk-ghg-ae-2026", "uk-ghg-SPEND-SIC-49.3-5", "Land transport services", ["3"]), null, "spend");
+      assert.equal(await issue(eff, "s-ae", "uk-ghg-ae-2026", "uk-ghg-10_100_1000_1_1", "Passenger vehicles - Cars - Average car - Diesel", ["1"]), null, "activity");
+      assert.equal(await issue(eff, "s-ae", "iea-ae-2025", "iea-ae-elec", "United Arab Emirates grid", ["2"]), null, "IEA AE serves AE electricity");
     });
 
     it("a re-load changes nothing but its own record", async () => {
