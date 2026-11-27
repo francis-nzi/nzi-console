@@ -21,11 +21,12 @@
  * 2025 (Watershed) and any earlier Cornerstone release; the dry run lists the series and every dataset it would supersede.
  *
  * Fail-closed on the boundary like every other write here: production APP_ENV is refused and NZI_DATABASE_BOUNDARY must
- * say isolated-non-production.
+ * say isolated-non-production. Verified TLS off-machine (NZI_DATABASE_CA_CERT), as every other loader.
  */
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
+import { verifiedTlsConfig } from "../src/databaseTls";
 import { listCategoryVariants } from "../src/factorCategoryVariants";
 import { CORNERSTONE_SOURCE, DEFAULT_ORGANISATION, parseCsv, planV7Load, withDatasetColumns, type Finding, type Precedence } from "../src/v7ReferenceImport";
 import { loadV7Plan, plannedSupersessions } from "../src/v7ReferenceLoad";
@@ -54,7 +55,9 @@ async function main(): Promise<void> {
     boundaryToken: process.env.NZI_DATABASE_BOUNDARY,
     isolatedDatabaseUrl: process.env.NZI_ISOLATED_DATABASE_URL,
   });
-  const pool = new Pool({ connectionString: url.toString(), max: 2, application_name: "nzi-v7-reference-load" });
+  const tls = verifiedTlsConfig(url, { caCert: process.env.NZI_DATABASE_CA_CERT });
+  log(`  connection: ${tls.description}`);
+  const pool = new Pool({ connectionString: tls.connectionString, ssl: tls.ssl, max: 2, application_name: "nzi-v7-reference-load" });
   try {
     const registry = await listCategoryVariants(pool as never);
     // V7's datasets beside the extract, when the V7 session wrote them as a sidecar: their name, source and country per dataset.
