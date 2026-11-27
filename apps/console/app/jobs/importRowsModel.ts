@@ -1,6 +1,6 @@
 import {
   agreesToOneDecimalPlace, datasetLabelFromId, datasetSeriesKey, emissionCategoryTaxonomy, rankV7Candidates, v7AutoPick, v7MatchCandidate, V7_DATASET_NOT_ON_JOB_WORDS,
-  type V7ImportIngestTotals, type V7ImportRefreshCommitted, type V7ImportScope, type V7MatchResult, type V7MatchVerdict,
+  type V7ImportIngestTotals, type V7ImportRefreshChainCommitted, type V7ImportRefreshDerivedCommitted, type V7ImportScope, type V7MatchResult, type V7MatchVerdict,
 } from "@nzi/contracts";
 import type { V7ImportCandidate, V7ImportFactorHit, V7ImportRows, V7ImportRowsAcceptItem, V7ImportRowsRow } from "@nzi/isolated-backend";
 
@@ -55,7 +55,12 @@ export function bringInReason(rows: readonly V7ImportRowsRow[]): string {
 }
 
 /** The confirmation once it is in: "Brought in 15 rows · reconciles with the previous system" — a commit is kept only when it does. */
-export function broughtInLine(committed: Pick<V7ImportRefreshCommitted, "plan">): string {
+export function broughtInLine(committed: Pick<V7ImportRefreshChainCommitted, "plan"> | Pick<V7ImportRefreshDerivedCommitted, "derivedOnly" | "derived">): string {
+  // Cause 8: a clean job whose derived rows alone came in.
+  if ("derivedOnly" in committed) {
+    const { added, updated, switchedOff } = committed.derived;
+    return `Brought in the previous system's derived rows (${added} added, ${updated} updated, ${switchedOff} switched off) · reconciles with the previous system`;
+  }
   return `Brought in ${rowsWord(committed.plan.committed + committed.plan.decided)} · reconciles with the previous system`;
 }
 

@@ -240,6 +240,59 @@ describe("cause 8: imported jobs carry the previous system's derived rows, linke
     assert.deepEqual(await totals(ONE.jobId), [1.04, 0, 0.0015]);
   });
 
+  // Cowork, 27 Nov (Q1 answered (a)): a clean job whose derived rows alone moved has them carried alone, without the chain.
+  const ingestCount = async (jobId: string) => Number((await db.query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM nzi_console.v7_import_ingests WHERE organisation_id = $1 AND job_id = $2`, [ORG, jobId])).rows[0]!.n);
+  const carriedEvents = async (jobId: string) => Number((await db.query<{ n: string }>(
+    `SELECT count(*)::text AS n FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'v7_derived_rows.carried' AND entity_type = 'job' AND entity_id = $2`,
+    [ORG, jobId])).rows[0]!.n);
+
+  it("a clean job gains its derived row: carried alone, no chain, audited on the job, and drift reads level", async () => {
+    // SPAN is clean (brought in, nothing newer). V7 now derives a second row, -9102 in Scope 1, beside -9101 at 1.6 t as held.
+    derivedNow[SPAN.v7JobId] = [{ rowId: -9101, scope: "Scope 3", tco2e: 1.6 }, { rowId: -9102, scope: "Scope 1", tco2e: 0.3 }];
+    assert.deepEqual(await totals(SPAN.jobId), [0.24, 0, 1.6015]);
+    const ingests = await ingestCount(SPAN.jobId), events = await carriedEvents(SPAN.jobId);
+    const print = await fingerprint();
+    const dry = await batch();
+    assert.deepEqual(dry.outcomes.map((outcome) => outcome.status), ["would-come-in"], JSON.stringify(dry.outcomes));
+    const would = dry.outcomes[0]!;
+    if (would.status !== "would-come-in") return;
+    assert.deepEqual(would.scopes, [{ scope: "1", before: 0.24, after: 0.54, previous: 0.54 }, { scope: "2", before: 0, after: 0, previous: 0 },
+      { scope: "3", before: 1.6015, after: 1.6015, previous: 1.6015 }]);
+    assert.deepEqual(await fingerprint(), print, "a dry run writes nothing");
+
+    const committed = await batch({ commit: true });
+    const brought = committed.outcomes[0]!;
+    assert.equal(brought.status, "brought-in", JSON.stringify(committed.outcomes));
+    if (brought.status !== "brought-in") return;
+    assert.deepEqual([brought.ingestId, brought.drift], [null, { outcome: "level", unknownReason: null }], "derived rows alone: no 0229 record, and level with V7");
+    assert.deepEqual(await totals(SPAN.jobId), [0.54, 0, 1.6015]);
+    assert.deepEqual((await derivedRows(SPAN.jobId)).map((entry) => [entry.legacy_db_id, entry.scope, entry.enabled, Number(entry.override)]).sort(),
+      [[`${SPAN.v7JobId}:-9101`, "3", true, 1.6], [`${SPAN.v7JobId}:-9102`, "1", true, 0.3]], "the new one linked and live; the held one untouched");
+    assert.equal(await ingestCount(SPAN.jobId), ingests, "the chain didn't run: no import record");
+    assert.equal(await carriedEvents(SPAN.jobId), events + 1, "audited once, as the job-level event");
+
+    // A one-year clean job, through the fast path: V7 has ONE's derived row at 0.76 t, held here at 0.8. Brought up to V7's alone.
+    const one = await fastPath(ONE);
+    assert.equal(one.fastPath, "refreshed", JSON.stringify(one.preview.refusal));
+    if (one.fastPath !== "refreshed") return;
+    assert.deepEqual([one.preview.verdict, one.preview.derivedOnly, one.preview.chain], ["clean", true, { resync: null, plan: null }]);
+    assert.deepEqual(one.committed, { mode: "commit", jobId: ONE.jobId, derivedOnly: true, derived: { added: 0, updated: 1, unchanged: 0, switchedOff: 0 } });
+    assert.deepEqual(one.preview.scopeTotals?.["1"], { v7Tco2e: 1, liveTco2e: 1 }, "level: 0.24 t of gas and 0.76 t derived, on both sides");
+    assert.deepEqual(await totals(ONE.jobId), [1, 0, 0.0015]);
+  });
+
+  it("a re-run of a clean job is unchanged: nothing derived moved, so nothing to bring in, and nothing written", async () => {
+    const print = await fingerprint();
+    const rerun = await batch({ commit: true });
+    assert.deepEqual(rerun.outcomes.map((outcome) => [outcome.status, "drift" in outcome ? outcome.drift.outcome : null]), [["nothing-to-bring-in", "level"]]);
+    const one = await fastPath(ONE);
+    assert.equal(one.fastPath, "deliberate");
+    assert.deepEqual([one.preview.verdict, one.preview.refusal?.issues.map((issue) => issue.code), "derivedOnly" in one.preview], ["clean", ["NOT_READY_TO_INGEST"], false],
+      "a clean job with nothing derived is still nothing to bring in");
+    assert.deepEqual(await fingerprint(), print, "nothing written");
+  });
+
   it("the previous system's own figures not read: a bring-in leaves derived rows as they are", async () => {
     const unread = await fastPath(UNREAD, false);
     assert.equal(unread.fastPath, "refreshed");

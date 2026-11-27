@@ -9,7 +9,8 @@
 //   * Which jobs: the organisation's imported CRP jobs whose period spans two calendar years (or those named; or, `behindOnly`, those
 //     whose latest drift check says behind), in job order. A job whose latest import record is a committed refresh with nothing newer
 //     is clean — nothing to bring in — and is reported with its latest drift check: level, or behind with its per-scope gaps, which
-//     is "needs re-pricing (backfill)" (27 Nov), never skipped.
+//     is "needs re-pricing (backfill)" (27 Nov), never skipped. Unless the previous system's derived rows have moved (cause 8,
+//     Cowork 27 Nov): endpoint 2 is read for it too, and they come in alone, through the same fast path — its ingest id is then none.
 //   * Pace: one job at a time. Endpoint 2 is read once per job (the fast path's preview hands its read to its commit), through the
 //     caller's client — the service's goes through the process's pace, the 2 s floor. Between jobs, the import batch's pause (2 s floor,
 //     adaptive to 60 s). Three jobs in a row with the source not answering stop the run.
@@ -17,7 +18,7 @@
 //   * A commit: the fast path, then a drift check of the job (trigger `bring-in`), as a person's bring-in has.
 //
 // Ids, codes and tCO2e only — never a label.
-import { grantFor, v7PeriodSpansTwoYears, V7_DRIFT_TOLERANCE_TCO2E, type CommandContext, type V7DriftOutcome, type V7DriftScope, type V7DriftUnknownReason, type V7ImportScope } from "@nzi/contracts";
+import { grantFor, v7ImportRefreshIngestId, v7PeriodSpansTwoYears, V7_DRIFT_TOLERANCE_TCO2E, type CommandContext, type V7DriftOutcome, type V7DriftScope, type V7DriftUnknownReason, type V7ImportScope } from "@nzi/contracts";
 import { AuthorizationError, resolveMemberGrant } from "./auth";
 import { withTenantRead, type PoolLike } from "./postgres";
 import { CommandValidationError } from "./postgresCommands";
@@ -36,7 +37,8 @@ export type V7SpanningBatchScope = { scope: V7ImportScope; before: number; after
 
 export type V7SpanningBatchOutcome =
   | { status: "would-come-in"; jobId: string; jobNumber: string; scopes: V7SpanningBatchScope[] }
-  | { status: "brought-in"; jobId: string; jobNumber: string; scopes: V7SpanningBatchScope[]; ingestId: string;
+  /** `ingestId` null: a clean job whose derived rows alone came in (cause 8), with no 0229 record. */
+  | { status: "brought-in"; jobId: string; jobNumber: string; scopes: V7SpanningBatchScope[]; ingestId: string | null;
       drift: { outcome: V7DriftOutcome; unknownReason: V7DriftUnknownReason | null } | { outcome: "failed"; unknownReason: null } }
   /** Clean (current locally): nothing to bring in. Behind at its latest drift check → needs re-pricing (backfill). */
   | { status: "nothing-to-bring-in"; jobId: string; jobNumber: string; drift: V7SpanningLatestDrift }
@@ -133,15 +135,19 @@ async function oneJob(pool: PoolLike, org: string, job: { jobId: string; jobNumb
   // An operator run, run as an Admin (Francis, 27 Nov): since matrix v17 a Consultant holds import.refresh_batch for the in-app
   // batch, so the capability alone no longer means Admin — the role is checked too.
   if (!grant || grant.role !== "admin" || !grantFor(grant.capabilities, "import.refresh_batch")) return skipped(["PERMISSION_DENIED"], ["The batch's actor may not run an import batch."]);
-  // Clean: nothing to bring in. Reported with its latest drift check (stored; V7 is not called for it).
-  const clean = await withTenantRead(pool, org, async (db) => (await currentLocally(db, org, job.jobId)) ? { latest: await readLatestV7Drift(db, org, job.jobId) } : null);
-  if (clean) {
-    const drift: V7SpanningLatestDrift = clean.latest ? { outcome: clean.latest.outcome, checkedAt: clean.latest.checkedAt, scopes: clean.latest.scopes }
+  // Clean: nothing to bring in, unless the previous system's derived rows have moved (cause 8, Cowork 27 Nov) — then they come in
+  // alone. Otherwise reported with its latest drift check, as stored.
+  const isClean = await withTenantRead(pool, org, (db) => currentLocally(db, org, job.jobId));
+  const cleanOutcome = async (): Promise<{ outcome: V7SpanningBatchOutcome; sourceDown: boolean }> => {
+    const latest = await withTenantRead(pool, org, (db) => readLatestV7Drift(db, org, job.jobId));
+    const drift: V7SpanningLatestDrift = latest ? { outcome: latest.outcome, checkedAt: latest.checkedAt, scopes: latest.scopes }
       : { outcome: "unchecked", checkedAt: null, scopes: null };
     return { outcome: drift.outcome === "behind" ? { status: "needs-repricing", ...job, drift } : { status: "nothing-to-bring-in", ...job, drift }, sourceDown: false };
-  }
+  };
   // Endpoint 2, read once for this job: the preview and its commit both run from it.
   const spanningFigures = await readSpanningFigures(pool, org, job.jobId, options.rowFigures);
+  // A clean job whose figures can't be read is as it was: nothing to bring in.
+  if (isClean && !spanningFigures.read?.ok) return cleanOutcome();
   if (!spanningFigures.read?.ok) {
     const reason = spanningFigures.read?.reason ?? "not-configured";
     return skipped(["FIGURES_UNREAD"], [v7SpanningUnreadWords(reason)], SOURCE_DOWN.includes(reason));
@@ -151,10 +157,12 @@ async function oneJob(pool: PoolLike, org: string, job: { jobId: string; jobNumb
   const given: V7ImportRefreshOptions = { ...(await (options.optionsFor?.(job.jobId, job.jobNumber) ?? {})), rowFigures: options.rowFigures, spanningFigures };
   const before = await withTenantRead(pool, org, (db) => readConsoleScopeTotals(db, org, job.jobId));
   try {
-    if (!options.commit) {
+    if (!options.commit || isClean) {
       const { preview, because } = await previewV7ImportFastPath(pool, options.source, job.jobId, context, given);
+      // A clean job comes in only for its derived rows; anything else is its clean outcome, as before.
+      if (isClean && !preview.derivedOnly) return cleanOutcome();
       if (because.length) return skipped(because.map((code) => code.toUpperCase().replace(/-/g, "_")), blockerReasons(because, preview));
-      return { outcome: { status: "would-come-in", ...job, scopes: SCOPES.map((scope) => ({ scope, before: r6(before[scope]),
+      if (!options.commit) return { outcome: { status: "would-come-in", ...job, scopes: SCOPES.map((scope) => ({ scope, before: r6(before[scope]),
         after: r6(preview.scopeTotals![scope].liveTco2e), previous: r6(preview.scopeTotals![scope].v7Tco2e) })) }, sourceDown: false };
     }
     const result = await refreshV7ImportFastPath(pool, options.source, job.jobId, context, given);
@@ -166,7 +174,7 @@ async function oneJob(pool: PoolLike, org: string, job: { jobId: string; jobNumb
       const check = await checkV7Drift(pool, options.figures, org, job.jobId, { trigger: "bring-in", requestedBy: grant.userId, correlationId: options.runId, principal: "staff" });
       drift = { outcome: check.outcome, unknownReason: check.unknownReason };
     } catch { drift = { outcome: "failed", unknownReason: null }; }
-    return { outcome: { status: "brought-in", ...job, ingestId: result.committed.ingestId, drift, scopes: SCOPES.map((scope) => ({ scope, before: r6(before[scope]),
+    return { outcome: { status: "brought-in", ...job, ingestId: v7ImportRefreshIngestId(result.committed), drift, scopes: SCOPES.map((scope) => ({ scope, before: r6(before[scope]),
       after: r6(after[scope]), previous: r6(result.preview.scopeTotals![scope].v7Tco2e) })) }, sourceDown: false };
   } catch (error) {
     // The refusal as it is given: SPANS_TWO_DATASET_YEARS names the scopes apart, then each row with its reason.
@@ -204,7 +212,7 @@ export function v7SpanningBatchLines(outcome: V7SpanningBatchOutcome, commit: bo
       ...(d.scopes ?? []).filter(isGap).map((s) => `      Scope ${s.scope}: here ${t(s.console)} t · previous system ${t(s.previous)} t · gap ${t(s.difference)} t`)];
   }
   const head = outcome.status === "brought-in"
-    ? `  ${outcome.jobNumber}: BROUGHT IN — ingest ${outcome.ingestId} · drift ${outcome.drift.outcome}${outcome.drift.unknownReason ? ` (${outcome.drift.unknownReason})` : ""}`
+    ? `  ${outcome.jobNumber}: BROUGHT IN — ${outcome.ingestId ? `ingest ${outcome.ingestId}` : "derived rows only"} · drift ${outcome.drift.outcome}${outcome.drift.unknownReason ? ` (${outcome.drift.unknownReason})` : ""}`
     : `  ${outcome.jobNumber}: WOULD COME IN${commit ? "" : " (dry run)"}`;
   return [head, ...outcome.scopes.map((s) => `      Scope ${s.scope}: before ${t(s.before)} t → after ${t(s.after)} t · previous system ${t(s.previous)} t`)];
 }
@@ -233,7 +241,7 @@ export function v7SpanningBatchCsv(outcomes: readonly V7SpanningBatchOutcome[], 
       else for (const s of o.drift.scopes) lines.push([o.jobNumber, o.jobId, o.status, s.scope, t(s.console), t(s.console), t(s.previous), "", "", "", o.drift.outcome, t(s.difference)].join(","));
     }
     else for (const s of o.scopes) lines.push([o.jobNumber, o.jobId, o.status, s.scope, t(s.before), t(s.after), t(s.previous), "", "",
-      o.status === "brought-in" ? o.ingestId : "", o.status === "brought-in" ? o.drift.outcome : "", ""].join(","));
+      o.status === "brought-in" ? o.ingestId ?? "" : "", o.status === "brought-in" ? o.drift.outcome : "", ""].join(","));
   }
   // The totals, after a blank line: jobs per outcome, then all.
   lines.push("", "outcome,jobs", ...v7SpanningBatchTotals(outcomes, commit).map((row) => `${row.status},${row.jobs}`), `total,${outcomes.length}`);

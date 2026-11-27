@@ -37,7 +37,7 @@ import { readImportPolicy } from "./organisationSettings";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
 import { carryV7DerivedRows, type V7DerivedCarry } from "./v7DerivedRows";
 import { readConsoleScopeTotals, type V7RowFiguresClient, type V7RowFiguresRead } from "./v7Drift";
-import { sameV7Unit } from "./v7Reingest";
+import { sameV7Unit, snapshottedSince } from "./v7Reingest";
 import { CommandValidationError, runPostgresCommand, runPostgresCommandInTransaction, type StoredOutcome } from "./postgresCommands";
 import type { PlannedRow } from "./v7ClientImport";
 import { currentDecisions, invalidApplied, lockV7Job } from "./v7ImportDecision";
@@ -113,8 +113,8 @@ export type V7ImportRefreshOptions = {
   /**
    * Datasets Part 2, increment 2: the previous system's own row figures (CONTRACT-v7-import-figures endpoint 2). For a job over two
    * calendar years they are read once, before the command's transaction, and the preview and the commit reconcile the rows they would
-   * bring in against them (`v7SpanningReconcile`); with no client, or no read, such a job is refused as before. A one-year job never
-   * calls it. The job's routes set it; the batch does not.
+   * bring in against them (`v7SpanningReconcile`); with no client, or no read, such a job is refused as before. Every job's derived
+   * rows (cause 8) are carried from them. The job's routes and the spanning batch set it; the import batch does not.
    */
   rowFigures?: V7RowFiguresClient;
   /** The read already made for this job (the fast path's preview hands its read to its commit: one call per bring-in). */
@@ -267,6 +267,35 @@ const notReady = (verdict: string) => ({ field: "jobId", code: "NOT_READY_TO_ING
   message: `The job is ${verdict}, not ready to ingest: every row that differs needs its decision, and every decision must stand.` });
 
 /**
+ * Cause 8 (Cowork, 27 Nov): a clean job — every stored row already matches — whose derived rows the previous system has moved (one to
+ * add, change or switch off). They're carried alone, in the caller's transaction, without the chain; nothing else is touched. Null
+ * when the job isn't clean, its own figures weren't read, or nothing derived would move: then it is "nothing to bring in", as before.
+ * The same gates as a bring-in: a spanning job reconciles with the previous system's own figures; with `requireScopesAgree`, every
+ * scope agrees to one decimal place. Otherwise refused, nothing kept.
+ */
+async function carryDerivedAlone(db: Queryable, read: Refresh, organisationId: string, jobId: string, reason: string, figures: SpanningFigures,
+  requireScopesAgree: boolean): Promise<{ carry: V7DerivedCarry & { event: NonNullable<V7DerivedCarry["event"]> }; scopeTotals: V7ImportIngestTotals } | null> {
+  if (read.resolved.verdict !== "clean" || !figures.read?.ok) return null;
+  const carry = await carryV7DerivedRows(db, { organisationId, jobId, reason, figures: figures.read.body });
+  if (!carry.event) return null;
+  // A snapshotted job's figures are frozen for the client: only a bring-in through the chain supersedes its snapshot (0234).
+  if (await snapshottedSince(db, organisationId, jobId, null)) throw new CommandValidationError([{ field: "jobId", code: "SNAPSHOT_EXISTS",
+    message: "The job has been snapshotted; its figures are frozen for the client, so its derived rows can't be carried alone. Nothing was written." }]);
+  const reconcile = await assertSpanningReconciles(db, organisationId, jobId, figures);
+  const live = await readConsoleScopeTotals(db, organisationId, jobId);
+  const previous: Record<V7ImportScope, number> = { "1": 0, "2": 0, "3": 0 };
+  for (const row of figures.read.body.rows) { const scope = row.enabled ? v7FiguresScope(row.scope) : null; if (scope) previous[scope] += row.tco2e; }
+  const scopeTotals = Object.fromEntries((["1", "2", "3"] as const).map((scope) => [scope,
+    { v7Tco2e: reconcile?.scopes.find((entry) => entry.scope === scope)?.previous ?? previous[scope], liveTco2e: live[scope] }])) as V7ImportIngestTotals;
+  if (requireScopesAgree && !reconcile) {
+    const off = v7ScopeAgreement(scopeTotals).filter((entry) => !entry.agrees).map((entry) => entry.scope);
+    if (off.length) throw new CommandValidationError(off.map((scope) => ({ field: "jobId", code: "SCOPE_DOES_NOT_AGREE",
+      message: `The Scope ${scope} total does not agree with the previous system's to one decimal place, so nothing was brought in. Investigate the scope's rows first.` })));
+  }
+  return { carry: carry as V7DerivedCarry & { event: NonNullable<V7DerivedCarry["event"]> }, scopeTotals };
+}
+
+/**
  * The editions a spanning job's rows were priced from in the previous system (R1: the job's automatic editions, one for each calendar
  * year its period touches — which a job made before R1 may not hold yet, R2). For each row the plan brings in at a factor: the edition
  * of that factor's series, in its country, for each of the row's own V7 spans' dataset years, where the library holds one. Bring-in
@@ -343,7 +372,24 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
           decisionsSha256: read.decisionsSha256, counts: read.summary.counts, verdict: read.resolved.verdict, exceptions: read.exceptions };
         let data: V7ImportRefreshPreview;
         if (read.resolved.verdict !== "ready-to-ingest") {
-          data = { ...base, outcome: "refused", refusal: { stage: "ready", issues: [notReady(read.resolved.verdict)] }, chain: { resync: null, plan: null }, scopeTotals: null };
+          // A clean job with derived rows to carry: what carrying them alone would do, rolled back. A refusal (a snapshot, or a spanning
+          // job that doesn't reconcile) is the preview's, the issues named.
+          await tx.query("SAVEPOINT v7_import_refresh_preview");
+          let alone: Awaited<ReturnType<typeof carryDerivedAlone>> = null;
+          let refused: CommandValidationError | null = null;
+          try {
+            alone = await carryDerivedAlone(tx, read, context.organisationId, input.jobId, `${context.reason?.trim() || "import refresh preview"} — refresh preview, rolled back`,
+              figures, false);
+          } catch (error) {
+            if (!(error instanceof CommandValidationError)) throw error;
+            refused = error;
+          } finally {
+            await tx.query("ROLLBACK TO SAVEPOINT v7_import_refresh_preview");
+          }
+          data = alone
+            ? { ...base, outcome: "would-commit", refusal: null, chain: { resync: null, plan: null }, scopeTotals: alone.scopeTotals, derived: alone.carry.carried, derivedOnly: true }
+            : { ...base, outcome: "refused", refusal: refused ? { stage: "reingest", issues: refused.issues } : { stage: "ready", issues: [notReady(read.resolved.verdict)] },
+              chain: { resync: null, plan: null }, scopeTotals: null };
         } else {
           // Under a savepoint, so the command's own tail runs on a clean transaction whatever a step did — then all of it goes.
           await tx.query("SAVEPOINT v7_import_refresh_preview");
@@ -380,14 +426,22 @@ export async function previewV7ImportRefresh(pool: PoolLike, source: V7ImportRef
 export async function commitV7ImportRefresh(pool: PoolLike, source: V7ImportRefreshSource, input: Extract<CommandInputMap["import.refresh"], { mode: "commit" }>,
   context: CommandContext, options: V7ImportRefreshOptions = {}): Promise<StoredOutcome<V7ImportRefreshCommitted>> {
   const figures = await spanningFiguresFor(pool, context.organisationId, input.jobId, options);
-  return runPostgresCommand(pool, "import.refresh", input, context, async (db) => {
+  return runPostgresCommand<"import.refresh", V7ImportRefreshCommitted>(pool, "import.refresh", input, context, async (db) => {
     if ((await readImportPolicy(db, context.organisationId)).refreshCommitRequiresAdmin && context.grant?.role !== "admin")
       throw new AuthorizationError("import.refresh", "This organisation requires an Admin to commit a refresh; a preview is still yours to run.");
     await assertPeriodCheckable(db, context.organisationId, input.jobId, figures);
     const read = await readRefresh(db, source, context.organisationId, input.jobId);
     if (read.summarySha256 !== input.summarySha256) fail("summarySha256", "SUMMARY_MOVED", "The job's rows have moved since the preview; preview again.");
     if (read.decisionsSha256 !== input.decisionsSha256) fail("decisionsSha256", "DECISIONS_MOVED", "The job's decisions changed since the preview; preview again.");
-    if (read.resolved.verdict !== "ready-to-ingest") throw new CommandValidationError([notReady(read.resolved.verdict)]);
+    if (read.resolved.verdict !== "ready-to-ingest") {
+      // A clean job with derived rows to carry: carried alone, no chain, no 0229 record; audited as the job-level event.
+      if (read.resolved.verdict !== "clean" || !figures.read?.ok) throw new CommandValidationError([notReady(read.resolved.verdict)]);
+      await options.within?.(db, "commit");
+      const alone = await carryDerivedAlone(db, read, context.organisationId, input.jobId, `${context.reason!.trim()} — import refresh`, figures, options.requireScopesAgree === true);
+      if (!alone) throw new CommandValidationError([notReady(read.resolved.verdict)]);
+      const data: V7ImportRefreshCommitted = { mode: "commit", jobId: input.jobId, derivedOnly: true, derived: alone.carry.carried };
+      return { data, entityType: "job", entityId: input.jobId, topic: "import.refreshed", governedEvents: [alone.carry.event] };
+    }
     await options.within?.(db, "commit");
     const ran = await runChain(db, read, context.organisationId, input.jobId, context.reason!.trim(), " — import refresh",
       options.basePlan ?? committedV7CrosswalkPlan(input.jobId, read.legacyJobNumber), options.allowSnapshotted === true, figures);

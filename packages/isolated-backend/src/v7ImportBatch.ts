@@ -23,7 +23,7 @@
 //     message). A per-job failure is recorded and the batch goes on.
 //   * Done: the run is completed (or cancelled), its lease released, and audited with the tally — counts only.
 import { randomUUID } from "node:crypto";
-import { grantFor, type CommandContext, type CommandGrant, type V7ImportBatchBlocker, type V7ImportBatchFailureClass, type V7ImportBatchResultStatus,
+import { grantFor, v7ImportRefreshIngestId, type CommandContext, type CommandGrant, type V7ImportBatchBlocker, type V7ImportBatchFailureClass, type V7ImportBatchResultStatus,
   type V7ImportBatchRunStatus, type V7ImportBatchTally } from "@nzi/contracts";
 import { AuthorizationError, resolveMemberGrant } from "./auth";
 import { withTenantRead, withTenantWrite, type PoolLike, type Queryable } from "./postgres";
@@ -180,7 +180,11 @@ export async function v7ImportBatchJobOutcome(pool: PoolLike, org: string, runId
     idempotencyKey: v7ImportBatchIdempotencyKey(runId, claimed.jobId, claimed.attempts), correlationId: run.correlation_id };
   try {
     const result = await (options.fastPath ?? refreshV7ImportFastPath)(pool, options.source, claimed.jobId, context, await options.optionsFor(claimed.jobId, claimed.legacyJobNumber));
-    if (result.fastPath === "refreshed") return { status: "refreshed", ingestId: result.committed.ingestId, auditEventId: result.auditEventId };
+    // Derived rows alone (cause 8) need the previous system's own figures, which this runner never reads: a commit here is the chain's.
+    if (result.fastPath === "refreshed") {
+      const ingestId = v7ImportRefreshIngestId(result.committed);
+      return ingestId ? { status: "refreshed", ingestId, auditEventId: result.auditEventId } : { status: "current" };
+    }
     // A clean job — every row already matches — is not an exception: nothing to refresh.
     if (result.preview.refusal?.stage === "ready" && result.preview.verdict === "clean") return { status: "current" };
     return { status: "queued", because: result.because, flagged: result.flagged };
