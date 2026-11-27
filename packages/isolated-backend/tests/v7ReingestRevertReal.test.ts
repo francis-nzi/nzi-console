@@ -5,8 +5,14 @@ import { after, before, describe, it } from "node:test";
 import pg from "pg";
 import {
   commandGrantForRole, reportLinkFor, SUPERSEDED_PUBLISHED_LABEL, V7_IMPORT_SUMMARY_ROW_KEYS, V7_IMPORT_TWO_DATASET_YEARS_UNREAD, V7_REINGEST_ACTOR,
-  type CommandContext, type V7FiguresRowFigures, type V7ImportSummary, type V7ReingestJobInput,
+  type CommandContext, type V7FiguresRowFigures, type V7ImportRefreshChainCommitted, type V7ImportRefreshCommitted, type V7ImportSummary, type V7ReingestJobInput,
 } from "@nzi/contracts";
+
+/** A commit that ran the chain (not derived rows alone, cause 8). */
+const chained = (committed: V7ImportRefreshCommitted): V7ImportRefreshChainCommitted => {
+  assert.ok(!("derivedOnly" in committed), "the chain ran");
+  return committed as V7ImportRefreshChainCommitted;
+};
 import { AuthorizationError } from "../src/auth";
 import { CommandValidationError, issueReportVersion, validateCrpReport } from "../src/postgresCommands";
 import { listReportStatusRegister } from "../src/reportStatusRegister";
@@ -1337,8 +1343,8 @@ describe("the import refresh, server-side: one command, a rolled-back preview an
 
   it("the CRM commits: the standing run reverted, the job re-synced and re-ingested from its decisions, equal to the previous system per scope — recorded, audited without figures", async () => {
     const outcome = await commit({ summarySha256: shown.summarySha256, decisionsSha256: shown.decisionsSha256 });
-    const { reingestRunId, resyncRunId, sessionId, ingestId } = outcome.data;
-    assert.deepEqual([outcome.data.mode, outcome.data.resync, outcome.data.plan], ["commit", { unchanged: 1, superseded: 1, added: 1, withdrawn: 1 }, { committed: 2, decided: 1 }]);
+    const { reingestRunId, resyncRunId, sessionId, ingestId } = chained(outcome.data);
+    assert.deepEqual([outcome.data.mode, chained(outcome.data).resync, chained(outcome.data).plan], ["commit", { unchanged: 1, superseded: 1, added: 1, withdrawn: 1 }, { committed: 2, decided: 1 }]);
     const runs = (await db.query(`SELECT run_id, status, created_by FROM nzi_console.v7_reingest_runs WHERE job_id = $1 ORDER BY created_at`, [JOB_A])).rows;
     assert.deepEqual(runs.map((row) => [row.run_id, row.status]), [[standing, "reverted"], [reingestRunId, "completed"]]);
     assert.equal(runs[1]!.created_by, V7_REINGEST_ACTOR, "the inner re-ingest runs under its own system principal, not the CRM");
@@ -1469,7 +1475,7 @@ describe("the import refresh's fast path: eligible jobs refresh in one action, e
     assert.equal(audit.length, 1, "one commit, audited once — the preview left nothing");
     assert.deepEqual([audit[0]!.actor_id, audit[0]!.reason], ["staff-consultant", V7_IMPORT_FAST_PATH_REASON], "the same actor, the fixed system reason");
     assert.ok(result.auditEventId, "the audit id, for the panel");
-    const record = (await db.query(`SELECT outcome, created_by FROM nzi_console.v7_import_ingests WHERE ingest_id = $1`, [result.committed.ingestId])).rows[0]!;
+    const record = (await db.query(`SELECT outcome, created_by FROM nzi_console.v7_import_ingests WHERE ingest_id = $1`, [chained(result.committed).ingestId])).rows[0]!;
     assert.deepEqual(record, { outcome: "committed", created_by: "staff-consultant" }, "recorded in 0229 as any commit is");
   });
 
@@ -1772,7 +1778,7 @@ describe("the import refresh batch: one client's jobs through the fast path, the
     assert.deepEqual(reads, [AFTER_CRASH.jobId, AFTER_CRASH.jobId], "the crashed job's commit is found by its key: it is not read, nor run, again");
     const rows = await results(ORG, crashRun);
     assert.deepEqual([rows[CRASHED.jobId]!.status, rows[CRASHED.jobId]!.ingest_id, rows[CRASHED.jobId]!.audit_event_id, rows[CRASHED.jobId]!.attempts],
-      ["refreshed", landed.committed.ingestId, landed.auditEventId, 0], "recorded as the commit that landed — no attempt bump on a crash-resume");
+      ["refreshed", chained(landed.committed).ingestId, landed.auditEventId, 0], "recorded as the commit that landed — no attempt bump on a crash-resume");
     assert.deepEqual([(await refreshedEvents(ORG, CRASHED.jobId)).length, (await ingests(ORG, CRASHED.jobId)).length], [1, 1], "one commit, one 0229 record: never twice");
     assert.equal(rows[AFTER_CRASH.jobId]!.status, "refreshed");
     // And the stored outcome under that same key replays rather than commits — the key really is the one the commit used.
@@ -2207,7 +2213,7 @@ describe("the import rows modal: candidates by ID, recomputed and judged; the bu
     const on = await preview();
     assert.deepEqual(on.scopeTotals?.["1"], { v7Tco2e: 29.100963, liveTco2e: 29.100963 });
     const outcome = await commit(on, true);
-    assert.deepEqual([outcome.data.mode, outcome.data.plan], ["commit", { committed: 0, decided: 3 }]);
+    assert.deepEqual([outcome.data.mode, chained(outcome.data).plan], ["commit", { committed: 0, decided: 3 }]);
     const totals = (await db.query(`SELECT legacy_db_id, enabled FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'migrated' AND migrated_record->>'original_id' LIKE 'wfm-import-scope-%' ORDER BY legacy_db_id`, [JOB_R])).rows;
     assert.ok(totals.length >= 3 && totals.every((row) => row.enabled === false), "the import totals are retired");
     const live = (await db.query<{ t: string }>(`SELECT sum(calculated_tco2e)::text AS t FROM nzi_console.job_scope_rows WHERE job_id = $1 AND origin = 'live' AND enabled`, [JOB_R])).rows[0]!.t;
@@ -2632,7 +2638,7 @@ describe("bring-in on a snapshotted job: the snapshot kept and superseded, QA re
     assert.equal(seen.outcome, "would-commit", JSON.stringify(seen.refusal));
     const outcome = await commitV7ImportRefresh(database.pool, source, { jobId: JOB_A, mode: "commit", summarySha256: seen.summarySha256, decisionsSha256: seen.decisionsSha256 },
       context("consultant", "bring V7's current rows in (test)"), options);
-    ingestId = outcome.data.ingestId;
+    ingestId = chained(outcome.data).ingestId;
     assert.equal(await snapshotRow(), bytes, "the snapshot row is byte for byte as it was");
     const marks = (await db.query(`SELECT snapshot_id, job_id, superseded_by_ingest_id, created_by FROM nzi_console.reviewed_crp_snapshot_supersessions`)).rows;
     assert.deepEqual(marks, [{ snapshot_id: "snap-bi", job_id: JOB_A, superseded_by_ingest_id: ingestId, created_by: "staff-consultant" }]);
@@ -3002,7 +3008,7 @@ describe("a spanning job reconciled with the previous system's own figures: the 
     const audit = (await db.query<{ reason: string }>(`SELECT reason FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'import.refreshed' AND entity_id = $2`, [SO_ORG, J265D])).rows;
     assert.equal(audit.length, 1);
     assert.deepEqual(Buffer.from(audit[0]!.reason, "utf8"), Buffer.from(reason, "utf8"), "byte for byte");
-    assert.deepEqual(committed.data.plan, { committed: 0, decided: 1 }, "what the confirmation says: 1 row brought in");
+    assert.deepEqual(chained(committed.data).plan, { committed: 0, decided: 1 }, "what the confirmation says: 1 row brought in");
     const after = await readJobEmissions(database.pool, { organisationId: SO_ORG, jobId: J265D });
     assert.notDeepEqual(after, before, "the job's figures moved: what the totals band re-reads after a bring-in");
     assert.ok(JSON.stringify(after).includes("0.3016"), "the hotel's 0.3016 t is in the job's totals");

@@ -46,15 +46,31 @@ export type V7ImportRefreshPreview = {
   scopeTotals: V7ImportIngestTotals | null;
   /** Cause 8: what the bring-in does to the rows the previous system derives; absent when its own figures weren't read. */
   derived?: V7DerivedRowsCarried;
+  /**
+   * Cause 8 (Cowork, 27 Nov): a clean job whose derived rows alone move. The chain doesn't run (`chain` is empty); `scopeTotals` is
+   * the previous system's own per scope beside the console's once they're carried.
+   */
+  derivedOnly?: true;
 };
 
 /** The commit's result — and so its audit: ids and counts, no figures. Σ per scope is in its 0229 record. */
-export type V7ImportRefreshCommitted = {
+export type V7ImportRefreshChainCommitted = {
   mode: "commit"; jobId: string; ingestId: string; sessionId: string; resyncRunId: string; reingestRunId: string;
   resync: { unchanged: number; superseded: number; added: number; withdrawn: number }; plan: { committed: number; decided: number };
   /** Cause 8, counts only; absent when the previous system's own figures weren't read. */
   derived?: V7DerivedRowsCarried;
 };
+
+/**
+ * Cause 8: a clean job's commit that carries its derived rows alone — no chain, no 0229 record. Audited as the job-level
+ * `v7_derived_rows.carried` event.
+ */
+export type V7ImportRefreshDerivedCommitted = { mode: "commit"; jobId: string; derivedOnly: true; derived: V7DerivedRowsCarried };
+
+export type V7ImportRefreshCommitted = V7ImportRefreshChainCommitted | V7ImportRefreshDerivedCommitted;
+
+/** The 0229 record a commit wrote; null when it carried derived rows alone. */
+export const v7ImportRefreshIngestId = (committed: V7ImportRefreshCommitted): string | null => "derivedOnly" in committed ? null : committed.ingestId;
 
 /**
  * The two-dataset-year guard (urgent, 25 Nov; J000265). The previous system prices a period that spans two calendar years month by

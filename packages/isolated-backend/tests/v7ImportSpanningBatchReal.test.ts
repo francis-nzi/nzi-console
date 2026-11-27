@@ -215,7 +215,8 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
     assert.deepEqual(ok.drift.scopes, [{ scope: "1", console: 2.43, previous: 2.43, difference: 0 }, { scope: "2", console: 0, previous: 0, difference: 0 },
       { scope: "3", console: 0.0015, previous: 0.0015, difference: 0 }], "the bring-in's own check, as stored");
     assert.deepEqual(v7SpanningBatchLines(ok, true), [`  ${OK.number}: NOTHING TO BRING IN — drift level (checked ${ok.drift.checkedAt})`]);
-    assert.deepEqual(calls, [], "a clean job reads nothing of the previous system: its drift is the stored check");
+    // Cause 8 (Cowork, 27 Nov): a clean job's endpoint 2 is read once, for derived rows to carry; with none moved, its drift is the stored check.
+    assert.deepEqual(calls, [OK.v7JobId], "a clean job reads endpoint 2 once, for its derived rows: none moved, so nothing to bring in");
     assert.equal(await jobPrint(OK.jobId), before);
   });
 
@@ -261,7 +262,7 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
     assert.deepEqual(csv.slice(-7), ["outcome,jobs", "brought-in,0", "nothing-to-bring-in,0", "needs-repricing,1", "skipped,0", "total,1", ""]);
     assert.deepEqual(v7SpanningBatchTotals(result.outcomes, true).map((row) => [row.label, row.jobs]),
       [["brought in", 0], ["nothing to bring in", 0], ["needs re-pricing (backfill)", 1], ["skipped", 0]]);
-    assert.deepEqual(calls, []);
+    assert.deepEqual(calls, [OK.v7JobId], "endpoint 2 once, for its derived rows (cause 8): none moved");
     assert.equal(await jobPrint(OK.jobId), before, "a commit run writes nothing of a clean job");
   });
 
@@ -279,7 +280,7 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
       "the clean one needs re-pricing; the other goes through the fast path as any job does");
     const off = of(result.outcomes, OFF);
     assert.ok(off.status === "skipped" && off.codes[0] === "SPANS_TWO_DATASET_YEARS");
-    assert.deepEqual(calls, [OFF.v7JobId], "endpoint 2 for the job not clean only");
+    assert.deepEqual(calls, [OK.v7JobId, OFF.v7JobId], "endpoint 2 once per job; the clean one's for its derived rows (cause 8)");
     assert.equal(waits.length, 1);
     assert.deepEqual(await fingerprint(), print, "a dry run writes nothing");
   });

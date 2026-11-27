@@ -461,6 +461,9 @@ describe("after a bring-in (26 Nov): the modal closes, the whole job's page catc
   it("the line: \"Brought in 15 rows · reconciles with the previous system\" — from the commit's own counts", () => {
     assert.equal(broughtInLine({ plan: { committed: 3, decided: 12 } }), "Brought in 15 rows · reconciles with the previous system");
     assert.equal(broughtInLine({ plan: { committed: 0, decided: 1 } }), "Brought in 1 row · reconciles with the previous system");
+    // Cause 8: a clean job whose derived rows alone came in.
+    assert.equal(broughtInLine({ derivedOnly: true, derived: { added: 1, updated: 0, unchanged: 2, switchedOff: 1 } }),
+      "Brought in the previous system's derived rows (1 added, 0 updated, 1 switched off) · reconciles with the previous system");
     const source = read("jobs/ImportRowsModal.tsx");
     assert.ok(source.includes(`onBroughtIn(broughtInLine(result.data.committed)); onClose(); return;`), "the automatic path closes the modal");
     assert.match(source, /onBroughtIn\(broughtInLine\(result\.data\)\);\s*onClose\(\);/, "the deliberate path closes it too");
