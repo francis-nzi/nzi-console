@@ -32,7 +32,7 @@ import { SENTINELS, syntheticRows } from "./support/v7SyntheticExtract";
 
 const DATABASE_URL = TEST_DATABASE_URL;
 const COPY_LINE = /^\\copy \((.*)\) TO '(.*)' WITH \(FORMAT csv, HEADER true, ENCODING 'UTF8'\)$/;
-const BOOLEAN = new Set(["archived", "enabled", "is_deleted", "is_registered_office", "is_primary", "is_crp", "is_custom_entry", "is_auto_generated", "submitted_by_portal"]);
+const BOOLEAN = new Set(["archived", "enabled", "is_deleted", "is_registered_office", "is_primary", "is_crp", "is_custom_entry", "is_auto_generated", "submitted_by_portal", "is_global"]);
 const INTEGER = new Set(["year"]);
 /** job_plan's real types, which v7's Risk arithmetic needs: dates compared with a date minus an interval. */
 const JOB_PLAN_TYPE = (column: string) => column.endsWith("_due") ? "date" : column.endsWith("_completed_at") || column === "updated_at" ? "timestamp" : null;
@@ -62,6 +62,13 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
     // Row 1000 has no token: v7 falls back to its original_id in any dataset. Row 1006 carries a token in its notes.
     await db.query(`INSERT INTO v7.factor_lookup VALUES (1,'7','Scope 1','7_400_4000_5_1',0.18,'kgCO2e'), (2,'7','Scope 1','TOKEN-1',5,' tCO2e ')`);
     await db.query(`UPDATE v7.job_scope_rows SET notes='checked; factor_original_id=TOKEN-1', dataset_id='7' WHERE row_id='1006'`);
+    // Custom factors (cause 7): client 1's own, a global one, one whose is_global is NULL (v7 reads it as global), and one of a
+    // client the extract doesn't take — which stays behind, with its year values.
+    await db.query(`INSERT INTO v7.custom_factors (factor_id, custom_id, client_db_id, is_global) VALUES
+      ('11','CF-A','1',false), ('12','CF-G',NULL,true), ('13','CF-N',NULL,NULL), ('14','CF-X','999',false)`);
+    await db.query(`INSERT INTO v7.custom_factor_year_values (factor_id, year, factor) VALUES ('11',2024,'0.2'), ('12',2024,'0.3'), ('14',2024,'0.4')`);
+    await db.query(`INSERT INTO v7.job_custom_factors (factor_id, custom_id, client_db_id) VALUES ('21','JCF-1-21','1'), ('22','JCF-9-22','999')`);
+    await db.query(`INSERT INTO v7.job_custom_factor_year_values (factor_id, year, factor) VALUES ('21',2024,'0.5'), ('22',2024,'0.6')`);
 
     const sql: string = extractSql({ out: "unused" });
     const lines = sql.split("\n").filter((line) => line.startsWith("\\copy"));
@@ -109,6 +116,8 @@ describe("the generated extract queries, against a v7-shaped schema", { skip: DA
       system_settings: 16,
       // Time (⚑7): every subject; the time on imported jobs only — the entry on job 999 (no such job) stays behind.
       time_subjects: 4, time_logs: 11,
+      // Custom factors (cause 7): the clients' own and the global ones; client 999's factors and their year values stay behind.
+      custom_factors: 3, custom_factor_year_values: 2, job_custom_factors: 1, job_custom_factor_year_values: 1,
     }, "the prospect and the archived client, their site, the client-less job and the prospect's job stay behind");
     const clients = (await db.query(queries.get("clients")!)).rows.map((row) => row.db_id);
     assert.deepEqual(clients, ["1", "2"]);

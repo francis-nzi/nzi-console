@@ -732,5 +732,78 @@
       "created_at",
       "org_id"
     ]
+  },
+  "custom_factors": {
+    "filter": "client-or-global",
+    "required": [
+      "factor_id",
+      "custom_id"
+    ],
+    "optional": [
+      "client_db_id",
+      "is_global",
+      "is_active",
+      "archived",
+      "scope",
+      "category",
+      "country",
+      "uom",
+      "ghg_unit",
+      "report_label",
+      "factor_2018",
+      "factor_2019",
+      "factor_2020",
+      "factor_2021",
+      "factor_2022",
+      "factor_2023",
+      "factor_2024",
+      "factor_2025",
+      "factor_2026",
+      "factor_2027",
+      "factor_2028",
+      "factor_2029",
+      "factor_2030"
+    ]
+  },
+  "custom_factor_year_values": {
+    "filter": "custom-factor-children",
+    "required": [
+      "factor_id",
+      "year"
+    ],
+    "optional": [
+      "factor"
+    ]
+  },
+  "job_custom_factors": {
+    "filter": "client",
+    "required": [
+      "factor_id",
+      "custom_id"
+    ],
+    "optional": [
+      "client_db_id",
+      "job_id",
+      "is_active",
+      "archived",
+      "scope",
+      "category",
+      "country",
+      "uom",
+      "ghg_unit",
+      "report_label",
+      "factor",
+      "factor_year"
+    ]
+  },
+  "job_custom_factor_year_values": {
+    "filter": "job-custom-factor-children",
+    "required": [
+      "factor_id",
+      "year"
+    ],
+    "optional": [
+      "factor"
+    ]
   }
 }

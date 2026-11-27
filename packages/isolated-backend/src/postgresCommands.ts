@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { generateMilestones, templateForNewJob, type MilestoneState } from "./milestoneCommands";
 import { datasetCoverageWarnings, selectAutomaticDatasets } from "./datasetSelection";
 import { clientCountryOf } from "./datasetScope";
-import { factorCountryIssue, planRowPricing, pricingLineage, pricingProvenance, type RowPricing } from "./monthlyPricing";
+import { factorCountryIssue, planClientFactorPricing, planRowPricing, pricingLineage, pricingProvenance, type RowPricing } from "./monthlyPricing";
 import { applyIntensityDefaultsToClient, readOrganisationBrand } from "./organisationSettings";
 import { assertClientCurrency } from "./commercialLookups";
 import { refuseArchivedSiteChange } from "./siteArchiveGuard";
@@ -1739,7 +1739,8 @@ async function requireEntryFactor(db: Queryable, organisationId: string, jobId: 
   const root = scope.split(".")[0]!;
   if ((factor.factorSource ?? "dataset") === "client") {
     const client = (await db.query<{ scope: string }>(
-      `SELECT cf.scope FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id, j.client_id) = (cf.organisation_id, cf.client_id)
+      // 0240: an organisation-level factor (no client, D-3) serves every client's job.
+      `SELECT cf.scope FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON j.organisation_id = cf.organisation_id AND (cf.client_id IS NULL OR j.client_id = cf.client_id)
         WHERE cf.organisation_id = $1 AND j.job_id = $2 AND cf.client_factor_id = $3 AND (cf.job_id IS NULL OR cf.job_id = j.job_id) AND cf.archived = false`,
       [organisationId, jobId, factor.clientFactorId ?? ""])).rows[0];
     if (!client) throw new CommandValidationError([{ field: "clientFactorId", code: "FACTOR_REQUIRED", message: "Pick this category's factor — an entry needs a real factor; the quantity can wait." }]);
@@ -2094,7 +2095,11 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     version: string;
     synthetic: boolean;
     evidence_hash:string|null;
-  }>(`SELECT cf.report_label AS label,cf.unit AS activity_unit,cf.kgco2e_per_unit::text,cf.version::text,false AS synthetic,cf.evidence_hash FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND cf.client_factor_id=$3 AND cf.scope=$4 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,[context.organisationId,input.jobId,row.client_factor_id,row.scope]):await db.query<{
+    job_only?:boolean;
+  }>(
+    // 0240: an organisation-level factor (no client, D-3) serves every client's job; a factor held at a top-level scope ("3", as V7
+    // holds its custom factors) serves any category of it, as the create check already allows — one at a category serves only it.
+    `SELECT cf.report_label AS label,cf.unit AS activity_unit,cf.kgco2e_per_unit::text,cf.version::text,false AS synthetic,cf.evidence_hash,coalesce(cf.legacy_db_id LIKE 'job_custom_factors:%',false) AS job_only FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON j.organisation_id=cf.organisation_id AND (cf.client_id IS NULL OR j.client_id=cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND cf.client_factor_id=$3 AND (cf.scope=$4 OR (strpos(cf.scope,'.')=0 AND cf.scope=split_part($4,'.',1))) AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,[context.organisationId,input.jobId,row.client_factor_id,row.scope]):await db.query<{
     label: string;
     activity_unit: string;
     kgco2e_per_unit: string;
@@ -2153,6 +2158,12 @@ export async function recalculateScopeRowInTransaction(db: Queryable, input: Com
     if (countryIssue) throw new CommandValidationError([{ field: "factorId", code: "FACTOR_COUNTRY_MISMATCH", message: countryIssue }]);
     pricing = await planRowPricing(db, context.organisationId, { rowId: input.rowId, jobId: input.jobId, scope: row.scope, unit: row.unit, datasetId: row.dataset_id!,
       factorId: row.factor_id, imported: row.imported }, { version: matched.version, kg: matched.kgco2e_per_unit });
+  } else {
+    // 0240: a client factor with year values (a V7 custom factor) is priced by its months' years; one without, as before.
+    pricing = await planClientFactorPricing(db, context.organisationId, { rowId: input.rowId, jobId: input.jobId, clientFactorId: row.client_factor_id!,
+      factorVersion: Number(matched.version), jobOnly: (matched as { job_only?: boolean }).job_only === true, imported: row.imported }, { kg: matched.kgco2e_per_unit });
+    // One year's value over the whole row: one product at it.
+    if (pricing?.kind === "single" && pricing.spans[0]) matched.kgco2e_per_unit = pricing.spans[0].kgCo2ePerUnit;
   }
   const byMonth = pricing?.kind === "spans" ? pricing : null;
   const lineage = [

@@ -99,6 +99,12 @@ const FILTERS = {
   },
   "referenced-datasets": (t) => `FROM ${t} t WHERE t.dataset_id IN (SELECT dataset_id FROM job_scope_rows WHERE job_id ${inJobs} ` +
     `UNION SELECT dataset_id FROM job_emission_sources WHERE job_id ${inJobs} UNION SELECT dataset_id FROM job_emission_groups WHERE job_id ${inJobs})`,
+  // V7's client custom factors (cause 7, PLAN-v7-client-custom-factors): an in-scope client's own, and the global ones V7 offers
+  // every client — `COALESCE(is_global, TRUE)`, exactly as V7's own resolver reads it (services/monthly_emissions.py).
+  "client-or-global": (t) => `FROM ${t} t WHERE t.client_db_id IN (SELECT db_id FROM ac) OR COALESCE(t.is_global, TRUE)`,
+  // Each factor's year values, for exactly the factors above.
+  "custom-factor-children": (t) => `FROM ${t} t WHERE t.factor_id IN (SELECT factor_id FROM custom_factors WHERE client_db_id IN (SELECT db_id FROM ac) OR COALESCE(is_global, TRUE))`,
+  "job-custom-factor-children": (t) => `FROM ${t} t WHERE t.factor_id IN (SELECT factor_id FROM job_custom_factors WHERE client_db_id IN (SELECT db_id FROM ac))`,
 };
 
 /** The columns a table's file will carry: the contract's, required then optional, less any omitted. */
@@ -152,12 +158,15 @@ export const QUERY_COLUMNS = {
   job_emission_groups: ["job_id", "dataset_id"],
   factor_lookup: ["db_id", "dataset_id", "scope", "original_id", "factor", "ghg_unit"],
   datasets: ["dataset_id", "year"],
+  custom_factors: ["factor_id", "client_db_id", "is_global"],
+  job_custom_factors: ["factor_id", "client_db_id"],
 };
 
 /** Query columns needed only when a particular table is copied; clients and jobs (the prelude) are always read. */
 const QUERY_COLUMNS_FOR = {
   factor_lookup: ["job_scope_rows"], datasets: ["job_scope_rows", "datasets"], job_scope_rows: ["job_scope_rows"],
   job_emission_sources: ["datasets", "job_emission_sources"], job_emission_groups: ["datasets", "job_emission_groups"],
+  custom_factors: ["custom_factors", "custom_factor_year_values"], job_custom_factors: ["job_custom_factors", "job_custom_factor_year_values"],
 };
 
 /** Every (table, column) the script reads, contract and query alike, less any omitted — sorted, de-duplicated. */

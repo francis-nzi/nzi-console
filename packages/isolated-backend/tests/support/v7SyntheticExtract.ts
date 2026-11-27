@@ -395,6 +395,8 @@ export function syntheticRows(): Rows {
       { time_id: "9011", job_id: "100", user_id: "12", subject: "Client Calls", work_date: "2024-01-12", minutes: "15", notes: null },
       { time_id: "9012", job_id: "101", user_id: "cara@example.test", subject: "Client Data Collection", work_date: "2025-06-02", minutes: "120", notes: null },
     ],
+    // V7's client custom factors (0240): read by load:v7-custom-factors, whose own suite builds them (v7CustomFactorsReal).
+    custom_factors: [], custom_factor_year_values: [], job_custom_factors: [], job_custom_factor_year_values: [],
   };
 }
 

@@ -1073,7 +1073,7 @@ export async function listJobFactorOptions(db: Queryable, jobId: string): Promis
     WHERE s.job_id=$1 AND f.active=true
     UNION ALL
     SELECT NULL::text,'Client factors','v'||cf.version::text,cf.client_factor_id,cf.report_label,cf.unit,cf.kgco2e_per_unit::text,ARRAY[cf.scope],'client','client',cf.client_factor_id,cf.evidence_hash,false,'[]'::jsonb,NULL::text,NULL::text,NULL::text,NULL::text
-    FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id)
+    FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON j.organisation_id=cf.organisation_id AND (cf.client_id IS NULL OR j.client_id=cf.client_id)
     WHERE j.job_id=$1 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false) options
     ORDER BY lower(label),lower(dataset_name),factor_id`,[jobId]);
   // NZC-062 — the fast-add template search needs each factor's category
