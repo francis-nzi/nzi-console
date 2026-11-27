@@ -98,14 +98,14 @@ describe("job-type templates, against a real database", { skip: TEST_DATABASE_UR
       assert.deepEqual(audit[0].after_json.items.map((item: { itemId: string }) => item.itemId), ["job-item:v7-1", "job-item:own"]);
     });
 
-    it("refuses an inactive item to add, an unknown one, an unchanged template, a stale version and a consultant — and keeps a held item once deactivated", async () => {
+    it("refuses an inactive item to add, an unknown one, an unchanged template, a stale version and a reviewer — and keeps a held item once deactivated", async () => {
       const refused = (code: string) => (error: Error & { issues?: Array<{ code: string }> }) => error.issues?.some((issue) => issue.code === code) === true;
       const items = [{ itemId: "job-item:v7-1", quantity: 1, isRequired: true }, { itemId: "job-item:own", quantity: 3, isRequired: true }];
       await assert.rejects(setJobTypeItems(database.pool, { jobTypeId: "jt:own", expectedItemsVersion: 4, items: [...items, { itemId: "job-item:old", quantity: 1, isRequired: true }] }, context("ada", "admin")), refused("INACTIVE"));
       await assert.rejects(setJobTypeItems(database.pool, { jobTypeId: "jt:own", expectedItemsVersion: 4, items: [{ itemId: "job-item:nope", quantity: 1, isRequired: true }] }, context("ada", "admin")), refused("NOT_FOUND"));
       await assert.rejects(setJobTypeItems(database.pool, { jobTypeId: "jt:own", expectedItemsVersion: 4, items }, context("ada", "admin")), refused("UNCHANGED"));
       await assert.rejects(setJobTypeItems(database.pool, { jobTypeId: "jt:own", expectedItemsVersion: 3, items: [items[0]!] }, context("ada", "admin")), /version/i);
-      await assert.rejects(setJobTypeItems(database.pool, { jobTypeId: "jt:own", expectedItemsVersion: 4, items: [items[0]!] }, context("cal", "consultant")), /admin\.lookups|permission/i);
+      await assert.rejects(setJobTypeItems(database.pool, { jobTypeId: "jt:own", expectedItemsVersion: 4, items: [items[0]!] }, context("rex", "reviewer")), /admin\.lookups|permission/i); // v17: the Consultant holds admin.lookups
       await assert.rejects(setJobTypeItems(database.pool, { jobTypeId: "jt:own", expectedItemsVersion: 4, items: [items[0]!, items[0]!] }, context("ada", "admin")), /Command validation failed/, "an item is included once");
       // WORKSHOP is deactivated while the template holds it: it stays, and its quantity can still change.
       await q(`UPDATE nzi_console.job_items SET active = false WHERE item_id = 'job-item:own'`);

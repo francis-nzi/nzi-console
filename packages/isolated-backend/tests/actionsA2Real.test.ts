@@ -156,7 +156,7 @@ describe("Actions A2 — the client's hand in their plan, and staff's gate (0188
     });
 
     it("promotes an approved proposal into the library under admin.lookups, once, with its alignment as the default", async () => {
-      await assert.rejects(promoteClientProposal(database.pool, { clientStrategyId: proposed, key: "electric-vans", leverIds: [] }, staff("consultant")), unauthorised);
+      await assert.rejects(promoteClientProposal(database.pool, { clientStrategyId: proposed, key: "electric-vans", leverIds: [] }, staff("reviewer")), unauthorised); // v17: the Consultant holds admin.lookups
       await assert.rejects(promoteClientProposal(database.pool, { clientStrategyId: toDecline, key: "forest", leverIds: [] }, staff()), refused("NOT_PROMOTABLE"));
       const promoted = await promoteClientProposal(database.pool, { clientStrategyId: proposed, key: "Electric-Vans", leverIds: [], description: "Replace the delivery fleet with EVs." }, staff());
       const entry = (await read((db) => listLibraryStrategies(db))).find((strategy) => strategy.id === promoted.data.strategyId)!;

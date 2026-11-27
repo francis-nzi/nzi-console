@@ -13,14 +13,14 @@ import { AuthorizationError } from "../src/auth";
  * the row; both commands are gated on `factor.manage`, validated against the registry, audited by the runner with the pair before,
  * idempotent; neither deletes anything.
  */
-const ORG = "org-s5b", ADMIN = "ada", CONSULTANT = "cole", CLIENT = "client-s5b", JOB = "job-s5b";
+const ORG = "org-s5b", ADMIN = "ada", CONSULTANT = "cole", REVIEWER = "rex", CLIENT = "client-s5b", JOB = "job-s5b";
 const DS = "gb-2025", DS_VERSION = "2025.1";
 const LARGE_CAR = "uk-ghg-4_301_3070_4_1", BUS = "uk-ghg-25_315_3150_11_1";
 
 describe("dedup slice 5 Step B: factor.applicability.add / .retire (factor.manage)", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
   let keys = 0;
-  const context = (actorId = ADMIN, role: "admin" | "consultant" = "admin", over: Partial<StaffCommandContext> = {}): CommandContext => {
+  const context = (actorId = ADMIN, role: "admin" | "consultant" | "reviewer" = "admin", over: Partial<StaffCommandContext> = {}): CommandContext => {
     keys += 1;
     return { organisationId: ORG, actorId, principal: "staff", idempotencyKey: `s5b-${keys}`, correlationId: `corr-s5b-${keys}`, grant: commandGrantForRole(role, ORG, actorId), ...over };
   };
@@ -41,7 +41,7 @@ describe("dedup slice 5 Step B: factor.applicability.add / .retire (factor.manag
     await q(`INSERT INTO nzi_console.organisations (organisation_id,name) VALUES ($1,$1)`, [ORG]);
     await q(`SELECT nzi_console.provision_organisation($1)`, [ORG]);
     await q(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
-    await q(`INSERT INTO nzi_console.memberships (organisation_id,user_id,role_id,status,display_name) VALUES ($1,$2,'admin','active','Ada'), ($1,$3,'consultant','active','Cole')`, [ORG, ADMIN, CONSULTANT]);
+    await q(`INSERT INTO nzi_console.memberships (organisation_id,user_id,role_id,status,display_name) VALUES ($1,$2,'admin','active','Ada'), ($1,$3,'consultant','active','Cole'), ($1,$4,'reviewer','active','Rex')`, [ORG, ADMIN, CONSULTANT, REVIEWER]);
     await q(`INSERT INTO nzi_console.emission_factor_datasets (organisation_id,dataset_id,name,version,valid_from,valid_to,country_code,status,source_name,licence)
              VALUES ($1,$2,'DESNZ GB 2025',$3,'2025-01-01','2026-12-31','GB','active','DESNZ','OGL')`, [ORG, DS, DS_VERSION]);
     for (const [id, unit, value, scopes, label, reportLabel] of [
@@ -107,10 +107,11 @@ describe("dedup slice 5 Step B: factor.applicability.add / .retire (factor.manag
     assert.equal(await pair("uk-ghg-no-such", "-c"), undefined);
   });
 
-  it("refuses a caller without factor.manage — a consultant — before anything is written", async () => {
-    await assert.rejects(addFactorApplicabilityCommand(database.pool, { factorId: BUS, suffixCode: "-c" }, context(CONSULTANT, "consultant")),
+  // v17: the Consultant holds factor.manage, so the refused caller is a Reviewer.
+  it("refuses a caller without factor.manage — a reviewer — before anything is written", async () => {
+    await assert.rejects(addFactorApplicabilityCommand(database.pool, { factorId: BUS, suffixCode: "-c" }, context(REVIEWER, "reviewer")),
       (error) => error instanceof AuthorizationError);
-    await assert.rejects(retireFactorApplicabilityCommand(database.pool, { factorId: LARGE_CAR, suffixCode: "-c" }, context(CONSULTANT, "consultant", { reason: "no" })),
+    await assert.rejects(retireFactorApplicabilityCommand(database.pool, { factorId: LARGE_CAR, suffixCode: "-c" }, context(REVIEWER, "reviewer", { reason: "no" })),
       (error) => error instanceof AuthorizationError);
     assert.equal(await pair(BUS, "-c"), undefined);
     assert.equal((await pair(LARGE_CAR, "-c"))!.status, "active");

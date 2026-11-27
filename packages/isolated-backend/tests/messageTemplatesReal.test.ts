@@ -73,7 +73,7 @@ describe("message templates, against a real database", { skip: TEST_DATABASE_URL
     for (const org of [ORG, OTHER, LOAD]) {
       await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]);
       await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES
-        ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant')`, [org]);
+        ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant'), ($1, 'rex', 'reviewer', 'active', 'Rex Reviewer')`, [org]);
     }
   });
   after(async () => { await database?.end(); });
@@ -86,7 +86,7 @@ describe("message templates, against a real database", { skip: TEST_DATABASE_URL
       await assert.rejects(createMessageTemplate(database.pool, { templateKey: "strategy.reminder.approaching", subject: "S", body: "Hi {{password}}" }, context("ada", "admin")), refused("body", "UNKNOWN_TOKEN"));
       await assert.rejects(createMessageTemplate(database.pool, { templateKey: "staff.invitation", subject: "Join", body: "Welcome. Until {{expiresAt}}." }, context("ada", "admin")), refused("body", "MISSING_TOKEN"));
       await assert.rejects(createMessageTemplate(database.pool, { templateKey: "strategy.reminder.overdue", subject: "Again", body: "Again" }, context("ada", "admin")), refused("templateKey", "DUPLICATE"));
-      await assert.rejects(createMessageTemplate(database.pool, { templateKey: "strategy.reminder.approaching", subject: "S", body: "B" }, context("cal", "consultant")), /admin\.templates|permission/i);
+      await assert.rejects(createMessageTemplate(database.pool, { templateKey: "strategy.reminder.approaching", subject: "S", body: "B" }, context("rex", "reviewer")), /admin\.templates|permission/i); // v17: the Consultant holds admin.templates
     });
 
     it("edits against the version, refuses an unchanged edit, and goes back to the built-in wording by deactivating (with a reason) — never deleting", async () => {

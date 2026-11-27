@@ -74,6 +74,11 @@ export const capabilities = [
   "admin.templates",
   "admin.settings",
   "audit.view",
+  // ── The organisation-wide audit trail (matrix v17) ──
+  // `audit.view` reads a client's history (at `all`, any client's); the whole organisation's trail in one feed — /admin's
+  // change feed, /platform, the audit-events read — is this, held by Admin and Reviewer. An `audit.view` holder without it
+  // sees that feed for their own clients only, as before.
+  "audit.view_org",
   "support.portal_impersonate",
   // ── Knowledge library (NZC-081) ──
   // Three, not two: writing to the library is its own act and must not ride an unrelated
@@ -120,7 +125,7 @@ export type CapabilityScope = "all" | "own_clients";
 export type CapabilityGrant = { capability: Capability; scope: CapabilityScope };
 
 /** The version of the matrix this code copy mirrors; bump with a new migration row set. */
-export const PERMISSION_MATRIX_VERSION = 16;
+export const PERMISSION_MATRIX_VERSION = 17;
 
 const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [name, "all" as const]));
 
@@ -128,34 +133,21 @@ const all = (...names: Capability[]) => Object.fromEntries(names.map((name) => [
  * ✓ and R are both "holds the capability" (R marks a read capability held read-only);
  * ⚑ own is `own_clients`. Anything absent is —.
  */
+/**
+ * v17 (CRM access matrix v11, Francis 27 Nov; _handoff/AUDIT-crm-access.md): a consultant CRM does their whole job, on any
+ * client, so the Consultant is Admin except for these — organisation settings, staff and sign-in, finance and billing, identity
+ * and erasure, the client-facing library tier, and the organisation-wide audit trail. Everything else is held at `all`,
+ * admin.lookups whole. Independent approval is untouched: it still decides whether they release their own work.
+ */
+export const CONSULTANT_WITHHELD = [
+  "admin.settings", "admin.users", "staff.invite", "staff.credential.reset", "finance.manage",
+  "subject.review", "subject.export", "subject.erase", "knowledge.publish", "audit.view_org",
+] as const satisfies readonly Capability[];
+
 export const ROLE_CAPABILITY_MATRIX: Record<StaffRole, Partial<Record<Capability, CapabilityScope>>> = {
   admin: all(...capabilities),
-  consultant: {
-    ...all("client.view", "client.create", "client.edit", "contact.manage", "site.manage", "target.edit", "job.manage",
-      "scoperow.edit", "report.edit", "report.view", "strategy.manage", "srs.manage", "training.manage", "training.entitlement.manage", "finance.view", "clientfactor.manage",
-      "support.portal_impersonate",
-      // v12 (RULING-consultant-report-capabilities): a consultant CRM runs the whole job, so they approve the measurement snapshot and
-      // release the report themselves. This is the capability, not an exemption: NZC-022's independent-approval setting still decides
-      // whether they may do either to their OWN work (separationOfDutiesCapabilities, maySelfApprove).
-      "snapshot.review", "report.publish",
-      // Writes most of the knowledge and approves it to internal; publication to the
-      // client-facing tier stays with Admin, which is what gives the two tiers teeth.
-      "knowledge.capture", "knowledge.approve"),
-    "baseline.rebaseline": "own_clients",
-    "portal.admin": "own_clients",
-    // Own clients only, like the other two decisions a consultant makes *about* a client rather
-    // than within one.
-    "category.visibility": "own_clients",
-    "audit.view": "own_clients",
-    // T-Q7: a consultant logs time on — and sees time for — their own clients' jobs.
-    "time.log": "own_clients",
-    "time.view": "own_clients",
-    // v13: a task is the holder's own list (assignee or creator, access.ts), not a client's record — so `all`, not own clients.
-    "task.manage": "all",
-    // v15 (R-6): a CRM refreshes a job from the previous system — the same reach as job.manage, the rows' own edit.
-    "import.refresh": "all",
-  },
-  reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "knowledge.capture", "time.log", "time.view", "task.manage"),
+  consultant: all(...capabilities.filter((name) => !(CONSULTANT_WITHHELD as readonly Capability[]).includes(name))),
+  reviewer: all("client.view", "snapshot.review", "report.publish", "report.view", "audit.view", "audit.view_org", "knowledge.capture", "time.log", "time.view", "task.manage"),
   // v10 (Time PR B): Finance reads everyone's hours — payroll and job cost need the whole team's time.
   finance: { ...all("client.view", "report.view", "finance.view", "finance.manage", "knowledge.capture", "time.log", "time.view", "task.manage"), "audit.view": "own_clients" },
   viewer: all("client.view", "report.view", "knowledge.capture", "time.log"),

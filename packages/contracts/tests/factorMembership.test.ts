@@ -101,11 +101,12 @@ describe("membersOfCategory", () => {
 });
 
 describe("factor.membership.add / .retire", () => {
-  it("are registered under factor.manage, which only Admin holds; retire needs a reason", () => {
+  it("are registered under factor.manage, which Admin and (since v17) the Consultant hold; retire needs a reason", () => {
     for (const key of ["factor.membership.add", "factor.membership.retire"] as const) {
       assert.equal(commandDefinitions[key].permission, "factor.manage");
       assert.ok(roleCapabilityGrants("admin").some((grant) => grant.capability === "factor.manage"));
-      assert.ok(!roleCapabilityGrants("consultant").some((grant) => grant.capability === "factor.manage"));
+      assert.ok(roleCapabilityGrants("consultant").some((grant) => grant.capability === "factor.manage"), "v17");
+      assert.ok(!roleCapabilityGrants("reviewer").some((grant) => grant.capability === "factor.manage"));
     }
     assert.deepEqual([commandDefinitions["factor.membership.add"].reasonRequired, commandDefinitions["factor.membership.retire"].reasonRequired], [false, true]);
     assert.deepEqual([commandDefinitions["factor.membership.add"].auditAction, commandDefinitions["factor.membership.retire"].auditAction], ["factor.membership.added", "factor.membership.retired"]);

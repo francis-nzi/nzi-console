@@ -537,7 +537,7 @@ describe("the import workbench's reconciliation summary: made read-only, carries
   let database: DisposableDatabase;
   let db: pg.Client;
   let keys = 0;
-  const context = (role: "admin" | "consultant" = "admin", actorId = V7_IMPORT_ACTOR, organisationId = IM_ORG): CommandContext => {
+  const context = (role: "admin" | "consultant" | "reviewer" = "admin", actorId = V7_IMPORT_ACTOR, organisationId = IM_ORG): CommandContext => {
     keys += 1;
     return { organisationId, actorId, principal: actorId === V7_IMPORT_ACTOR ? "system" : "staff", idempotencyKey: `im-${keys}`, correlationId: `im-corr-${keys}`,
       grant: commandGrantForRole(role, organisationId, actorId) };
@@ -649,8 +649,8 @@ describe("the import workbench's reconciliation summary: made read-only, carries
     assert.equal((await db.query(`SELECT count(*)::int AS n FROM nzi_console.v7_import_sessions`)).rows[0]!.n, 0, "nothing stored");
   });
 
-  it("access: a caller without import.manage is refused — a consultant — and nothing is stored", async () => {
-    await assert.rejects(upload(summary, JOB_A, context("consultant", "staff-consultant")), (error) => error instanceof AuthorizationError && error.permission === "import.manage");
+  it("access: a caller without import.manage is refused — a reviewer (v17: the consultant holds it) — and nothing is stored", async () => {
+    await assert.rejects(upload(summary, JOB_A, context("reviewer", "staff-reviewer")), (error) => error instanceof AuthorizationError && error.permission === "import.manage");
     assert.equal((await db.query(`SELECT count(*)::int AS n FROM nzi_console.v7_import_sessions`)).rows[0]!.n, 0);
   });
 
@@ -705,7 +705,7 @@ describe("the import workbench's decisions: keyed on the import identity, valida
   let database: DisposableDatabase;
   let db: pg.Client;
   let keys = 0;
-  const context = (role: "admin" | "consultant" = "admin", actorId = "staff-admin", organisationId = DX_ORG): CommandContext => {
+  const context = (role: "admin" | "consultant" | "reviewer" = "admin", actorId = "staff-admin", organisationId = DX_ORG): CommandContext => {
     keys += 1;
     return { organisationId, actorId, principal: actorId === V7_IMPORT_ACTOR ? "system" : "staff", idempotencyKey: `dx-${keys}`, correlationId: `dx-corr-${keys}`,
       grant: commandGrantForRole(role, organisationId, actorId) };
@@ -854,8 +854,9 @@ describe("the import workbench's decisions: keyed on the import identity, valida
     assert.ok(carried);
   });
 
-  it("the import rows modal carries a linked pair as one: one item writes the carry for every member — a second member's item is already so — and a CRM is refused first", async () => {
-    await assert.rejects(acceptV7ImportRows(database.pool, { jobId: JOB_P, items: [{ kind: "carry", legacyDbId: "5001" }] }, context("consultant", "staff-consultant")),
+  it("the import rows modal carries a linked pair as one: one item writes the carry for every member — a second member's item is already so — and a caller without import.manage is refused first", async () => {
+    // v17: the consultant holds import.manage; a reviewer does not.
+    await assert.rejects(acceptV7ImportRows(database.pool, { jobId: JOB_P, items: [{ kind: "carry", legacyDbId: "5001" }] }, context("reviewer", "staff-reviewer")),
       (error) => error instanceof AuthorizationError && error.permission === "import.manage");
     const outcome = await acceptV7ImportRows(database.pool, { jobId: JOB_P, items: [{ kind: "carry", legacyDbId: "5001" }, { kind: "carry", legacyDbId: "5002" }] }, context());
     assert.deepEqual([outcome.written.map((entry) => entry.legacyDbId), outcome.unchanged, outcome.refused], [["5001"], ["5002"], []]);
@@ -867,9 +868,9 @@ describe("the import workbench's decisions: keyed on the import identity, valida
     assert.equal((await workbench(DX_ORG, JOB_P))!.resolvedVerdict, "blocked-on-pairs");
   });
 
-  it("access: a caller without import.manage is refused — a consultant — and nothing is stored", async () => {
-    await assert.rejects(map("1004", "1.natural-gas", "f-gas", {}, context("consultant", "staff-consultant")), (error) => error instanceof AuthorizationError && error.permission === "import.manage");
-    await assert.rejects(clearV7ImportDecision(database.pool, { ...identity("1004"), expectedDecisionId: `v7-decision-${randomUUID()}` }, context("consultant", "staff-consultant")),
+  it("access: a caller without import.manage is refused — a reviewer (v17: the consultant holds it) — and nothing is stored", async () => {
+    await assert.rejects(map("1004", "1.natural-gas", "f-gas", {}, context("reviewer", "staff-reviewer")), (error) => error instanceof AuthorizationError && error.permission === "import.manage");
+    await assert.rejects(clearV7ImportDecision(database.pool, { ...identity("1004"), expectedDecisionId: `v7-decision-${randomUUID()}` }, context("reviewer", "staff-reviewer")),
       (error) => error instanceof AuthorizationError && error.permission === "import.manage");
     assert.deepEqual(await decisionRows(), []);
   });
@@ -988,7 +989,7 @@ describe("the import workbench's ingest: decisions drive revert → re-sync → 
   let database: DisposableDatabase;
   let db: pg.Client;
   let keys = 0;
-  const context = (role: "admin" | "consultant" = "admin", actorId = V7_IMPORT_ACTOR, reason?: string): CommandContext => {
+  const context = (role: "admin" | "consultant" | "reviewer" = "admin", actorId = V7_IMPORT_ACTOR, reason?: string): CommandContext => {
     keys += 1;
     return { organisationId: IG_ORG, actorId, principal: actorId.startsWith("policy:") ? "system" : "staff", idempotencyKey: `ig-${keys}`, correlationId: `ig-corr-${keys}`,
       ...(reason ? { reason } : {}), grant: commandGrantForRole(role, IG_ORG, actorId) };
@@ -1092,8 +1093,8 @@ describe("the import workbench's ingest: decisions drive revert → re-sync → 
     assert.equal(record?.outcome, "would-commit");
     assert.deepEqual(await fingerprint(), before, "the rehearsal writes nothing");
     rehearsed = record;
-    // Recorded for the view; a consultant (no import.manage) may not record one.
-    await assert.rejects(recordV7ImportRehearsal(database.pool, { jobId: JOB_A, rehearsal: record! }, context("consultant", "staff-consultant")),
+    // Recorded for the view; a reviewer (no import.manage — the consultant holds it since v17) may not record one.
+    await assert.rejects(recordV7ImportRehearsal(database.pool, { jobId: JOB_A, rehearsal: record! }, context("reviewer", "staff-reviewer")),
       (error) => error instanceof AuthorizationError && error.permission === "import.manage");
     await assert.rejects(recordV7ImportRehearsal(database.pool, { jobId: JOB_A, rehearsal: { ...record!, sourceLabel: "Natural gas (site 2)" } as never }, context()),
       (error) => codes(error).includes("UNKNOWN_FIELD"), "closed, as the summary is");
@@ -1109,7 +1110,7 @@ describe("the import workbench's ingest: decisions drive revert → re-sync → 
       (error) => codes(error).includes("DECISIONS_MOVED"));
     await assert.rejects(ingestV7ImportJob(database.pool, { ...input, sessionId: `v7-import-${randomUUID()}` }, run(), context("admin", V7_IMPORT_ACTOR, "ingest (test)")),
       (error) => codes(error).includes("SUMMARY_MOVED"));
-    await assert.rejects(ingestV7ImportJob(database.pool, input, run(), context("consultant", "staff-consultant", "ingest (test)")),
+    await assert.rejects(ingestV7ImportJob(database.pool, input, run(), context("reviewer", "staff-reviewer", "ingest (test)")),
       (error) => error instanceof AuthorizationError && error.permission === "import.manage");
     await assert.rejects(ingestV7ImportJob(database.pool, input, run(), context()), (error) => codes(error).includes("REASON_REQUIRED") || codes(error).includes("REQUIRED"), "a reason is required");
   });
@@ -1535,7 +1536,7 @@ describe("the import refresh batch: one client's jobs through the fast path, the
   let db: pg.Client;
   let keys = 0;
   const ORG = "batch", GATED = "batch-gated";
-  const context = (org: string, role: "admin" | "consultant" = "admin", actorId = `staff-${role}`, reason?: string): CommandContext => {
+  const context = (org: string, role: "admin" | "consultant" | "reviewer" = "admin", actorId = `staff-${role}`, reason?: string): CommandContext => {
     keys += 1;
     return { organisationId: org, actorId, principal: "staff", idempotencyKey: `bt-${keys}`, correlationId: `bt-corr-${keys}`, ...(reason ? { reason } : {}),
       grant: commandGrantForRole(role, org, actorId) };
@@ -1785,8 +1786,8 @@ describe("the import refresh batch: one client's jobs through the fast path, the
     assert.equal((await refreshedEvents(ORG, CRASHED_EARLY.jobId)).length, 1);
   });
 
-  it("Admin only: a CRM cannot start a batch (matrix v16) — and the orchestration under a CRM still honours the per-job Admin gate: every job queues admin-commits", async () => {
-    await assert.rejects(startV7ImportBatch(database.pool, { clientId: "c1" }, context(GATED, "consultant")),
+  it("a role without import.refresh_batch cannot start a batch (the CRM holds it since v17) — and the orchestration under a CRM still honours the per-job Admin gate: every job queues admin-commits", async () => {
+    await assert.rejects(startV7ImportBatch(database.pool, { clientId: "c1" }, context(GATED, "reviewer")),
       (error) => error instanceof AuthorizationError && error.permission === "import.refresh_batch");
     const started = await startV7ImportBatch(database.pool, { clientId: "c1" }, context(GATED));
     const crm = commandGrantForRole("consultant", GATED, "staff-consultant");
@@ -1801,10 +1802,11 @@ describe("the import refresh batch: one client's jobs through the fast path, the
     assert.deepEqual(Object.values(await results(GATED, started.data.runId)).map((row) => row.status), ["refreshed", "refreshed"]);
   });
 
-  it("the starter's grant is re-derived per job: no longer an Admin, the run stops cancelled, its jobs left pending and nothing run", async () => {
+  it("the starter's grant is re-derived per job: no longer holding import.refresh_batch, the run stops cancelled, its jobs left pending and nothing run", async () => {
     const started = await startV7ImportBatch(database.pool, { clientId: "c2" }, context(GATED));
     await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [GATED]);
-    await db.query(`UPDATE nzi_console.memberships SET role_id = 'consultant' WHERE organisation_id = $1 AND user_id = 'staff-admin'`, [GATED]);
+    // v17: a consultant holds import.refresh_batch, so the starter is demoted to a reviewer, who does not.
+    await db.query(`UPDATE nzi_console.memberships SET role_id = 'reviewer' WHERE organisation_id = $1 AND user_id = 'staff-admin'`, [GATED]);
     try {
       reads.length = 0;
       assert.deepEqual(await runV7ImportBatch(database.pool, GATED, started.data.runId, runner), { claimed: true, processed: 0, status: "cancelled" });
@@ -2152,8 +2154,9 @@ describe("the import rows modal: candidates by ID, recomputed and judged; the bu
       { kind: "map" as const, legacyDbId: "4002", categoryCode: "1.natural-gas", datasetId: "uk-ghg-gb-2024", factorId: "uk-ghg-1_100_1020_6_1", expectedDecisionId: null },
       ...["3001", "3002", "3003"].map((legacyDbId) => ({ kind: "withdraw" as const, legacyDbId, expectedDecisionId: null })),
     ];
-    await assert.rejects(acceptV7ImportRows(database.pool, { jobId: JOB_R, items }, context("consultant")),
-      (error) => error instanceof AuthorizationError && error.permission === "import.manage", "a CRM reviews; an Admin accepts — refused before anything is written");
+    // v17: the CRM holds import.manage, so the refusal is shown on a reviewer.
+    await assert.rejects(acceptV7ImportRows(database.pool, { jobId: JOB_R, items }, context("reviewer")),
+      (error) => error instanceof AuthorizationError && error.permission === "import.manage", "a reviewer cannot accept — refused before anything is written");
     const ctx = context("admin");
     const outcome = await acceptV7ImportRows(database.pool, { jobId: JOB_R, items }, ctx);
     assert.deepEqual(outcome.written.map((entry) => [entry.legacyDbId, entry.kind]), [["4001", "map"], ["3001", "withdraw"], ["3002", "withdraw"], ["3003", "withdraw"]]);

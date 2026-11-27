@@ -582,13 +582,14 @@ export function reportingYearSnapshots<T extends { job_id: string; snapshot_vers
 }
 
 /**
- * The audit trail a staff user may see (PERMISSION_MATRIX.md audit.view): none without
- * the capability; own clients only for a Consultant or Finance user; all for Admin/Reviewer.
+ * The organisation-wide audit trail a staff user may see (PERMISSION_MATRIX.md audit.view, audit.view_org): none without
+ * audit.view; the whole organisation's with audit.view_org (Admin, Reviewer); otherwise their own clients' only, whatever
+ * audit.view's scope — since v17 that scope opens a client's history (clientHistory.ts), not this feed.
  */
 export async function auditEventsFor(db:Queryable,holder:{userId:string;capabilities:readonly CapabilityGrant[]},limit=100):Promise<AuditEventReadModel[]>{
-  const scope=holder.capabilities.find(grant=>grant.capability==="audit.view")?.scope;
-  if(!scope)return[];
-  return listAuditEvents(db,limit,{ownerUserId:scope==="own_clients"?holder.userId:null});
+  if(!holder.capabilities.some(grant=>grant.capability==="audit.view"))return[];
+  const org=holder.capabilities.some(grant=>grant.capability==="audit.view_org"&&grant.scope==="all");
+  return listAuditEvents(db,limit,{ownerUserId:org?null:holder.userId});
 }
 /** `ownerUserId` — an audit.view (own) holder sees only events about clients they own. */
 export async function listAuditEvents(db:Queryable,limit=100,options:{ownerUserId?:string|null}={}):Promise<AuditEventReadModel[]>{const safeLimit=Math.min(Math.max(Math.trunc(limit),1),250),owner=options.ownerUserId??null,{rows}=await db.query<{audit_event_id:string;occurred_at:Date|string;actor_id:string;principal_type:AuditEventReadModel["principal"];organisation_id:string;action:string;entity_type:string;entity_id:string;correlation_id:string;reason:string|null;before_json:unknown;after_json:unknown}>(`SELECT audit_event_id,occurred_at,actor_id,principal_type,organisation_id,action,entity_type,entity_id,correlation_id,reason,before_json,after_json FROM nzi_console.audit_events a WHERE ($2::text IS NULL OR EXISTS (SELECT 1 FROM nzi_console.clients c WHERE (c.organisation_id,c.client_id)=(a.organisation_id,a.client_id) AND c.owner_user_id=$2)) ORDER BY occurred_at DESC,audit_event_id DESC LIMIT $1`,[safeLimit,owner]);const display=(value:unknown)=>value==null?undefined:typeof value==="string"?value:JSON.stringify(value);return rows.map(row=>({id:row.audit_event_id,at:row.occurred_at instanceof Date?row.occurred_at.toISOString():String(row.occurred_at),actor:row.actor_id,principal:row.principal_type,organisation:row.organisation_id,action:row.action,entity:row.entity_type,entityId:row.entity_id,result:"allowed",severity:row.reason?"warning":"info",correlationId:row.correlation_id,...(display(row.before_json)?{before:display(row.before_json)}:{}),...(display(row.after_json)?{after:display(row.after_json)}:{}),...(row.reason?{reason:row.reason}:{})}));}

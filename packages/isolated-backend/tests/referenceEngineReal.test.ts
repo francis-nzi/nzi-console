@@ -37,7 +37,7 @@ describe("the reference-value engine, against the database", { skip: TEST_DATABA
       for (const org of [ORG_A, ORG_B]) {
         await db.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]);
         await db.query(`SELECT nzi_console.provision_organisation($1)`, [org]);
-        for (const role of ["admin", "consultant"]) {
+        for (const role of ["admin", "consultant", "reviewer"]) {
           await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [org, `${role}-${org}`, role]);
         }
         await db.query(`INSERT INTO nzi_console.reference_values (organisation_id, category_key, value_id, label, sort_order, created_by, updated_by)
@@ -109,8 +109,9 @@ describe("the reference-value engine, against the database", { skip: TEST_DATABA
       await assert.rejects(createReferenceValue(database.pool, { categoryKey: "emission_category", label: "X" }, context()), (error: { issues?: Array<{ field: string }> }) => error.issues?.[0]?.field === "categoryKey");
     });
 
-    it("is admin.lookups — a consultant cannot change a lookup", async () => {
-      await assert.rejects(createReferenceValue(database.pool, { categoryKey: "industries", label: "Mining" }, context(ORG_A, "consultant")), /admin\.lookups|permission|capabilit/i);
+    // v17: the Consultant holds admin.lookups, so the refused caller is a Reviewer.
+    it("is admin.lookups — a reviewer cannot change a lookup", async () => {
+      await assert.rejects(createReferenceValue(database.pool, { categoryKey: "industries", label: "Mining" }, context(ORG_A, "reviewer")), /admin\.lookups|permission|capabilit/i);
     });
 
     it("edits a value as a versioned change, recording before and after — and refuses a stale edit", async () => {

@@ -130,7 +130,9 @@ async function oneJob(pool: PoolLike, org: string, job: { jobId: string; jobNumb
   const skipped = (codes: string[], reasons: string[], sourceDown = false) => ({ outcome: { status: "skipped" as const, ...job, codes, reasons }, sourceDown });
   // The actor's grant as it stands now: the batch is theirs only while they may still run one.
   const grant = await resolveMemberGrant(pool, org, options.actorId);
-  if (!grant || !grantFor(grant.capabilities, "import.refresh_batch")) return skipped(["PERMISSION_DENIED"], ["The batch's actor may not run an import batch."]);
+  // An operator run, run as an Admin (Francis, 27 Nov): since matrix v17 a Consultant holds import.refresh_batch for the in-app
+  // batch, so the capability alone no longer means Admin — the role is checked too.
+  if (!grant || grant.role !== "admin" || !grantFor(grant.capabilities, "import.refresh_batch")) return skipped(["PERMISSION_DENIED"], ["The batch's actor may not run an import batch."]);
   // Clean: nothing to bring in. Reported with its latest drift check (stored; V7 is not called for it).
   const clean = await withTenantRead(pool, org, async (db) => (await currentLocally(db, org, job.jobId)) ? { latest: await readLatestV7Drift(db, org, job.jobId) } : null);
   if (clean) {

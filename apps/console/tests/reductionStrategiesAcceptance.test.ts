@@ -21,9 +21,9 @@ describe("Reduction Strategies", () => {
   const area = read("apps/console/app/clients/[clientId]/ReductionStrategiesArea.tsx");
   const forms = read("apps/console/app/clients/[clientId]/StrategyForms.tsx");
 
-  it("keeps the library Admin-managed and the plan consultant-managed", () => {
-    // A consultant builds a plan from the library but does not get to redefine the library
-    // while doing it — different jobs, different blast radii.
+  it("keeps the library under admin.lookups and the plan under strategy.manage", () => {
+    // Different jobs, different capabilities. Since matrix v17 (the CRM access matrix) a consultant holds both — they build
+    // the plan and may edit the library — but the library is still its own gate, not a stretch of the plan's.
     for (const key of ["strategy.library.upsert", "strategy.library.deactivate"]) {
       assert.match(commands, new RegExp(`"${key}": \\{ key: "${key}"[^}]*permission: "admin\\.lookups"`), key);
     }
@@ -31,9 +31,10 @@ describe("Reduction Strategies", () => {
       assert.match(commands, new RegExp(`"${key}": \\{ key: "${key}"[^}]*permission: "strategy\\.manage"`), key);
     }
     const permissions = read("packages/contracts/src/permissions.ts");
-    const consultant = /consultant: \{([\s\S]*?)\n  \},/.exec(permissions)?.[1] ?? "";
-    assert.ok(consultant.includes("strategy.manage"), "a consultant builds the plan");
-    assert.ok(!consultant.includes("admin.lookups"), "and does not edit the library");
+    const withheld = /CONSULTANT_WITHHELD = \[([\s\S]*?)\]/.exec(permissions)?.[1] ?? "";
+    assert.ok(withheld.includes("admin.settings"), "the consultant's withheld list is where it was read from");
+    assert.ok(!withheld.includes("strategy.manage"), "a consultant builds the plan");
+    assert.ok(!withheld.includes("admin.lookups"), "and, since v17, may edit the library");
   });
 
   it("renames the capability as a new matrix version rather than editing one", () => {

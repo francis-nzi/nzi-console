@@ -41,7 +41,7 @@ describe("jobs configuration (0139) and job types, against the database", { skip
       for (const org of [ORG_A, ORG_B]) {
         await db.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]);
         await db.query(`SELECT nzi_console.provision_organisation($1)`, [org]);
-        for (const role of ["admin", "consultant"]) {
+        for (const role of ["admin", "consultant", "reviewer"]) {
           await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [org, `${role}-${org}`, role]);
         }
         await db.query(`INSERT INTO nzi_console.vat_rates (organisation_id, vat_rate_id, name, rate_pct, is_default, created_by, updated_by) VALUES
@@ -146,8 +146,9 @@ describe("jobs configuration (0139) and job types, against the database", { skip
       await assert.rejects(createJobType(database.pool, { name: "Other", family: "retail" as never }, context()), issue("family"));
     });
 
-    it("is admin.lookups — a consultant cannot change a job type", async () => {
-      await assert.rejects(createJobType(database.pool, { name: "Consultancy day", family: "consultancy" }, context(ORG_A, "consultant")), /admin\.lookups|permission|capabilit/i);
+    it("is admin.lookups — a reviewer cannot change a job type", async () => {
+      // v17: the Consultant holds admin.lookups, so a reviewer is the role without it.
+      await assert.rejects(createJobType(database.pool, { name: "Consultancy day", family: "consultancy" }, context(ORG_A, "reviewer")), /admin\.lookups|permission|capabilit/i);
     });
 
     it("edits as a versioned change with before and after — and refuses a stale edit", async () => {

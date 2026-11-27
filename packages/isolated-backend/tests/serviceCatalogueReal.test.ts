@@ -110,7 +110,7 @@ describe("the service catalogue, against a real database", { skip: TEST_DATABASE
     for (const org of [ORG, OTHER, LOAD]) {
       await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]); // 0145 provisions GBP, the default
       await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES
-        ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant'), ($1, 'fin', 'finance', 'active', 'Fin Finance')`, [org]);
+        ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant'), ($1, 'fin', 'finance', 'active', 'Fin Finance'), ($1, 'rex', 'reviewer', 'active', 'Rex Reviewer')`, [org]);
       await seedLookups(org);
     }
   });
@@ -142,11 +142,12 @@ describe("the service catalogue, against a real database", { skip: TEST_DATABASE
       await q(`UPDATE nzi_console.vat_rates SET active = true WHERE vat_rate_id = 'vat:reduced' AND organisation_id = $1`, [ORG]);
     });
 
-    it("deactivates and reinstates, with a reason; a consultant may not add an item", async () => {
+    // v17: the Consultant holds admin.lookups, so the refused caller is a Reviewer (cost and sell stay finance.manage).
+    it("deactivates and reinstates, with a reason; a reviewer may not add an item", async () => {
       const [row] = await q(`SELECT item_id, version FROM nzi_console.job_items WHERE organisation_id = $1 AND item_code = 'REPORT'`, [ORG]);
       const off = await deactivateJobItem(database.pool, { itemId: row.item_id, expectedVersion: row.version }, context("ada", "admin", ORG, "Folded into ASSESS"));
       await reinstateJobItem(database.pool, { itemId: row.item_id, expectedVersion: off.data.version }, context("ada", "admin"));
-      await assert.rejects(createJobItem(database.pool, { itemCode: "CAL", name: "Consultant's" }, context("cal", "consultant")), /admin\.lookups|permission/i);
+      await assert.rejects(createJobItem(database.pool, { itemCode: "REX", name: "Reviewer's" }, context("rex", "reviewer")), /admin\.lookups|permission/i);
     });
 
     it("sets a code once and deletes nothing: the app role cannot change a code or delete an item; tenant-confined", async () => {

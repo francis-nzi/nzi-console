@@ -432,9 +432,10 @@ describe("SRS S1 — the framework as versions, and the assessment dated on comp
       assert.deepEqual(grants.map((row) => row.privilege_type), ["INSERT", "SELECT"]);
     });
 
-    it("is admin.lookups: a consultant cannot lock, unlock or edit, and every step is audited as well as in the history", async () => {
-      await assert.rejects(unlockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 5 }, context("consultant")), /admin\.lookups|permission|not allowed/i);
-      await assert.rejects(upsertSrsPillar(database.pool, { label: "Nope" }, context("consultant")), /admin\.lookups|permission|not allowed/i);
+    // v17: the Consultant holds admin.lookups, so the refused caller is a Reviewer.
+    it("is admin.lookups: a reviewer cannot lock, unlock or edit, and every step is audited as well as in the history", async () => {
+      await assert.rejects(unlockSrsFramework(database.pool, { frameworkKey: "S2", expectedVersion: 5 }, context("reviewer")), /admin\.lookups|permission|not allowed/i);
+      await assert.rejects(upsertSrsPillar(database.pool, { label: "Nope" }, context("reviewer")), /admin\.lookups|permission|not allowed/i);
       const actions = (await q<{ action: string }>(`SELECT DISTINCT action FROM nzi_console.audit_events WHERE action LIKE 'srs_framework_%' AND actor_id <> 'migration:0208'`)).map((row) => row.action).sort();
       assert.deepEqual(actions, ["srs_framework_locked", "srs_framework_maturity_updated", "srs_framework_pillar_upserted", "srs_framework_requirement_upserted", "srs_framework_unlocked"]);
       const audited = (await q(`SELECT count(*)::int AS n FROM nzi_console.audit_events WHERE action IN ('srs_framework_locked', 'srs_framework_unlocked')`))[0]!.n;

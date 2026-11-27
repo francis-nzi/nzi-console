@@ -4,7 +4,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
-import { capabilities, commandDefinitions, commandGrantForRole, isCapability, PERMISSION_MATRIX_VERSION, ROLE_CAPABILITY_MATRIX, roleCapabilityGrants, SELF_APPROVAL_CAPABILITY, separationOfDutiesCapabilities, staffRoles, type CommandInputMap, type StaffRole } from "@nzi/contracts";
+import { capabilities, commandDefinitions, commandGrantForRole, CONSULTANT_WITHHELD, isCapability, PERMISSION_MATRIX_VERSION, ROLE_CAPABILITY_MATRIX, roleCapabilityGrants, SELF_APPROVAL_CAPABILITY, separationOfDutiesCapabilities, staffRoles, type CommandInputMap, type StaffRole } from "@nzi/contracts";
 import {
   approveScopeRow, auditEventsFor, AuthorizationError, capabilitiesFromRows, CommandValidationError, listAuditEvents, listPortalAccess, resolveStaffPrincipal,
   setPortalJobAccess, updateClient, upsertEmissionsTarget, type StaffPrincipal,
@@ -43,6 +43,8 @@ const matrixMigrationV14 = readFileSync(resolve(here, "../migrations/0227_permis
 const matrixMigrationV15 = readFileSync(resolve(here, "../migrations/0230_permission_matrix_v15.sql"), "utf8");
 // v16 — Admin gains import.refresh_batch: the import, server-side, Phase E (0233).
 const matrixMigrationV16 = readFileSync(resolve(here, "../migrations/0233_permission_matrix_v16.sql"), "utf8");
+// v17 — the CRM access matrix: Consultant = Admin except the withheld list; new audit.view_org (0241).
+const matrixMigrationV17 = readFileSync(resolve(here, "../migrations/0241_permission_matrix_v17.sql"), "utf8");
 
 /**
  * The role→capability rows for the matrix version the code is on. Each version is a whole
@@ -58,7 +60,8 @@ ${matrixMigrationV12}
 ${matrixMigrationV13}
 ${matrixMigrationV14}
 ${matrixMigrationV15}
-${matrixMigrationV16}`;
+${matrixMigrationV16}
+${matrixMigrationV17}`;
 const rowPattern = new RegExp(String.raw`\(${PERMISSION_MATRIX_VERSION}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g");
 const migrationRows = [...matrixSql.matchAll(rowPattern)].map(([, role, capability, scope]) => ({ role: role!, capability: capability!, scope: scope! }));
 
@@ -111,9 +114,11 @@ describe("the permission matrix (NZC-022)", () => {
   it("matches the matrix cell by cell for the conditional and read-only rows", () => {
     const has = (role: StaffRole, capability: string) => ROLE_CAPABILITY_MATRIX[role][capability as never];
     assert.equal(Object.keys(ROLE_CAPABILITY_MATRIX.admin).length, capabilities.length);
-    assert.equal(has("consultant", "baseline.rebaseline"), "own_clients");
-    assert.equal(has("consultant", "portal.admin"), "own_clients");
-    assert.equal(has("consultant", "audit.view"), "own_clients");
+    // v17: a consultant's own-clients grants widen to all (the CRM access matrix).
+    assert.equal(has("consultant", "baseline.rebaseline"), "all");
+    assert.equal(has("consultant", "portal.admin"), "all");
+    assert.equal(has("consultant", "audit.view"), "all");
+    assert.equal(has("consultant", "audit.view_org"), undefined, "a client's history, not the organisation-wide trail");
     assert.equal(has("finance", "audit.view"), "own_clients");
     assert.equal(has("consultant", "snapshot.review"), "all", "v12: a consultant CRM approves the snapshot");
     assert.equal(has("consultant", "report.publish"), "all", "v12: and releases the report");
@@ -127,7 +132,7 @@ describe("the permission matrix (NZC-022)", () => {
     // Viewer gained `time.log` at v9 (TIME T-Q3): everyone logs their own time — and only their own.
     assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.viewer).sort(), ["client.view", "knowledge.capture", "report.view", "time.log"]);
     assert.equal(has("viewer", "time.view"), undefined, "a Viewer sees only their own time");
-    assert.equal(has("consultant", "time.log"), "own_clients");
+    assert.equal(has("consultant", "time.log"), "all");
     assert.equal(has("viewer", "knowledge.approve"), undefined, "and it stops at capture");
   });
 
@@ -210,7 +215,7 @@ describe("the command runner's authoritative check (NZC-022)", () => {
   });
 });
 
-describe("baseline.rebaseline (⚑ reason + governed event, own clients for a Consultant)", () => {
+describe("baseline.rebaseline (⚑ reason + governed event; any client for a Consultant since v17)", () => {
   const baseline = { baseline_period_start: "2022-04-01", baseline_period_end: "2023-03-31", baseline_total_tco2e: "900" };
   const rebaselined = { ...identity, baselinePeriodStart: "2022-04-01", baselinePeriodEnd: "2023-03-31", baselineTotalTco2e: 850, financialYearEndMonth: 3 };
 
@@ -225,14 +230,17 @@ describe("baseline.rebaseline (⚑ reason + governed event, own clients for a Co
     assert.ok(calls.some((call) => call.sql.includes("INSERT INTO nzi_console.audit_events") && call.values?.[4] === "client_rebaselined"));
   });
 
-  it("lets a Consultant re-baseline their own client only", async () => {
+  it("lets a Consultant re-baseline any client since v17 — a colleague's included — with the reason and the governed event", async () => {
+    for (const owner of ["consultant-a", "someone-else"]) {
+      const calls: Call[] = [];
+      await updateClient(clientPool(calls, baseline, { ownerUserId: owner }), rebaselined, context("consultant", "consultant-a", `owner-${owner}`, { reason: "Restated" }));
+      assert.ok(calls.some((call) => call.sql.includes("INSERT INTO nzi_console.baseline_change_events")), owner);
+    }
     await assert.rejects(
-      () => updateClient(clientPool([], baseline, { ownerUserId: "someone-else" }), rebaselined, context("consultant", "consultant-a", "not-owned", { reason: "Restated" })),
-      (error: unknown) => error instanceof AuthorizationError && error.permission === "baseline.rebaseline",
+      () => updateClient(clientPool([], baseline, { ownerUserId: "someone-else" }), rebaselined, context("consultant", "consultant-a", "no-reason")),
+      (error: unknown) => error instanceof CommandValidationError && error.issues.some((issue) => issue.code === "REASON_REQUIRED"),
+      "the reason is still required",
     );
-    const calls: Call[] = [];
-    await updateClient(clientPool(calls, baseline, { ownerUserId: "consultant-a" }), rebaselined, context("consultant", "consultant-a", "owned", { reason: "Restated" }));
-    assert.ok(calls.some((call) => call.sql.includes("INSERT INTO nzi_console.baseline_change_events")));
   });
 
   it("treats setting a first baseline as an ordinary edit, not a re-baseline", async () => {
@@ -283,35 +291,41 @@ describe("separation of duties on scope rows", () => {
 describe("non-command checks use the same rule", () => {
   const principal = (role: StaffRole, userId = "consultant-a"): StaffPrincipal => ({ organisationId: "org-a", userId, sessionId: "s", issuedAt: 1, expiresAt: 2, role, matrixVersion: 1, capabilities: roleCapabilityGrants(role) });
 
-  it("scopes portal.admin to a Consultant's own clients", async () => {
+  it("gives portal.admin to a Consultant on any client since v17, and refuses a role without it", async () => {
     const pool = (ownerUserId: string | null) => withAccess({ connect: async () => ({ async query(sql: string) { return sql.includes("SELECT u.client_id") ? { rows: [{ client_id: "client-a" }] } : { rows: [] }; }, release() {} }) } as never, { ownerUserId });
-    await assert.rejects(() => setPortalJobAccess(pool("someone-else"), principal("consultant"), { portalUserId: "portal-a", jobId: "job-a", granted: true }), (error: unknown) => error instanceof AuthorizationError && error.permission === "portal.admin");
-    const result = await setPortalJobAccess(pool("consultant-a"), principal("consultant"), { portalUserId: "portal-a", jobId: "job-a", granted: true });
-    assert.equal(result.granted, true);
-    await assert.rejects(() => setPortalJobAccess(pool("consultant-a"), principal("reviewer"), { portalUserId: "portal-a", jobId: "job-a", granted: true }), AuthorizationError);
+    for (const owner of ["consultant-a", "someone-else"]) {
+      const result = await setPortalJobAccess(pool(owner), principal("consultant"), { portalUserId: "portal-a", jobId: "job-a", granted: true });
+      assert.equal(result.granted, true, owner);
+    }
+    await assert.rejects(() => setPortalJobAccess(pool("consultant-a"), principal("reviewer"), { portalUserId: "portal-a", jobId: "job-a", granted: true }), (error: unknown) => error instanceof AuthorizationError && error.permission === "portal.admin");
   });
 
-  it("filters the portal-user list and the audit trail to own clients for an own-scoped holder", async () => {
+  it("filters the portal-user list by portal.admin's scope, and the audit trail to own clients for an owner filter", async () => {
     const seen: Array<readonly unknown[] | undefined> = [];
     const client = { async query(sql: string, values?: readonly unknown[]) { if (sql.includes("FROM nzi_console.portal_users u")) seen.push(values); return { rows: [] }; }, release() {} };
     await listPortalAccess({ connect: async () => client } as never, principal("consultant"));
     await listPortalAccess({ connect: async () => client } as never, principal("admin", "admin-a"));
-    assert.deepEqual(seen.map((values) => values?.[0]), ["consultant-a", null]);
+    assert.deepEqual(seen.map((values) => values?.[0]), [null, null], "v17: the consultant's portal.admin is all");
     const auditValues: Array<readonly unknown[] | undefined> = [];
     await listAuditEvents({ query: async (_sql: string, values?: readonly unknown[]) => { auditValues.push(values); return { rows: [] }; } } as never, 50, { ownerUserId: "finance-a" });
     assert.deepEqual(auditValues[0], [50, "finance-a"]);
   });
 
-  it("reads the audit trail by audit.view for every role: none reads nothing, own_clients filters to the holder, all reads all", async () => {
+  it("reads the organisation-wide trail for every role: no audit.view reads nothing, audit.view_org reads all, audit.view alone filters to own clients", async () => {
     for (const role of staffRoles) {
       const queried: Array<readonly unknown[] | undefined> = [];
       const db = { query: async (_sql: string, values?: readonly unknown[]) => { queried.push(values); return { rows: [] }; } } as never;
       const events = await auditEventsFor(db, principal(role, `${role}-a`));
-      const scope = roleCapabilityGrants(role).find((grant) => grant.capability === "audit.view")?.scope;
+      const held = (capability: string) => roleCapabilityGrants(role).find((grant) => grant.capability === capability)?.scope;
       assert.deepEqual(events, [], role);
-      if (!scope) assert.equal(queried.length, 0, `${role} holds no audit.view, so nothing is read`);
-      else assert.deepEqual(queried[0], [100, scope === "own_clients" ? `${role}-a` : null], role);
+      if (!held("audit.view")) assert.equal(queried.length, 0, `${role} holds no audit.view, so nothing is read`);
+      else assert.deepEqual(queried[0], [100, held("audit.view_org") === "all" ? null : `${role}-a`], role);
     }
+    // The v17 consultant: audit.view at all opens a client's history, but the organisation-wide feed stays their own clients'.
+    assert.equal(ROLE_CAPABILITY_MATRIX.consultant["audit.view"], "all");
+    const consultantQueried: Array<readonly unknown[] | undefined> = [];
+    await auditEventsFor({ query: async (_sql: string, values?: readonly unknown[]) => { consultantQueried.push(values); return { rows: [] }; } } as never, principal("consultant"));
+    assert.deepEqual(consultantQueried[0], [100, "consultant-a"]);
     assert.ok(staffRoles.some((role) => !roleCapabilityGrants(role).some((grant) => grant.capability === "audit.view")), "some role lacks audit.view");
   });
 });
@@ -342,12 +356,13 @@ describe("the consultant's release capabilities (matrix v12)", () => {
     assert.equal(SELF_APPROVAL_CAPABILITY, "report.publish");
     assert.deepEqual([...separationOfDutiesCapabilities], ["snapshot.review", "report.publish"], "both are separation-of-duties capabilities: holding them is not an exemption");
   });
-  it("the version is 16 and the consultant's full capability set is pinned", () => {
-    assert.equal(PERMISSION_MATRIX_VERSION, 16);
+  it("the version is 17 and the consultant's full capability set is pinned", () => {
+    assert.equal(PERMISSION_MATRIX_VERSION, 17);
     assert.deepEqual(Object.keys(ROLE_CAPABILITY_MATRIX.consultant).sort(), [
-      "audit.view", "baseline.rebaseline", "category.visibility", "clientfactor.manage", "client.create", "client.edit", "client.view", "contact.manage", "finance.view",
-      "import.refresh", "job.manage", "knowledge.approve", "knowledge.capture", "portal.admin", "report.edit", "report.publish", "report.view", "scoperow.edit", "site.manage", "snapshot.review",
-      "srs.manage", "strategy.manage", "support.portal_impersonate", "target.edit", "task.manage", "time.log", "time.view", "training.entitlement.manage", "training.manage"].sort());
+      "admin.lookups", "admin.templates", "audit.view", "baseline.rebaseline", "category.visibility", "clientfactor.manage", "client.create", "client.deactivate", "client.edit", "client.view",
+      "contact.manage", "dataset.manage", "factor.manage", "finance.view", "import.manage", "import.refresh", "import.refresh_batch", "job.manage", "knowledge.approve", "knowledge.capture",
+      "portal.admin", "report.edit", "report.publish", "report.view", "scoperow.edit", "site.manage", "snapshot.review", "srs.manage", "strategy.manage", "support.portal_impersonate",
+      "target.edit", "task.manage", "time.log", "time.view", "training.entitlement.manage", "training.manage"].sort());
   });
 });
 
@@ -369,9 +384,10 @@ describe("matrix v13: CRM tasks (BRIEF-crm-control-room-p3-tasks)", () => {
 });
 
 describe("matrix v14: the import workbench, Phase 1 (BRIEF-v7-import-workbench-phase1)", () => {
-  it("import.manage is held by Admin alone", () => {
+  it("import.manage is held by Admin (and, since v17, the Consultant) alone", () => {
     assert.equal(ROLE_CAPABILITY_MATRIX.admin["import.manage"], "all");
-    for (const role of ["consultant", "reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.manage"], undefined, role);
+    assert.equal(ROLE_CAPABILITY_MATRIX.consultant["import.manage"], "all", "v17");
+    for (const role of ["reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.manage"], undefined, role);
   });
   it("unlocks exactly the summary upload and, in Phase 2, a row's resolution set and clear — staff commands", () => {
     assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.manage").map((definition) => definition.key), ["import.summary.upload", "import.decision.set", "import.decision.clear", "import.rehearsal.record", "import.ingest"]);
@@ -391,7 +407,7 @@ describe("matrix v15: the import, server-side, Phase B (BRIEF-v7-import-server-s
     assert.equal(ROLE_CAPABILITY_MATRIX.admin["import.refresh"], "all");
     assert.equal(ROLE_CAPABILITY_MATRIX.consultant["import.refresh"], "all");
     for (const role of ["reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.refresh"], undefined, role);
-    assert.equal(ROLE_CAPABILITY_MATRIX.consultant["import.manage"], undefined, "a CRM refreshes; resolving a row is still import.manage");
+    assert.equal((commandDefinitions["import.decision.set"] as { permission: string }).permission, "import.manage", "resolving a row is still import.manage (a CRM's since v17)");
   });
   it("unlocks exactly the refresh command, a staff command; the Admin gate on commit is admin.settings'", () => {
     assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.refresh").map((definition) => definition.key), ["import.refresh"]);
@@ -406,9 +422,10 @@ describe("matrix v15: the import, server-side, Phase B (BRIEF-v7-import-server-s
 
 describe("matrix v16: the import, server-side, Phase E — the batch (BRIEF-v7-import-server-side-phase-e, R-5)", () => {
   const rows = (sql: string, version: number) => [...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`).sort();
-  it("import.refresh_batch is Admin only: no other role holds it, the CRM included", () => {
+  it("import.refresh_batch is Admin's — and since v17 the CRM's — and no other role's", () => {
     assert.equal(ROLE_CAPABILITY_MATRIX.admin["import.refresh_batch"], "all");
-    for (const role of ["consultant", "reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.refresh_batch"], undefined, role);
+    assert.equal(ROLE_CAPABILITY_MATRIX.consultant["import.refresh_batch"], "all", "v17");
+    for (const role of ["reviewer", "finance", "viewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["import.refresh_batch"], undefined, role);
   });
   it("unlocks exactly the batch's two commands, staff commands", () => {
     assert.deepEqual(Object.values(commandDefinitions).filter((definition) => definition.permission === "import.refresh_batch").map((definition) => definition.key).sort(),
@@ -418,5 +435,34 @@ describe("matrix v16: the import, server-side, Phase E — the batch (BRIEF-v7-i
   it("v16 adds import.refresh_batch for Admin and changes nothing else from v15", () => {
     assert.deepEqual(rows(matrixMigrationV16, 16).filter((row) => !rows(matrixMigrationV15, 15).includes(row)), ["admin import.refresh_batch all"]);
     assert.deepEqual(rows(matrixMigrationV15, 15).filter((row) => !rows(matrixMigrationV16, 16).includes(row)), [], "nothing is taken away");
+  });
+});
+
+describe("matrix v17: the CRM access matrix (Francis 27 Nov; AUDIT-crm-access)", () => {
+  const rows = (sql: string, version: number) => [...sql.matchAll(new RegExp(String.raw`\(${version}, '([a-z]+)', '([a-z._]+)', '(all|own_clients)'\)`, "g"))].map(([, role, capability, scope]) => `${role} ${capability} ${scope}`).sort();
+  const withheld = ["admin.settings", "admin.users", "staff.invite", "staff.credential.reset", "finance.manage", "subject.review", "subject.export", "subject.erase", "knowledge.publish", "audit.view_org"];
+  it("the Consultant is Admin except exactly the withheld list, and holds everything else at all", () => {
+    assert.deepEqual([...CONSULTANT_WITHHELD].sort(), [...withheld].sort());
+    for (const capability of capabilities) assert.equal(ROLE_CAPABILITY_MATRIX.consultant[capability], withheld.includes(capability) ? undefined : "all", capability);
+  });
+  it("audit.view_org — the organisation-wide trail — is Admin's and Reviewer's, the two roles that read it at all before v17", () => {
+    assert.deepEqual(staffRoles.filter((role) => "audit.view_org" in ROLE_CAPABILITY_MATRIX[role]), ["admin", "reviewer"]);
+    for (const role of ["admin", "reviewer"] as const) assert.equal(ROLE_CAPABILITY_MATRIX[role]["audit.view"], "all", role);
+  });
+  it("v17 widens the consultant's own-clients grants, adds their gains and audit.view_org, and changes nothing else from v16", () => {
+    const v16 = rows(matrixMigrationV16, 16), v17 = rows(matrixMigrationV17, 17);
+    assert.deepEqual(v17.filter((row) => !v16.includes(row)), [
+      "admin audit.view_org all",
+      "consultant admin.lookups all", "consultant admin.templates all", "consultant audit.view all", "consultant baseline.rebaseline all", "consultant category.visibility all",
+      "consultant client.deactivate all", "consultant dataset.manage all", "consultant factor.manage all", "consultant import.manage all", "consultant import.refresh_batch all",
+      "consultant portal.admin all", "consultant time.log all", "consultant time.view all",
+      "reviewer audit.view_org all"].sort());
+    assert.deepEqual(v16.filter((row) => !v17.includes(row)), [
+      "consultant audit.view own_clients", "consultant baseline.rebaseline own_clients", "consultant category.visibility own_clients",
+      "consultant portal.admin own_clients", "consultant time.log own_clients", "consultant time.view own_clients"], "only own-clients grants are replaced, by the same capability at all");
+  });
+  it("leaves the self-approval rule and the per-job Admin-commit gate as they were", () => {
+    assert.equal(SELF_APPROVAL_CAPABILITY, "report.publish");
+    assert.equal(commandDefinitions["organisation.importPolicy.set"].permission, "admin.settings", "only an Admin sets the policy; it is off until set");
   });
 });

@@ -65,10 +65,10 @@ describe("a client's history, against a real database", { skip: TEST_DATABASE_UR
     assert.equal(await read("no-such-client", "admin", "ada"), null);
   });
 
-  it("is read under audit.view: all for Admin and Reviewer, own clients only for a Consultant, refused for a Viewer", async () => {
+  it("is read under audit.view: all for Admin, Reviewer and (v17) Consultant, own clients only for Finance, refused for a Viewer", async () => {
     assert.equal((await read(theirs, "reviewer", "rex"))!.length, 1, "a Reviewer reads any client's");
     assert.equal((await read(mine, "consultant", "cal"))!.length, 3, "a Consultant reads their own client's");
-    await assert.rejects(read(theirs, "consultant", "cal"), refused, "…and not another's");
+    assert.equal((await read(theirs, "consultant", "cal"))!.length, 1, "v17: …and a colleague's");
     await assert.rejects(read(mine, "viewer", "val"), refused, "a Viewer holds no audit.view");
     await assert.rejects(read(mine, "finance", "fin"), refused, "Finance is own-clients too, and owns none");
   });

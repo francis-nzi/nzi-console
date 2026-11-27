@@ -16,8 +16,10 @@ import { capabilityScope, ownerFilterFor } from "../src/access";
  * that can see clients can see all of them. A consultant who creates a client and assigns it to a
  * colleague keeps seeing it, keeps editing it, keeps managing its jobs and strategies.
  *
- * **Three capabilities do follow it**, all on the consultant role: re-baselining, portal
- * administration, and reading that client's audit trail. Those are the powers that move.
+ * **Until v17, three capabilities followed it** on the consultant role: re-baselining, portal
+ * administration, and reading that client's audit trail. **Since v17 (the CRM access matrix) none
+ * do:** the consultant holds every one of their capabilities at `all`. The only `own_clients` grant
+ * left is Finance's `audit.view`.
  */
 
 const grant = (role: StaffRole) => commandGrantForRole(role, "org", "someone");
@@ -33,11 +35,12 @@ describe("assigning a client to someone else", () => {
     }
   });
 
-  it("moves exactly three capabilities with the owner, and names them", () => {
+  it("moves nothing with the owner for a consultant since v17 — Finance's audit.view is the only own_clients grant left", () => {
     const consultant = grant("consultant");
-    const follows = (["baseline.rebaseline", "portal.admin", "audit.view"] as const)
-      .filter((capability) => capabilityScope(consultant, capability) === "own_clients");
-    assert.deepEqual(follows, ["baseline.rebaseline", "portal.admin", "audit.view"]);
+    assert.deepEqual(consultant.capabilities.filter((held) => held.scope === "own_clients"), []);
+    const ownScoped = (["admin", "consultant", "reviewer", "finance", "viewer"] as StaffRole[])
+      .flatMap((role) => grant(role).capabilities.filter((held) => held.scope === "own_clients").map((held) => `${role} ${held.capability}`));
+    assert.deepEqual(ownScoped, ["finance audit.view"]);
   });
 
   it("leaves the consultant's day-to-day work untouched", () => {
@@ -52,9 +55,11 @@ describe("assigning a client to someone else", () => {
   it("filters an own_clients read to the holder, which is the mechanism", () => {
     // `ownerFilterFor` returns the user to filter by under an own_clients grant, and null when the
     // grant is organisation-wide — so the filter is applied only where the scope says to.
-    const consultant = grant("consultant");
-    assert.equal(ownerFilterFor(consultant, "audit.view"), "someone");
-    assert.equal(ownerFilterFor(consultant, "client.view"), null);
+    // v17: Finance's audit.view is the own_clients grant left to show it on.
+    const finance = grant("finance");
+    assert.equal(ownerFilterFor(finance, "audit.view"), "someone");
+    assert.equal(ownerFilterFor(finance, "client.view"), null);
+    assert.equal(ownerFilterFor(grant("consultant"), "audit.view"), null, "v17: the consultant's audit.view is all");
   });
 
   it("is only reachable deliberately — an admin holds everything at `all`", () => {

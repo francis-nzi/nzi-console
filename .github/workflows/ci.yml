@@ -1053,6 +1053,11 @@ jobs:
       # finally approve their own, each audited as a self-release; finance and viewer are refused at every step either way.
       - name: A consultant CRM approves and releases a report, under the independent-approval setting
         run: npx tsx --test packages/isolated-backend/tests/consultantSelfServeReal.test.ts
+      # Matrix v17 (0241; the CRM access matrix, AUDIT-crm-access): the grant the database serves a Consultant opens every (a) and (b) row of the
+      # audit on a colleague's client — the commands, portal administration, a client's history, others' time, batch attest — and still refuses
+      # each (c) row, every command under a withheld capability, and the organisation-wide audit feed beyond their own clients.
+      - name: A consultant CRM works a colleague's client under matrix v17, and is still refused the withheld rows
+        run: npx tsx --test packages/isolated-backend/tests/crmAccessV17Real.test.ts
       # Migration 0215 (BRIEF-independent-approval-toggle): the organisation's approval policy against real Postgres — no row means required;
       # only admin.settings sets it (a consultant and a reviewer are refused); old → new and the reason are audited; OFF lets a release-capable
       # preparer approve, validate and publish their own work and ON stops it at once, overriding the server variable; a policy that cannot be

@@ -72,7 +72,7 @@ const setOf = (...names: string[]) => names.map(factorId).sort();
 describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
   let database: DisposableDatabase;
   let keys = 0;
-  const context = (actorId = ACTOR, role: "admin" | "consultant" = "admin", reason?: string): CommandContext => {
+  const context = (actorId = ACTOR, role: "admin" | "consultant" | "reviewer" = "admin", reason?: string): CommandContext => {
     keys += 1;
     return { organisationId: ORG, actorId, principal: "staff", idempotencyKey: `m-${keys}`, correlationId: `corr-m-${keys}`, grant: commandGrantForRole(role, ORG, actorId), ...(reason ? { reason } : {}) };
   };
@@ -194,8 +194,9 @@ describe("factor → category membership (NZC-171)", { skip: TEST_DATABASE_URL ?
     assert.ok(!(await offered("3.4")).members!.includes(factorId("mystery")), "retired: out of the list, the record kept");
   });
 
-  it("the map is edited by Admin alone, idempotently, with a reason to retire, and a rule is never deleted or re-pointed", async () => {
-    await assert.rejects(addMembershipCommand(database.pool, { sourceL1: "Hovercraft", categoryCode: "3.4" }, context("cora", "consultant")), /Permission denied/);
+  it("the map is edited only under factor.manage, idempotently, with a reason to retire, and a rule is never deleted or re-pointed", async () => {
+    // v17: the Consultant holds factor.manage too; a reviewer is the role refused.
+    await assert.rejects(addMembershipCommand(database.pool, { sourceL1: "Hovercraft", categoryCode: "3.4" }, context("rex", "reviewer")), /Permission denied/);
     const first = await addMembershipCommand(database.pool, { sourceL1: "Zeppelins", categoryCode: "3.4" }, context());
     const again = await addMembershipCommand(database.pool, { sourceL1: "zeppelins", categoryCode: "3.4" }, context());
     assert.equal((first as { data: { outcome: string } }).data.outcome, "added");

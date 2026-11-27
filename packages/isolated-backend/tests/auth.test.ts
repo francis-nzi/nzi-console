@@ -28,7 +28,9 @@ describe("staff authentication and authorization", () => {
     assert.throws(() => authorizeCommand(principal("viewer"), "report.snapshot.approve"), AuthorizationError);
     assert.throws(() => authorizeCommand(principal("viewer"), "client.create"), AuthorizationError);
     assert.doesNotThrow(() => authorizeCommand(principal("admin"), "dataset.override.add"));
-    assert.throws(() => authorizeCommand(principal("consultant"), "dataset.override.add"), AuthorizationError);
+    assert.doesNotThrow(() => authorizeCommand(principal("consultant"), "dataset.override.add"), "v17: a consultant CRM adds a manual dataset");
+    assert.throws(() => authorizeCommand(principal("reviewer"), "dataset.override.add"), AuthorizationError);
+    assert.throws(() => authorizeCommand(principal("consultant"), "job.fee.set"), AuthorizationError, "finance stays withheld");
     assert.doesNotThrow(() => authorizeCommand(principal("reviewer"), "report.publish"));
     assert.throws(() => authorizeCommand(principal("finance"), "scope.row.update"), AuthorizationError);
   });

@@ -48,7 +48,7 @@ describe("master templates (0197), against a real database", { skip: TEST_DATABA
     for (const org of [ORG, OTHER]) {
       // The trigger seeds the three masters as each organisation is inserted.
       await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]);
-      await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal')`, [org]);
+      await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal'), ($1, 'rex', 'reviewer', 'active', 'Rex')`, [org]);
     }
     // Two editions; the newest decides an identity's scopes and unit. A factor's identity is made by 0125's trigger.
     for (const [dataset, from, to] of [["desnz-2025", "2025-01-01", "2025-12-31"], ["desnz-2026", "2026-01-01", "2026-12-31"]] as const) {
@@ -161,9 +161,10 @@ describe("master templates (0197), against a real database", { skip: TEST_DATABA
     assert.deepEqual(actions, ["master_template.created", "master_template.renamed", "master_template.archived", "master_template.reinstated"]);
   });
 
-  it("is admin.lookups only: a consultant cannot create, rename, archive or set lines", async () => {
+  it("is admin.lookups only: a reviewer cannot create, rename, archive or set lines", async () => {
     const office = await master("Office");
-    const cal = () => context("cal", "consultant", "because");
+    // v17: the Consultant holds admin.lookups, so a reviewer is the role without it.
+    const cal = () => context("rex", "reviewer", "because");
     await assert.rejects(createMasterTemplate(database.pool, { name: "Mine" }, cal()), /admin\.lookups|permission/i);
     await assert.rejects(renameMasterTemplate(database.pool, { masterId: office.masterId, expectedVersion: office.version, name: "Mine" }, cal()), /admin\.lookups|permission/i);
     await assert.rejects(archiveMasterTemplate(database.pool, { masterId: office.masterId, expectedVersion: office.version }, cal()), /admin\.lookups|permission/i);
