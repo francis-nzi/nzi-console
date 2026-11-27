@@ -17,9 +17,9 @@ export default async function AdminOverviewPage() {
   const access = await adminAccess();
   if (access.state !== "allowed") return null; // The layout states why; nothing is read.
 
-  // The audit log is shown to a holder of audit.view at scope `all` — an own-clients holder would otherwise see
-  // administration events about other people's clients.
-  const includeChanges = holds(access.capabilities, "audit.view", "all");
+  // The organisation-wide change feed is audit.view_org (matrix v17) — audit.view alone, even at `all`, reads a client's history,
+  // not the whole organisation's trail.
+  const includeChanges = holds(access.capabilities, "audit.view_org", "all");
   let overview: AdminOverview | null = null;
   try {
     overview = await withTenantRead(isolatedPool(), access.organisationId, (db) => getAdminOverview(db, { includeChanges }));

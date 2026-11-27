@@ -120,7 +120,7 @@ describe("suppliers, against a real database", { skip: TEST_DATABASE_URL ? false
     for (const org of [ORG, OTHER, LOAD]) {
       await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]); // 0145 provisions GBP, the default
       await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES
-        ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant'), ($1, 'fin', 'finance', 'active', 'Fin Finance')`, [org]);
+        ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant'), ($1, 'fin', 'finance', 'active', 'Fin Finance'), ($1, 'rex', 'reviewer', 'active', 'Rex Reviewer')`, [org]);
       for (const [id, label] of [["uom-days", "days"], ["uom-hours", "hours"]]) {
         await q(`INSERT INTO nzi_console.reference_values (organisation_id, category_key, value_id, label, created_by, updated_by) VALUES ($1, 'units_of_measure', $2, $3, 'seed', 'seed')`, [org, `${org}:${id}`, label]);
       }
@@ -132,7 +132,8 @@ describe("suppliers, against a real database", { skip: TEST_DATABASE_URL ? false
   after(async () => { await database?.end(); });
 
   describe("the company (admin.lookups)", () => {
-    it("adds, edits, deactivates and reinstates a supplier, its name unique case-insensitively; a consultant may not", async () => {
+    // v17: the Consultant holds admin.lookups, so the refused caller is a Reviewer (agreed rates stay finance.manage).
+    it("adds, edits, deactivates and reinstates a supplier, its name unique case-insensitively; a reviewer may not", async () => {
       const made = await createSupplier(database.pool, { name: "  Verifiers   Ltd ", website: "https://verifiers.test" }, context("ada", "admin"));
       assert.deepEqual([made.data.name, made.data.website, made.data.active, made.data.version], ["Verifiers Ltd", "https://verifiers.test", true, 1]);
       await assert.rejects(createSupplier(database.pool, { name: "verifiers ltd" }, context("ada", "admin")), refused("name", "DUPLICATE"));
@@ -143,7 +144,7 @@ describe("suppliers, against a real database", { skip: TEST_DATABASE_URL ? false
       const off = await deactivateSupplier(database.pool, { supplierId: made.data.supplierId, expectedVersion: 2 }, context("ada", "admin", ORG, "Paused"));
       await assert.rejects(addSupplierContact(database.pool, { supplierId: made.data.supplierId, fullName: "Nobody" }, context("ada", "admin")), refused("supplierId", "INACTIVE"));
       await reinstateSupplier(database.pool, { supplierId: made.data.supplierId, expectedVersion: off.data.version }, context("ada", "admin"));
-      await assert.rejects(createSupplier(database.pool, { name: "Cal's supplier" }, context("cal", "consultant")), /admin\.lookups|permission/i);
+      await assert.rejects(createSupplier(database.pool, { name: "Rex's supplier" }, context("rex", "reviewer")), /admin\.lookups|permission/i);
     });
   });
 

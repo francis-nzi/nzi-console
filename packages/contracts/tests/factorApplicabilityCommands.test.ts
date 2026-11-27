@@ -10,11 +10,12 @@ const context = (reason?: string): CommandContext => ({ organisationId: "org", a
 const codes = (issues: Array<{ field: string; code: string }>) => issues.map((issue) => `${issue.field}:${issue.code}`).sort();
 
 describe("factor.applicability.add / .retire (dedup slice 5 Step B)", () => {
-  it("are registered under factor.manage, which only Admin holds; retire needs a reason", () => {
+  it("are registered under factor.manage, which Admin and (since v17) the Consultant hold; retire needs a reason", () => {
     for (const key of ["factor.applicability.add", "factor.applicability.retire"] as const) {
       assert.equal(commandDefinitions[key].permission, "factor.manage");
       assert.ok(roleCapabilityGrants("admin").some((grant) => grant.capability === "factor.manage"), "Admin holds it");
-      assert.ok(!roleCapabilityGrants("consultant").some((grant) => grant.capability === "factor.manage"), "a consultant does not");
+      assert.ok(roleCapabilityGrants("consultant").some((grant) => grant.capability === "factor.manage"), "v17: a consultant does too");
+      assert.ok(!roleCapabilityGrants("reviewer").some((grant) => grant.capability === "factor.manage"), "a reviewer does not");
     }
     assert.deepEqual([commandDefinitions["factor.applicability.add"].auditAction, commandDefinitions["factor.applicability.retire"].auditAction],
       ["factor.applicability.added", "factor.applicability.retired"]);

@@ -141,10 +141,11 @@ describe("the client portal profile and scope register (portal data-entry phase 
       }
     });
 
-    it("is portal.admin on this client: a reviewer is refused, a consultant decides for their own client only", async () => {
+    it("is portal.admin on this client: a reviewer is refused, a consultant decides for any client (v17)", async () => {
       await assert.rejects(setClientPortalProfile(pool, { clientId: CLIENT, profileKey: "time", value: "visible" }, context("p-8", "reviewer", "reviewer-a")), AuthorizationError);
       await setClientPortalProfile(pool, { clientId: CLIENT, profileKey: "time", value: "visible" }, context("p-9", "consultant"));
-      await assert.rejects(setClientPortalProfile(pool, { clientId: OTHER_CLIENT, profileKey: "time", value: "visible" }, context("p-10", "consultant")), AuthorizationError);
+      // v17: portal.admin is the consultant's at all — a colleague's client included.
+      await setClientPortalProfile(pool, { clientId: OTHER_CLIENT, profileKey: "time", value: "visible" }, context("p-10", "consultant"));
     });
 
     it("is idempotent: the same request replayed is one decision, one audit row, one topic", async () => {
@@ -196,7 +197,8 @@ describe("the client portal profile and scope register (portal data-entry phase 
 
     it("is category.visibility on this client, as the category switch is (NZC-110)", async () => {
       await assert.rejects(setClientPortalScopeVisibility(pool, { clientId: CLIENT, scope: "2", visible: false }, context("s-5", "reviewer", "reviewer-a")), AuthorizationError);
-      await assert.rejects(setClientPortalScopeVisibility(pool, { clientId: OTHER_CLIENT, scope: "2", visible: false }, context("s-6", "consultant")), AuthorizationError);
+      // v17: category.visibility is the consultant's at all — a colleague's client included.
+      await setClientPortalScopeVisibility(pool, { clientId: OTHER_CLIENT, scope: "2", visible: false }, context("s-6", "consultant"));
     });
   });
 
@@ -219,7 +221,8 @@ describe("the client portal profile and scope register (portal data-entry phase 
       const holder = (role: "admin" | "consultant" | "reviewer", userId: string) => ({ organisationId: ORG, userId, capabilities: commandGrantForRole(role, ORG, userId).capabilities });
       const view = await getPortalProfileForStaff(pool, holder("consultant", CONSULTANT), CLIENT);
       assert.equal(view.profile.find((entry) => entry.key === "time")?.decision?.decidedByName, "Cass Consultant");
-      await assert.rejects(getPortalProfileForStaff(pool, holder("consultant", CONSULTANT), OTHER_CLIENT), AuthorizationError, "own clients only");
+      // v17: and a colleague's client too — portal.admin is the consultant's at all.
+      await getPortalProfileForStaff(pool, holder("consultant", CONSULTANT), OTHER_CLIENT);
       await assert.rejects(getPortalProfileForStaff(pool, holder("reviewer", "reviewer-a"), CLIENT), AuthorizationError);
     });
   });
@@ -281,11 +284,10 @@ describe("the client portal profile and scope register (portal data-entry phase 
       await setClientPortalScopeVisibility(pool, { clientId: RESET_CLIENT, scope: "2", visible: false }, context("zrv-t4"));
       await assert.rejects(resetClientPortalProfile(pool, { clientId: RESET_CLIENT }, context("zrs-reset-5", "reviewer", "reviewer-a")), AuthorizationError);
       await assert.rejects(resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrv-reset-5", "reviewer", "reviewer-a")), AuthorizationError);
-      // A consultant who owns the client may; one who does not own it may not (own-clients).
+      // A consultant who owns the client may — and, since v17, one who does not (both capabilities are theirs at all).
       assert.equal((await resetClientPortalProfile(pool, { clientId: RESET_CLIENT }, context("zrs-reset-6", "consultant"))).data.count, 1);
       await db.query(`UPDATE nzi_console.clients SET owner_user_id = NULL WHERE client_id = $1`, [RESET_CLIENT]);
-      await assert.rejects(resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrv-reset-6", "consultant")), AuthorizationError);
-      assert.equal((await resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrv-reset-7"))).data.count, 1, "an admin may");
+      assert.equal((await resetClientPortalVisibility(pool, { clientId: RESET_CLIENT }, context("zrv-reset-6", "consultant"))).data.count, 1, "v17: on a client they do not own");
     });
 
     it("replays idempotently: the same key resets once", async () => {

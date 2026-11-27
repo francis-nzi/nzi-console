@@ -102,13 +102,15 @@ describe("Time reads (PR B), against a real database", { skip: TEST_DATABASE_URL
       assert.equal(byId.get("j-free")!.overCost, null, "no fee, so neither over nor under");
     });
 
-    it("shows hours without money to a reader without finance.view, and only their own clients' jobs to an own-clients one", async () => {
+    it("shows hours without money to a reader without finance.view, and every client's jobs to a consultant since v17", async () => {
       const reviewer = await read((db) => readTimeOversight(db, holder("rev", "reviewer"), SEPT));
       assert.ok(reviewer.jobs.every((job) => job.money === null), "hours only");
       assert.equal(reviewer.totals.overCost, null, "no cost figure, not zero");
+      // v17: time.view is the consultant's at all — no own-clients holder of it is left.
       const consultant = await read((db) => readTimeOversight(db, holder("cal", "consultant"), SEPT));
-      assert.deepEqual([consultant.allClients, consultant.jobs.map((job) => job.jobId)], [false, ["j-cal"]]);
-      assert.ok(consultant.jobs[0]!.money, "a consultant holds finance.view, so sees their own job's cost");
+      assert.equal(consultant.allClients, true);
+      assert.ok(consultant.jobs.some((job) => job.jobId === "j-dee"), "a colleague's job included");
+      assert.ok(consultant.jobs.every((job) => job.money), "a consultant holds finance.view, so sees the cost");
       await assert.rejects(read((db) => readTimeOversight(db, holder("vic", "viewer"), SEPT)), /time\.view/);
     });
   });
@@ -125,11 +127,12 @@ describe("Time reads (PR B), against a real database", { skip: TEST_DATABASE_URL
       assert.equal(byId.get("ada")!.totalMinutes, 0);
     });
 
-    it("gives hours without cost to a reviewer, and refuses an own-clients holder and a viewer", async () => {
+    it("gives hours without cost to a reviewer, the whole team to a consultant since v17, and refuses a viewer", async () => {
       const payroll = await read((db) => readTimePayroll(db, holder("rev", "reviewer"), SEPT));
       assert.equal(payroll.moneyVisible, false);
       assert.ok(payroll.people.every((person) => person.money === null));
-      await assert.rejects(read((db) => readTimePayroll(db, holder("cal", "consultant"), SEPT)), /across all clients/);
+      // v17: the consultant's time.view is all, so the team-wide read opens (it refused an own-clients holder before).
+      assert.ok((await read((db) => readTimePayroll(db, holder("cal", "consultant"), SEPT))).people.some((person) => person.userId === "dee"));
       await assert.rejects(read((db) => readTimePayroll(db, holder("vic", "viewer"), SEPT)), /time\.view/);
     });
   });
@@ -142,7 +145,8 @@ describe("Time reads (PR B), against a real database", { skip: TEST_DATABASE_URL
       assert.deepEqual([cal.weeklyCapacityHours, cal.capacityMinutes, cal.loggedMinutes, cal.utilisationPct], [37.5, 37.5 / 5 * 22 * 60, 360, Math.round(360 / 9900 * 100)]);
       assert.equal(view.capacityEditable, true);
       assert.equal((await read((db) => readTimeUtilisation(db, holder("rev", "reviewer"), SEPT))).capacityEditable, false);
-      await assert.rejects(read((db) => readTimeUtilisation(db, holder("cal", "consultant"), SEPT)), /across all clients/);
+      // v17: the consultant reads the team's utilisation (time.view at all), but cannot edit capacity (admin.users).
+      assert.equal((await read((db) => readTimeUtilisation(db, holder("cal", "consultant"), SEPT))).capacityEditable, false);
     });
 
     it("sets a person's capacity under admin.users, versioned and audited; the read follows", async () => {

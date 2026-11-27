@@ -66,7 +66,7 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
       onMigration: async (filename, admin) => { if (filename === "0144_trainee_pending_email_read.sql") await seedBefore0145(admin); },
     }))!;
     for (const org of [NZI, DEMO]) {
-      await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant')`, [org]);
+      await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant'), ($1, 'rex', 'reviewer', 'active', 'Rex Reviewer')`, [org]);
     }
   });
   after(async () => { await database?.end(); });
@@ -158,8 +158,9 @@ describe("Commercial lookups (0145), against a real database", { skip: TEST_DATA
       assert.deepEqual(audit.map((row) => row.action), ["vat.updated", "vat.default_set", "vat.deactivated", "vat.reinstated"]);
     });
 
-    it("is admin.lookups: a consultant may not add a rate", async () => {
-      await assert.rejects(createVatRate(database.pool, { name: "Consultant's", ratePct: 1 }, context("cal", "consultant", DEMO)), /admin\.lookups|permission/i);
+    it("is admin.lookups: a reviewer may not add a rate", async () => {
+      // v17: the Consultant holds admin.lookups whole (no commercial split), so a reviewer is the role without it.
+      await assert.rejects(createVatRate(database.pool, { name: "Reviewer's", ratePct: 1 }, context("rex", "reviewer", DEMO)), /admin\.lookups|permission/i);
     });
   });
 

@@ -128,8 +128,9 @@ describe("Actions A1 — the library, the plan and the ladder (0186), against a 
       assert.equal((await q(`SELECT count(*)::int AS n FROM nzi_console.levers WHERE lever_id = $1`, [leverId]))[0]!.n, 1, "never deleted");
     });
 
-    it("is admin.lookups: a consultant can build a plan from the library but cannot change it", async () => {
-      await assert.rejects(upsertLever(database.pool, { key: "air", title: "Air", iconKey: "target" }, context("consultant")), /admin\.lookups|permission|not allowed/i);
+    it("is admin.lookups: a reviewer cannot change the library", async () => {
+      // v17: the Consultant holds admin.lookups, so a reviewer is the role without it.
+      await assert.rejects(upsertLever(database.pool, { key: "air", title: "Air", iconKey: "target" }, context("reviewer")), /admin\.lookups|permission|not allowed/i);
     });
 
     it("withdraws a strategy: kept on the record, no longer offered", async () => {

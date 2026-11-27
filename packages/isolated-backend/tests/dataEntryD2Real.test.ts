@@ -22,6 +22,7 @@ const JOB = "job-d2";
 const JOB_NEXT = "job-d2-next";
 const ADMIN = "staff-d2-admin";
 const CONSULTANT = "staff-d2-consultant";
+const REVIEWER = "staff-d2-reviewer";
 const DS = "d2-dataset";
 const SECRET = "d2-import-secret-at-least-thirty-two-bytes-long";
 
@@ -56,7 +57,7 @@ describe("Data entry D2: the allocation map routes spend to its proper category"
     }
     await db.query(`SELECT set_config('app.organisation_id', $1, false)`, [ORG]);
     await db.query(`INSERT INTO nzi_console.clients (organisation_id, client_id, name, status) VALUES ($1, $2, 'Co', 'active')`, [ORG, CLIENT]);
-    for (const [user, role] of [[ADMIN, "admin"], [CONSULTANT, "consultant"]]) {
+    for (const [user, role] of [[ADMIN, "admin"], [CONSULTANT, "consultant"], [REVIEWER, "reviewer"]]) {
       await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status) VALUES ($1, $2, $3, 'active')`, [ORG, user, role]);
     }
     await db.query(
@@ -87,7 +88,7 @@ describe("Data entry D2: the allocation map routes spend to its proper category"
       "' 74 20 ' and '7420' are one GL code");
     assert.deepEqual(await issues(createSpendAllocation(database.pool, { clientId: CLIENT, keyKind: "gl", key: "9999", targetCategoryCode: "3.6", vatApplies: true,
       defaultDatasetId: DS, defaultFactorId: "d2-fuel-spend" }, context())), ["FACTOR_NOT_IN_CATEGORY"], "a Scope 1 factor cannot price a Scope 3 line");
-    await assert.rejects(createSpendAllocation(database.pool, { clientId: CLIENT, keyKind: "gl", key: "1234", targetCategoryCode: "3.6", vatApplies: true }, context(CONSULTANT, "consultant")),
+    await assert.rejects(createSpendAllocation(database.pool, { clientId: CLIENT, keyKind: "gl", key: "1234", targetCategoryCode: "3.6", vatApplies: true }, context(REVIEWER, "reviewer")), // v17: the Consultant holds admin.lookups
       (error: any) => /Authori[sz]ation|Forbidden|permission/i.test(`${error.name} ${error.message}`), "the map is admin.lookups's");
     const audit = (await db.query<{ action: string }>(`SELECT action FROM nzi_console.audit_events WHERE audit_event_id = $1`, [pensions.auditEventId])).rows[0]!;
     assert.equal(audit.action, "spend_allocation.created");

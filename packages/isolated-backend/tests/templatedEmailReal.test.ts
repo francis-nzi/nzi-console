@@ -95,7 +95,7 @@ describe("templated email (phase 2), against a real database", { skip: TEST_DATA
       await assert.rejects(createMessageTemplate(database.pool, { templateKey: "message.notification", subject: "S", body: "{{threadLink}}", html: "<p>{{threadLink}}</p><script>x</script>" }, context()), refused("html", "UNSAFE_HTML"));
       await assert.rejects(createMessageTemplate(database.pool, { templateKey: "message.notification", subject: "S", body: "{{threadLink}} https://console.example.test/enrol#token=abc" }, context()), refused("body", "LINK_AT_REST"));
       await assert.rejects(createMessageTemplate(database.pool, { templateKey: "strategy.reminder.overdue", subject: "S", body: "{{targetDate}}", html: "<p>x</p>" }, context()), refused("html", "NOT_SENT_AS_HTML"));
-      await assert.rejects(createMessageTemplate(database.pool, { templateKey: "message.notification", subject: "S", body: "{{threadLink}}" }, context("consultant")), /admin\.templates|permission/i);
+      await assert.rejects(createMessageTemplate(database.pool, { templateKey: "message.notification", subject: "S", body: "{{threadLink}}" }, context("reviewer")), /admin\.templates|permission/i); // v17: the Consultant holds admin.templates
       assert.equal((await q(`SELECT 1 FROM nzi_console.message_templates WHERE organisation_id = $1 AND template_key = 'message.notification'`, [ORG])).length, 0);
     });
 

@@ -74,7 +74,7 @@ describe("CRM and BD lookups, against a real database", { skip: TEST_DATABASE_UR
     for (const org of [ORG, OTHER, LOAD]) {
       await q(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]);
       await q(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES
-        ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant')`, [org]);
+        ($1, 'ada', 'admin', 'active', 'Ada Admin'), ($1, 'cal', 'consultant', 'active', 'Cal Consultant'), ($1, 'rex', 'reviewer', 'active', 'Rex Reviewer')`, [org]);
     }
   });
   after(async () => { await database?.end(); });
@@ -91,7 +91,7 @@ describe("CRM and BD lookups, against a real database", { skip: TEST_DATABASE_UR
   });
 
   describe("the funnel (admin.lookups)", () => {
-    it("adds stages with a key set once and a probability; refuses a repeated key or name, a bad probability, and a consultant", async () => {
+    it("adds stages with a key set once and a probability; refuses a repeated key or name, a bad probability, and a reviewer", async () => {
       for (const [key, name, sortOrder, probabilityPct] of [["lead", "Lead", 1, 10], ["qualified", "Qualified", 2, 35], ["won", "Won", 3, 100]] as const) {
         await createBdStage(database.pool, { stageKey: key, name, sortOrder, probabilityPct }, context("ada", "admin"));
       }
@@ -99,7 +99,8 @@ describe("CRM and BD lookups, against a real database", { skip: TEST_DATABASE_UR
       await assert.rejects(createBdStage(database.pool, { stageKey: "lead-2", name: "LEAD", sortOrder: 9, probabilityPct: 1 }, context("ada", "admin")), refused("name", "DUPLICATE"));
       await assert.rejects(createBdStage(database.pool, { stageKey: "x", name: "X", sortOrder: 9, probabilityPct: 100.5 }, context("ada", "admin")), /Command validation failed/);
       await assert.rejects(createBdStage(database.pool, { stageKey: "Bad Key", name: "Bad", sortOrder: 9, probabilityPct: 1 }, context("ada", "admin")), /Command validation failed/);
-      await assert.rejects(createBdStage(database.pool, { stageKey: "cal", name: "Cal's", sortOrder: 9, probabilityPct: 1 }, context("cal", "consultant")), /admin\.lookups|permission/i);
+      // v17: the Consultant holds admin.lookups, so a reviewer is the role without it.
+      await assert.rejects(createBdStage(database.pool, { stageKey: "rex", name: "Rex's", sortOrder: 9, probabilityPct: 1 }, context("rex", "reviewer")), /admin\.lookups|permission/i);
       assert.deepEqual((await stages(ORG)).map((row) => [row.key, row.probabilityPct, row.entry]), [["lead", 10, true], ["qualified", 35, false], ["won", 100, false]]);
     });
 

@@ -147,8 +147,11 @@ describe("Time entries, against a real database", { skip: TEST_DATABASE_URL ? fa
       await assert.rejects(logTimeEntry(database.pool, { jobId: "j-gone", workDate: "2026-03-10", minutes: 60, activityValueId: activity("fieldwork") }, context("cal", "consultant")), issue("jobId", "CANCELLED"));
     });
 
-    it("keeps a consultant to their own clients' jobs (T-Q7); a viewer logs on any job (T-Q3); another organisation's job is refused", async () => {
-      await assert.rejects(logTimeEntry(database.pool, { jobId: "j-dee", workDate: "2026-03-11", minutes: 60, activityValueId: activity("meeting") }, context("cal", "consultant")), /own clients/);
+    it("lets a consultant log on a colleague's client's job (v17; T-Q7 until then); a viewer logs on any job (T-Q3); another organisation's job is refused", async () => {
+      // v17: time.log is the consultant's at all. Voided at once, so the reads below see what they always did.
+      const colleagues = await logTimeEntry(database.pool, { jobId: "j-dee", workDate: "2026-03-11", minutes: 60, activityValueId: activity("meeting") }, context("cal", "consultant"));
+      assert.equal((await entry(colleagues.data.entryId)).user_id, "cal");
+      await voidTimeEntry(database.pool, { entryId: colleagues.data.entryId, expectedVersion: 1 }, context("cal", "consultant"));
       const viewer = await logTimeEntry(database.pool, { jobId: "j-dee", workDate: "2026-03-11", minutes: 60, activityValueId: activity("meeting") }, context("vic", "viewer"));
       assert.equal((await entry(viewer.data.entryId)).user_id, "vic");
       await assert.rejects(logTimeEntry(database.pool, { jobId: "j-oz", workDate: "2026-03-11", minutes: 60, activityValueId: activity("meeting") }, context("ada")), /not in your organisation/);
@@ -166,8 +169,8 @@ describe("Time entries, against a real database", { skip: TEST_DATABASE_URL ? fa
       assert.deepEqual([row.minutes, row.billable, row.note, Number(row.cost_rate), Number(row.charge_rate)], [120, false, null, JUL.cost, JUL.sell]);
       const payloads = await assertNoMoney(moved.auditEventId);
       assert.deepEqual(payloads.before, { jobId: "j-cal", workDate: "2026-03-10", minutes: 120, activityValueId: activity("reporting"), billable: false });
-      // Moving it to a job the consultant cannot reach is refused.
-      await assert.rejects(editTimeEntry(database.pool, { entryId: calEntry, expectedVersion: moved.data.version, jobId: "j-dee", workDate: "2026-08-03", minutes: 120, activityValueId: activity("reporting"), billable: false }, context("cal", "consultant")), /own clients/);
+      // Moving it to a job the consultant cannot reach is refused — since v17 that is another organisation's.
+      await assert.rejects(editTimeEntry(database.pool, { entryId: calEntry, expectedVersion: moved.data.version, jobId: "j-oz", workDate: "2026-08-03", minutes: 120, activityValueId: activity("reporting"), billable: false }, context("cal", "consultant")), /not in your organisation/);
       await assert.rejects(editTimeEntry(database.pool, { entryId: calEntry, expectedVersion: 1, jobId: "j-cal", workDate: "2026-08-03", minutes: 30, activityValueId: activity("reporting"), billable: false }, context("cal", "consultant")), /version/i);
     });
 
@@ -202,9 +205,9 @@ describe("Time entries, against a real database", { skip: TEST_DATABASE_URL ? fa
       assert.ok(withVoided.some((e) => !e.active));
     });
 
-    it("offers a consultant only their own clients' open jobs, and the activities with their defaults", async () => {
+    it("offers a consultant every open job since v17 (time.log at all), and the activities with their defaults", async () => {
       const jobs = await withTenantRead(database.pool, ORG, (db) => readLoggableJobs(db, holder("cal", "consultant")));
-      assert.deepEqual(jobs.map((j) => j.jobId), ["j-cal"]);
+      assert.deepEqual(new Set(jobs.map((j) => j.jobId)), new Set(["j-cal", "j-dee"]));
       const all = await withTenantRead(database.pool, ORG, (db) => readLoggableJobs(db, holder("ada", "admin")));
       assert.deepEqual(new Set(all.map((j) => j.jobId)), new Set(["j-cal", "j-dee"]));
       const activities = await withTenantRead(database.pool, ORG, (db) => readTimeActivities(db, holder("vic", "viewer")));
@@ -219,7 +222,9 @@ describe("Time entries, against a real database", { skip: TEST_DATABASE_URL ? fa
       assert.deepEqual(full.totals, { minutes: 135, billableMinutes: 135 });
       const own = await withTenantRead(database.pool, ORG, (db) => readJobTimeSummary(db, holder("vic", "viewer"), "j-dee"));
       assert.deepEqual([own.othersVisible, own.people.map((p) => p.userId)], [false, ["vic"]]);
-      await assert.rejects(withTenantRead(database.pool, ORG, (db) => readJobTimeSummary(db, holder("cal", "consultant"), "j-dee")), /own clients/);
+      // v17: time.view is the consultant's at all — a colleague's job shows everyone's hours.
+      const colleagues = await withTenantRead(database.pool, ORG, (db) => readJobTimeSummary(db, holder("cal", "consultant"), "j-dee"));
+      assert.deepEqual([colleagues.othersVisible, new Set(colleagues.people.map((p) => p.userId))], [true, new Set(["vic", "dee"])]);
     });
   });
 
@@ -270,13 +275,12 @@ describe("Time entries, against a real database", { skip: TEST_DATABASE_URL ? fa
       const logged = await logTimeEntry(database.pool, { jobId: "j-cal", workDate: "2026-05-04", minutes: 60, activityValueId: activity("analysis") }, context("cal", "consultant"));
       await q(`UPDATE nzi_console.clients SET owner_user_id = 'dee' WHERE organisation_id = $1 AND client_id = 'c-cal'`, [ORG]);
       try {
-        // A new entry on the job is still refused: logging needs the job (T-Q7) …
-        await assert.rejects(logTimeEntry(database.pool, { jobId: "j-cal", workDate: "2026-05-05", minutes: 30, activityValueId: activity("analysis") }, context("cal", "consultant")), /own clients/);
-        // … but the entry already logged is cal's own, and stays correctable.
+        // Since v17 a new entry on the job is allowed too (time.log at all); until then logging needed the client (T-Q7).
+        // The entry already logged is cal's own, and stays correctable.
         const edited = await editTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: 1, jobId: "j-cal", workDate: "2026-05-04", minutes: 75, activityValueId: activity("analysis"), billable: true }, context("cal", "consultant"));
         assert.equal((await entry(logged.data.entryId)).minutes, 75);
-        // Moving it still needs time.log on the new job: j-dee is not cal's.
-        await assert.rejects(editTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: edited.data.version, jobId: "j-dee", workDate: "2026-05-04", minutes: 75, activityValueId: activity("analysis"), billable: true }, context("cal", "consultant")), /own clients/);
+        // Moving it still needs the new job to be reachable: another organisation's is not.
+        await assert.rejects(editTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: edited.data.version, jobId: "j-oz", workDate: "2026-05-04", minutes: 75, activityValueId: activity("analysis"), billable: true }, context("cal", "consultant")), /not in your organisation/);
         // Someone else's entry stays out of reach — the new owner included.
         await assert.rejects(voidTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: edited.data.version }, context("dee", "consultant")), /only your own time/);
         await voidTimeEntry(database.pool, { entryId: logged.data.entryId, expectedVersion: edited.data.version }, context("cal", "consultant"));

@@ -56,7 +56,7 @@ describe("job file types, against the database", { skip: TEST_DATABASE_URL ? fal
     await admin(async (db) => {
       await db.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [OTHER]);
       await db.query(`SELECT nzi_console.provision_organisation($1)`, [OTHER]);
-      for (const org of [ORG, OTHER]) for (const role of ["admin", "consultant"]) {
+      for (const org of [ORG, OTHER]) for (const role of ["admin", "consultant", "reviewer"]) {
         await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [org, `${role}-${org}`, role]);
       }
     });
@@ -86,8 +86,9 @@ describe("job file types, against the database", { skip: TEST_DATABASE_URL ? fal
     await assert.rejects(createFileType(database.pool, { fileTypeKey: "other", displayName: "site PHOTOS", storageFolderKey: "other" }, context()), issue("displayName", "DUPLICATE"));
   });
 
-  it("is admin.lookups — a consultant cannot change a file type", async () => {
-    await assert.rejects(createFileType(database.pool, { fileTypeKey: "mine", displayName: "Mine", storageFolderKey: "mine" }, context(ORG, "consultant")), /admin\.lookups|permission|capabilit/i);
+  it("is admin.lookups — a reviewer cannot change a file type", async () => {
+    // v17: the Consultant holds admin.lookups, so a reviewer is the role without it.
+    await assert.rejects(createFileType(database.pool, { fileTypeKey: "mine", displayName: "Mine", storageFolderKey: "mine" }, context(ORG, "reviewer")), /admin\.lookups|permission|capabilit/i);
   });
 
   it("edits the name, folder and order as a versioned change — never the key — and refuses a stale edit", async () => {

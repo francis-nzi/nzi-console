@@ -883,7 +883,7 @@ function DatasetPanel({
   showReasons?: boolean;
   writeEnabled: boolean;
 }) {
-  // Phase 3c (JW-2, ruled #12): adding an edition is dataset.manage — Admin only, pending Francis. Everyone sees the
+  // Phase 3c (JW-2, ruled #12): adding an edition is dataset.manage — Admin and, since matrix v17, the Consultant. Everyone sees the
   // editions and the control; anyone without the capability sees why it is blocked ("ask an admin"), never a hidden one.
   const access = useEditAccess("dataset.manage", writeEnabled);
   const router = useRouter(),

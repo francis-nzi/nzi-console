@@ -24,7 +24,7 @@ code.** It closes the ad-hoc `finance.manage` / `financials.edit` naming the rev
 | Role | Who | Shape |
 |---|---|---|
 | **Admin** | Org owner / platform admin | Everything, incl. the Admin Centre |
-| **Consultant** | Account owner / CRM owner (the main staff role) | Owns clients & jobs; prepares, approves the snapshot and releases the report (v12). Independent approval still bars doing so to their own work unless the organisation setting is off |
+| **Consultant** | Account owner / CRM owner (the main staff role) | Runs the whole job on any client: Admin except organisation settings, staff and sign-in, finance and billing, identity and erasure, the client-facing library tier and the organisation-wide audit trail (v17). Prepares, approves the snapshot and releases the report (v12); independent approval still bars doing so to their own work unless the organisation setting is off |
 | **Reviewer** | Assurance / QA | Approves snapshots and publishes; does not prepare |
 | **Finance** | Commercial / billing | The commercial ledger; read-only on the client record |
 | **Viewer** | Read-only staff | Sees, changes nothing |
@@ -40,7 +40,7 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `client.view` | ✓ | ✓ | R | R | R |
 | `client.create` | ✓ | ✓ | — | — | — |
 | `client.edit` | ✓ | ✓ | — | — | — |
-| `client.deactivate` | ✓ | — | — | — | — |
+| `client.deactivate` | ✓ | ✓ | — | — | — |
 | `contact.manage` | ✓ | ✓ | — | — | — |
 | `site.manage` | ✓ | ✓ | — | — | — |
 | `target.edit` | ✓ | ✓ | — | — | — |
@@ -58,31 +58,33 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
 | `finance.view` | ✓ | R | — | ✓ | — |
 | `finance.manage` (quotes/invoices/credit notes) | ✓ | — | — | ✓ | — |
 | `portal.admin` (invite, reset MFA/pw, job access, data-entry windows) ⚑ | ✓ | ✓ | — | — | — |
-| `category.visibility` (what a client sees of the category list) | ✓ | ⚑ own | — | — | — |
+| `category.visibility` (what a client sees of the category list) | ✓ | ✓ | — | — | — |
 | `subject.review` (identity questions, spans organisations) ⚑ | ✓ | — | — | — | — |
 | `subject.export` (reads a person's data back in the clear) ⚑ | ✓ | — | — | — | — |
 | `subject.erase` (destroys a person's key, irreversibly) ⚑ | ✓ | — | — | — | — |
 | `clientfactor.manage` | ✓ | ✓ | — | — | — |
-| `dataset.manage` / `factor.manage` (calc-feeding config) | ✓ | — | — | — | — |
-| `admin.users` / `admin.lookups` / `admin.templates` / `admin.settings` | ✓ | — | — | — | — |
+| `dataset.manage` / `factor.manage` (calc-feeding config) | ✓ | ✓ | — | — | — |
+| `admin.users` / `admin.settings` | ✓ | — | — | — | — |
+| `admin.lookups` / `admin.templates` | ✓ | ✓ | — | — | — |
 | `staff.invite` (issue a staff member's single-use enrolment link — access to the organisation's data) ⚑ | ✓ | — | — | — | — |
 | `staff.credential.reset` (reset an enrolled member's sign-in: ends their sessions, retires password + authenticator, issues a fresh enrolment link) ⚑ | ✓ | — | — | — | — |
-| `audit.view` | ✓ | ⚑ own | R | ⚑ own | — |
+| `audit.view` (a client's history; the organisation-wide feed for one's own clients) ⚑ | ✓ | ✓ | R | ⚑ own | — |
+| `audit.view_org` (the organisation-wide audit trail: /admin's change feed, /platform, the audit-events read) ⚑ | ✓ | — | R | — | — |
 | `support.portal_impersonate` (enter a client's portal context) ⚑ | ✓ | ✓ | — | — | — |
 | `knowledge.capture` (offer a question + answer to the library as a draft) | ✓ | ✓ | ✓ | ✓ | ✓ |
 | `knowledge.approve` (draft → internal: live for staff, grounds the help AI) | ✓ | ✓ | — | — | — |
 | `knowledge.publish` (internal → public: client-facing, website-bound) | ✓ | — | — | — | — |
-| `time.log` (log, edit and void one's **own** time on a job) ⚑ | ✓ | ⚑ own | ✓ | ✓ | ✓ |
-| `time.view` (read other people's time — hours; money only with `finance.view`) ⚑ | ✓ | ⚑ own | R | ✓ | — |
+| `time.log` (log, edit and void one's **own** time on a job) ⚑ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `time.view` (read other people's time — hours; money only with `finance.view`) ⚑ | ✓ | ✓ | R | ✓ | — |
 | `task.manage` (keep CRM tasks: create, edit, reassign, reschedule, complete, reopen — only one's own or one's assigned) ⚑ | ✓ | ✓ | ✓ | ✓ | — |
-| `import.manage` (upload a job's import reconciliation summary, open the import view, and resolve its flagged rows — Phase 2; no ingest) ⚑ | ✓ | — | — | — | — |
+| `import.manage` (upload a job's import reconciliation summary, open the import view, and resolve its flagged rows — Phase 2; no ingest) ⚑ | ✓ | ✓ | — | — | — |
 | `import.refresh` (refresh a job from the previous system in the service: preview the chain, or commit it with a reason — D7 the floor) ⚑ | ✓ | ✓ | — | — | — |
-| `import.refresh_batch` (refresh all of a client's imported jobs in one batch: the eligible auto-committed through the fast path, the rest queued for a person) ⚑ | ✓ | — | — | — | — |
+| `import.refresh_batch` (refresh all of a client's imported jobs in one batch: the eligible auto-committed through the fast path, the rest queued for a person) ⚑ | ✓ | ✓ | — | — | — |
 
 ### Conditional notes (⚑)
 
 - `baseline.rebaseline` — always requires a reason and writes a governed baseline-change
-  event; a Consultant can perform it on their own clients, an Admin on any.
+  event; an Admin or a Consultant can perform it on any client (a Consultant's own clients only until v17).
 - `snapshot.review` / `report.publish` — **separation of duties:** cannot be exercised by
   the same user who prepared the snapshot; `report.publish` additionally requires an
   approved snapshot to exist.
@@ -107,7 +109,9 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   `baseline.rebaseline`). Held by the delivering team (Admin/Consultant), **not** finance-only —
   it's an operational concession on an already-granted entitlement, not a commercial re-sale;
   Finance keeps read visibility via `finance.view`.
-- `audit.view` — Consultant/Finance see the audit trail for their own clients only.
+- `audit.view` — a client's history (CLIENT-12): Finance on their own clients only; Admin, Reviewer and (v17) Consultant on any.
+  The **organisation-wide** trail is `audit.view_org` (v17; Admin, Reviewer): an `audit.view` holder without it — Consultant,
+  Finance — sees that feed for their own clients only, as before v17.
 - **Knowledge library (NZC-081).** Three capabilities, not two. Capture is held by every role —
   anyone who answers a question can offer it to the library — because writing to the library is its
   own act and should not ride an unrelated gate. Approval and publication are separate because they
@@ -174,6 +178,17 @@ Legend: ✓ full · **R** read-only · ⚑ conditional (see note) · — none
   re-derived per job: the eligible auto-commit, the rest are queued for a person. The per-job Admin-commit gate (0231) still
   applies. A skipped job is **already current locally** — the batch does not re-read it from the previous system. Audited by the
   client with the run id and counts only.
+
+- **The CRM access matrix (matrix v17, 0241; Francis 27 Nov 2026, _handoff/AUDIT-crm-access.md).** A consultant CRM does their whole
+  job on any client, so the **Consultant is Admin except**: `admin.settings`; `admin.users`, `staff.invite` and `staff.credential.reset`;
+  `finance.manage`; `subject.review`, `subject.export` and `subject.erase`; `knowledge.publish`; and the organisation-wide audit
+  trail, `audit.view_org` (new, Admin and Reviewer). Everything else is held at **all**, `admin.lookups` whole (no split). So the
+  own-clients grants (`baseline.rebaseline`, `portal.admin`, `category.visibility`, `audit.view`, `time.log`, `time.view`) widen to
+  all, and `client.deactivate`, `dataset.manage`, `factor.manage`, `admin.lookups`, `admin.templates`, `import.manage` and
+  `import.refresh_batch` are gained. **Nothing else changes:** independent approval is untouched (off at NZI, so a consultant may
+  prepare, approve and publish their own report, marked and audited as today); the commands that ask for a reason keep it and no
+  new reason is required; the per-job Admin-commit gate (0231) stays an organisation's opt-in, off until set; the operator's CLI
+  runs (the book runner, spanning-batch `--commit`) stay operator runs.
 
 ## Naming convention
 

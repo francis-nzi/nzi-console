@@ -219,7 +219,7 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
     assert.equal(await jobPrint(OK.jobId), before);
   });
 
-  it("only an Admin's batch: an actor without import.refresh_batch has every job skipped, and nothing is read or written", async () => {
+  it("only an Admin's batch: any other actor — a Consultant included, who holds import.refresh_batch since v17 — has every job skipped, and nothing is read or written", async () => {
     const print = await fingerprint();
     calls.length = 0;
     const result = await run({ commit: true, actorId: "staff-consultant" });

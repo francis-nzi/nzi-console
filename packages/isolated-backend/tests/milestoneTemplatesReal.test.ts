@@ -45,7 +45,7 @@ describe("milestone templates, against the database", { skip: TEST_DATABASE_URL 
       for (const org of [ORG_A, ORG_B]) {
         await db.query(`INSERT INTO nzi_console.organisations (organisation_id, name) VALUES ($1, $1)`, [org]);
         await db.query(`SELECT nzi_console.provision_organisation($1)`, [org]);
-        for (const role of ["admin", "consultant"]) {
+        for (const role of ["admin", "consultant", "reviewer"]) {
           await db.query(`INSERT INTO nzi_console.memberships (organisation_id, user_id, role_id, status, display_name) VALUES ($1, $2, $3, 'active', $2)`, [org, `${role}-${org}`, role]);
         }
       }
@@ -78,8 +78,9 @@ describe("milestone templates, against the database", { skip: TEST_DATABASE_URL 
     await assert.rejects(createMilestoneTemplate(database.pool, { name: "standard crp", items: schedule(1, 2, 3) }, context()), issue("name", "DUPLICATE"));
   });
 
-  it("is admin.templates — a consultant cannot change a template", async () => {
-    await assert.rejects(createMilestoneTemplate(database.pool, { name: "Mine", items: schedule(1, 2, 3) }, context(ORG_A, "consultant")), /admin\.templates|permission|capabilit/i);
+  // v17: the Consultant holds admin.templates, so the refused caller is a Reviewer.
+  it("is admin.templates — a reviewer cannot change a template", async () => {
+    await assert.rejects(createMilestoneTemplate(database.pool, { name: "Mine", items: schedule(1, 2, 3) }, context(ORG_A, "reviewer")), /admin\.templates|permission|capabilit/i);
   });
 
   it("replays an idempotent retry instead of adding twice", async () => {
