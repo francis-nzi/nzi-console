@@ -1,5 +1,5 @@
 import { DATASET_EDITION_SUFFIX, datasetLabelFromId, datasetSeriesKey, monthsBetween } from "@nzi/contracts";
-import { DESNZ_SERIES, internationalDefaultAllows, siteCountry, windowMonths, windowYearParts } from "./datasetScope";
+import { DESNZ_SERIES,internationalDefaultAllows, isGridElectricity, siteCountry, UAE_SERIES, windowMonths, windowYearParts } from "./datasetScope";
 import type { Queryable } from "./postgres";
 
 /**
@@ -374,8 +374,12 @@ export async function factorCountryIssue(db: Queryable, organisationId: string, 
   if (!found?.job_country) return null;
   const country = siteCountry(found.site_country, found.job_country);
   const datasetCountry = found.dataset_country;
-  if (datasetCountry === country || datasetCountry === "GLOBAL") return null;
   const series = datasetSeriesKey(row.datasetId);
+  // Library L-5 (ruled 27 Nov): UAE Activity & Spend is DESNZ content; its grid electricity never serves AE — IEA AE does.
+  if (datasetCountry === "AE" && country === "AE" && series === UAE_SERIES && isGridElectricity({ label: row.factorLabel, scopes: row.scopes })) {
+    return "Electricity for the UAE is priced on IEA AE, not on UAE Activity & Spend's UK grid lines.";
+  }
+  if (datasetCountry === country || datasetCountry === "GLOBAL") return null;
   if (datasetCountry === "ROW" && series.startsWith("ceda-")) return null;
   if (datasetCountry === "GB" && series === DESNZ_SERIES && internationalDefaultAllows({ factorId: row.factorId, label: row.factorLabel, scopes: row.scopes })) {
     const ownActivity = (await db.query(

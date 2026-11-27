@@ -26,9 +26,32 @@ export type ExtractRow = Record<string, string>;
 
 /** Source → family (ruled). Matched on the start of the source name, case-insensitively. */
 export const FAMILIES: ReadonlyArray<readonly [prefix: string, family: string]> = [
-  ["desnz", "uk-ghg"], ["defra", "uk-ghg"], ["iea", "iea"], ["ceda", "ceda"], ["rics", "ice"], ["bre", "ice"],
+  ["desnz", "uk-ghg"], ["defra", "uk-ghg"], ["iea", "iea"], ["ceda", "ceda"], ["cornerstone", "ceda"], ["rics", "ice"], ["bre", "ice"],
   ["ice", "ice"], ["swc", "swc"], ["small world", "swc"], ["nzi", "nzi"],
 ];
+
+/**
+ * Cornerstone EEIO (BRIEF-library-cornerstone-activity-spend, ruled 27 Nov, L-1): the successor of CEDA, so the same `ceda`
+ * family and series, one dataset per country per year, each id carrying the release as its edition —
+ * `ceda-in-2025-edition-2026-rc`. CEDA 2025 (Watershed) already holds `ceda-in-2025`; the edition suffix keeps the series key
+ * (`ceda-in`), so every CEDA rule (D-A, the import's family prefix, the series picks) carries over unchanged. V7 re-runs its
+ * importer in place for a new release; here a new release is a new edition, and the loader supersedes the one before it.
+ */
+export const CORNERSTONE_SOURCE = /^cornerstone\b/i;
+
+/** The release a Cornerstone row's source names, as an id segment: "Cornerstone EEIO 2026-rc" → "2026-rc". Null if none. */
+export function cornerstoneRelease(source: string | null): string | null {
+  if (!source || !CORNERSTONE_SOURCE.test(source.trim())) return null;
+  const match = /(\d{4}(?:[-.][a-z0-9]+)*)$/i.exec(source.trim());
+  return match ? match[1]!.toLowerCase().replace(/[^a-z0-9]+/g, "-") : null;
+}
+
+/**
+ * The families whose rows take their country from their V7 dataset, when the extract names it (`dataset_country`, V7's
+ * `datasets.country`; L-5, ruled 27 Nov). V7's UK and UAE Activity & Spend are both DESNZ content, region empty or "UK" on the
+ * row: only the dataset says which country a set is for. On 25 Sep, without it, the UAE halves folded into the GB sets.
+ */
+const DATASET_COUNTRY_FAMILIES: ReadonlySet<string> = new Set(["uk-ghg", "nzi"]);
 
 /**
  * The country a dataset belongs to when the row's region is empty (ruled 25 Sep 2026). **swc and ceda have none, on
@@ -102,6 +125,21 @@ export const familyOf = (source: string | null): string | null => {
 };
 
 // ── CSV ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The extract's V7 `datasets` beside it (`<extract>.datasets.csv`: dataset_id, name, source, country, …), joined onto each row by
+ * `dataset_id` as `dataset_name`, `dataset_source` and `dataset_country` — the columns the library extract can also carry inline.
+ * A row that already carries one keeps its own. A row whose dataset isn't listed is left as it is.
+ */
+export function withDatasetColumns(rows: readonly ExtractRow[], datasets: readonly ExtractRow[]): ExtractRow[] {
+  const byId = new Map(datasets.map((dataset) => [clean(dataset.dataset_id), dataset]));
+  return rows.map((row) => {
+    const dataset = byId.get(clean(row.dataset_id));
+    if (!dataset) return row;
+    return { ...row, dataset_name: row.dataset_name ?? dataset.name ?? "", dataset_source: row.dataset_source ?? dataset.source ?? "",
+      dataset_country: row.dataset_country ?? dataset.country ?? "" };
+  });
+}
 
 /** RFC 4180: quoted fields, doubled quotes, commas and newlines inside quotes. The first row is the header. */
 export function parseCsv(text: string): ExtractRow[] {
@@ -218,6 +256,8 @@ export type LoadPlan = {
   refusals: Finding[]; exclusions: Finding[]; excluded: ExcludedRow[]; reports: Finding[];
   summary: {
     extracted: number; duplicatesCollapsed: number; skippedNotKgco2e: number; loaded: number;
+    /** Rows read as reference only, outside `onlyV7Datasets` (0 when it is unset). */
+    readNotPlanned: number;
     /** Cells written as a spelling of null ("NaN", "nan"…) and read as NULL, by spelling; and the rows carrying any. */
     nulledCells: Record<string, number>; rowsWithNulledCells: number;
     /** Rows with an empty region, per family — counted even when none, so a zero is visible rather than assumed. */
@@ -265,7 +305,15 @@ export function planV7Load(
   rows: readonly ExtractRow[],
   registry: readonly CategoryVariant[],
   /** Dedup slice 4, unconditional since slice 5 Step E: a same-value `<base><suffix>` row is folded into its base's applicability. */
-  options: { organisationId?: string; precedence?: Precedence } = {},
+  options: {
+    organisationId?: string; precedence?: Precedence;
+    /**
+     * Plan only these V7 datasets (library, 27 Nov). Every other row is read, never planned: it stands as the reference the ruled
+     * checks look for — the duplicate-upload exclusion's xlsx counterpart lives in the UK set beside a UAE one — and nothing of it
+     * is written. Unset: every row is planned, as before.
+     */
+    onlyV7Datasets?: ReadonlySet<string>;
+  } = {},
 ): LoadPlan {
   const refusals = new Map<string, Finding>(), reports = new Map<string, Finding>();
   const precedence: Precedence = { ...RULED_PRECEDENCE, ...options.precedence };
@@ -311,10 +359,13 @@ export function planV7Load(
 
   // 2. Rows → value rows, grouped by (family, country, year, v7 dataset).
   type Row = PlannedFactor & { family: string; country: string; year: string; v7Dataset: string; sourceName: string;
-    validFrom: string | null; validTo: string | null; fileName: string | null; reportLabel: string | null; code: string; column: string };
+    validFrom: string | null; validTo: string | null; fileName: string | null; reportLabel: string | null; code: string; column: string;
+    /** Cornerstone's release (the dataset id's edition), and V7's own dataset name where the extract carries it. */
+    release: string | null; datasetName: string | null; datasetSource: string | null };
   const planned: Row[] = [];
-  let skippedNotKgco2e = 0;
+  let skippedNotKgco2e = 0, readNotPlanned = 0;
   for (const [dbId, row] of byDbId) {
+    if (options.onlyV7Datasets && !options.onlyV7Datasets.has(clean(row.dataset_id) ?? "")) { readNotPlanned += 1; continue; }
     const ghgUnit = clean(row.ghg_unit);
     if (ghgUnit !== "kgCO2e") { skippedNotKgco2e += 1; exclude("not-kgco2e", dbId, row, `ghg_unit ${ghgUnit}`); continue; }
     if (DUPLICATE_UPLOAD_UNIT_CONFLICTS.has(dbId)) {
@@ -334,7 +385,12 @@ export function planV7Load(
     const code = aliased ? `${verbatimCode!.slice(0, -aliased[0].length)}${aliased[1]}` : verbatimCode;
     const sourceName = clean(row.source);
     const currency = clean(row.currency);
-    const family = familyOf(sourceName);
+    // V7's UAE Activity & Spend prices its spend on SWC (`SWC-SPEND-*`, region empty). Inside a dataset whose country the extract
+    // names, an SWC row is that dataset's Activity & Spend series (`uk-ghg-<cc>`), not an unused SWC factor (library, ruled 27 Nov:
+    // "the new uk-ghg-ae-* sets carry them"). Without a dataset country it is excluded as before (swc-no-country).
+    const ownFamily = familyOf(sourceName);
+    const family = ownFamily === "swc" && clean(row.dataset_country) ? "uk-ghg" : ownFamily;
+    if (family !== ownFamily) report("swc-in-activity-spend", "an SWC spend row in a V7 Activity & Spend dataset: loaded in that dataset's series, its source kept verbatim", `${dbId}: ${clean(row.original_id)} dataset ${clean(row.dataset_id)}`);
     const year = clean(row.year);
     const v7Dataset = clean(row.dataset_id);
     const factor = clean(row.factor);
@@ -345,6 +401,11 @@ export function planV7Load(
     // A currency that is not a currency code means the row's columns are shifted: nothing in it can be trusted in place.
     if (currency && !CURRENCY.test(currency)) { exclude("column-shifted", dbId, row, `${code} currency "${currency}", uom "${clean(row.uom)}"`); continue; }
     if (!family) { refuse("unknown-source", "a source that is not in the family map", `${dbId}: ${sourceName}`); continue; }
+    const release = cornerstoneRelease(sourceName);
+    if (CORNERSTONE_SOURCE.test(sourceName ?? "") && !release) {
+      refuse("cornerstone-no-release", "a Cornerstone row whose source names no release (e.g. \"Cornerstone EEIO 2026-rc\"): its edition can't be told apart", `${dbId}: ${sourceName}`);
+      continue;
+    }
     if (!year || !/^\d{4}$/.test(year)) { refuse("no-year", "a row without a four-digit year", dbId); continue; }
     if (!v7Dataset) { refuse("no-dataset", "a row without a dataset_id", dbId); continue; }
     if (!scope) { refuse("unknown-scope", "a scope that is not Scope 1, 2 or 3", `${dbId}: ${scopeRaw}`); continue; }
@@ -371,15 +432,25 @@ export function planV7Load(
     // excluded (SWC is unused), a ceda row refused. A name that cannot be matched is refused, never guessed.
     const region = clean(row.region);
     if (!region) emptyRegionByFamily[family] = (emptyRegionByFamily[family] ?? 0) + 1;
-    const named = region ?? (family === "iea" ? code : null);
-    if (!named && family === "swc") { exclude("swc-no-country", dbId, row, code); continue; }
-    if (!named && !DEFAULT_COUNTRY[family]) {
-      refuse("no-country",`a ${family} row with no region: a spend factor must name its country or "Rest of World" — defaulting it would attach it to every job`, `${dbId}: ${code}`);
-      continue;
+    // L-5: where the extract names the V7 dataset's country, a DESNZ or NZI row is that dataset's country's — never a guess.
+    const datasetCountry = DATASET_COUNTRY_FAMILIES.has(family) ? clean(row.dataset_country) : null;
+    let country: string | null;
+    if (datasetCountry) {
+      country = countryCodeFor(datasetCountry);
+      if (!country) { refuse("unknown-dataset-country", "a V7 dataset country that is not in the ISO table or its aliases", `${dbId}: dataset ${v7Dataset} ${datasetCountry}`); continue; }
+      const fromRegion = region ? countryCodeFor(region) : null;
+      if (region && fromRegion !== country) report("region-differs-from-dataset", "a row's region names another country than its V7 dataset: the dataset's country is kept", `${dbId}: ${code} region "${region}", dataset ${v7Dataset} ${country}`);
+    } else {
+      const named = region ?? (family === "iea" ? code : null);
+      if (!named && family === "swc") { exclude("swc-no-country", dbId, row, code); continue; }
+      if (!named && !DEFAULT_COUNTRY[family]) {
+        refuse("no-country",`a ${family} row with no region: a spend factor must name its country or "Rest of World" — defaulting it would attach it to every job`, `${dbId}: ${code}`);
+        continue;
+      }
+      country = named ? countryCodeFor(named) : DEFAULT_COUNTRY[family]!;
+      if (!country) { refuse("unknown-country", "a country name that is not in the ISO table or its aliases", `${dbId}: ${named}`); continue; }
+      if (!named) report("country-defaulted", `an empty region, placed in its family's default country (${Object.entries(DEFAULT_COUNTRY).map(([f, c]) => `${f} ${c}`).join(", ")})`, `${dbId}: ${family} → ${country}`);
     }
-    const country = named ? countryCodeFor(named) : DEFAULT_COUNTRY[family]!;
-    if (!country) { refuse("unknown-country", "a country name that is not in the ISO table or its aliases", `${dbId}: ${named}`); continue; }
-    if (!named) report("country-defaulted", `an empty region, placed in its family's default country (${Object.entries(DEFAULT_COUNTRY).map(([f, c]) => `${f} ${c}`).join(", ")})`, `${dbId}: ${family} → ${country}`);
 
     let unit = UNITS[uomRaw.toLowerCase()];
     let label = clean(row.column_text) ?? clean(row.report_label) ?? code;
@@ -401,11 +472,15 @@ export function planV7Load(
       isRemoval: family === "ice" && Number(factor) < 0,
       family, country, year, v7Dataset, sourceName: sourceName!, validFrom: clean(row.valid_from), validTo: clean(row.valid_to),
       fileName: clean(row.file_name), reportLabel: clean(row.report_label), code, column: clean(row.column_text) ?? label,
+      release, datasetName: clean(row.dataset_name),
+      // A mixed V7 dataset ("DESNZ & SWC") is named for its own source; otherwise the row's, as before.
+      datasetSource: DATASET_COUNTRY_FAMILIES.has(family) && clean(row.dataset_country) ? clean(row.dataset_source) : null,
     });
   }
 
-  // 3. Editions. Every (family, country, year) is one slug; each v7 dataset feeding it is an edition.
-  const slug = (row: Row) => `${row.family}-${row.country.toLowerCase()}-${row.year}`;
+  // 3. Editions. Every (family, country, year) is one slug; each v7 dataset feeding it is an edition. A Cornerstone release is
+  //    its own slug, as the edition of its year (L-1): `ceda-in-2025-edition-2026-rc`.
+  const slug = (row: Row) => `${row.family}-${row.country.toLowerCase()}-${row.year}${row.release ? `-edition-${row.release}` : ""}`;
   const editions = new Map<string, Map<string, Row[]>>();
   for (const row of planned) {
     const bySlug = editions.get(slug(row)) ?? new Map<string, Row[]>();
@@ -472,10 +547,12 @@ export function planV7Load(
       const canonical = [...rowsHere].sort((a, b) => a.factorId.localeCompare(b.factorId))
         .map((row) => [row.factorId, row.kgco2ePerUnit, row.activityUnit, row.scopes.join("+"), row.label, row.legacyDbId].join("\t")).join("\n");
       datasets.push({
-        datasetId, name: first.fileName ?? `${first.sourceName} ${first.year}`, version: first.fileName ?? first.year,
+        // V7's own dataset name where the extract carries it ("CEDA 2026-rc - India 2025 (INR)", "UAE Activity & Spend 2025");
+        // a Cornerstone edition's version is its release, which provenance cites.
+        datasetId, name: first.datasetName ?? first.fileName ?? `${first.sourceName} ${first.year}`, version: first.release ?? first.fileName ?? first.year,
         validFrom: dates[0] ?? `${first.year}-01-01`, validTo: dates[dates.length - 1] ?? `${first.year}-12-31`,
-        countryCode: first.country, status: rank === 0 ? "active" : "superseded", sourceName: first.sourceName,
-        licence: licenceFor(first.sourceName), sourceFamily: first.family, legacyDatasetId: v7Dataset, contentSha256: sha256(canonical),
+        countryCode: first.country, status: rank === 0 ? "active" : "superseded", sourceName: first.datasetSource ?? first.sourceName,
+        licence: licenceFor(first.datasetSource ?? first.sourceName), sourceFamily: first.family, legacyDatasetId: v7Dataset, contentSha256: sha256(canonical),
       });
       if (rank > 0) report("superseded", "an older edition sharing its slug, loaded as superseded", `${datasetId} (v7 dataset ${v7Dataset})`);
     });
@@ -586,7 +663,7 @@ export function planV7Load(
     organisationId: options.organisationId ?? DEFAULT_ORGANISATION,
     datasets, identities: keptIdentities, factors, folded, applicability,
     refusals: [...refusals.values()], exclusions: [...exclusions.values()], excluded, reports: [...reports.values()],
-    summary: { extracted: rows.length, duplicatesCollapsed, skippedNotKgco2e, loaded: refusals.size ? 0 : factors.length, emptyRegionByFamily,
+    summary: { extracted: rows.length, duplicatesCollapsed, skippedNotKgco2e, readNotPlanned, loaded: refusals.size ? 0 : factors.length, emptyRegionByFamily,
       nulledCells, rowsWithNulledCells },
   };
 }

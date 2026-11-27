@@ -63,11 +63,14 @@ describe("v7 provenance by factor_lookup row and source code, and v7 suffixes as
     assert.equal(new Set(loaded.rows.map((row) => row.legacy_db_id)).size, 3, "two value rows claim the same factor_lookup row");
   });
 
-  it("refuses a second id for one code in one dataset, and one factor_lookup row landing twice", async () => {
+  it("refuses a second id for one code in one dataset, and one factor_lookup row landing twice in one dataset", async () => {
     await assert.rejects(() => factor("uk-ghg-gb-2025", "uk-ghg", "21_316_3178_11_1", "Renamed", { id: "uk-ghg-renamed" }),
       /(emission_factors|factor_identities)_legacy_original_key/, "a second id claiming the same code in one dataset was accepted");
-    await assert.rejects(() => factor("uk-ghg-gb-2024", "uk-ghg", "21_316_3178_99_1", "Same lookup row", { lookupRow: "1000" }),
-      /emission_factors_legacy_db_key/, "one factor_lookup row landed as two value rows");
+    await assert.rejects(() => factor("uk-ghg-gb-2025", "uk-ghg", "21_316_3178_99_1", "Same lookup row", { lookupRow: "1000" }),
+      /emission_factors_legacy_db_key/, "one factor_lookup row landed as two value rows in one dataset");
+    // 0242 (library, ruled 27 Nov): V7 updates a series in place, keeping its db_ids, and the console loads each release as its own
+    // edition — so one factor_lookup row may back one value row in each dataset.
+    await factor("uk-ghg-gb-2024", "uk-ghg", "21_316_3178_99_1", "Same lookup row, another edition", { lookupRow: "1000" });
   });
 
   it("keeps one code as one identity across the years and countries of its family", async () => {

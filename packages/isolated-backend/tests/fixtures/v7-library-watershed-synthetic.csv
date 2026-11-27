@@ -1,0 +1,7 @@
+db_id,original_id,dataset_id,year,factor,currency,valid_from,valid_to,scope,category,level_1,level_2,level_3,level_4,column_text,report_label,uom,ghg_unit,method,region,source,file_name
+7001,1111A0,137,2025,0.0081,INR,null,null,Scope 3,Purchased Goods and Services,Oilseed farming,NaN,NaN,NaN,Oilseed farming,Oilseed farming,INR,kgCO2e,Spend,India,CEDA 2025 (Watershed),IND_India.csv
+7002,1111A0,123,2025,0.7007004156,GBP,null,null,Scope 3,Purchased Goods and Services,Oilseed farming,NaN,NaN,NaN,Oilseed farming,Oilseed farming,GBP,kgCO2e,Spend,United Kingdom,CEDA 2025 (Watershed),GBR_United_Kingdom.csv
+7003,1111A0,79,2025,0.21,AED,null,null,Scope 3,Purchased Goods and Services,Oilseed farming,NaN,NaN,NaN,Oilseed farming,Oilseed farming,AED,kgCO2e,Spend,United Arab Emirates,CEDA 2025 (Watershed),ARE_United_Arab_Emirates.csv
+7004,1111A0,193,2025,0.9,USD,null,null,Scope 3,Purchased Goods and Services,Oilseed farming,NaN,NaN,NaN,Oilseed farming,Oilseed farming,USD,kgCO2e,Spend,Rest of World,CEDA 2025 (Watershed),ROW_Rest_of_World.csv
+7005,1111A0,135,2025,0.61,EUR,null,null,Scope 3,Purchased Goods and Services,Oilseed farming,NaN,NaN,NaN,Oilseed farming,Oilseed farming,EUR,kgCO2e,Spend,Spain,CEDA 2025 (Watershed),ESP_Spain.csv
+7006,1111A0,171,2025,0.22,PLN,null,null,Scope 3,Purchased Goods and Services,Oilseed farming,NaN,NaN,NaN,Oilseed farming,Oilseed farming,PLN,kgCO2e,Spend,Poland,CEDA 2025 (Watershed),POL_Poland.csv

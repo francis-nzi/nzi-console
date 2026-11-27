@@ -2296,6 +2296,16 @@ export async function addManualDataset(
       // All four are SQL `date` columns, and they are compared against each other to warn
       // that a dataset does not cover the reporting period — a day's shift on one side only
       // is enough to invent that warning or to suppress it.
+      // Library (ruled 27 Nov): a superseded or draft dataset is never newly added to a job. Rows and selections already on it
+      // keep it; only a new pick is refused.
+      if (item.status !== "active")
+        throw new CommandValidationError([
+          {
+            field: "datasetId",
+            code: "DATASET_NOT_ACTIVE",
+            message: `This dataset is ${item.status}, so it can't be added to a job. Rows already priced on it keep it.`,
+          },
+        ]);
       const validFrom = dateOnly(item.valid_from),
         validTo = dateOnly(item.valid_to),
         reportingFrom = dateOnly(item.reporting_from),

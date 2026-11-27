@@ -29,6 +29,8 @@ const ALIASES: Readonly<Record<string, string>> = {
   "brunei darussalam": "BN", "micronesia federated states of": "FM", "taiwan province of china": "TW",
   macau: "MO", macao: "MO", "palestine state of": "PS", "cape verde": "CV", "cabo verde": "CV", swaziland: "SZ",
   "hong kong sar china": "HK", "macao sar china": "MO",
+  // Cornerstone EEIO 2026-rc's own spelling (its ISO3 is HKG; library, 27 Nov).
+  "hong kong": "HK",
   myanmar: "MM", burma: "MM",
   // From the full extract's 151 distinct regions (25 Sep 2026), each checked against the ISO3 in CEDA's file name.
   congo: "CG", "hong kong china": "HK", "lao people s democratic rep": "LA",

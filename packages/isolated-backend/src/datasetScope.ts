@@ -104,10 +104,21 @@ export function windowMonths(window: { from: string; to: string }): string[] {
  * Scope 2 factor, and the UK grid's transmission, distribution and well-to-tank lines) and spend (`SPEND-SIC`) never do.
  */
 export function internationalDefaultAllows(factor: { factorId: string; label: string; scopes: string[] }): boolean {
-  if (factor.scopes.includes("2")) return false;
   if (/SPEND-/i.test(factor.factorId)) return false;
-  return !/^(UK electricity|Transmission and distribution|WTT- UK electricity|WTT- overseas electricity)/i.test(factor.label);
+  return !isGridElectricity(factor);
 }
+
+/** Electricity in DESNZ's content: every Scope 2 factor, and the UK grid's transmission, distribution and well-to-tank lines. */
+export function isGridElectricity(factor: { label: string; scopes: string[] }): boolean {
+  if (factor.scopes.includes("2")) return true;
+  return /^(UK electricity|Transmission and distribution|WTT- UK electricity|WTT- overseas electricity)/i.test(factor.label);
+}
+
+/**
+ * UAE Activity & Spend (library L-5, ruled 27 Nov): V7's own UAE series, which is DESNZ content, so it carries the UK grid's
+ * lines. AE grid electricity always takes IEA AE (Francis, 27 Nov): the series' grid-electricity lines never serve an AE row.
+ */
+export const UAE_SERIES = "uk-ghg-ae";
 
 /** The label a DESNZ international-default selection carries in the job and the methodology (D-A, ruled). */
 export const INTERNATIONAL_DEFAULT_LABEL = "DESNZ (international default: no national factor)";
@@ -133,5 +144,15 @@ export async function jobCountryNotes(db: Queryable, organisationId: string, job
     `SELECT 1 FROM nzi_console.job_dataset_selections WHERE organisation_id = $1 AND job_id = $2 AND starts_with(reason, $3) LIMIT 1`,
     [organisationId, jobId, INTERNATIONAL_DEFAULT_LABEL])).rows.length > 0;
   if (international) notes.push(`${INTERNATIONAL_DEFAULT_LABEL}: activity rows only; electricity and spend use the country's own factors.`);
+  // Library L-3 (ruled 27 Nov): as in V7, there is no rest-of-world spend fallback. A country in scope with no spend series of its
+  // own — no Cornerstone (`ceda-`), and no national Activity & Spend (`uk-ghg-`, the UK's and the UAE's) — is said, not priced.
+  const { rows: noSpend } = await db.query<{ country: string }>(
+    `SELECT c AS country FROM unnest($2::text[]) WITH ORDINALITY AS x(c, n) WHERE NOT EXISTS (SELECT 1 FROM nzi_console.emission_factor_datasets d
+        WHERE d.organisation_id = $1 AND d.country_code = x.c AND d.status = 'active' AND (d.dataset_id LIKE 'ceda-%' OR d.dataset_id LIKE 'uk-ghg-%')) ORDER BY n`,
+    [organisationId, scope.countries]);
+  for (const { country } of noSpend) notes.push(`${NO_NATIONAL_SPEND_LABEL} for ${country}: spend rows there aren't priced.`);
   return notes;
 }
+
+/** What a job says about a country in scope that has no spend series of its own (library L-3). */
+export const NO_NATIONAL_SPEND_LABEL = "No national spend factor";
