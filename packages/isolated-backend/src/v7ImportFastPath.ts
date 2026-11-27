@@ -72,11 +72,11 @@ const blocksAutoCommit = async (db: Queryable, context: CommandContext) =>
   (await readImportPolicy(db, context.organisationId)).refreshCommitRequiresAdmin && context.grant?.role !== "admin";
 
 /**
- * One job, one action: the preview, and — when D-ELIG-1..3 hold and the Admin gate does not stand in the way — the commit, with
- * the fixed system reason and the preview's fingerprints. Otherwise the preview and why, for the deliberate flow.
+ * The fast path's first half alone: the preview, with D-ELIG-1 and 2 and the Admin gate read in its transaction, and why it would not
+ * be automatic (empty: it would commit). Rolled back like any preview. The spanning batch's dry run is this, for each job.
  */
-export async function refreshV7ImportFastPath(pool: PoolLike, source: V7ImportRefreshSource, jobId: string, context: CommandContext,
-  given: V7ImportRefreshOptions = {}): Promise<V7ImportFastPathResult> {
+export async function previewV7ImportFastPath(pool: PoolLike, source: V7ImportRefreshSource, jobId: string, context: CommandContext,
+  given: V7ImportRefreshOptions = {}): Promise<{ preview: V7ImportRefreshPreview; because: V7ImportFastPathBlocker[]; options: V7ImportRefreshOptions }> {
   // Never a bring-in on a snapshotted job (BRIEF-v7-import-j000663 §B): that is a person's act, in the deliberate flow. Without it the
   // chain refuses a snapshotted job (SNAPSHOT_EXISTS), so its preview is flagged and it falls back.
   // A spanning job's own figures (endpoint 2) are read once, for the preview and its commit alike: one call per bring-in.
@@ -92,7 +92,16 @@ export async function refreshV7ImportFastPath(pool: PoolLike, source: V7ImportRe
     } });
   // The preview always reads the job before it answers; a preview that did not (refused before reading) is never automatic.
   const read: V7ImportFastPathSignals = signals ?? { issuedReport: true, manualEdits: true };
-  const because = v7ImportFastPathBlockers(preview, read, adminGateBlocks);
+  return { preview, because: v7ImportFastPathBlockers(preview, read, adminGateBlocks), options };
+}
+
+/**
+ * One job, one action: the preview, and — when D-ELIG-1..3 hold and the Admin gate does not stand in the way — the commit, with
+ * the fixed system reason and the preview's fingerprints. Otherwise the preview and why, for the deliberate flow.
+ */
+export async function refreshV7ImportFastPath(pool: PoolLike, source: V7ImportRefreshSource, jobId: string, context: CommandContext,
+  given: V7ImportRefreshOptions = {}): Promise<V7ImportFastPathResult> {
+  const { preview, because, options } = await previewV7ImportFastPath(pool, source, jobId, context, given);
   if (because.length) return { fastPath: "deliberate", preview, because, flagged: preview.exceptions.length };
   const outcome = await commitV7ImportRefresh(pool, source,
     { jobId, mode: "commit", summarySha256: preview.summarySha256, decisionsSha256: preview.decisionsSha256 },
