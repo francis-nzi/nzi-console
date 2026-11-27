@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  agreesToOneDecimalPlace, rankV7Candidates, v7AutoPick, v7CategoryCode, v7CodeKeys, v7FactorKeys, v7MatchCandidate, v7ScopeAgreement, type V7MatchFactor, type V7MatchRow,
+  agreesToOneDecimalPlace, rankV7Candidates, v7AutoPick, v7CategoryCode, v7CodeCategory, v7CodeKeys, v7FactorKeys, v7MatchCandidate, v7ScopeAgreement, type V7MatchFactor, type V7MatchRow,
 } from "../src";
 
 /**
@@ -140,5 +140,37 @@ describe("the reconcile gate's agreement", () => {
   it("each scope agrees to one decimal place, or does not", () => {
     assert.deepEqual(v7ScopeAgreement({ "1": { v7Tco2e: 1052.61, liveTco2e: 1052.58 }, "2": { v7Tco2e: 15.3, liveTco2e: 15.9 }, "3": { v7Tco2e: 0, liveTco2e: 0 } })
       .map((entry) => [entry.scope, entry.agrees]), [["1", true], ["2", false], ["3", true]]);
+  });
+});
+
+describe("the code's suffix names a category (the registry, 0110), and settles a factor filed under two", () => {
+  const REGISTRY = [{ suffixCode: "-u", ghgCategory: "3.4" }, { suffixCode: "-d", ghgCategory: "3.9" }, { suffixCode: "-c", ghgCategory: "3.7" },
+    { suffixCode: "-vcd", ghgCategory: "1" }];
+  it("-u → 3.4, -d → 3.9, case and spaces aside; a suffix naming only a scope, no suffix, or another scope's category → none", () => {
+    assert.equal(v7CodeCategory("SPEND-SIC-49.3-5-u", "3", REGISTRY), "3.4");
+    assert.equal(v7CodeCategory(" 9_402_3401_10_1-D ", "3", REGISTRY), "3.9");
+    assert.equal(v7CodeCategory("5_304_3140_9_1-vcd", "1", REGISTRY), null, "a company-vehicle suffix names a scope, not a category");
+    assert.equal(v7CodeCategory("9_402_3401_10_1", "3", REGISTRY), null);
+    assert.equal(v7CodeCategory("9_402_3401_10_1-u", "1", REGISTRY), null, "3.4 is no Scope 1 category");
+    assert.equal(v7CodeCategory("-u", "3", REGISTRY), null, "the suffix alone is no code");
+    assert.equal(v7CodeCategory(null, "3", REGISTRY), null);
+  });
+  it("settles only between the categories that fit: V7's own category first, then the suffix's, else none", () => {
+    const row: V7MatchRow = { ...ROW, categories: [] };
+    const freight: V7MatchFactor = { rate: 0.23818, scopes: ["3"], categories: ["3.4", "3.9"], sameUnit: true };
+    assert.equal(v7MatchCandidate(row, freight, []).categoryCode, null, "two fit, nothing settles");
+    assert.equal(v7MatchCandidate({ ...row, codeCategory: "3.9" }, freight, []).categoryCode, "3.9");
+    assert.equal(v7MatchCandidate({ ...row, codeCategory: "3.7" }, freight, []).categoryCode, null, "a suffix naming a category that does not fit settles nothing");
+    assert.equal(v7MatchCandidate({ ...row, v7Category: "3.4", codeCategory: "3.9" }, freight, []).categoryCode, "3.4");
+  });
+  it("waste disposal (approved 26 Nov): a 20_ factor between exactly 3.5 and 3.12 settles on 3.5 — only then, and after V7's category and the suffix", () => {
+    const row: V7MatchRow = { ...ROW, quantity: 24, previousTco2e: 0.023636, categories: [] };
+    const waste: V7MatchFactor = { rate: 0.98485, scopes: ["3"], categories: ["3.5", "3.12"], sameUnit: true, code: "20_500_5226_15_1" };
+    assert.deepEqual([v7MatchCandidate(row, waste, []).categoryCode, v7MatchCandidate(row, waste, []).verdict], ["3.5", "reproduces"]);
+    assert.equal(v7MatchCandidate(row, { ...waste, code: "18_405_4006_1_1" }, []).categoryCode, null, "not a 20_ factor: a person chooses");
+    assert.equal(v7MatchCandidate(row, { ...waste, code: null }, []).categoryCode, null);
+    assert.equal(v7MatchCandidate(row, { ...waste, categories: ["3.5", "3.12", "3.1"] }, []).categoryCode, null, "only between exactly those two");
+    assert.equal(v7MatchCandidate({ ...row, v7Category: "3.12" }, waste, []).categoryCode, "3.12", "V7's own category still first");
+    assert.equal(v7MatchCandidate({ ...row, codeCategory: "3.12" }, waste, []).categoryCode, "3.12", "and the suffix's");
   });
 });

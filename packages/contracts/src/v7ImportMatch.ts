@@ -65,6 +65,19 @@ export function v7CategoryCode(name: string | null | undefined, scope: V7ImportS
   return code && emissionCategoryTaxonomy.some((category) => category.code === code && category.scope === scope) ? code : null;
 }
 
+/**
+ * The console category the previous system's factor code names by its category-variant suffix (the registry, 0110: `-u` upstream
+ * transport → 3.4, `-d` downstream → 3.9, `-c` commuting → 3.7 …), of the row's scope — or null when the code carries no such suffix,
+ * or its suffix names no category of that scope (a company-vehicle suffix names only a scope).
+ */
+export function v7CodeCategory(code: string | null | undefined, scope: V7ImportScope, registry: ReadonlyArray<{ suffixCode: string; ghgCategory: string }>): string | null {
+  const folded = code?.trim().toLowerCase();
+  if (!folded) return null;
+  const variant = [...registry].sort((a, b) => b.suffixCode.length - a.suffixCode.length)
+    .find((entry) => entry.suffixCode && folded.endsWith(entry.suffixCode.toLowerCase()) && folded.length > entry.suffixCode.length);
+  return variant && emissionCategoryTaxonomy.some((category) => category.code === variant.ghgCategory && category.scope === scope) ? variant.ghgCategory : null;
+}
+
 /** The row as the matcher needs it: no label, no site — its scope, its input, the previous system's figure and its categories. */
 export type V7MatchRow = {
   scope: V7ImportScope; quantity: number | null; applyPct: number; previousTco2e: number | null;
@@ -72,6 +85,8 @@ export type V7MatchRow = {
   categories: readonly string[];
   /** The console category the previous system's own category names (`v7CategoryCode`): it settles a factor filed under two. */
   v7Category?: string | null;
+  /** The category the previous system's code names by its suffix (`v7CodeCategory`): it settles one when V7's own category does not. */
+  codeCategory?: string | null;
 };
 /**
  * A console factor as the matcher needs it. `categories`: the categories whose family claims it (of any scope). `anchor`: it is the
@@ -80,6 +95,8 @@ export type V7MatchRow = {
  */
 export type V7MatchFactor = {
   rate: number | null; scopes: readonly string[]; categories: readonly string[]; sameUnit: boolean; anchor?: boolean;
+  /** The factor's own code (DESNZ's `20_500_5226_15_1`): a waste-disposal factor (`20_`) settles 3.5 over 3.12 (`V7_WASTE_DISPOSAL`). */
+  code?: string | null;
   /**
    * The row's figure with this factor priced by month across editions (a job over two calendar years, from the previous system's
    * own spans: `priceByV7Spans`), in place of quantity × rate. Null when it cannot be priced so; absent on a calendar-year job.
@@ -99,7 +116,16 @@ export type V7MatchResult = {
 };
 
 const round6 = (value: number) => Math.round(value * 1e6) / 1e6;
-const top = (tag: string) => tag.split(".")[0]!;
+
+/**
+ * Waste disposal (approved by Francis, 26 Nov): DESNZ's waste-disposal factors (`20_…`) are claimed by 3.5 (waste generated in
+ * operations) and 3.12 (end-of-life of sold products). With nothing else to settle it — no V7 category, no suffix — a row filed
+ * between exactly those two is waste from operations: 3.5.
+ */
+export const V7_WASTE_DISPOSAL = { codePrefix: "20_", category: "3.5", between: ["3.12", "3.5"] } as const;
+const wasteDisposal = (code: string | null | undefined, options: readonly string[]) => Boolean(code?.trim().startsWith(V7_WASTE_DISPOSAL.codePrefix))
+  && [...options].sort().join(",") === V7_WASTE_DISPOSAL.between.join(",");
+const top =(tag: string) => tag.split(".")[0]!;
 
 /**
  * Where the factor can be filed for this row. `familyless` is the categories no family rule names: their pick list is their whole
@@ -111,8 +137,12 @@ function basisOf(row: V7MatchRow, factor: V7MatchFactor, familyless: readonly st
   const claimed = factor.categories.filter((code) => ofScope.has(code));
   const open = familyless.filter((code) => ofScope.has(code));
   const fits = (code: string) => claimed.includes(code) || open.includes(code);
-  // More than one category would do: the previous system's own category settles it, when it names one of them (§5).
-  const settle = (options: readonly string[]) => options.length === 1 ? options[0]! : row.v7Category && options.includes(row.v7Category) ? row.v7Category : null;
+  // More than one category would do: the previous system's own category settles it, when it names one of them (§5); else the
+  // category its code's suffix names (`-u` → 3.4, `-d` → 3.9), when that is one of them. Neither: a person chooses.
+  const settle = (options: readonly string[]) => options.length === 1 ? options[0]!
+    : row.v7Category && options.includes(row.v7Category) ? row.v7Category
+      : row.codeCategory && options.includes(row.codeCategory) ? row.codeCategory
+        : wasteDisposal(factor.code, options) ? V7_WASTE_DISPOSAL.category : null;
   const known = row.categories.filter((code) => ofScope.has(code));
   if (known.length) {
     const fitting = known.filter(fits);
