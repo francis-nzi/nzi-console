@@ -6,10 +6,11 @@ import { commandGrantForRole, V7_REINGEST_ACTOR, type V7FiguresRowFigures, type 
 import { withTenantRead, withTenantWrite } from "../src/postgres";
 import type { PlannedRow } from "../src/v7ClientImport";
 import { insert, migratedRowCols } from "../src/v7ClientLoad";
-import { readConsoleScopeTotals, type V7FiguresClient, type V7FiguresRead, type V7RowFiguresClient, type V7RowFiguresRead } from "../src/v7Drift";
+import { checkV7Drift, readConsoleScopeTotals, type V7FiguresClient, type V7FiguresRead, type V7RowFiguresClient, type V7RowFiguresRead } from "../src/v7Drift";
 import { V7_IMPORT_FAST_PATH_REASON } from "../src/v7ImportFastPath";
 import type { V7ImportRefreshSource } from "../src/v7ImportRefresh";
-import { listV7SpanningJobs, runV7SpanningBatch, v7SpanningBatchCsv, V7_SPANNING_CURRENT_WORDS, type V7SpanningBatchOptions, type V7SpanningBatchOutcome } from "../src/v7ImportSpanningBatch";
+import { listV7SpanningJobs, runV7SpanningBatch, v7SpanningBatchCsv, v7SpanningBatchLines, v7SpanningBatchTotals, v7SpanningBatchTotalsLines,
+  type V7SpanningBatchOptions, type V7SpanningBatchOutcome } from "../src/v7ImportSpanningBatch";
 import { reingestV7JobInTransaction } from "../src/v7Reingest";
 import { createDisposableDatabase, TEST_DATABASE_URL, type DisposableDatabase } from "./support/database";
 
@@ -169,10 +170,13 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
     assert.equal(waits.length, 3, "one job at a time, a pause between each");
     assert.ok(waits.every((ms) => ms >= 2_000), `never below the 2 s floor: ${waits.join(", ")}`);
     assert.deepEqual(await fingerprint(), print, "a dry run writes nothing — no rows, no import record, no audit, no drift check");
-    const csv = v7SpanningBatchCsv(result.outcomes).split("\n");
-    assert.equal(csv[0], "job,job_id,status,scope,before_tco2e,after_tco2e,previous_tco2e,codes,reason,ingest_id,drift");
-    assert.ok(csv.includes(`${OK.number},${OK.jobId},would-come-in,1,2.3900,2.4300,2.4300,,,,`));
-    assert.ok(csv.includes(`${OFF.number},${OFF.jobId},skipped,,,,,SPANS_TWO_DATASET_YEARS,"Row ${OFF.k}001 (Scope 1): 0.2 here, 0.5 there — the factor differs.",,`), "a reason with a comma, quoted");
+    const csv = v7SpanningBatchCsv(result.outcomes, false).split("\n");
+    assert.equal(csv[0], "job,job_id,status,scope,before_tco2e,after_tco2e,previous_tco2e,codes,reason,ingest_id,drift,gap_tco2e");
+    assert.ok(csv.includes(`${OK.number},${OK.jobId},would-come-in,1,2.3900,2.4300,2.4300,,,,,`));
+    assert.ok(csv.includes(`${OFF.number},${OFF.jobId},skipped,,,,,SPANS_TWO_DATASET_YEARS,"Row ${OFF.k}001 (Scope 1): 0.2 here, 0.5 there — the factor differs.",,,`), "a reason with a comma, quoted");
+    assert.deepEqual(csv.slice(-8), ["", "outcome,jobs", "would-come-in,1", "nothing-to-bring-in,0", "needs-repricing,0", "skipped,3", "total,4", ""], "the totals per outcome end the CSV");
+    assert.deepEqual(v7SpanningBatchTotalsLines(result.outcomes, false),
+      ["Totals:", "  would come in: 1", "  nothing to bring in: 0", "  needs re-pricing (backfill): 0", "  skipped: 3", "  jobs: 4"], "and the log");
   });
 
   it("--commit: the job that reconciles comes in through the fast path and is checked for drift; the skipped ones are untouched", async () => {
@@ -198,10 +202,20 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
     assert.deepEqual(await Promise.all([OFF, EDITED, UNREAD, CAL].map((entry) => jobPrint(entry.jobId))), untouched, "nothing of a skipped job's written");
   });
 
-  it("run again: the job brought in is current locally and skipped, never brought in twice", async () => {
+  it("run again: the job brought in is clean — NOTHING TO BRING IN with its latest drift check (level), never skipped, never brought in twice", async () => {
     const before = await jobPrint(OK.jobId);
+    calls.length = 0;
     const result = await run({ commit: true, jobNumbers: [OK.number] });
-    assert.deepEqual(result.outcomes, [{ status: "skipped", jobId: OK.jobId, jobNumber: OK.number, codes: ["CURRENT"], reasons: [V7_SPANNING_CURRENT_WORDS] }]);
+    assert.equal(result.outcomes.length, 1);
+    const ok = result.outcomes[0]!;
+    assert.equal(ok.status, "nothing-to-bring-in");
+    if (ok.status !== "nothing-to-bring-in") return;
+    assert.equal(ok.drift.outcome, "level");
+    assert.ok(ok.drift.checkedAt);
+    assert.deepEqual(ok.drift.scopes, [{ scope: "1", console: 2.43, previous: 2.43, difference: 0 }, { scope: "2", console: 0, previous: 0, difference: 0 },
+      { scope: "3", console: 0.0015, previous: 0.0015, difference: 0 }], "the bring-in's own check, as stored");
+    assert.deepEqual(v7SpanningBatchLines(ok, true), [`  ${OK.number}: NOTHING TO BRING IN — drift level (checked ${ok.drift.checkedAt})`]);
+    assert.deepEqual(calls, [], "a clean job reads nothing of the previous system: its drift is the stored check");
     assert.equal(await jobPrint(OK.jobId), before);
   });
 
@@ -218,5 +232,55 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
     calls.length = 0;
     const result = await run({ rowFigures: down, jobNumbers: [OFF.number, EDITED.number, UNREAD.number] });
     assert.deepEqual([result.stopped, result.outcomes.length, calls.length], ["source-unresponsive", 3, 3]);
+  });
+
+  /** A stored drift check of one job against these V7 totals (endpoint 1), as the Admin list's "check now" runs it. */
+  const checkAgainst = (entry: ReturnType<typeof job>, [s1, s2, s3]: [number, number, number]) => checkV7Drift(database.pool, async () => ({ ok: true, body: {
+    contract: "v7-import-figures/1", job_id: entry.k, job_number: entry.number, computed_at: "2026-11-27T10:00:00Z", period: { from: null, to: null },
+    scope_totals: { scope_1: s1, scope_2: s2, scope_3: s3, total: s1 + s2 + s3 }, counted_rows: 3, rows_updated_at: null } }), ORG, entry.jobId,
+    { trigger: "admin", requestedBy: "staff-admin", correlationId: randomUUID(), principal: "staff" });
+
+  it("a clean job whose latest drift check is behind: NEEDS RE-PRICING (BACKFILL), with its per-scope gaps — not skipped, nothing written", async () => {
+    // V7 now has 5 t in Scope 2 that the console's clean job does not: behind in Scope 2 only.
+    assert.equal((await checkAgainst(OK, [2.43, 5, 0.0015])).outcome, "behind");
+    const before = await jobPrint(OK.jobId);
+    calls.length = 0;
+    const result = await run({ commit: true, jobNumbers: [OK.number] });
+    const ok = result.outcomes[0]!;
+    assert.equal(ok.status, "needs-repricing");
+    if (ok.status !== "needs-repricing") return;
+    assert.equal(ok.drift.outcome, "behind");
+    assert.deepEqual(ok.drift.scopes, [{ scope: "1", console: 2.43, previous: 2.43, difference: 0 }, { scope: "2", console: 0, previous: 5, difference: -5 },
+      { scope: "3", console: 0.0015, previous: 0.0015, difference: 0 }]);
+    assert.deepEqual(v7SpanningBatchLines(ok, true), [
+      `  ${OK.number}: NEEDS RE-PRICING (BACKFILL) — nothing to bring in · drift behind (checked ${ok.drift.checkedAt})`,
+      "      Scope 2: here 0.0000 t · previous system 5.0000 t · gap -5.0000 t"], "the gaps: only the scopes apart");
+    const csv = v7SpanningBatchCsv(result.outcomes, true).split("\n");
+    assert.ok(csv.includes(`${OK.number},${OK.jobId},needs-repricing,2,0.0000,0.0000,5.0000,,,,behind,-5.0000`));
+    assert.ok(csv.includes(`${OK.number},${OK.jobId},needs-repricing,1,2.4300,2.4300,2.4300,,,,behind,0.0000`), "every scope, with its gap");
+    assert.deepEqual(csv.slice(-7), ["outcome,jobs", "brought-in,0", "nothing-to-bring-in,0", "needs-repricing,1", "skipped,0", "total,1", ""]);
+    assert.deepEqual(v7SpanningBatchTotals(result.outcomes, true).map((row) => [row.label, row.jobs]),
+      [["brought in", 0], ["nothing to bring in", 0], ["needs re-pricing (backfill)", 1], ["skipped", 0]]);
+    assert.deepEqual(calls, []);
+    assert.equal(await jobPrint(OK.jobId), before, "a commit run writes nothing of a clean job");
+  });
+
+  it("--behind-only: only the spanning jobs whose latest drift check is behind — never one level or unchecked", async () => {
+    // OK behind (above); OFF behind (V7 2.7 in Scope 1, the console 2.39); EDITED level; UNREAD never checked; CAL behind but a calendar year.
+    assert.equal((await checkAgainst(OFF, [2.7, 0, 0.0015])).outcome, "behind");
+    assert.equal((await checkAgainst(EDITED, [2.39, 0, 0.0015])).outcome, "level");
+    assert.equal((await checkAgainst(CAL, [9, 0, 0])).outcome, "behind");
+    assert.deepEqual((await listV7SpanningJobs(database.pool, ORG, undefined, true)).map((entry) => entry.jobId), [OK.jobId, OFF.jobId]);
+    assert.deepEqual((await listV7SpanningJobs(database.pool, ORG, [OFF.number, EDITED.number], true)).map((entry) => entry.jobId), [OFF.jobId], "named jobs, still only behind ones");
+    const print = await fingerprint();
+    calls.length = 0; waits.length = 0;
+    const result = await run({ behindOnly: true });
+    assert.deepEqual(result.outcomes.map((outcome) => [outcome.jobNumber, outcome.status]), [[OK.number, "needs-repricing"], [OFF.number, "skipped"]],
+      "the clean one needs re-pricing; the other goes through the fast path as any job does");
+    const off = of(result.outcomes, OFF);
+    assert.ok(off.status === "skipped" && off.codes[0] === "SPANS_TWO_DATASET_YEARS");
+    assert.deepEqual(calls, [OFF.v7JobId], "endpoint 2 for the job not clean only");
+    assert.equal(waits.length, 1);
+    assert.deepEqual(await fingerprint(), print, "a dry run writes nothing");
   });
 });

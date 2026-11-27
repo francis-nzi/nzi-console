@@ -6,8 +6,10 @@
 // commit with the same guards — with the figures client handed in. A job that would not come in automatically is skipped, with the
 // reasons the refusal gives (one per row it names).
 //
-//   * Which jobs: the organisation's imported CRP jobs whose period spans two calendar years (or those named), in job order. A job
-//     whose latest import record is a committed refresh with nothing newer is skipped as current locally, as the import batch does.
+//   * Which jobs: the organisation's imported CRP jobs whose period spans two calendar years (or those named; or, `behindOnly`, those
+//     whose latest drift check says behind), in job order. A job whose latest import record is a committed refresh with nothing newer
+//     is clean — nothing to bring in — and is reported with its latest drift check: level, or behind with its per-scope gaps, which
+//     is "needs re-pricing (backfill)" (27 Nov), never skipped.
 //   * Pace: one job at a time. Endpoint 2 is read once per job (the fast path's preview hands its read to its commit), through the
 //     caller's client — the service's goes through the process's pace, the 2 s floor. Between jobs, the import batch's pause (2 s floor,
 //     adaptive to 60 s). Three jobs in a row with the source not answering stop the run.
@@ -15,11 +17,11 @@
 //   * A commit: the fast path, then a drift check of the job (trigger `bring-in`), as a person's bring-in has.
 //
 // Ids, codes and tCO2e only — never a label.
-import { grantFor, v7PeriodSpansTwoYears, type CommandContext, type V7DriftOutcome, type V7DriftUnknownReason, type V7ImportScope } from "@nzi/contracts";
+import { grantFor, v7PeriodSpansTwoYears, V7_DRIFT_TOLERANCE_TCO2E, type CommandContext, type V7DriftOutcome, type V7DriftScope, type V7DriftUnknownReason, type V7ImportScope } from "@nzi/contracts";
 import { AuthorizationError, resolveMemberGrant } from "./auth";
 import { withTenantRead, type PoolLike } from "./postgres";
 import { CommandValidationError } from "./postgresCommands";
-import { checkV7Drift, readConsoleScopeTotals, type V7FiguresClient, type V7RowFiguresClient } from "./v7Drift";
+import { checkV7Drift, readConsoleScopeTotals, readLatestV7Drift, type V7FiguresClient, type V7RowFiguresClient } from "./v7Drift";
 import { currentLocally, v7ImportBatchFailureClass, v7ImportBatchPauseAfter, V7_IMPORT_BATCH_PACING } from "./v7ImportBatch";
 import { previewV7ImportFastPath, refreshV7ImportFastPath, type V7ImportFastPathBlocker } from "./v7ImportFastPath";
 import { readSpanningFigures, readV7ImportPeriod, type V7ImportRefreshOptions, type V7ImportRefreshSource } from "./v7ImportRefresh";
@@ -36,7 +38,13 @@ export type V7SpanningBatchOutcome =
   | { status: "would-come-in"; jobId: string; jobNumber: string; scopes: V7SpanningBatchScope[] }
   | { status: "brought-in"; jobId: string; jobNumber: string; scopes: V7SpanningBatchScope[]; ingestId: string;
       drift: { outcome: V7DriftOutcome; unknownReason: V7DriftUnknownReason | null } | { outcome: "failed"; unknownReason: null } }
+  /** Clean (current locally): nothing to bring in. Behind at its latest drift check → needs re-pricing (backfill). */
+  | { status: "nothing-to-bring-in"; jobId: string; jobNumber: string; drift: V7SpanningLatestDrift }
+  | { status: "needs-repricing"; jobId: string; jobNumber: string; drift: V7SpanningLatestDrift }
   | { status: "skipped"; jobId: string; jobNumber: string; codes: string[]; reasons: string[] };
+
+/** A clean job's latest stored drift check: per scope the console's, V7's and console − V7; "unchecked" (no scopes) when never checked. */
+export type V7SpanningLatestDrift = { outcome: V7DriftOutcome | "unchecked"; checkedAt: string | null; scopes: V7DriftScope[] | null };
 
 export type V7SpanningBatchResult = { outcomes: V7SpanningBatchOutcome[]; stopped: "completed" | "source-unresponsive" };
 
@@ -54,6 +62,8 @@ export type V7SpanningBatchOptions = {
   optionsFor?: (jobId: string, legacyJobNumber: string) => V7ImportRefreshOptions | Promise<V7ImportRefreshOptions>;
   /** Only these jobs (J numbers of the previous system); every spanning job unless set. */
   jobNumbers?: readonly string[];
+  /** Only the spanning jobs whose latest drift check says behind (`--behind-only`). */
+  behindOnly?: boolean;
   /** The least pause between jobs: the batch's floor, never below it. */
   pauseMs?: number;
   maxPauseMs?: number;
@@ -71,18 +81,21 @@ const BLOCKER_WORDS: Record<Exclude<V7ImportFastPathBlocker, "flagged">, string>
   "admin-commits": "The organisation requires an Admin to commit, and the batch's actor is not one.",
 };
 
-export const V7_SPANNING_CURRENT_WORDS = "Already brought in, and nothing has changed here since.";
 export const v7SpanningUnreadWords = (reason: V7DriftUnknownReason) => `The previous system's own figures can't be read (${reason}), so it can't be checked against them.`;
 
-/** The organisation's imported CRP jobs whose period spans two calendar years, in job order — or only those named. */
-export async function listV7SpanningJobs(pool: PoolLike, organisationId: string, jobNumbers?: readonly string[]): Promise<Array<{ jobId: string; jobNumber: string }>> {
+/** The organisation's imported CRP jobs whose period spans two calendar years, in job order — or only those named; or only those behind. */
+export async function listV7SpanningJobs(pool: PoolLike, organisationId: string, jobNumbers?: readonly string[], behindOnly = false): Promise<Array<{ jobId: string; jobNumber: string }>> {
   return withTenantRead(pool, organisationId, async (db) => {
     const jobs = (await db.query<{ job_id: string; legacy_job_number: string }>(
       `SELECT job_id, legacy_job_number FROM nzi_console.jobs WHERE organisation_id = $1 AND job_family = 'crp' AND legacy_job_number IS NOT NULL
           AND ($2::text[] IS NULL OR legacy_job_number = ANY($2::text[])) ORDER BY sequence, job_id`,
       [organisationId, jobNumbers?.length ? [...jobNumbers] : null])).rows;
     const out: Array<{ jobId: string; jobNumber: string }> = [];
-    for (const job of jobs) if (v7PeriodSpansTwoYears(await readV7ImportPeriod(db, organisationId, job.job_id))) out.push({ jobId: job.job_id, jobNumber: job.legacy_job_number });
+    for (const job of jobs) {
+      if (!v7PeriodSpansTwoYears(await readV7ImportPeriod(db, organisationId, job.job_id))) continue;
+      if (behindOnly && (await readLatestV7Drift(db, organisationId, job.job_id))?.outcome !== "behind") continue;
+      out.push({ jobId: job.job_id, jobNumber: job.legacy_job_number });
+    }
     return out;
   });
 }
@@ -98,7 +111,7 @@ export async function runV7SpanningBatch(pool: PoolLike, organisationId: string,
   const wait = options.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const floor = Math.max(options.pauseMs ?? V7_IMPORT_BATCH_PACING.pauseMs, V7_IMPORT_BATCH_PACING.pauseMs);
   const threshold = options.breakerThreshold ?? V7_IMPORT_BATCH_PACING.breakerThreshold;
-  const jobs = await listV7SpanningJobs(pool, organisationId, options.jobNumbers);
+  const jobs = await listV7SpanningJobs(pool, organisationId, options.jobNumbers, options.behindOnly ?? false);
   const outcomes: V7SpanningBatchOutcome[] = [];
   let down = 0;
   for (const [at, job] of jobs.entries()) {
@@ -118,7 +131,13 @@ async function oneJob(pool: PoolLike, org: string, job: { jobId: string; jobNumb
   // The actor's grant as it stands now: the batch is theirs only while they may still run one.
   const grant = await resolveMemberGrant(pool, org, options.actorId);
   if (!grant || !grantFor(grant.capabilities, "import.refresh_batch")) return skipped(["PERMISSION_DENIED"], ["The batch's actor may not run an import batch."]);
-  if (await withTenantRead(pool, org, (db) => currentLocally(db, org, job.jobId))) return skipped(["CURRENT"], [V7_SPANNING_CURRENT_WORDS]);
+  // Clean: nothing to bring in. Reported with its latest drift check (stored; V7 is not called for it).
+  const clean = await withTenantRead(pool, org, async (db) => (await currentLocally(db, org, job.jobId)) ? { latest: await readLatestV7Drift(db, org, job.jobId) } : null);
+  if (clean) {
+    const drift: V7SpanningLatestDrift = clean.latest ? { outcome: clean.latest.outcome, checkedAt: clean.latest.checkedAt, scopes: clean.latest.scopes }
+      : { outcome: "unchecked", checkedAt: null, scopes: null };
+    return { outcome: drift.outcome === "behind" ? { status: "needs-repricing", ...job, drift } : { status: "nothing-to-bring-in", ...job, drift }, sourceDown: false };
+  }
   // Endpoint 2, read once for this job: the preview and its commit both run from it.
   const spanningFigures = await readSpanningFigures(pool, org, job.jobId, options.rowFigures);
   if (!spanningFigures.read?.ok) {
@@ -171,20 +190,50 @@ function blockerReasons(because: readonly V7ImportFastPathBlocker[], preview: { 
 const t = (n: number) => n.toFixed(4);
 const csv = (value: string) => /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
+const isGap = (s: V7DriftScope) => Math.abs(s.difference) > V7_DRIFT_TOLERANCE_TCO2E + 1e-9;
+
 export function v7SpanningBatchLines(outcome: V7SpanningBatchOutcome, commit: boolean): string[] {
   if (outcome.status === "skipped") return [`  ${outcome.jobNumber}: SKIPPED — ${outcome.codes.join(" ")}`, ...outcome.reasons.map((reason) => `      ${reason}`)];
+  if (outcome.status === "nothing-to-bring-in" || outcome.status === "needs-repricing") {
+    const d = outcome.drift;
+    const drift = `drift ${d.outcome}${d.checkedAt ? ` (checked ${d.checkedAt})` : ""}`;
+    if (outcome.status === "nothing-to-bring-in") return [`  ${outcome.jobNumber}: NOTHING TO BRING IN — ${drift}`];
+    return [`  ${outcome.jobNumber}: NEEDS RE-PRICING (BACKFILL) — nothing to bring in · ${drift}`,
+      ...(d.scopes ?? []).filter(isGap).map((s) => `      Scope ${s.scope}: here ${t(s.console)} t · previous system ${t(s.previous)} t · gap ${t(s.difference)} t`)];
+  }
   const head = outcome.status === "brought-in"
     ? `  ${outcome.jobNumber}: BROUGHT IN — ingest ${outcome.ingestId} · drift ${outcome.drift.outcome}${outcome.drift.unknownReason ? ` (${outcome.drift.unknownReason})` : ""}`
     : `  ${outcome.jobNumber}: WOULD COME IN${commit ? "" : " (dry run)"}`;
   return [head, ...outcome.scopes.map((s) => `      Scope ${s.scope}: before ${t(s.before)} t → after ${t(s.after)} t · previous system ${t(s.previous)} t`)];
 }
 
-export function v7SpanningBatchCsv(outcomes: readonly V7SpanningBatchOutcome[]): string {
-  const lines = ["job,job_id,status,scope,before_tco2e,after_tco2e,previous_tco2e,codes,reason,ingest_id,drift"];
+const OUTCOME_ORDER: ReadonlyArray<[V7SpanningBatchOutcome["status"], string]> = [
+  ["would-come-in", "would come in"], ["brought-in", "brought in"], ["nothing-to-bring-in", "nothing to bring in"],
+  ["needs-repricing", "needs re-pricing (backfill)"], ["skipped", "skipped"]];
+
+/** The jobs per outcome, in the list's order (a dry run never brings in; a commit's "would come in" are brought in). */
+export function v7SpanningBatchTotals(outcomes: readonly V7SpanningBatchOutcome[], commit: boolean): Array<{ status: V7SpanningBatchOutcome["status"]; label: string; jobs: number }> {
+  return OUTCOME_ORDER.filter(([status]) => status !== (commit ? "would-come-in" : "brought-in"))
+    .map(([status, label]) => ({ status, label, jobs: outcomes.filter((o) => o.status === status).length }));
+}
+
+export function v7SpanningBatchTotalsLines(outcomes: readonly V7SpanningBatchOutcome[], commit: boolean): string[] {
+  return ["Totals:", ...v7SpanningBatchTotals(outcomes, commit).map((row) => `  ${row.label}: ${row.jobs}`), `  jobs: ${outcomes.length}`];
+}
+
+export function v7SpanningBatchCsv(outcomes: readonly V7SpanningBatchOutcome[], commit: boolean): string {
+  const lines = ["job,job_id,status,scope,before_tco2e,after_tco2e,previous_tco2e,codes,reason,ingest_id,drift,gap_tco2e"];
   for (const o of outcomes) {
-    if (o.status === "skipped") for (const reason of o.reasons) lines.push([o.jobNumber, o.jobId, "skipped", "", "", "", "", o.codes.join(" "), csv(reason), "", ""].join(","));
+    if (o.status === "skipped") for (const reason of o.reasons) lines.push([o.jobNumber, o.jobId, "skipped", "", "", "", "", o.codes.join(" "), csv(reason), "", "", ""].join(","));
+    // A clean job: nothing changes, so before is after; per scope its latest check's gap (console − previous), one row if never read.
+    else if (o.status === "nothing-to-bring-in" || o.status === "needs-repricing") {
+      if (!o.drift.scopes) lines.push([o.jobNumber, o.jobId, o.status, "", "", "", "", "", "", "", o.drift.outcome, ""].join(","));
+      else for (const s of o.drift.scopes) lines.push([o.jobNumber, o.jobId, o.status, s.scope, t(s.console), t(s.console), t(s.previous), "", "", "", o.drift.outcome, t(s.difference)].join(","));
+    }
     else for (const s of o.scopes) lines.push([o.jobNumber, o.jobId, o.status, s.scope, t(s.before), t(s.after), t(s.previous), "", "",
-      o.status === "brought-in" ? o.ingestId : "", o.status === "brought-in" ? o.drift.outcome : ""].join(","));
+      o.status === "brought-in" ? o.ingestId : "", o.status === "brought-in" ? o.drift.outcome : "", ""].join(","));
   }
+  // The totals, after a blank line: jobs per outcome, then all.
+  lines.push("", "outcome,jobs", ...v7SpanningBatchTotals(outcomes, commit).map((row) => `${row.status},${row.jobs}`), `total,${outcomes.length}`);
   return `${lines.join("\n")}\n`;
 }
