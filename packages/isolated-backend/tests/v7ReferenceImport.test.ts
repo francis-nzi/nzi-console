@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "node:test";
-import { clean, EXCLUSION_REASONS, normaliseCode, parseCsv, planV7Load, sameDecimal, type ExtractRow } from "../src/v7ReferenceImport";
+import { clean, EXCLUSION_REASONS, normaliseCode, parseCsv, planV7Load, sameDecimal, withDatasetColumns, type ExtractRow } from "../src/v7ReferenceImport";
 import { DIVERGENT_EXTRACT, FOLD_EXTRACT, FOLDED_IDS } from "./support/v7FoldExtract";
 import { countryCodeFor } from "../src/v7Countries";
 
@@ -475,4 +475,108 @@ describe("D5-air (R2, ruled 28 Oct 2026): business-travel air loads with RF, by 
     assert.deepEqual(result.excluded, []);
     assert.equal(result.factors.length, 3);
   });
+});
+
+describe("Cornerstone EEIO and the UAE's Activity & Spend (BRIEF-library-cornerstone-activity-spend, ruled 27 Nov)", () => {
+  const LIBRARY = parseCsv(readFileSync(resolve(here, "fixtures/v7-library-cornerstone-synthetic.csv"), "utf8"));
+  const library = plan(LIBRARY);
+  const dataset = (id: string) => library.datasets.find((planned) => planned.datasetId === id);
+
+  it("plans cleanly: nine Cornerstone editions and two UAE sets, nothing refused", () => {
+    assert.deepEqual(library.refusals, []);
+    assert.deepEqual(library.datasets.map((planned) => planned.datasetId).sort(), [
+      "ceda-es-2025-edition-2026-rc", "ceda-es-2026-edition-2026-rc", "ceda-in-2024-edition-2026-rc", "ceda-in-2025-edition-2026-rc", "ceda-in-2026-edition-2026-rc",
+      "ceda-pl-2025-edition-2026-rc", "ceda-pl-2026-edition-2026-rc", "ceda-sg-2025-edition-2026-rc", "ceda-sg-2026-edition-2026-rc", "uk-ghg-ae-2025", "uk-ghg-ae-2026"]);
+  });
+
+  it("L-1: Cornerstone is the ceda family, its release the edition: V7's id, its name, the release as the version, its validity", () => {
+    const india2025 = dataset("ceda-in-2025-edition-2026-rc")!;
+    assert.equal(india2025.sourceFamily, "ceda");
+    assert.equal(india2025.countryCode, "IN");
+    assert.equal(india2025.name, "CEDA 2026-rc - India 2025 (INR)");
+    assert.equal(india2025.version, "2026-rc");
+    assert.equal(india2025.legacyDatasetId, "402");
+    assert.equal(india2025.status, "active");
+    assert.deepEqual([dataset("ceda-in-2024-edition-2026-rc")!.validFrom, dataset("ceda-in-2026-edition-2026-rc")!.validTo], ["1990-01-01", "2099-12-31"],
+      "2024 covers earlier periods and 2026 later ones, as V7 loaded them");
+    const factor = library.factors.find((planned) => planned.datasetId === "ceda-in-2025-edition-2026-rc" && planned.legacyOriginalId === "CEDA-IND-1111A0")!;
+    assert.deepEqual([factor.factorId, factor.activityUnit, factor.kgco2ePerUnit, factor.scopes], ["ceda-CEDA-IND-1111A0", "INR", "0.007268628736385697", ["3"]],
+      "V7's id with the family prefix, priced in the country's own currency at V7's value, digit for digit");
+  });
+
+  it("one identity per country's code, across its years: the id carries no year", () => {
+    const india = library.factors.filter((planned) => planned.factorId === "ceda-CEDA-IND-1111A0").map((planned) => planned.datasetId).sort();
+    assert.deepEqual(india, ["ceda-in-2024-edition-2026-rc", "ceda-in-2025-edition-2026-rc", "ceda-in-2026-edition-2026-rc"]);
+    assert.equal(library.identities.filter((identity) => identity.factorId === "ceda-CEDA-IND-1111A0").length, 1);
+  });
+
+  it("the final release is a new edition of each year, never the same id", () => {
+    const final = plan(LIBRARY.map((extracted) => ({ ...extracted, source: (extracted.source ?? "").replace("2026-rc", "2026"), dataset_name: extracted.dataset_name?.replace("2026-rc", "2026") ?? "" })));
+    assert.ok(final.datasets.some((planned) => planned.datasetId === "ceda-in-2025-edition-2026" && planned.version === "2026"));
+    assert.ok(!final.datasets.some((planned) => planned.datasetId.endsWith("-edition-2026-rc")));
+  });
+
+  it("refuses a Cornerstone row whose source names no release", () => {
+    const refused = plan([{ ...LIBRARY[0]!, source: "Cornerstone EEIO" }]);
+    assert.deepEqual(codes(refused.refusals), ["cornerstone-no-release"]);
+  });
+
+  it("L-5: V7's UAE sets are AE by their dataset, whatever the row's region says, and named as V7 names them", () => {
+    const uae = dataset("uk-ghg-ae-2025")!;
+    assert.deepEqual([uae.countryCode, uae.sourceFamily, uae.name, uae.legacyDatasetId], ["AE", "uk-ghg", "UAE Activity & Spend 2025", "8"]);
+    assert.ok(library.reports.some((finding) => finding.code === "region-differs-from-dataset" && finding.examples.some((example) => /SPEND-SIC-49\.3-5 region "UK", dataset 8 AE/.test(example))));
+    assert.ok(!library.datasets.some((planned) => planned.datasetId.startsWith("uk-ghg-gb-")), "no UAE row lands in a GB set");
+  });
+
+  it("an extract without dataset columns plans exactly as before: the 25 Sep fixture is unchanged", () => {
+    const before = plan();
+    assert.deepEqual(before.datasets.map((planned) => [planned.datasetId, planned.countryCode, planned.name, planned.version]).sort(),
+      plan(FIXTURE.map((extracted) => ({ ...extracted, dataset_name: "", dataset_country: "" }))).datasets.map((planned) => [planned.datasetId, planned.countryCode, planned.name, planned.version]).sort());
+    assert.ok(before.datasets.some((planned) => planned.datasetId === "uk-ghg-gb-2025"));
+  });
+
+  it("refuses a V7 dataset country that isn't a country", () => {
+    const refused = plan([{ ...LIBRARY.find((extracted) => extracted.db_id === "8103")!, dataset_country: "Middle Earth" }]);
+    assert.deepEqual(codes(refused.refusals), ["unknown-dataset-country"]);
+  });
+});
+
+describe("the library extract as the V7 session writes it (27 Nov): the datasets sidecar, --only, SWC in the UAE's A&S", () => {
+  const uae = { dataset_name: "UAE Activity & Spend 2025", dataset_source: "DESNZ & SWC", dataset_country: "United Arab Emirates" };
+  const swc = (over: Partial<ExtractRow>): ExtractRow => row({ db_id: "21751", original_id: "SWC-SPEND-14", dataset_id: "8", year: "2025", factor: "0.516721413",
+    scope: "Scope 3", category: "Purchased Goods and Services", level_1: "Manufacture Of Wearing Apparel", level_2: "NaN", level_3: "NaN", level_4: "NaN",
+    column_text: "Manufacture Of Wearing Apparel", report_label: "Manufacture Of Wearing Apparel", uom: "GBP", method: "Spend", region: "", source: "SWC", ...over });
+
+  it("joins V7's dataset name, source and country from the sidecar onto every row of that dataset; a row's own value wins", () => {
+    const joined = withDatasetColumns([row({ dataset_id: "8" }), row({ dataset_id: "99" }), row({ dataset_id: "8", dataset_country: "Oman" })],
+      [{ dataset_id: "8", name: "UAE Activity & Spend 2025", source: "DESNZ & SWC", country: "United Arab Emirates" }]);
+    assert.deepEqual(joined.map((r) => [r.dataset_name, r.dataset_country]), [["UAE Activity & Spend 2025", "United Arab Emirates"], [undefined, undefined], ["UAE Activity & Spend 2025", "Oman"]]);
+  });
+
+  it("an SWC spend row inside a V7 Activity & Spend dataset is that dataset's series, named for the dataset's source; without one it stays excluded", () => {
+    const inUae = plan([swc(uae)]);
+    assert.deepEqual(inUae.refusals, []);
+    assert.deepEqual(inUae.factors.map((f) => [f.datasetId, f.factorId, f.activityUnit, f.legacyOriginalId]), [["uk-ghg-ae-2025", "uk-ghg-SWC-SPEND-14", "GBP", "SWC-SPEND-14"]]);
+    assert.deepEqual([inUae.datasets[0]!.sourceName, inUae.datasets[0]!.name], ["DESNZ & SWC", "UAE Activity & Spend 2025"]);
+    const bare = plan([swc({})]);
+    assert.deepEqual(bare.excluded.map((e) => e.reason), ["swc-no-country"]);
+  });
+
+  it("--only plans the named V7 datasets alone; the rest is read, never planned — and still serves the ruled duplicate-upload check", () => {
+    const zero = { factor: "0", original_id: "99_316_3160_11_2", source: "NZI", level_1: "Walking", uom: "passenger.km" };
+    const rows = [
+      row({ ...zero, ...uae, db_id: "21722", dataset_id: "8", year: "2025" }),
+      row({ ...zero, db_id: "2579", dataset_id: "1", year: "2025", uom: "miles", file_name: "DESNZ DEFRA Conversion Factors 2019-2025.xlsx", dataset_country: "United Kingdom" }),
+      row({ db_id: "2580", dataset_id: "1", year: "2025", dataset_country: "United Kingdom" }),
+    ];
+    const only = planV7Load(rows, REGISTRY, { onlyV7Datasets: new Set(["8"]) });
+    assert.deepEqual(only.refusals, []);
+    assert.deepEqual(only.excluded.map((e) => [e.dbId, e.reason]), [["21722", "duplicate-upload-unit-conflict"]]);
+    assert.equal(only.datasets.length, 0, "nothing of the UK set is planned");
+    assert.equal(only.summary.readNotPlanned, 2);
+    const noFileName = planV7Load(rows.map((r) => ({ ...r, file_name: "" })), REGISTRY, { onlyV7Datasets: new Set(["8"]) });
+    assert.deepEqual(codes(noFileName.refusals), ["ruled-exclusion-unverified"], "without the xlsx file name the ruled exclusion can't be verified, and refuses");
+  });
+
+  it("Cornerstone's \"Hong Kong\" is HK", () => assert.equal(countryCodeFor("Hong Kong"), "HK"));
 });

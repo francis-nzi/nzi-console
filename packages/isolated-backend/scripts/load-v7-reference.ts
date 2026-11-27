@@ -15,15 +15,20 @@
  * `--precedence` adds rulings for editions that fold together, per dataset slug: `"<active v7 dataset_id>"` or `"merge"`.
  * The rulings already made (uk-ghg 2022–2025 merge) are applied by default; a file entry for the same slug overrides one.
  *
+ * The library extract (BRIEF-library-cornerstone-activity-spend; `_handoff/EXTRACT-library-cornerstone-uae.sql`) adds two optional
+ * columns from V7's `datasets`: `dataset_name`, the dataset's own name, and `dataset_country`, which places DESNZ and NZI rows in
+ * their dataset's country (the UAE's Activity & Spend in AE). Cornerstone loads as `ceda` editions, and its load supersedes CEDA
+ * 2025 (Watershed) and any earlier Cornerstone release; the dry run lists the series and every dataset it would supersede.
+ *
  * Fail-closed on the boundary like every other write here: production APP_ENV is refused and NZI_DATABASE_BOUNDARY must
  * say isolated-non-production.
  */
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Pool } from "pg";
 import { validateDatabaseBoundary } from "../src/databaseBoundary";
 import { listCategoryVariants } from "../src/factorCategoryVariants";
-import { DEFAULT_ORGANISATION, parseCsv, planV7Load, type Finding, type Precedence } from "../src/v7ReferenceImport";
-import { loadV7Plan } from "../src/v7ReferenceLoad";
+import { CORNERSTONE_SOURCE, DEFAULT_ORGANISATION, parseCsv, planV7Load, withDatasetColumns, type Finding, type Precedence } from "../src/v7ReferenceImport";
+import { loadV7Plan, plannedSupersessions } from "../src/v7ReferenceLoad";
 
 const log = (line = "") => process.stdout.write(`${line}\n`);
 const argument = (name: string) => { const at = process.argv.indexOf(name); return at > 0 ? process.argv[at + 1] : undefined; };
@@ -52,10 +57,21 @@ async function main(): Promise<void> {
   const pool = new Pool({ connectionString: url.toString(), max: 2, application_name: "nzi-v7-reference-load" });
   try {
     const registry = await listCategoryVariants(pool as never);
-    const plan = planV7Load(parseCsv(readFileSync(file, "utf8")), registry, { organisationId, precedence });
+    // V7's datasets beside the extract, when the V7 session wrote them as a sidecar: their name, source and country per dataset.
+    const sidecar = file.replace(/\.csv$/i, ".datasets.csv");
+    const extracted = parseCsv(readFileSync(file, "utf8"));
+    const rows = sidecar !== file && existsSync(sidecar) ? withDatasetColumns(extracted, parseCsv(readFileSync(sidecar, "utf8"))) : extracted;
+    if (rows !== extracted) log(`\nV7 datasets read from ${sidecar} (name, source and country per dataset)`);
+    // `--only cornerstone,8,9,10,11,12,70`: plan only those V7 datasets (`cornerstone` = every Cornerstone EEIO one in the extract);
+    // the rest is read as reference for the ruled checks and never written.
+    const only = argument("--only");
+    const onlyV7Datasets = only === undefined ? undefined : new Set(only.split(",").map((token) => token.trim()).filter(Boolean).flatMap((token) =>
+      token.toLowerCase() === "cornerstone" ? rows.filter((row) => CORNERSTONE_SOURCE.test(row.source ?? "")).map((row) => row.dataset_id ?? "") : [token]));
+    if (onlyV7Datasets) log(`  planning ${onlyV7Datasets.size} V7 datasets only (--only ${only}); every other row is read as reference`);
+    const plan = planV7Load(rows, registry, { organisationId, precedence, onlyV7Datasets });
 
     log(`\nv7 reference load into ${organisationId} — ${commit ? "COMMIT" : "dry run, nothing will be written"}`);
-    log(`  extracted ${plan.summary.extracted} · identical repeats collapsed ${plan.summary.duplicatesCollapsed} · not kgCO2e ${plan.summary.skippedNotKgco2e}`);
+    log(`  extracted ${plan.summary.extracted} · identical repeats collapsed ${plan.summary.duplicatesCollapsed} · not kgCO2e ${plan.summary.skippedNotKgco2e} · read as reference only ${plan.summary.readNotPlanned}`);
     log(`  null spellings read as NULL: ${Object.entries(plan.summary.nulledCells).map(([spelling, n]) => `"${spelling}" ${n}`).join(" · ") || "none"} cells, in ${plan.summary.rowsWithNulledCells} rows`);
     log(`  empty region by family: ${Object.entries(plan.summary.emptyRegionByFamily).map(([family, n]) => `${family} ${n}`).join(" · ")}`);
     log(`  datasets ${plan.datasets.length} (${plan.datasets.filter((d) => d.status === "superseded").length} superseded) · identities ${plan.identities.length} · value rows ${plan.factors.length}`);
@@ -63,6 +79,24 @@ async function main(): Promise<void> {
     printFindings("REFUSALS — the load will not run until each is resolved", plan.refusals);
     printFindings(`Excluded — ${plan.excluded.length} rows skipped for a named reason, not blocking`, plan.exclusions);
     printFindings("Reports — shown, not blocking", plan.reports);
+
+    // Per series (family, country, edition): what the plan carries, and what its load would supersede (library, ruled 27 Nov).
+    const series = new Map<string, { datasets: number; factors: number; years: Set<string> }>();
+    const factorsIn = new Map<string, number>();
+    for (const factor of plan.factors) factorsIn.set(factor.datasetId, (factorsIn.get(factor.datasetId) ?? 0) + 1);
+    for (const dataset of plan.datasets) {
+      const edition = /-edition-(.+)$/.exec(dataset.datasetId)?.[1];
+      const key = `${dataset.sourceFamily} ${dataset.countryCode}${edition ? ` edition ${edition}` : ""}`;
+      const held = series.get(key) ?? { datasets: 0, factors: 0, years: new Set<string>() };
+      held.datasets += 1; held.factors += factorsIn.get(dataset.datasetId) ?? 0;
+      held.years.add(`${dataset.validFrom.slice(0, 4)}–${dataset.validTo.slice(0, 4)}`);
+      series.set(key, held);
+    }
+    log(`\nSeries (${series.size}):`);
+    for (const [key, held] of [...series].sort(([a], [b]) => a.localeCompare(b))) log(`  ${key}: ${held.datasets} datasets, ${held.factors} value rows, valid ${[...held.years].sort().join(" · ")}`);
+    const supersessions = await plannedSupersessions(pool as never, plan);
+    log(`\nWould supersede ${supersessions.length} active dataset(s)${supersessions.length ? ":" : "."}`);
+    for (const entry of supersessions) log(`  ${entry.datasetId} — ${entry.why === "watershed" ? "CEDA 2025 (Watershed)" : "an earlier Cornerstone release"}${entry.by ? `, by ${entry.by}` : ", no successor"}`);
 
     const exclusionReport = `${file.replace(/\.csv$/i, "")}.exclusions.csv`;
     writeFileSync(exclusionReport, [["db_id", "reason", "original_id", "source", "detail"],
@@ -73,7 +107,7 @@ async function main(): Promise<void> {
     if (plan.refusals.length > 0) { process.exitCode = 1; return; }
     if (!commit) { log("\nDry run complete. Re-run with --commit to write."); return; }
     const outcome = await loadV7Plan(pool, plan);
-    log(`\nWritten: datasets +${outcome.datasetsInserted} (=${outcome.datasetsUnchanged} unchanged) · identities +${outcome.identitiesInserted} (=${outcome.identitiesKept} kept) · value rows +${outcome.factorsInserted} · folded ${outcome.factorsFolded} into applicability +${outcome.applicabilityInserted} (=${outcome.applicabilityKept} kept)`);
+    log(`\nWritten: datasets +${outcome.datasetsInserted} (=${outcome.datasetsUnchanged} unchanged, ${outcome.datasetsSuperseded} superseded) · identities +${outcome.identitiesInserted} (=${outcome.identitiesKept} kept) · value rows +${outcome.factorsInserted} · folded ${outcome.factorsFolded} into applicability +${outcome.applicabilityInserted} (=${outcome.applicabilityKept} kept)`);
   } finally {
     await pool.end();
   }

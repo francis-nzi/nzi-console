@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { PoolLike } from "./postgres";
+import type { PoolLike, Queryable } from "./postgres";
 import { withTenantWrite } from "./postgres";
-import { SOURCE_SYSTEM, type LoadPlan } from "./v7ReferenceImport";
+import { CORNERSTONE_SOURCE, SOURCE_SYSTEM, type LoadPlan } from "./v7ReferenceImport";
 
 /**
  * Write a v7 load plan (REFERENCE_DATA_DESIGN §5). One transaction, as the application role, inside the target
@@ -17,12 +17,42 @@ import { SOURCE_SYSTEM, type LoadPlan } from "./v7ReferenceImport";
  * an audit event listing every row folded into it. A pair already in place is kept as it stands, as an identity is. Before any
  * of that, every folded row is re-checked against the base just written, in SQL — the same `numeric` value, unit and scopes — so
  * nothing is folded on the plan's word alone.
+ *
+ * Cornerstone (BRIEF-library-cornerstone-activity-spend, ruled 27 Nov): a plan carrying Cornerstone editions supersedes, in the same
+ * transaction, what they replace — every CEDA 2025 (Watershed) set (L-2, L-3: ROW, GB and AE too, which have no successor), and
+ * an earlier Cornerstone release of the same country and year. Superseded is never deleted: rows, selections and snapshots
+ * keep citing it, and only new selection passes it by. Every run writes one audit event (`reference.library.loaded`).
  */
 
 export class V7LoadRefused extends Error {}
 
+/** CEDA 2025 (Watershed): the source name V7 and the console both carry for it. */
+export const WATERSHED_SOURCE = "CEDA 2025 (Watershed)";
+
+/** One dataset a load supersedes: Watershed (by its Cornerstone successor, or by none), or an earlier Cornerstone release. */
+export type Supersession = { datasetId: string; why: "watershed" | "earlier-release"; by: string | null };
+
+/**
+ * What a plan's load supersedes, read now — the dry run shows exactly this, and the load applies exactly this, inside its
+ * transaction. Only a plan with Cornerstone editions supersedes anything; a dataset the plan itself carries never is.
+ */
+export async function plannedSupersessions(db: Queryable, plan: LoadPlan): Promise<Supersession[]> {
+  const editions = plan.datasets.filter((dataset) => CORNERSTONE_SOURCE.test(dataset.sourceName) && dataset.status === "active").map((dataset) => dataset.datasetId);
+  if (editions.length === 0) return [];
+  const { rows } = await db.query<{ dataset_id: string; source_name: string; by: string | null }>(
+    `SELECT d.dataset_id, d.source_name, e.id AS by
+       FROM nzi_console.emission_factor_datasets d
+       LEFT JOIN unnest($2::text[]) AS e(id) ON regexp_replace(e.id, '-edition-.+$', '') = regexp_replace(d.dataset_id, '-edition-.+$', '')
+      WHERE d.organisation_id = $1 AND d.status = 'active' AND d.dataset_id <> ALL($2::text[]) AND (d.source_name = $3 OR e.id IS NOT NULL)
+      ORDER BY d.dataset_id`,
+    [plan.organisationId, plan.datasets.map((dataset) => dataset.datasetId), WATERSHED_SOURCE]);
+  return rows.map((row) => ({ datasetId: row.dataset_id, why: row.source_name === WATERSHED_SOURCE ? "watershed" : "earlier-release", by: row.by }));
+}
+
 export type LoadOutcome = {
   datasetsInserted: number; datasetsUnchanged: number;
+  /** Datasets this run moved from active to superseded (Cornerstone's predecessors). */
+  datasetsSuperseded: number;
   identitiesInserted: number; identitiesKept: number;
   factorsInserted: number;
   /** Dedup slice 4: variant rows folded into applicability (no value row), and the pairs added for them or already in place. */
@@ -38,8 +68,9 @@ export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOu
   // The application role holds no privilege on organisations (0092), so existence is left to the datasets table's
   // foreign key — and its error is said plainly.
   return withTenantWrite(pool, plan.organisationId, async (db) => {
-    const outcome: LoadOutcome = { datasetsInserted: 0, datasetsUnchanged: 0, identitiesInserted: 0, identitiesKept: 0, factorsInserted: 0,
+    const outcome: LoadOutcome = { datasetsInserted: 0, datasetsUnchanged: 0, datasetsSuperseded: 0, identitiesInserted: 0, identitiesKept: 0, factorsInserted: 0,
       factorsFolded: 0, applicabilityInserted: 0, applicabilityKept: 0 };
+    const correlationId = `import:v7:${randomUUID()}`;
     const fresh = new Set<string>();
     for (const dataset of plan.datasets) {
       const existing = (await db.query<{ content_sha256: string | null }>(
@@ -59,6 +90,17 @@ export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOu
           dataset.legacyDatasetId, dataset.contentSha256]);
       fresh.add(dataset.datasetId);
       outcome.datasetsInserted += 1;
+    }
+
+    // Cornerstone's predecessors leave `active` here, in the load's own transaction: Watershed's `ceda-in-2025` and Cornerstone's
+    // `ceda-in-2025-edition-…` are one series, and left active, the older one would win the series pick (L-1, L-2, L-3).
+    const supersessions = await plannedSupersessions(db, plan);
+    if (supersessions.length > 0) {
+      const superseded = await db.query(
+        `UPDATE nzi_console.emission_factor_datasets SET status = 'superseded' WHERE organisation_id = $1 AND dataset_id = ANY($2::text[]) AND status = 'active'
+         RETURNING dataset_id`,
+        [plan.organisationId, supersessions.map((entry) => entry.datasetId)]);
+      outcome.datasetsSuperseded = superseded.rows.length;
     }
 
     // Identities first, so the curated fields are v7's and not the trigger's fallback.
@@ -125,7 +167,6 @@ export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOu
       }
       outcome.factorsFolded = folded.length;
 
-      const correlationId = `import:v7:${randomUUID()}`;
       for (const pair of plan.applicability) {
         const rows = folded.filter((row) => row.base === pair.factorId && row.suffixCode === pair.suffixCode);
         if (rows.length === 0) continue;
@@ -164,6 +205,19 @@ export async function loadV7Plan(pool: PoolLike, plan: LoadPlan): Promise<LoadOu
           })]);
       }
     }
+
+    // One audit event per run (the brief's "one audit event per run"): what was written, left as it was, and superseded.
+    await db.query(
+      `INSERT INTO nzi_console.audit_events
+         (organisation_id,audit_event_id,actor_id,principal_type,action,entity_type,entity_id,correlation_id,after_json)
+       VALUES ($1,$2,'import:v7','system','reference.library.loaded','reference_library',$1,$3,$4::jsonb)`,
+      [plan.organisationId, `audit-${randomUUID()}`, correlationId, JSON.stringify({
+        sourceSystem: SOURCE_SYSTEM, outcome,
+        inserted: plan.datasets.filter((dataset) => fresh.has(dataset.datasetId))
+          .map((dataset) => ({ datasetId: dataset.datasetId, legacyDatasetId: dataset.legacyDatasetId, version: dataset.version, contentSha256: dataset.contentSha256 })),
+        unchanged: plan.datasets.filter((dataset) => !fresh.has(dataset.datasetId)).map((dataset) => dataset.datasetId),
+        superseded: supersessions,
+      })]);
     return outcome;
   }).catch((error: { code?: string; constraint?: string }) => {
     if (error?.code === "23503" && /organisation/.test(error.constraint ?? "")) {

@@ -99,7 +99,7 @@ describe("dedup slice 4: the v7 import folds same-value variants into applicabil
 
   it("the pre-E library (built by hand): every variant row written, no pair, nothing folded", async () => {
     const outcome = await loadV7Plan(database.pool, plans.old);
-    assert.deepEqual(outcome, { datasetsInserted: 1, datasetsUnchanged: 0, identitiesInserted: FOLD_EXTRACT.length, identitiesKept: 0, factorsInserted: FOLD_EXTRACT.length,
+    assert.deepEqual(outcome, { datasetsInserted: 1, datasetsUnchanged: 0, datasetsSuperseded: 0, identitiesInserted: FOLD_EXTRACT.length, identitiesKept: 0, factorsInserted: FOLD_EXTRACT.length,
       factorsFolded: 0, applicabilityInserted: 0, applicabilityKept: 0 });
     assert.deepEqual(await ids(OLD), plans.old.factors.map((factor) => factor.factorId).sort());
     assert.deepEqual(await pairs(OLD), [], "0170 backfilled at migration time; a materialised load adds no pair");
@@ -107,7 +107,7 @@ describe("dedup slice 4: the v7 import folds same-value variants into applicabil
 
   it("folded: the duplicate rows are not written; each pair is, with the variant's exact strings and its lineage — 0170's guard satisfied", async () => {
     const outcome = await loadV7Plan(database.pool, plans.new);
-    assert.deepEqual(outcome, { datasetsInserted: 1, datasetsUnchanged: 0, identitiesInserted: FOLD_EXTRACT.length - FOLDED_IDS.length, identitiesKept: 0,
+    assert.deepEqual(outcome, { datasetsInserted: 1, datasetsUnchanged: 0, datasetsSuperseded: 0, identitiesInserted: FOLD_EXTRACT.length - FOLDED_IDS.length, identitiesKept: 0,
       factorsInserted: FOLD_EXTRACT.length - FOLDED_IDS.length, factorsFolded: FOLDED_IDS.length, applicabilityInserted: FOLDED_IDS.length, applicabilityKept: 0 });
     const loaded = await ids(NEW);
     assert.deepEqual(loaded, (await ids(OLD)).filter((id) => !FOLDED_IDS.includes(id)), "today's rows less exactly the folded ones");

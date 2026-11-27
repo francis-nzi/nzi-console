@@ -1211,6 +1211,11 @@ jobs:
       # the version, cited by rows' provenance, untouched; no other dataset; run again, nothing changes.
       - name: Migration 0239 names the 2026 editions, never their version or any other dataset
         run: npx tsx --test packages/isolated-backend/tests/migration0239Real.test.ts
+      # BRIEF-library-cornerstone-activity-spend (0242): Cornerstone loaded as ceda editions and the UAE's Activity & Spend as AE, CEDA 2025
+      # (Watershed) superseded in the same transaction, rows and snapshots on it unmoved; a re-load changes nothing; the final release a
+      # new edition beside the candidate; a superseded dataset refused as a manual pick; J000663's shape; an INR row priced as V7 prices it.
+      - name: The library matches V7 — Cornerstone, the UAE's Activity & Spend, Watershed superseded
+        run: npx tsx --test packages/isolated-backend/tests/libraryCornerstoneReal.test.ts
 
   # ── The fifth gate: the capture surface, in a browser, on this commit's build (NZC-147) ─────────────
   #
