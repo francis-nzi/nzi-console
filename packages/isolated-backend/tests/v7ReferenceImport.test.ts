@@ -310,9 +310,9 @@ describe("the full-extract review of 25 Sep 2026", () => {
 });
 
 describe("the dry-run rulings of 25 Sep 2026", () => {
-  it("excludes only the named reasons (six, and air without RF since 28 Oct); any other bad row still refuses the whole load", () => {
+  it("excludes only the named reasons (six, air without RF since 28 Oct, and the freight -d correction since 27 Nov); any other bad row still refuses the whole load", () => {
     assert.deepEqual(Object.keys(EXCLUSION_REASONS).sort(),
-      ["air-without-rf", "column-shifted", "duplicate-upload-unit-conflict", "factor-missing", "not-kgco2e", "retired-w", "swc-no-country"]);
+      ["air-without-rf", "column-shifted", "duplicate-upload-unit-conflict", "factor-missing", "freight-d-corrected", "not-kgco2e", "retired-w", "swc-no-country"]);
     const result = plan([
       row({ db_id: "1101", factor: "NaN" }),
       row({ db_id: "1102", original_id: "X_1", currency: "Rail transport services" }),

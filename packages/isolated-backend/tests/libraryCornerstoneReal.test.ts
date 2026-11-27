@@ -246,3 +246,73 @@ describe("the library matches V7: Cornerstone, the UAE's Activity & Spend, CEDA 
     });
   });
 });
+
+/**
+ * The 27 Nov staging commit failed on 0170's variant guard: V7's UAE Activity & Spend still carries the freight -d defect 0170
+ * corrected in the GB sets (`uk-ghg-27_303_3081_14_1-d` at its per-mile sibling's 0.22836, its base 0.78936). The plan corrects it
+ * as 0170 did and folds it, listing each row; and the dry run rehearses the writes and rolls them back, so the database's own
+ * checks refuse a plan before `--commit` does.
+ */
+describe("the UAE sets' freight -d defect: corrected and folded as 0170 did, and the dry run's rehearsal catches what the database refuses", { skip: TEST_DATABASE_URL ? false : "NZI_TEST_DATABASE_URL is not set" }, () => {
+  let database: DisposableDatabase;
+  const q = async (sql: string, params: unknown[] = []) => { const db = await database.admin(); try { return (await db.query(sql, params)).rows; } finally { await db.end(); } };
+  const planOf = async (rows: readonly ExtractRow[]) => { const db = await database.admin(); try { return planV7Load(rows, await listCategoryVariants(db)); } finally { await db.end(); } };
+  const uae2022 = (dbId: string, code: string, factor: string, uom: string, category: string): ExtractRow => ({
+    db_id: dbId, original_id: code, dataset_id: "9", year: "2022", factor, currency: "", valid_from: "2022-01-01", valid_to: "2022-12-31", scope: "Scope 3",
+    category, level_1: "Freighting goods", level_2: "HGV (all diesel)", level_3: "All HGVs", level_4: "Average laden", column_text: `Freighting goods - HGV - ${uom}`,
+    report_label: "Freight: HGV", uom, ghg_unit: "kgCO2e", method: "Activity", region: "", source: "DESNZ", file_name: "UAE Activity & Spend 2022.xlsx",
+    dataset_name: "UAE Activity & Spend 2022", dataset_country: "United Arab Emirates" });
+  const UPSTREAM = "Upstream Transportation and Distribution", DOWNSTREAM = "Downstream Transportation and Distribution";
+  /** V7's UAE 2022 freight lines as they stand: the km and tonne.km -d at the per-mile value; the miles -d at its base's. */
+  const DEFECT: ExtractRow[] = [
+    uae2022("9101", "27_303_3081_4_1", "0.90513", "km", UPSTREAM),
+    uae2022("9102", "27_303_3081_4_1-d", "0.22836", "km", DOWNSTREAM),
+    uae2022("9103", "27_303_3081_9_1", "0.22836", "miles", UPSTREAM),
+    uae2022("9104", "27_303_3081_9_1-d", "0.22836", "miles", DOWNSTREAM),
+    uae2022("9105", "27_303_3081_14_1", "0.78936", "tonne.km", UPSTREAM),
+    uae2022("9106", "27_303_3081_14_1-d", "0.22836", "tonne.km", DOWNSTREAM),
+  ];
+  const datasetCount = async () => Number((await q(`SELECT count(*) AS n FROM nzi_console.emission_factor_datasets WHERE organisation_id = $1 AND dataset_id = 'uk-ghg-ae-2022'`, [ORG]))[0].n);
+  const runs = async () => Number((await q(`SELECT count(*) AS n FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'reference.library.loaded'`, [ORG]))[0].n);
+
+  before(async () => { database = (await createDisposableDatabase("libraryfreightd"))!; });
+  after(async () => { await database?.end(); });
+
+  it("a divergent -d that is not 0170's defect is reported, not corrected — and the dry run's rehearsal meets the guard, rolled back", async () => {
+    // A -d at a number no per-mile sibling carries: not the characterised defect, so not the plan's to correct.
+    const plan = await planOf(DEFECT.map((row) => (row.db_id === "9106" ? { ...row, factor: "0.5" } : row)));
+    assert.deepEqual(plan.refusals, []);
+    assert.deepEqual(plan.reports.find((finding) => finding.code === "variant-differs")?.examples, ["uk-ghg-ae-2022: uk-ghg-27_303_3081_14_1-d"]);
+    await assert.rejects(() => loadV7Plan(database.pool, plan, { rehearse: true }),
+      (error: Error) => /A category variant carries its base's value: in dataset uk-ghg-ae-2022 .* uk-ghg-27_303_3081_14_1 and its variants disagree/.test(error.message));
+    assert.equal(await datasetCount(), 0, "the rehearsal rolled back");
+    assert.equal(await runs(), 0);
+  });
+
+  it("the defect is corrected to its base's value and folded, each row listed; the rehearsal passes and keeps nothing; the load matches it", async () => {
+    const plan = await planOf(DEFECT);
+    assert.deepEqual(plan.refusals, []);
+    assert.equal(plan.reports.find((finding) => finding.code === "variant-differs"), undefined);
+    assert.deepEqual(plan.excluded.filter((row) => row.reason === "freight-d-corrected").map((row) => [row.dbId, row.detail]), [
+      ["9102", "uk-ghg-ae-2022: uk-ghg-27_303_3081_4_1-d 0.22836 per km → 0.90513 (base uk-ghg-27_303_3081_4_1; per-mile uk-ghg-27_303_3081_9_1 = 0.22836)"],
+      ["9106", "uk-ghg-ae-2022: uk-ghg-27_303_3081_14_1-d 0.22836 per tonne.km → 0.78936 (base uk-ghg-27_303_3081_14_1; per-mile uk-ghg-27_303_3081_9_1 = 0.22836)"],
+    ]);
+    assert.deepEqual(plan.folded.map((row) => [row.factorId, row.kgco2ePerUnit, row.correctedFrom ?? null]).sort(), [
+      ["uk-ghg-27_303_3081_14_1-d", "0.78936", "0.22836"], ["uk-ghg-27_303_3081_4_1-d", "0.90513", "0.22836"], ["uk-ghg-27_303_3081_9_1-d", "0.22836", null]]);
+
+    const rehearsed = await loadV7Plan(database.pool, plan, { rehearse: true });
+    assert.deepEqual([rehearsed.datasetsInserted, rehearsed.factorsInserted, rehearsed.factorsFolded], [1, 3, 3]);
+    assert.equal(await datasetCount(), 0, "the rehearsal kept nothing");
+    assert.equal(await runs(), 0);
+
+    const outcome = await loadV7Plan(database.pool, plan);
+    assert.deepEqual(outcome, { ...rehearsed });
+    assert.deepEqual((await q(`SELECT factor_id, kgco2e_per_unit::text AS kg FROM nzi_console.emission_factors WHERE organisation_id = $1 AND dataset_id = 'uk-ghg-ae-2022' ORDER BY 1`, [ORG])),
+      [{ factor_id: "uk-ghg-27_303_3081_14_1", kg: "0.78936" }, { factor_id: "uk-ghg-27_303_3081_4_1", kg: "0.90513" }, { factor_id: "uk-ghg-27_303_3081_9_1", kg: "0.22836" }],
+      "no -d value row loads, at V7's number or any other");
+    const lineage = (await q(`SELECT after_json FROM nzi_console.audit_events WHERE organisation_id = $1 AND action = 'factor.applicability.imported' AND entity_id = 'uk-ghg-27_303_3081_14_1-d'`, [ORG]))[0]?.after_json;
+    assert.deepEqual(lineage?.folded?.map((row: { legacyDbId: string; kgco2ePerUnit: string; correctedFrom?: string }) => [row.legacyDbId, row.kgco2ePerUnit, row.correctedFrom]), [["9106", "0.78936", "0.22836"]],
+      "the fold's lineage keeps V7's value");
+    assert.equal(await runs(), 1);
+  });
+});
