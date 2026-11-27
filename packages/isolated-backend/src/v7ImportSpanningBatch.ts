@@ -9,7 +9,8 @@
 //   * Which jobs: the organisation's imported CRP jobs whose period spans two calendar years (or those named; or, `behindOnly`, those
 //     whose latest drift check says behind), in job order. A job whose latest import record is a committed refresh with nothing newer
 //     is clean — nothing to bring in — and is reported with its latest drift check: level, or behind with its per-scope gaps, which
-//     is "needs re-pricing (backfill)" (27 Nov), never skipped. Unless the previous system's derived rows have moved (cause 8,
+//     is "needs re-pricing (backfill)" (27 Nov), never skipped. So is a job whose preview's verdict is clean though it has no such
+//     record (every row already matches; the fast path refuses it NOT_READY_TO_INGEST). Unless the previous system's derived rows have moved (cause 8,
 //     Cowork 27 Nov): endpoint 2 is read for it too, and they come in alone, through the same fast path — its ingest id is then none.
 //   * Pace: one job at a time. Endpoint 2 is read once per job (the fast path's preview hands its read to its commit), through the
 //     caller's client — the service's goes through the process's pace, the 2 s floor. Between jobs, the import batch's pause (2 s floor,
@@ -18,7 +19,7 @@
 //   * A commit: the fast path, then a drift check of the job (trigger `bring-in`), as a person's bring-in has.
 //
 // Ids, codes and tCO2e only — never a label.
-import { grantFor, v7ImportRefreshIngestId, v7PeriodSpansTwoYears, V7_DRIFT_TOLERANCE_TCO2E, type CommandContext, type V7DriftOutcome, type V7DriftScope, type V7DriftUnknownReason, type V7ImportScope } from "@nzi/contracts";
+import { grantFor, v7ImportRefreshIngestId, v7PeriodSpansTwoYears, V7_DRIFT_TOLERANCE_TCO2E, type CommandContext, type V7DriftOutcome, type V7DriftScope, type V7DriftUnknownReason, type V7ImportRefreshPreview, type V7ImportScope } from "@nzi/contracts";
 import { AuthorizationError, resolveMemberGrant } from "./auth";
 import { withTenantRead, type PoolLike } from "./postgres";
 import { CommandValidationError } from "./postgresCommands";
@@ -156,16 +157,20 @@ async function oneJob(pool: PoolLike, org: string, job: { jobId: string; jobNumb
     idempotencyKey: v7SpanningBatchIdempotencyKey(options.runId, job.jobId), correlationId: options.runId };
   const given: V7ImportRefreshOptions = { ...(await (options.optionsFor?.(job.jobId, job.jobNumber) ?? {})), rowFigures: options.rowFigures, spanningFigures };
   const before = await withTenantRead(pool, org, (db) => readConsoleScopeTotals(db, org, job.jobId));
+  // The preview's own verdict clean (every row already matches) with nothing derived to carry: clean too, whatever its import record
+  // says — the fast path refuses it NOT_READY_TO_INGEST, which is nothing to bring in, never a flag (27 Nov).
+  const verdictClean = (preview: V7ImportRefreshPreview) => preview.verdict === "clean" && !preview.derivedOnly;
   try {
     if (!options.commit || isClean) {
       const { preview, because } = await previewV7ImportFastPath(pool, options.source, job.jobId, context, given);
       // A clean job comes in only for its derived rows; anything else is its clean outcome, as before.
-      if (isClean && !preview.derivedOnly) return cleanOutcome();
+      if ((isClean && !preview.derivedOnly) || verdictClean(preview)) return cleanOutcome();
       if (because.length) return skipped(because.map((code) => code.toUpperCase().replace(/-/g, "_")), blockerReasons(because, preview));
       if (!options.commit) return { outcome: { status: "would-come-in", ...job, scopes: SCOPES.map((scope) => ({ scope, before: r6(before[scope]),
         after: r6(preview.scopeTotals![scope].liveTco2e), previous: r6(preview.scopeTotals![scope].v7Tco2e) })) }, sourceDown: false };
     }
     const result = await refreshV7ImportFastPath(pool, options.source, job.jobId, context, given);
+    if (result.fastPath === "deliberate" && verdictClean(result.preview)) return cleanOutcome();
     if (result.fastPath === "deliberate") return skipped(result.because.map((code) => code.toUpperCase().replace(/-/g, "_")), blockerReasons(result.because, result.preview));
     const after = await withTenantRead(pool, org, (db) => readConsoleScopeTotals(db, org, job.jobId));
     // The drift check a person's bring-in has: stored, so the job's banner and the publish gate read what was just brought in.
