@@ -30,6 +30,8 @@ export type PricingSpan = {
   /** D-C: the edition this run should have been priced from, which lacks the factor; null when it was. */
   substitutedFor: string | null;
   substitutedWhy: string | null;
+  /** A client factor's run (0240): the calendar year whose value prices it. Absent on a dataset span. */
+  factorYear?: number;
 };
 
 export type RowPricing = {
@@ -41,6 +43,8 @@ export type RowPricing = {
   monthQuantities: Array<string | null>;
   monthKg: string[];
   splitOver: number;
+  /** The previous system's basis in its own words, where it is not the dataset one (a client factor's, D-1). */
+  basisDetail?: string;
 };
 
 type Edition = { datasetId: string; validFrom: string; validTo: string; version: string; selected: boolean;
@@ -138,19 +142,102 @@ async function seriesEditions(db: Queryable, organisationId: string, row: Priced
     factor: edition.kg === null ? null : { kg: edition.kg, unit: edition.unit ?? "", scopes: edition.scopes ?? [], active: edition.active === true } }));
 }
 
+// ── A client factor's year values (0240; PLAN-v7-client-custom-factors §5, D-1) ─────────────────────────────────────────────────
+
+/**
+ * `_choose_factor_for_year` (V7, services/monthly_emissions.py), ported: the preferred year's value; else the closest earlier
+ * year's; else the earliest year's. With no preferred year, the latest. None when there are no values.
+ */
+export function chooseFactorForYear<T>(values: ReadonlyMap<number, T>, preferred: number | null): { value: T; year: number } | null {
+  if (values.size === 0) return null;
+  const years = [...values.keys()].sort((a, b) => a - b);
+  const pick = (year: number) => ({ value: values.get(year)!, year });
+  if (preferred === null) return pick(years[years.length - 1]!);
+  if (values.has(preferred)) return pick(preferred);
+  const lower = years.filter((year) => year <= preferred);
+  return pick(lower.length ? lower[lower.length - 1]! : years[0]!);
+}
+
+/** The factor's year values for its version: the latest set loaded at or below it (a later edit of the headline keeps them). */
+export async function clientFactorYearValues(db: Queryable, organisationId: string, clientFactorId: string, version: number): Promise<Map<number, string>> {
+  const { rows } = await db.query<{ year: number; kg: string }>(
+    `SELECT year, kgco2e_per_unit::text AS kg FROM nzi_console.client_factor_year_values
+      WHERE organisation_id = $1 AND client_factor_id = $2
+        AND version = (SELECT max(version) FROM nzi_console.client_factor_year_values WHERE organisation_id = $1 AND client_factor_id = $2 AND version <= $3)
+      ORDER BY year`, [organisationId, clientFactorId, version]);
+  return new Map(rows.map((row) => [row.year, row.kg]));
+}
+
+export type ClientPricedRow = {
+  rowId: string; jobId: string; clientFactorId: string; factorVersion: number;
+  /** A V7 job-only factor (`job_custom_factors`): V7's resolver never finds it, so V7 prices it at its stored value (D-1). */
+  jobOnly: boolean;
+  /** Imported from the previous system: priced exactly as V7 prices it (D-1). */
+  imported: boolean;
+};
+
+/**
+ * Plan a client-factor row's pricing. Null — priced exactly as before, one product at the factor's headline value — where the
+ * factor has no year values (every factor made here, and every factor before 0240). Otherwise each month is priced at the value
+ * of its calendar year (`chooseFactorForYear`), through the same spans as a dataset row (§2):
+ *   - **D-1, imported rows as V7 prices them:** a job-only factor at its stored value every month, and an annual-only row once at
+ *     its stored value (V7 prices an annual row at its stored factor) — the headline, which the re-point's gate proves is V7's;
+ *     a monthly row on a `custom_factors` factor month by month at its year's value, as V7's resolver does;
+ *   - a console-native monthly row, month by month; a native annual row is split equally over the window's months where the
+ *     window spans calendar years (R1), else priced once at its year's value.
+ * Where every month takes one year's value, the row is one product at it (`single`).
+ */
+export async function planClientFactorPricing(db: Queryable, organisationId: string, row: ClientPricedRow, anchor: { kg: string }): Promise<RowPricing | null> {
+  const values = await clientFactorYearValues(db, organisationId, row.clientFactorId, row.factorVersion);
+  if (values.size === 0) return null;
+  const monthEntries = (await db.query<{ month: string; quantity: string | null }>(
+    `SELECT m->>'month' AS month, m->>'quantity' AS quantity FROM nzi_console.job_scope_rows r, jsonb_array_elements(r.monthly_activity_json) m
+      WHERE r.organisation_id = $1 AND r.scope_row_id = $2`, [organisationId, row.rowId])).rows.filter((entry) => entry.quantity !== null);
+  const hasMonths = monthEntries.length > 0;
+  const stored = (basisDetail: string): RowPricing => ({ kind: "single", basis: "previous-system", spans: [], monthQuantities: [], monthKg: [], splitOver: 0, basisDetail });
+  if (row.imported && row.jobOnly) return stored("A job-only factor: the previous system prices it at its stored value, every month");
+  if (row.imported && !hasMonths) return stored("An annual quantity: one price, at the factor's stored value");
+  const config = (await db.query<{ from: string; to: string }>(
+    `SELECT reporting_from::text AS from, reporting_to::text AS to FROM nzi_console.job_emissions_config WHERE organisation_id = $1 AND job_id = $2`,
+    [organisationId, row.jobId])).rows[0];
+  if (!config && !hasMonths) return null;
+  const allMonths = config ? windowMonths({ from: config.from, to: config.to }) : [];
+  const spanning = config ? windowYearParts({ from: config.from, to: config.to }).length >= 2 : false;
+  const basis: PricingBasis = hasMonths ? "monthly" : spanning ? "annual-split" : "annual";
+  const months = hasMonths ? monthEntries : allMonths.map((month) => ({ month, quantity: null as string | null }));
+  const priced = months.map((entry) => ({ entry, chosen: chooseFactorForYear(values, yearOf(entry.month))! }));
+  const spans: PricingSpan[] = [];
+  for (const month of priced) {
+    const last = spans[spans.length - 1];
+    if (last && last.factorYear === month.chosen.year) { last.to = month.entry.month; last.months += 1; continue; }
+    spans.push({ from: month.entry.month, to: month.entry.month, months: 1, datasetId: "", factorVersion: `v${row.factorVersion}`,
+      kgCo2ePerUnit: month.chosen.value, substitutedFor: null, substitutedWhy: null, factorYear: month.chosen.year });
+  }
+  if (spans.length === 1) return { kind: "single", basis, spans, monthQuantities: [], monthKg: [], splitOver: 0 };
+  // An annual row over a calendar-year window never reaches here: one year, one span.
+  return { kind: "spans", basis, spans, monthQuantities: priced.map((month) => month.entry.quantity), monthKg: priced.map((month) => month.chosen.value), splitOver: allMonths.length || months.length };
+}
+
 const kgText = (kg: string) => String(Number(kg));
 const monthName = (month: string) => new Date(`${month}-01T00:00:00Z`).toLocaleString("en-GB", { month: "short", year: "numeric", timeZone: "UTC" });
+/** What a span is priced from: its edition, or a client factor's year value. */
+const spanSource = (span: PricingSpan) => (span.factorYear !== undefined ? `${span.factorYear} value` : datasetLabelFromId(span.datasetId));
 
 /** The lineage a priced row carries: the basis where it is not the plain one, the yearly parts, and each D-C flag. */
 export function pricingLineage(pricing: RowPricing): Array<{ title: string; detail: string }> {
   const lines: Array<{ title: string; detail: string }> = [];
+  const byYearValue = pricing.spans[0]?.factorYear !== undefined;
   if (pricing.basis === "annual-split" && pricing.kind === "spans")
-    lines.push({ title: "Annual quantity split by month", detail: `Split equally over the period's ${pricing.splitOver} months, each priced at its year's edition` });
+    lines.push({ title: "Annual quantity split by month", detail: `Split equally over the period's ${pricing.splitOver} months, each priced at its year's ${byYearValue ? "value" : "edition"}` });
   if (pricing.basis === "previous-system")
-    lines.push({ title: "Priced as the previous system prices it", detail: "An annual quantity: one price, at its own edition" });
+    lines.push({ title: "Priced as the previous system prices it", detail: pricing.basisDetail ?? "An annual quantity: one price, at its own edition" });
+  if (pricing.kind === "single" && byYearValue) {
+    const span = pricing.spans[0]!;
+    lines.push({ title: "Priced at its year's value", detail: `${span.months} month${span.months === 1 ? "" : "s"} @ ${spanSource(span)} (${kgText(span.kgCo2ePerUnit)})` });
+  }
   if (pricing.kind === "spans") {
     lines.push({ title: "Priced by month", detail: pricing.spans.map((span, index) =>
-      `${span.months}${index === 0 ? ` month${span.months === 1 ? "" : "s"}` : ""} @ ${datasetLabelFromId(span.datasetId)} (${kgText(span.kgCo2ePerUnit)})`).join(" · ") });
+      `${span.months}${index === 0 ? ` month${span.months === 1 ? "" : "s"}` : ""} @ ${spanSource(span)} (${kgText(span.kgCo2ePerUnit)})`).join(" · ") });
     for (const span of pricing.spans.filter((item) => item.substitutedFor)) {
       const when = span.from === span.to ? monthName(span.from) : `${monthName(span.from)}–${monthName(span.to)}`;
       lines.push({ title: "Priced at the nearest edition", detail: `${when} priced at ${datasetLabelFromId(span.datasetId)}: ${span.substitutedWhy} ${datasetLabelFromId(span.substitutedFor!)}` });
@@ -162,8 +249,11 @@ export function pricingLineage(pricing: RowPricing): Array<{ title: string; deta
 /** The provenance a priced row carries: the spans, and the basis. */
 export const pricingProvenance = (pricing: RowPricing) => ({
   pricingBasis: pricing.basis,
-  spans: pricing.spans.map((span) => ({ from: span.from, to: span.to, months: span.months, datasetId: span.datasetId, factorVersion: span.factorVersion,
-    kgCo2ePerUnit: span.kgCo2ePerUnit, ...(span.substitutedFor ? { substitutedFor: span.substitutedFor } : {}) })),
+  spans: pricing.spans.map((span) => span.factorYear !== undefined
+    // A client factor's run names the year whose value priced it; it has no dataset.
+    ? { from: span.from, to: span.to, months: span.months, factorYear: span.factorYear, factorVersion: span.factorVersion, kgCo2ePerUnit: span.kgCo2ePerUnit }
+    : { from: span.from, to: span.to, months: span.months, datasetId: span.datasetId, factorVersion: span.factorVersion,
+      kgCo2ePerUnit: span.kgCo2ePerUnit, ...(span.substitutedFor ? { substitutedFor: span.substitutedFor } : {}) }),
 });
 
 // ── The previous system's rows, priced by month from its own spans (Datasets Part 2, increment 2) ─────────────────────────────────

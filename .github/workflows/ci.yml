@@ -897,6 +897,10 @@ jobs:
       # re-ingest's principal and re-attested by the person; the unused 2019 selection goes; flagged/missing/overridden/issued stop the job.
       - name: The stray 2019 rows are re-pointed to their reporting year, recalculated and re-attested
         run: npx tsx --test packages/isolated-backend/tests/v7StrayRepointReal.test.ts
+      # PLAN-v7-client-custom-factors (0240): V7's custom factors loaded one per factor (a global one organisation-level, year values per
+      # version); a row priced by its months' years; re-ingested rows re-pointed onto them only where they reproduce, the carried factors folded.
+      - name: V7's client custom factors are loaded, priced by year, and the re-ingested rows re-pointed onto them
+        run: npx tsx --test packages/isolated-backend/tests/v7CustomFactorsReal.test.ts
       # RULING-v7-2019-dataset-replace: the real DESNZ 2019 values corrected in place on the existing ids (composite-key join, the three named rules, no guessing),
       # the rows on a changed factor recalculated and re-attested; a commit needs the signed plan sha and the reviewed flagged-set hash; other consumers / issued figures refuse.
       - name: The DESNZ 2019 dataset correction plans, applies, recalculates and re-attests

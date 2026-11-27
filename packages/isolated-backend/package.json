@@ -59,6 +59,8 @@
     "load:v7-bd-service-lines": "tsx scripts/load-v7-crm-bd.ts bd-service-lines",
     "load:v7-bd-funnel-stages": "tsx scripts/load-v7-crm-bd.ts bd-funnel-stages",
     "load:v7-custom-fields": "tsx scripts/load-v7-custom-fields.ts",
+    "load:v7-custom-factors": "tsx scripts/load-v7-custom-factors.ts",
+    "v7:repoint-custom-factors": "tsx scripts/v7-repoint-custom-factors.ts",
     "extract:v7-sql": "node scripts/v7-extract-sql.mjs",
     "extract:v7-manifest": "node scripts/v7-extract-manifest.mjs",
     "retire:demo-job-numbers": "tsx scripts/retire-demo-job-numbers.ts",

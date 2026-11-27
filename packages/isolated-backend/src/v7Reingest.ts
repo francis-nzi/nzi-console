@@ -395,10 +395,12 @@ export function reingestV7JobInTransaction(db: Queryable, input: CommandInputMap
 /** Ruling 4: v7's copied factor value as a job-pinned client factor, keyed by the v7 row so a re-run reuses it. */
 async function carriedFactor(db: Queryable, context: CommandContext, jobId: string, clientId: string, plan: V7ReingestPlanRow, createdSoFar: number): Promise<{ clientFactorId: string; created: number }> {
   const f = plan.carriedFactor!;
-  const found = (await db.query<{ client_factor_id: string }>(
-    `SELECT client_factor_id FROM nzi_console.client_factors WHERE organisation_id = $1 AND source_system = $2 AND legacy_db_id = $3`,
+  // 0240: a carried factor the custom-factor re-point folded into V7's own factor (its row reproduced there) is archived; a re-run
+  // reuses the factor it was folded into.
+  const found = (await db.query<{ client_factor_id: string; folded_into_client_factor_id: string | null }>(
+    `SELECT client_factor_id, folded_into_client_factor_id FROM nzi_console.client_factors WHERE organisation_id = $1 AND source_system = $2 AND legacy_db_id = $3`,
     [context.organisationId, V7_REINGEST_SOURCE_SYSTEM, plan.v7RowId])).rows[0];
-  if (found) return { clientFactorId: found.client_factor_id, created: createdSoFar };
+  if (found) return { clientFactorId: found.folded_into_client_factor_id ?? found.client_factor_id, created: createdSoFar };
   const clientFactorId = randomUUID();
   await db.query(
     `INSERT INTO nzi_console.client_factors (organisation_id, client_factor_id, client_id, job_id, scope, category_path_json, report_label, description, unit, ghg_unit,

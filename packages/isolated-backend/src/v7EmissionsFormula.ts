@@ -89,6 +89,9 @@ const noteToken = (notes: Cell, pattern: RegExp): string | null => {
   return match ? (match[1] ?? "").trim() || null : null;
 };
 
+/** V7's id for a job-only factor, as `job_custom_factors_routes.py` mints it: `JCF-{job}-{factor}`. */
+export const isV7JobOnlyFactorId = (originalId: string | null | undefined): boolean => /^JCF-\d+-\d+$/.test((originalId ?? "").trim());
+
 /** An extracted cell: text, NULL, or absent from the file. */
 type Cell = string | null | undefined;
 
@@ -150,8 +153,10 @@ export function scopeRowFigure(row: ScopeRowInput, monthDatasets?: ReadonlyMap<n
       let factor: number | null = storageFactor;
       let unit: string | null = null;
       if (isCustomFactor) {
-        // `_resolve_custom_factor_for_month` prices from the client's custom year values: not in this extract.
-        flags.add("custom-factor-monthly");
+        // `_resolve_custom_factor_for_month` prices from the client's custom year values: not in this extract. Except a job-only
+        // factor (`JCF-…`): `_load_custom_factor` reads `custom_factors` alone, never finds a JCF id, and V7 falls through to the
+        // row's own stored factor every month — exactly what is computed here, so it is replayable (PLAN-v7-client-custom-factors D-1).
+        if (!isV7JobOnlyFactorId(row.originalId)) flags.add("custom-factor-monthly");
       } else {
         let monthDataset: number | null;
         if (monthDatasets === undefined) {
