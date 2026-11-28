@@ -155,12 +155,13 @@ export function ClientFactorsManager({ clientId, jobId, compact = false, organis
                 </tr>
                 {showYears ? <tr className="nz-factor-years">
                   <td colSpan={9}>
-                    <div className="sub" style={{ marginBottom: 6 }}>{byYear(factor) ? "Each month is priced at its year's value, else the closest earlier year's, else the earliest." : "No values by year yet: it is priced at its headline. Saving these prices it by year."} Saving makes a new version; rows already priced keep their figures until re-priced.</div>
+                    <div style={{ position: "sticky", left: 0, maxWidth: 520 }}>
+                    <div className="sub" style={{ marginBottom: 6, whiteSpace: "normal" }}>{byYear(factor) ? "Each month is priced at its year's value, else the closest earlier year's, else the earliest." : "No values by year yet: it is priced at its headline. Saving these prices it by year."} Saving makes a new version; rows already priced keep their figures until re-priced.</div>
                     <table className="nz-tbl" style={{ width: "auto" }}>
                       <thead><tr><th className="num">Year</th><th className="num">kgCO₂e / {factor.unit}</th><th /></tr></thead>
                       <tbody>{yearDraft.map((entry) => <tr key={entry.key}>
-                        <td className="num"><input className="nz-inp" type="number" aria-label="Year" value={entry.year} onChange={(e) => setYearDraft(yearDraft.map((other) => other.key === entry.key ? { ...other, year: e.target.value } : other))} /></td>
-                        <td className="num"><input className="nz-inp" type="number" min="0" step="any" aria-label="kgCO2e per unit for the year" value={entry.value} onChange={(e) => setYearDraft(yearDraft.map((other) => other.key === entry.key ? { ...other, value: e.target.value } : other))} /></td>
+                        <td className="num"><input className="nz-inp" style={{ width: 96 }} type="number" aria-label="Year" value={entry.year} onChange={(e) => setYearDraft(yearDraft.map((other) => other.key === entry.key ? { ...other, year: e.target.value } : other))} /></td>
+                        <td className="num"><input className="nz-inp" style={{ width: 130 }} type="number" min="0" step="any" aria-label="kgCO2e per unit for the year" value={entry.value} onChange={(e) => setYearDraft(yearDraft.map((other) => other.key === entry.key ? { ...other, value: e.target.value } : other))} /></td>
                         <td><button type="button" className="nz-btn" disabled={yearDraft.length <= 1} onClick={() => setYearDraft(yearDraft.filter((other) => other.key !== entry.key))}>Remove</button></td>
                       </tr>)}</tbody>
                     </table>
@@ -168,6 +169,7 @@ export function ClientFactorsManager({ clientId, jobId, compact = false, organis
                       <button type="button" className="nz-btn" onClick={() => setYearDraft([...yearDraft, { key: crypto.randomUUID(), year: String(Math.max(0, ...yearDraft.map((entry) => Number(entry.year) || 0)) + 1), value: "" }])}>+ Add a year</button>
                       <button type="button" className="nz-btn" disabled={pending !== ""} onClick={() => setYears(null)}>Cancel</button>
                       <button type="button" className="nz-btn pri" disabled={pending !== ""} onClick={() => void saveYears(factor)}>{pending === `years:${factor.clientFactorId}` ? "Saving…" : "Save years"}</button>
+                    </div>
                     </div>
                   </td>
                 </tr> : null}
@@ -180,7 +182,7 @@ export function ClientFactorsManager({ clientId, jobId, compact = false, organis
       {factors === null ? <div className="nz-table-empty">Client factors are unavailable.</div> : factors.length === 0 ? <div className="nz-table-empty">{organisation ? "No organisation factors yet." : "No client factors yet."}</div> : null}
       {!compact && (organisation || clientId) ? <div style={{ padding: "10px 16px 14px" }}>
         <ClientFactorCreateForm endpoint={organisation ? "/api/isolated/client-factors" : `/api/isolated/clients/${clientId}/client-factors`} reusableChoice={false}
-          label={organisation ? "+ Add organisation factor" : "+ Add client factor"} onCreated={() => void load()} notice={(n) => n.kind === "ok" ? setNotice(n.text) : setError(n.text)} />
+          label={organisation ? "+ Add organisation factor" : "+ Add client factor"} onCreated={() => void load()} notice={(n) => { if (n.kind === "ok") { setError(""); setNotice(n.text); } else { setNotice(""); setError(n.text); } }} />
       </div> : null}
     </section>
   );
