@@ -302,8 +302,7 @@ describe("V7's client custom factors — loaded, priced by year and re-pointed, 
         VALUES ($1,$2,'c1',5,'lca','LCA','open','Data entry',2024)`, [ORG, LCA_JOB]);
     });
 
-    // Its pricing is PR B's: the commit files a client-factor line without the factor id the calculation needs (any client factor,
-    // not only an organisation-level one), and the fix is in postgresCommands.ts, a governed path.
+    // Its pricing is proved in clientFactorsManageReal (PR B), where the commit now files a client-factor line with its factor id.
     it("G4: a spend-import line on an organisation-level factor validates and files on that factor", async () => {
       const lines: SpendImportRow[] = [{ rowNumber: 1, description: "Courier account", netValue: 1000, vatPercent: 20, glCode: null, invoiceDate: "2024-03-01",
         purchasedGoodsCategoryId: "pgs-general", factorSource: "client", factorId: null, datasetId: null, clientFactorId: "cf-org-spend", monthly: [] }];
@@ -351,7 +350,7 @@ describe("V7's client custom factors — loaded, priced by year and re-pointed, 
       assert.equal(factors.find((factor) => factor.clientFactorId === "cf-van")!.foldedInto, null, "a factor never folded says so");
     });
 
-    // A trip on an organisation-level factor is PR B's: emission.source.create's factor check is still client-only (postgresCommands.ts).
+    // A trip on an organisation-level factor is proved in clientFactorsManageReal (PR B).
     it("G8: a template import's source on a client factor files ungrouped and prices — a vehicle, and a trip", async () => {
       const vehicle = await createEmissionSource(database.pool, { jobId: SPEND_JOB, groupId: null, scope: "1", sourceType: "vehicle", sourceSubtype: null, siteId: null,
         sourceName: "Company vehicle · Medium car · Diesel", assetIdentifier: null, purchasedGoodsCategoryId: null, datasetId: null,

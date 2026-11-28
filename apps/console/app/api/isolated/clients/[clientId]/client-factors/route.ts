@@ -1,5 +1,8 @@
-import { listClientFactors, withTenantRead } from "@nzi/isolated-backend";
-import { apiFailure, requireIsolatedApiContext } from "../../../../../lib/isolatedDatabase";
+import { createClientFactor, listClientFactors, withTenantRead } from "@nzi/isolated-backend";
+import type { CommandInputMap } from "@nzi/contracts";
+import { requireCommandPrincipal } from "../../../../../lib/commandAuth";
+import { commandContext, commandFailure, commandSuccess } from "../../../../../lib/commandResponse";
+import { apiFailure, isolatedPool, requireIsolatedApiContext } from "../../../../../lib/isolatedDatabase";
 
 export const dynamic = "force-dynamic";
 
@@ -14,5 +17,17 @@ export async function GET(request: Request, { params }: { params: Promise<{ clie
     return Response.json({ factors });
   } catch (error) {
     return apiFailure(error);
+  }
+}
+
+// GAPS G6 — a factor made on the client page: the client's, reusable across its jobs.
+export async function POST(request: Request, { params }: { params: Promise<{ clientId: string }> }) {
+  try {
+    const principal = await requireCommandPrincipal(request, "client.factor.create");
+    const { clientId } = await params;
+    const body = (await request.json()) as Omit<CommandInputMap["client.factor.create"], "jobId" | "clientId" | "organisationLevel">;
+    return commandSuccess(await createClientFactor(isolatedPool(), { ...body, jobId: null, clientId, organisationLevel: false }, commandContext(request, principal)));
+  } catch (error) {
+    return commandFailure(error);
   }
 }

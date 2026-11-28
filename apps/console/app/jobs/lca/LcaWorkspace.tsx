@@ -29,6 +29,7 @@ import { LcaHotspotsBar, LcaModuleDonut, resolveLcaCharts, type ReviewedLcaSnaps
 import { fuzzyScore } from "../templateSearch";
 import { lcaBomTemplateCsv, parseLcaBomLines } from "./lcaBomImport";
 import { formatDate } from "../../lib/formatDate";
+import { ClientFactorCreateForm } from "../../clients/ClientFactorCreateForm";
 
 /**
  * Map a frozen L4 `LcaResultSnapshot` (+ the current assessment header) to the
@@ -69,6 +70,7 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
   const [notice, setNotice] = useState<Notice | null>(null);
   const [creating, setCreating] = useState(assessments.length === 0);
   const [expandedId, setExpandedId] = useState<string | null>(assessments.length === 1 ? assessments[0]!.id : null);
+  const router = useRouter();
 
   return <AppShell rail={<StaffRail activeId="jobs" />}>
     <TopBar crumbs={crumbTrail(jobCrumbs(header, { label: "Assessments" }))} />
@@ -138,6 +140,19 @@ export function LcaWorkspace({ job, assessments, factors, components, categories
           </button>
         </div>
         {creating && <NewAssessmentForm jobId={header.id} onDone={() => setCreating(false)} notice={setNotice} />}
+      </section>
+
+      {/* GAPS G6 (ruled 28 Nov 2026): a client factor made on an LCA job, as on a CRP job — then picked on a line item. */}
+      <section className="nz-panel nz-config-panel" id="lca-client-factors">
+        <div className="nz-config-head">
+          <div>
+            <span className="nz-eyebrow">Client methodology</span>
+            <b>Client emission factors</b>
+            <div className="sub">The client&rsquo;s own factors, offered on a line item beside the job&rsquo;s datasets. One with values by year is priced at the assessment&rsquo;s reference year.</div>
+          </div>
+          <span className="nz-st done">{factors.filter((factor) => factor.factorSource === "client").length} offered</span>
+        </div>
+        <ClientFactorCreateForm endpoint={`/api/isolated/jobs/${header.id}/client-factors`} reusableChoice defaultScope="3.1" onCreated={() => router.refresh()} notice={setNotice} />
       </section>
 
       <section className="nz-panel nz-family-detail">
