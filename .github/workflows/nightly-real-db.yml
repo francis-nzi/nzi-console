@@ -31,7 +31,9 @@ jobs:
         image: postgres:16
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: nzi_nightly
+          # Named disposable (a `ci` token): the test harness refuses any database without one of ci|test|tmp|throwaway, and
+          # every suite's per-suite database is `<this>_<suite>`. `nzi_nightly` alone was refused by every suite (#690).
+          POSTGRES_DB: nzi_nightly_ci
         ports: ["5432:5432"]
         options: >-
           --health-cmd pg_isready
@@ -39,7 +41,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
-      NZI_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/nzi_nightly
+      NZI_TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/nzi_nightly_ci
     steps:
       - uses: actions/checkout@v4
         with:
