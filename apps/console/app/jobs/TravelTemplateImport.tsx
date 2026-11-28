@@ -13,14 +13,19 @@ import { greyFleetFactorFor, parseTravelTemplate, resolveTravelTemplateRow, trav
 
 type Notice = (value: { kind: "ok" | "warn"; text: string }) => void;
 type Line = { row: TravelTemplateRow; resolved: ResolvedTravelRow; state: "" | "saving" | "saved" | "failed"; detail: string };
-type Priced = { id: string; label: string; unit: string; datasetId: string };
+type Priced = { id: string; label: string; unit: string; datasetId: string | null; clientFactorId: string | null };
 
 export function TravelTemplateImport({ jobId, job, factors, notice }: { jobId: string; job: VehicleTemplateJob; factors: FactorOption[]; notice: Notice }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [busy, setBusy] = useState(false);
-  // Scope 3 dataset factors, in the library's own words — what a mode, haul and class are resolved against.
-  const options = useMemo(() => factors.filter((factor) => factor.scopes.includes("3") && factor.factorSource === "dataset" && factor.datasetId)
-    .map((factor) => ({ id: factor.factorId, label: factor.label, unit: factor.activityUnit, datasetId: factor.datasetId! })), [factors]);
+  // Scope 3 factors, in their own words — what a mode, haul and class are resolved against. The client's own factors first (G8,
+  // ruled 28 Nov 2026): one named as a library factor is that client's figure for it, so it wins; the job's datasets after.
+  const options = useMemo((): Priced[] => [
+    ...factors.filter((factor) => factor.factorSource === "client" && factor.clientFactorId && factor.scopes.some((scope) => scope.split(".")[0] === "3"))
+      .map((factor) => ({ id: factor.factorId, label: factor.label, unit: factor.activityUnit, datasetId: null, clientFactorId: factor.clientFactorId })),
+    ...factors.filter((factor) => factor.scopes.includes("3") && factor.factorSource === "dataset" && factor.datasetId)
+      .map((factor) => ({ id: factor.factorId, label: factor.label, unit: factor.activityUnit, datasetId: factor.datasetId!, clientFactorId: null })),
+  ], [factors]);
 
   function download() {
     const blob = new Blob([travelTemplateCsv()], { type: "text/csv;charset=utf-8" });
@@ -63,14 +68,33 @@ export function TravelTemplateImport({ jobId, job, factors, notice }: { jobId: s
     const register = await fetch(`/api/isolated/jobs/${jobId}/emission-sources`, { cache: "no-store" }).then((response) => response.ok ? response.json() : null).catch(() => null) as { groups?: EmissionSourceGroup[] } | null;
     const groups = new Map((register?.groups ?? []).filter((group) => group.factorId && group.datasetId).map((group) => [`${group.datasetId}|${group.factorId}`, group.id]));
     const touched = new Set<string>();
-    let ok = 0;
+    let ok = 0, ownRows = 0;
     for (const line of lines.filter(ready)) {
       const { row, resolved } = line;
       const option = resolved.option as Priced;
       setLines((current) => current.map((entry) => entry === line ? { ...entry, state: "saving" } : entry));
       let failed: string | null = null;
-      let groupId = groups.get(`${option.datasetId}|${option.id}`) ?? null;
-      if (!groupId) {
+      // A roll-up group prices with one dataset factor, so a trip on a client factor is filed on its own and synced to its own row.
+      const own = option.clientFactorId !== null;
+      let groupId = own ? null : groups.get(`${option.datasetId}|${option.id}`) ?? null;
+      if (own) {
+        const created = await postBrowserCommand<{ sourceId: string }>(`/api/isolated/jobs/${jobId}/emission-sources`, {
+          groupId: null, scope: "3.6", sourceType: "travel", sourceSubtype: null, siteId: resolved.siteId,
+          sourceName: travelSourceName(row, resolved), assetIdentifier: null, purchasedGoodsCategoryId: null,
+          // A client factor's row carries its id as the factor id too, as the drawer writes it (the calculation needs one).
+          datasetId: null, factorId: option.id, factorSource: "client", clientFactorId: option.clientFactorId,
+          quantity: resolved.quantity, unit: option.unit, applyPct: 100, dataSource: "Business travel template import", dataConfidence: "M", monthlyActivity: [],
+          detail: { kind: "travel", travelMode: resolved.mode, airHaul: resolved.haul, cabinClass: resolved.cabinClass, nights: resolved.basis === "nights" ? resolved.quantity : null,
+            tripDate: resolved.tripDate, origin: row.from || null, destination: row.to || null, carrier: null, distanceUnit: row.unit || "km", passengers: row.passengers },
+          notes: null, importBatchId: batchId,
+        }, crypto.randomUUID());
+        if (created.state !== "success") failed = created.state === "validation_failed" ? created.issues.map((issue) => issue.message).join(" ") : created.message;
+        else {
+          const synced = await postBrowserCommand(`/api/isolated/jobs/${jobId}/emission-sources/${created.data.sourceId}/sync`, {}, crypto.randomUUID());
+          if (synced.state !== "success") failed = synced.state === "validation_failed" ? synced.issues.map((issue) => issue.message).join(" ") : synced.message;
+          else ownRows += 1;
+        }
+      } else if (!groupId) {
         const pattern = travelPatternOf(option.label);
         const made = await postBrowserCommand<{ groupId: string }>(`/api/isolated/jobs/${jobId}/emission-source-groups`, {
           name: travelGroupName(pattern?.label ?? option.label), datasetId: option.datasetId, factorId: option.id, factorLabel: option.label, unit: option.unit,
@@ -78,7 +102,7 @@ export function TravelTemplateImport({ jobId, job, factors, notice }: { jobId: s
         if (made.state === "success") { groupId = made.data.groupId; groups.set(`${option.datasetId}|${option.id}`, groupId); }
         else failed = made.state === "validation_failed" ? made.issues.map((issue) => issue.message).join(" ") : made.message;
       }
-      if (groupId && !failed) {
+      if (!own && groupId && !failed) {
         const created = await postBrowserCommand<{ sourceId: string }>(`/api/isolated/jobs/${jobId}/emission-sources`, {
           groupId, scope: "3.6", sourceType: "travel", sourceSubtype: null, siteId: resolved.siteId,
           // The leg, else the mode — never a person's name or a registration (R5).
@@ -92,12 +116,13 @@ export function TravelTemplateImport({ jobId, job, factors, notice }: { jobId: s
         if (created.state !== "success") failed = created.state === "validation_failed" ? created.issues.map((issue) => issue.message).join(" ") : created.message;
         else touched.add(groupId);
       }
-      setLines((current) => current.map((entry) => entry.row === row ? { ...entry, state: failed ? "failed" : "saved", detail: failed ?? "Filed in its mode's roll-up." } : entry));
+      setLines((current) => current.map((entry) => entry.row === row ? { ...entry, state: failed ? "failed" : "saved", detail: failed ?? (own ? "Filed on the client's own factor, as its own row." : "Filed in its mode's roll-up.") } : entry));
       if (!failed) ok += 1;
     }
     for (const groupId of touched) await postBrowserCommand(`/api/isolated/jobs/${jobId}/emission-source-groups/${groupId}/sync`, {}, crypto.randomUUID());
     setBusy(false);
-    notice(ok ? { kind: "ok", text: `${ok} trip${ok === 1 ? "" : "s"} imported into ${touched.size} Business Travel row${touched.size === 1 ? "" : "s"} — one per mode and factor. They enter the standard calculation and review.` }
+    const rowsMade = touched.size + ownRows;
+    notice(ok ? { kind: "ok", text: `${ok} trip${ok === 1 ? "" : "s"} imported into ${rowsMade} Business Travel row${rowsMade === 1 ? "" : "s"} — one per mode and factor${ownRows ? ", and one per trip on a client factor" : ""}. They enter the standard calculation and review.` }
       : { kind: "warn", text: "No trips were imported. Check each row's message." });
   }
 

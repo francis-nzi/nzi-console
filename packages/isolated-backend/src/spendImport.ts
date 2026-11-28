@@ -77,7 +77,8 @@ export async function loadSpendImportContext(db: Queryable, organisationId: stri
     [organisationId, jobId],
   );
   const clientFactors = await db.query<{ client_factor_id: string; scope: string }>(
-    `SELECT cf.client_factor_id, cf.scope FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,
+    // 0240: an organisation-level factor (no client, D-3) serves every client's job, as the factor picker offers it.
+    `SELECT cf.client_factor_id, cf.scope FROM nzi_console.client_factors cf JOIN nzi_console.jobs j ON j.organisation_id=cf.organisation_id AND (cf.client_id IS NULL OR j.client_id=cf.client_id) WHERE cf.organisation_id=$1 AND j.job_id=$2 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,
     [organisationId, jobId],
   );
   // D3 (R2): read first. An imported line holds its invoice date in `asset_identifier` (the import writes it there); any other

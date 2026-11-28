@@ -25,9 +25,14 @@ export function VehicleTemplateImport({ jobId, job, factors, groups, notice }: {
     void fetch(`/api/isolated/jobs/${jobId}/entry-basis`, { cache: "no-store" }).then((response) => (response.ok ? response.json() : null))
       .then((basis: JobEntryBasis | null) => setOptedOut(basis?.vehicleRegistrationsOptOut === true)).catch(() => undefined);
   }, [jobId]);
-  // Scope 1 vehicle factors in the library's own words — what type · size · fuel is resolved against.
-  const options = useMemo(() => factors.filter((factor) => factor.scopes.includes("1") && factor.factorSource === "dataset")
-    .map((factor) => ({ id: factor.factorId, label: factor.label, unit: factor.activityUnit, datasetId: factor.datasetId })), [factors]);
+  // Scope 1 vehicle factors in their own words — what type · size · fuel is resolved against. The client's own factors first (G8,
+  // ruled 28 Nov 2026), as VehicleBulkPanel offers them: one named as a library vehicle is that client's figure for it, so it wins.
+  const options = useMemo(() => [
+    ...factors.filter((factor) => factor.factorSource === "client" && factor.clientFactorId && factor.scopes.some((scope) => scope.split(".")[0] === "1"))
+      .map((factor) => ({ id: factor.factorId, label: factor.label, unit: factor.activityUnit, datasetId: null as string | null, clientFactorId: factor.clientFactorId })),
+    ...factors.filter((factor) => factor.scopes.includes("1") && factor.factorSource === "dataset")
+      .map((factor) => ({ id: factor.factorId, label: factor.label, unit: factor.activityUnit, datasetId: factor.datasetId, clientFactorId: null as string | null })),
+  ], [factors]);
 
   function download() {
     const blob = new Blob([vehicleTemplateCsv(job.reportingMonths)], { type: "text/csv;charset=utf-8" });
@@ -75,7 +80,8 @@ export function VehicleTemplateImport({ jobId, job, factors, groups, notice }: {
     let ok = 0;
     for (const line of lines.filter(ready)) {
       const { row, resolved } = line;
-      const option = resolved.option as { id: string; label: string; unit: string; datasetId: string };
+      const option = resolved.option as { id: string; label: string; unit: string; datasetId: string | null; clientFactorId: string | null };
+      const own = option.clientFactorId !== null;
       const read = parseVehicleFactorLabel(option.label);
       setLines((current) => current.map((entry) => entry === line ? { ...entry, state: "saving" } : entry));
       const created = await postBrowserCommand<{ sourceId: string }>(`/api/isolated/jobs/${jobId}/emission-sources`, {
@@ -83,7 +89,8 @@ export function VehicleTemplateImport({ jobId, job, factors, groups, notice }: {
         // The vehicle's name, never its plate (R2); the plate goes only to the sealed identifier — or, opted out, the name does.
         sourceName: row.name || ["Company vehicle", read?.size, read?.fuel].filter(Boolean).join(" · "),
         assetIdentifier: optedOut ? row.name || null : row.registration || null, purchasedGoodsCategoryId: null,
-        datasetId: option.datasetId, factorId: option.id, factorSource: "dataset", clientFactorId: null,
+        // A client factor's row carries its id as the factor id too, as the drawer writes it (the calculation needs one).
+        datasetId: own ? null : option.datasetId, factorId: option.id, factorSource: own ? "client" : "dataset", clientFactorId: option.clientFactorId,
         quantity: resolved.quantity, unit: option.unit, applyPct: 100, dataSource: "Company vehicles template import", dataConfidence: "M",
         monthlyActivity: resolved.monthly.filter((slot) => slot.quantity !== null), detail: { kind: "vehicle", vehicleRegistration: null, make: null, model: null, fuel: read?.fuel ?? null },
         notes: null, importBatchId: batchId,

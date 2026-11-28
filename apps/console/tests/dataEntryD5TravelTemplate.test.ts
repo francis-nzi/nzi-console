@@ -65,6 +65,23 @@ describe("D5 R3/R6: a row resolved by its mode — never a guess", () => {
     assert.equal(taxi!.option, null);
     assert.match(taxi!.issues.join(" "), /Several Taxi \/ private hire factors/);
   });
+  it("G8: prefers the client's own factor for a mode — over the library's one, and over its several", () => {
+    const own = [
+      { id: "cf-rail", label: "Client - Rail - National rail (own)", unit: "passenger.km", clientFactorId: "cf-rail" },
+      { id: "cf-taxi", label: "Client - Taxis - Account taxi", unit: "km", clientFactorId: "cf-taxi" },
+    ];
+    const [rail, taxi, bus] = parseTravelTemplate(csv("Rail,Leeds,London,300,km,,,,,,,,", "Taxi,,,20,km,,,,,,,,", "Bus,,,12,km,,,,,,,,")).rows
+      .map((row) => resolveTravelTemplateRow(row, [...own, ...OPTIONS], SITES));
+    assert.equal(rail!.option?.id, "cf-rail");
+    assert.equal(taxi!.option?.id, "cf-taxi", "the library's two taxis are no longer a choice to make");
+    assert.equal(bus!.option?.id, "bus-avg", "no own factor for the mode: the library's, as before");
+  });
+  it("G8: the importer offers the client's factors, files a trip on one ungrouped, and syncs it to its own row", () => {
+    const importer = source("app/jobs/TravelTemplateImport.tsx");
+    assert.match(importer, /factor\.factorSource === "client" && factor\.clientFactorId/);
+    assert.match(importer, /datasetId: null, factorId: option\.id, factorSource: "client", clientFactorId: option\.clientFactorId/);
+    assert.match(importer, /emission-sources\/\$\{created\.data\.sourceId\}\/sync/);
+  });
   it("converts miles to the factor's km, and counts passengers where the factor is per passenger", () => {
     const [row] = rows("Rail,,,100,miles,,,2,,,,,");
     assert.equal(row!.quantity, 321.869);
