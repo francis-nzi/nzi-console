@@ -13,6 +13,8 @@ type ClientFactor = {
   evidenceFileName: string | null; evidenceStorageProvider: "local" | "sharepoint" | null; evidenceUrl: string | null;
   evidenceExternalItemId: string | null; evidenceHash: string | null; archived: boolean; usageCount: number;
   createdBy: string; createdAt: string; updatedBy: string | null; updatedAt: string | null;
+  /** 0240: V7's id, and the factor a folded re-ingest factor was folded into (archived for good). */
+  legacyCustomId?: string | null; foldedInto?: { clientFactorId: string; reportLabel: string | null } | null;
 };
 type Edit = { reportLabel: string; description: string; unit: string; kgco2ePerUnit: number; geography: string; vintageYear: number; source: string; evidenceFileName: string; evidenceHash: string };
 
@@ -104,7 +106,9 @@ export function ClientFactorsManager({ clientId, jobId, compact = false }: { cli
                       <button className="nz-btn pri" disabled={pending !== "" || !draft.reportLabel.trim()} onClick={() => void save(factor)}>{pending === `save:${factor.clientFactorId}` ? "Saving…" : "Save"}</button>
                     </> : <>
                       {factor.archived ? null : <><button className="nz-btn" disabled={pending !== ""} onClick={() => startEdit(factor)}>Edit</button>{" "}</>}
-                      <button className="nz-btn" disabled={pending !== ""} onClick={() => void toggleArchive(factor)}>{pending === `archive:${factor.clientFactorId}` ? "…" : factor.archived ? "Restore" : "Archive"}</button>
+                      {factor.foldedInto
+                        ? <span className="muted">Folded into {factor.foldedInto.reportLabel ?? factor.foldedInto.clientFactorId}</span>
+                        : <button className="nz-btn" disabled={pending !== ""} onClick={() => void toggleArchive(factor)}>{pending === `archive:${factor.clientFactorId}` ? "…" : factor.archived ? "Restore" : "Archive"}</button>}
                     </>}
                   </td>
                 </tr>

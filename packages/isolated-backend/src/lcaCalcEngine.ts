@@ -25,6 +25,7 @@ import { CommandValidationError, runPostgresCommand } from "./postgresCommands";
 import { VersionConflictError } from "./errors";
 import type { PoolLike, Queryable } from "./postgres";
 import { lineItemKgco2e, transportLegKgco2e } from "./lcaUnits";
+import { chooseFactorForYear, clientFactorYearValues } from "./monthlyPricing";
 
 const TRANSPORT_MODULES = new Set(["A2", "A4", "C2"]);
 /** §5 — mass reconciliation is done against the raw-material module. */
@@ -40,20 +41,29 @@ type LegForCalc = {
   factor_source: "dataset" | "manual" | "unmapped"; dataset_id: string | null; factor_id: string | null; factor_value: string | null;
 };
 
-/** Resolve a dataset (or client) factor's kgCO2e-per-unit + activity unit, the same lookup CRP's own calculate uses. */
+/**
+ * Resolve a dataset (or client) factor's kgCO2e-per-unit + activity unit, the same lookup CRP's own calculate uses.
+ * A client factor may be organisation-level (no client, 0240 D-3), offered on every client's jobs. One with year values
+ * prices at the assessment's reference year (the year's value, else the closest earlier, else the earliest, as CRP's
+ * months do); with no reference year, or no year values, at its headline value (G5, ruled 28 Nov 2026).
+ */
 async function resolveFactorValue(
   db: Queryable, organisationId: string, jobId: string,
   source: "dataset" | "client", datasetId: string | null, factorId: string | null, clientFactorId: string | null,
+  referenceYear: number | null = null,
 ): Promise<{ kgco2ePerUnit: number; activityUnit: string } | null> {
   if (source === "client") {
-    const { rows } = await db.query<{ kgco2e_per_unit: string; unit: string }>(
-      `SELECT cf.kgco2e_per_unit::text,cf.unit FROM nzi_console.client_factors cf
-       JOIN nzi_console.jobs j ON (j.organisation_id,j.client_id)=(cf.organisation_id,cf.client_id)
+    const { rows } = await db.query<{ kgco2e_per_unit: string; unit: string; version: number }>(
+      `SELECT cf.kgco2e_per_unit::text,cf.unit,cf.version FROM nzi_console.client_factors cf
+       JOIN nzi_console.jobs j ON j.organisation_id=cf.organisation_id AND (cf.client_id IS NULL OR j.client_id=cf.client_id)
        WHERE cf.organisation_id=$1 AND j.job_id=$2 AND cf.client_factor_id=$3 AND (cf.job_id IS NULL OR cf.job_id=j.job_id) AND cf.archived=false`,
       [organisationId, jobId, clientFactorId],
     );
     const row = rows[0];
-    return row ? { kgco2ePerUnit: Number(row.kgco2e_per_unit), activityUnit: row.unit } : null;
+    if (!row) return null;
+    const chosen = referenceYear === null ? null
+      : chooseFactorForYear(await clientFactorYearValues(db, organisationId, clientFactorId!, row.version), referenceYear);
+    return { kgco2ePerUnit: Number(chosen ? chosen.value : row.kgco2e_per_unit), activityUnit: row.unit };
   }
   const { rows } = await db.query<{ kgco2e_per_unit: string; activity_unit: string }>(
     `SELECT f.kgco2e_per_unit::text,f.activity_unit FROM nzi_console.emission_factors f
@@ -114,12 +124,13 @@ function summariseLineEmissions(
 }
 
 async function assessmentMeta(db: Queryable, organisationId: string, assessmentId: string) {
-  const { rows } = await db.query<{ functional_unit_value: string; confirmed_quantity: string | null; assessment_type: string }>(
-    "SELECT functional_unit_value::text,confirmed_quantity::text,assessment_type FROM nzi_console.lca_assessments WHERE organisation_id=$1 AND assessment_id=$2",
+  const { rows } = await db.query<{ functional_unit_value: string; confirmed_quantity: string | null; assessment_type: string; reference_year: number | null }>(
+    "SELECT functional_unit_value::text,confirmed_quantity::text,assessment_type,reference_year FROM nzi_console.lca_assessments WHERE organisation_id=$1 AND assessment_id=$2",
     [organisationId, assessmentId],
   );
   const isMaterial = (rows[0]?.assessment_type ?? "product") === "product";
   return {
+    referenceYear: rows[0]?.reference_year ?? null,
     functionalUnitValue: Number(rows[0]?.functional_unit_value ?? 1),
     isMaterial,
     confirmedMassKg: !isMaterial || rows[0]?.confirmed_quantity == null ? null : Number(rows[0].confirmed_quantity),
@@ -210,7 +221,7 @@ export async function computeLcaScenarioResult(
     } else if (line.factor_source === "manual") {
       if (line.factor_value != null) kgco2e = lineItemKgco2e(quantity, Number(line.factor_value) * multiplier, line.factor_unit);
     } else if (line.factor_source !== "unmapped") {
-      const factor = await resolveFactorValue(db, organisationId, jobId, line.factor_source, line.dataset_id, line.factor_id, line.client_factor_id);
+      const factor = await resolveFactorValue(db, organisationId, jobId, line.factor_source, line.dataset_id, line.factor_id, line.client_factor_id, meta.referenceYear);
       if (factor) kgco2e = lineItemKgco2e(quantity, factor.kgco2ePerUnit * multiplier, datasetFactorUnit(factor.activityUnit));
     }
     emissions.push({ lineItemId: line.line_item_id, moduleCode: line.module_code, label: line.line_label, quantity, unit: line.unit, kgco2e });
@@ -224,8 +235,8 @@ export async function calculateLcaAssessment(
   context: CommandContext,
 ): Promise<Extract<CommandOutcome<{ assessmentId: string; version: number } & LcaCalcResult>, { state: "success" }>> {
   return runPostgresCommand(pool, "lca.assessment.calculate", input, context, async (db) => {
-    const found = await db.query<{ version: number }>(
-      "SELECT version FROM nzi_console.lca_assessments a JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(a.organisation_id,a.job_id) WHERE a.organisation_id=$1 AND a.assessment_id=$2 AND a.job_id=$3 AND j.job_family IN ('lca','pcf') FOR UPDATE OF a",
+    const found = await db.query<{ version: number; reference_year: number | null }>(
+      "SELECT a.version,a.reference_year FROM nzi_console.lca_assessments a JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(a.organisation_id,a.job_id) WHERE a.organisation_id=$1 AND a.assessment_id=$2 AND a.job_id=$3 AND j.job_family IN ('lca','pcf') FOR UPDATE OF a",
       [context.organisationId, input.assessmentId, input.jobId],
     );
     const assessment = found.rows[0];
@@ -247,7 +258,7 @@ export async function calculateLcaAssessment(
       if (line.factor_source === "manual") {
         kgco2e = line.factor_value == null ? null : lineItemKgco2e(quantity, Number(line.factor_value), line.factor_unit);
       } else {
-        const factor = await resolveFactorValue(db, context.organisationId, input.jobId, line.factor_source, line.dataset_id, line.factor_id, line.client_factor_id);
+        const factor = await resolveFactorValue(db, context.organisationId, input.jobId, line.factor_source, line.dataset_id, line.factor_id, line.client_factor_id, assessment.reference_year);
         if (factor) kgco2e = lineItemKgco2e(quantity, factor.kgco2ePerUnit, datasetFactorUnit(factor.activityUnit));
         // else: an unresolvable factor leaves this line honestly uncalculated, same as unmapped.
       }
