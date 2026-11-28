@@ -905,6 +905,10 @@ jobs:
       # version); a row priced by its months' years; re-ingested rows re-pointed onto them only where they reproduce, the carried factors folded.
       - name: V7's client custom factors are loaded, priced by year, and the re-ingested rows re-pointed onto them
         run: npx tsx --test packages/isolated-backend/tests/v7CustomFactorsReal.test.ts
+      # BRIEF-client-custom-factors PR B (GAPS G1/G2/G3/G6): values by year set at a new version and taken on re-pricing; a value edit on a
+      # factor priced by year refused; organisation-level factors made, edited and archived by a CRM, refused without clientfactor.manage.
+      - name: Client custom factors are managed — values by year, organisation-level factors, made on a client or an LCA job
+        run: npx tsx --test packages/isolated-backend/tests/clientFactorsManageReal.test.ts
       # DESIGN-backfill-reprice-and-reselect (R2, BF-1…BF-6 ruled 27 Nov; 0243): months re-read by calendar month and re-priced, datasets
       # re-derived, countries corrected, UAE rows re-pointed — a dry run writes nothing; a commit writes only approved jobs at the approved
       # figures, a two-year job only if it reconciles with V7's own; issued jobs listed; drift checked after; a re-run unchanged.

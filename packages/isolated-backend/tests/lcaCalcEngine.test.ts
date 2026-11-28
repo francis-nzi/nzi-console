@@ -39,7 +39,7 @@ function calcPool(opts: { expectedVersion?: number; functionalUnitValue?: number
     async query(sql: string, values?: readonly unknown[]) {if(sql.includes("/* nzi:access */"))return{rows:[{client_id:"client-a",owner_user_id:null}]};
       writes.push({ sql, values });
       if (sql.includes("FROM nzi_console.command_idempotency")) return { rows: [] };
-      if (sql.startsWith("SELECT version FROM nzi_console.lca_assessments a JOIN")) return { rows: [{ version: expectedVersion }] };
+      if (sql.startsWith("SELECT a.version,a.reference_year FROM nzi_console.lca_assessments a JOIN")) return { rows: [{ version: expectedVersion }] };
       if (sql.includes("SELECT line_item_id,module_code,line_label,quantity::text,unit,factor_source,dataset_id,factor_id,client_factor_id,factor_value::text,factor_unit,is_placeholder")) return { rows: [...lineState.values()] };
       if (sql.startsWith("UPDATE nzi_console.lca_line_items SET calculated_kgco2e=NULL WHERE")) {
         for (const id of (values as [string, string[]])[1]) { const l = lineState.get(id); if (l) l.calculated_kgco2e = null; }
@@ -65,7 +65,7 @@ function calcPool(opts: { expectedVersion?: number; functionalUnitValue?: number
         if (line) line.transport_kgco2e = String(legs.reduce((sum, leg) => sum + Number(leg.calculated_kgco2e ?? 0), 0));
         return { rows: [] };
       }
-      if (sql.includes("SELECT functional_unit_value::text,confirmed_quantity::text,assessment_type FROM nzi_console.lca_assessments")) return { rows: [{ functional_unit_value: String(functionalUnitValue), confirmed_quantity: confirmedQuantity == null ? null : String(confirmedQuantity), assessment_type: assessmentType }] };
+      if (sql.includes("SELECT functional_unit_value::text,confirmed_quantity::text,assessment_type,reference_year FROM nzi_console.lca_assessments")) return { rows: [{ functional_unit_value: String(functionalUnitValue), confirmed_quantity: confirmedQuantity == null ? null : String(confirmedQuantity), assessment_type: assessmentType }] };
       if (sql.includes("SELECT line_item_id,module_code,line_label,quantity::text,unit,is_placeholder,calculated_kgco2e::text,transport_kgco2e::text")) {
         return { rows: [...lineState.values()].map((line) => ({ ...line, transport_kgco2e: line.transport_kgco2e ?? "0" })) };
       }

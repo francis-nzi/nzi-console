@@ -49,7 +49,8 @@ export function parseTravelTemplate(text: string): { rows: TravelTemplateRow[]; 
   return { rows, missing };
 }
 
-type Option = { id: string; label: string; unit?: string | null };
+/** `clientFactorId` set: the client's own factor (G8), preferred over the library's for the same mode. */
+type Option = { id: string; label: string; unit?: string | null; clientFactorId?: string | null };
 export type ResolvedTravelRow = {
   mode: TravelModeValue | null; haul: AirHaul | null; cabinClass: CabinClass | null;
   /** The factor the trip is priced with; null when nothing matches (or the lookup has yet to find it). */
@@ -89,8 +90,13 @@ const isoDate = (raw: string): string | null => {
   return Number.isNaN(date.getTime()) || utcDay(date) !== `${y}-${m}-${d}` ? null : `${y}-${m}-${d}`;
 };
 
-/** Several factors for a mode: the library's one "average" factor where it has exactly one — else none, and the row says so. */
+/**
+ * Several factors for a mode: the client's own, where it has any for the mode (G8, ruled 28 Nov 2026); then the library's one
+ * "average" factor where it has exactly one — else none, and the row says so.
+ */
 function oneFactor<T extends Option>(candidates: readonly T[]): T | "several" | null {
+  const own = candidates.filter((option) => option.clientFactorId);
+  if (own.length && own.length < candidates.length) return oneFactor(own);
   if (candidates.length <= 1) return candidates[0] ?? null;
   const average = candidates.filter((option) => /\baverage\b/i.test(option.label));
   return average.length === 1 ? average[0]! : "several";

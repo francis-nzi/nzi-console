@@ -12,7 +12,8 @@ import { AuthorizationError } from "./auth";
 import type { Queryable } from "./postgres";
 
 /** The client a command's record belongs to, resolved inside the caller's tenant. */
-export type ClientAccess = { clientId: string; ownerUserId: string | null; ownedByActor: boolean };
+/** `clientId` is null only for an organisation-level client factor (0240 D-3), which belongs to no client. */
+export type ClientAccess = { clientId: string | null; ownerUserId: string | null; ownedByActor: boolean };
 
 type Subject =
   | { kind: "organisation" }
@@ -324,9 +325,11 @@ const subjectOf: { [K in CommandKey]: (input: CommandInputMap[K]) => Subject } =
   "factor.applicability.retire": organisation,
   "factor.membership.add": organisation,
   "factor.membership.retire": organisation,
-  "client.factor.create": job,
+  // GAPS G3/G6: made for a job, a client, or the organisation (contract-validated as exactly one).
+  "client.factor.create": (input) => input.jobId ? { kind: "job", id: input.jobId } : input.clientId ? { kind: "client", id: input.clientId } : { kind: "organisation" },
   "client.factor.update": (input) => ({ kind: "clientFactor", id: input.clientFactorId }),
   "client.factor.archive": (input) => ({ kind: "clientFactor", id: input.clientFactorId }),
+  "client.factor.year-values.set": (input) => ({ kind: "clientFactor", id: input.clientFactorId }),
   "emission.source.group.create": job,
   "emission.source.group.sync": job,
   "emission.source.create": job,
@@ -387,7 +390,9 @@ const accessSql: Record<Exclude<Subject["kind"], "organisation" | "task">, strin
   client: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.clients c WHERE c.organisation_id=$1 AND c.client_id=$2`,
   job: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.jobs j JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE j.organisation_id=$1 AND j.job_id=$2`,
   site: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.client_sites s JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(s.organisation_id,s.client_id) WHERE s.organisation_id=$1 AND s.site_id=$2`,
-  clientFactor: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.client_factors f JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(f.organisation_id,f.client_id) WHERE f.organisation_id=$1 AND f.client_factor_id=$2`,
+  // 0240 / GAPS G3: an organisation-level factor has no client, so it resolves with none (and no owner) — found in the caller's
+  // organisation all the same. An own-clients scope never reaches it; an all-clients one does.
+  clientFactor: `SELECT /* nzi:access */ f.client_id, c.owner_user_id FROM nzi_console.client_factors f LEFT JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(f.organisation_id,f.client_id) WHERE f.organisation_id=$1 AND f.client_factor_id=$2`,
   contact: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.client_contacts k JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(k.organisation_id,k.client_id) WHERE k.organisation_id=$1 AND k.contact_id=$2`,
   snapshot: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.reviewed_crp_snapshots s JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(s.organisation_id,s.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE s.organisation_id=$1 AND s.snapshot_id=$2`,
   trainingRun: `SELECT /* nzi:access */ c.client_id, c.owner_user_id FROM nzi_console.training_course_runs r JOIN nzi_console.jobs j ON (j.organisation_id,j.job_id)=(r.organisation_id,r.job_id) JOIN nzi_console.clients c ON (c.organisation_id,c.client_id)=(j.organisation_id,j.client_id) WHERE r.organisation_id=$1 AND r.course_run_id=$2`,
@@ -404,10 +409,11 @@ const TENANT_REFUSED = "The record is not in your organisation.";
 
 async function resolveAccess(db: Queryable, organisationId: string, actorId: string, kind: keyof typeof accessSql, id: string): Promise<ClientAccess> {
   if (!id.trim()) throw new AuthorizationError("tenant", TENANT_REFUSED);
-  const found = await db.query<{ client_id: string; owner_user_id: string | null }>(accessSql[kind], [organisationId, id]);
+  const found = await db.query<{ client_id: string | null; owner_user_id: string | null }>(accessSql[kind], [organisationId, id]);
   const row = found.rows[0];
   if (!row) throw new AuthorizationError("tenant", TENANT_REFUSED);
-  return { clientId: row.client_id, ownerUserId: row.owner_user_id ?? null, ownedByActor: (row.owner_user_id ?? null) === actorId };
+  // Only the clientFactor lookup can answer without a client (an organisation-level factor), and never with an owner.
+  return { clientId: row.client_id ?? null, ownerUserId: row.owner_user_id ?? null, ownedByActor: (row.owner_user_id ?? null) === actorId };
 }
 
 /** A CRM task in this organisation that the actor is assigned or wrote. Anyone else — Admin included — is refused. */

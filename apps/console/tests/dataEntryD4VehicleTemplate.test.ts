@@ -51,6 +51,17 @@ describe("D4 R3/R4/R5: a template row resolved — type · size · fuel, then th
     assert.ok([miles, km, litres].every((row) => vehicleRowBlocking(row!).length === 0));
   });
 
+  it("G8: the client's own factor for the vehicle, in its unit, comes first; the library's still serves the units it does not cover", () => {
+    // The importer puts the client's factors first, as VehicleBulkPanel offers them.
+    const own = { id: "cf-car", label: "Fleet - Cars - Small car - Diesel", unit: "km", clientFactorId: "cf-car" };
+    const [km, miles] = parsed(",Pool 1,Car,Small car,Diesel,12000,km,,,,", ",Pool 2,Car,Small car,Diesel,9000,miles,,,,")
+      .map((row) => resolveVehicleTemplateRow(row, [own, ...OPTIONS], SITES, false));
+    assert.deepEqual([km!.option?.id, miles!.option?.id], ["cf-car", "car-mi"]);
+    const importer = readFileSync(resolve(here, "..", "app/jobs/VehicleTemplateImport.tsx"), "utf8");
+    assert.match(importer, /factor\.factorSource === "client" && factor\.clientFactorId/);
+    assert.match(importer, /factorId: option\.id, factorSource: own \? "client" : "dataset", clientFactorId: option\.clientFactorId/);
+  });
+
   it("says what does not match — never a guess: no factor, a unit not published, a unit or site it does not know", () => {
     const [unknown, notInMiles, badUnit] = parsed(",Truck 9,HGV,Rigid,Diesel,100,,,,,", ",Van 2,Van,Class II (1.305 to 1.74 tonnes),Petrol,100,miles,,,,", ",Car 4,Car,Small car,Diesel,100,gallons,Depot,,,")
       .map((row) => resolveVehicleTemplateRow(row, OPTIONS, SITES, false));

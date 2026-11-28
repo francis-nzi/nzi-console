@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, describe, it } from "node:test";
 import pg from "pg";
-import { commandGrantForRole, V7_REINGEST_ACTOR, type CommandContext, type V7ReingestJobInput, type V7ReingestPlanRow } from "@nzi/contracts";
+import { commandGrantForRole, encodeImportIdentity, V7_REINGEST_ACTOR, type CommandContext, type SpendImportIdentity, type SpendImportRow, type V7ReingestJobInput, type V7ReingestPlanRow } from "@nzi/contracts";
+import { calculateLcaAssessment, commitSpendImport, createEmissionSource, listClientFactors, previewSpendImport, signSpendImportIdentity, syncEmissionSourceToScope, withTenantRead } from "../src/index";
 import { withTenantWrite } from "../src/postgres";
 import { recalculateScopeRowInTransaction } from "../src/postgresCommands";
 import type { V7Row } from "../src/v7ClientExtract";
@@ -263,6 +264,110 @@ describe("V7's client custom factors — loaded, priced by year and re-pointed, 
       const m1 = await live("m1");
       assert.equal(m1.client_factor_id, into);
       assert.ok(Math.abs(m1.tco2e - 0.5) < 1e-9);
+    });
+  });
+
+  /**
+   * GAPS-client-custom-factors PR A (BRIEF 28 Nov 2026): after the load, the console's other paths take these factors —
+   * spend import and LCA take an organisation-level one (G4, G5), LCA prices by the assessment's reference year (G5), the list
+   * says where a folded factor went (G7), and a template import's source on a client factor prices (G8).
+   */
+  describe("in the console's other paths: spend import, LCA, a folded factor, a template import", () => {
+    const SECRET = "client-factor-gaps-secret-at-least-thirty-two-bytes";
+    const SPEND_JOB = "j-spend";
+    const LCA_JOB = "j-lca";
+    const identity = (): SpendImportIdentity => ({ jobId: SPEND_JOB, jobNumber: "J000951", clientName: "Custom Factor Test", jobName: "CRP", reportingYear: 2024,
+      reportingFrom: "2024-01-01", reportingTo: "2024-12-31", domain: "spend", templateVersion: 1 });
+    const orgFactor = (id: string, scope: string, unit: string, kg: number) => db.query(
+      `INSERT INTO nzi_console.client_factors (organisation_id,client_factor_id,client_id,scope,report_label,unit,kgco2e_per_unit,vintage_year,created_by)
+       VALUES ($1,$2,NULL,$3,$2,$4,$5,2025,'francis')`, [ORG, id, scope, unit, kg]);
+    /** A synced row, calculated by the one row calculation. */
+    const priced = async (jobId: string, rowId: string) => {
+      const version = (await db.query(`SELECT version FROM nzi_console.job_scope_rows WHERE scope_row_id = $1`, [rowId])).rows[0]!.version as number;
+      await withTenantWrite(database.pool, ORG, (client) => recalculateScopeRowInTransaction(client, { jobId, rowId, expectedVersion: version }, staff()));
+      return (await db.query(`SELECT factor_source, client_factor_id, calculated_tco2e::float8 AS tco2e FROM nzi_console.job_scope_rows WHERE scope_row_id = $1`, [rowId])).rows[0]!;
+    };
+
+    before(async () => {
+      await orgFactor("cf-org-spend", "3", "GBP", 0.3);
+      await orgFactor("cf-org-material", "3", "kg", 2);
+      await orgFactor("cf-org-flat", "3", "kg", 4);
+      await db.query(`INSERT INTO nzi_console.client_factor_year_values (organisation_id,client_factor_id,version,year,kgco2e_per_unit,created_by)
+        VALUES ($1,'cf-org-material',1,2023,1,'francis'),($1,'cf-org-material',1,2025,1.5,'francis')`, [ORG]);
+      await db.query(`INSERT INTO nzi_console.client_factors (organisation_id,client_factor_id,client_id,scope,report_label,unit,kgco2e_per_unit,vintage_year,created_by)
+        VALUES ($1,'cf-van','c1','1','Cars - Medium car - Diesel','km',0.2,2024,'francis'),($1,'cf-rail','c1','3','Rail - National rail','km',0.035,2024,'francis')`, [ORG]);
+      await db.query(`INSERT INTO nzi_console.purchased_goods_categories (organisation_id,category_id,client_id,name,created_by) VALUES ($1,'pgs-general','c1','General','test')`, [ORG]);
+      await job(SPEND_JOB, "J000951", 4, "2024-01-01", "2024-12-31");
+      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year)
+        VALUES ($1,$2,'c1',5,'lca','LCA','open','Data entry',2024)`, [ORG, LCA_JOB]);
+    });
+
+    // Its pricing is proved in clientFactorsManageReal (PR B), where the commit now files a client-factor line with its factor id.
+    it("G4: a spend-import line on an organisation-level factor validates and files on that factor", async () => {
+      const lines: SpendImportRow[] = [{ rowNumber: 1, description: "Courier account", netValue: 1000, vatPercent: 20, glCode: null, invoiceDate: "2024-03-01",
+        purchasedGoodsCategoryId: "pgs-general", factorSource: "client", factorId: null, datasetId: null, clientFactorId: "cf-org-spend", monthly: [] }];
+      const preview = await previewSpendImport(database.pool, ORG, identity(), lines, 1);
+      assert.equal(preview.kind, "preview");
+      const review = preview.kind === "preview" ? preview.reviews[0]! : null;
+      assert.deepEqual(review?.issues.map((issue) => issue.code), [], "the factor resolves, and is a Scope 3 factor for a Scope 3 line");
+      assert.notEqual(review?.status, "blocked");
+      const token = encodeImportIdentity(identity(), signSpendImportIdentity(identity(), SECRET));
+      const committed = await commitSpendImport(database.pool, { jobId: SPEND_JOB, token, rows: lines }, staff(), SECRET);
+      assert.equal(committed.data.created, 1);
+      const source = (await db.query(`SELECT source_id, factor_source, client_factor_id FROM nzi_console.job_emission_sources WHERE job_id = $1`, [SPEND_JOB])).rows[0]!;
+      assert.deepEqual([source.factor_source, source.client_factor_id], ["client", "cf-org-spend"]);
+    });
+
+    it("G5: an LCA line on an organisation-level factor prices at its reference year's value, else the headline", async () => {
+      const assessment = async (id: string, referenceYear: number | null) => {
+        await db.query(`INSERT INTO nzi_console.lca_assessments (organisation_id,assessment_id,job_id,name,reference_year,created_by) VALUES ($1,$2,$3,$2,$4,'francis')`,
+          [ORG, id, LCA_JOB, referenceYear]);
+        for (const factor of ["cf-org-material", "cf-org-flat"]) {
+          await db.query(`INSERT INTO nzi_console.lca_line_items (organisation_id,line_item_id,assessment_id,module_code,line_label,quantity,unit,factor_source,client_factor_id,created_by)
+            VALUES ($1,$2,$3,'A1',$4,10,'kg','client',$4,'francis')`, [ORG, `${id}-${factor}`, id, factor]);
+        }
+        const version = (await db.query(`SELECT version FROM nzi_console.lca_assessments WHERE assessment_id = $1`, [id])).rows[0]!.version as number;
+        await calculateLcaAssessment(database.pool, { jobId: LCA_JOB, assessmentId: id, expectedVersion: version }, staff());
+        return Object.fromEntries((await db.query(`SELECT client_factor_id, calculated_kgco2e::float8 AS kg FROM nzi_console.lca_line_items WHERE assessment_id = $1`, [id])).rows
+          .map((line) => [line.client_factor_id, line.kg]));
+      };
+      assert.deepEqual(await assessment("a-2024", 2024), { "cf-org-material": 10, "cf-org-flat": 40 },
+        "2024 has no value: the closest earlier year's (2023, 1.0); a factor with no year values at its headline");
+      assert.deepEqual(await assessment("a-2025", 2025), { "cf-org-material": 15, "cf-org-flat": 40 }, "the year's own value");
+      assert.deepEqual(await assessment("a-none", null), { "cf-org-material": 20, "cf-org-flat": 40 }, "no reference year: the headline");
+    });
+
+    it("G7: the list says where a folded factor went", async () => {
+      const factors = await withTenantRead(database.pool, ORG, (client) => listClientFactors(client, ORG, "c1"));
+      const folded = factors.filter((factor) => factor.foldedInto !== null);
+      assert.ok(folded.length >= 2, "the re-point folded m1's and m4's carried factors");
+      for (const factor of folded) {
+        assert.equal(factor.archived, true);
+        const target = factors.find((entry) => entry.clientFactorId === factor.foldedInto!.clientFactorId)!;
+        assert.equal(factor.foldedInto!.reportLabel, target.reportLabel);
+        assert.ok(target.legacyCustomId, "folded into a loaded V7 factor, which carries V7's id");
+      }
+      assert.equal(factors.find((factor) => factor.clientFactorId === "cf-van")!.foldedInto, null, "a factor never folded says so");
+    });
+
+    // A trip on an organisation-level factor is proved in clientFactorsManageReal (PR B).
+    it("G8: a template import's source on a client factor files ungrouped and prices — a vehicle, and a trip", async () => {
+      const vehicle = await createEmissionSource(database.pool, { jobId: SPEND_JOB, groupId: null, scope: "1", sourceType: "vehicle", sourceSubtype: null, siteId: null,
+        sourceName: "Company vehicle · Medium car · Diesel", assetIdentifier: null, purchasedGoodsCategoryId: null, datasetId: null,
+        factorId: "cf-van", factorSource: "client", clientFactorId: "cf-van", quantity: 1000, unit: "km", applyPct: 100, dataSource: "Company vehicles template import", dataConfidence: "M",
+        monthlyActivity: [], detail: { kind: "vehicle", vehicleRegistration: null, make: null, model: null, fuel: "Diesel" }, notes: null, importBatchId: randomUUID() }, staff());
+      const vehicleRow = await priced(SPEND_JOB, (await syncEmissionSourceToScope(database.pool, { jobId: SPEND_JOB, sourceId: vehicle.data.sourceId }, staff())).data.rowId);
+      assert.deepEqual([vehicleRow.factor_source, vehicleRow.client_factor_id], ["client", "cf-van"]);
+      assert.ok(Math.abs(vehicleRow.tco2e - 0.2) < 1e-9, `${vehicleRow.tco2e}`);
+
+      const trip = await createEmissionSource(database.pool, { jobId: SPEND_JOB, groupId: null, scope: "3.6", sourceType: "travel", sourceSubtype: null, siteId: null,
+        sourceName: "Rail · London → Leeds", assetIdentifier: null, purchasedGoodsCategoryId: null, datasetId: null,
+        factorId: "cf-rail", factorSource: "client", clientFactorId: "cf-rail", quantity: 400, unit: "km", applyPct: 100, dataSource: "Business travel template import", dataConfidence: "M",
+        monthlyActivity: [], detail: { kind: "travel", travelMode: "rail", airHaul: null, cabinClass: null, nights: null, tripDate: "2024-05-01", origin: "London", destination: "Leeds",
+          carrier: null, distanceUnit: "km", passengers: 1 }, notes: null, importBatchId: randomUUID() }, staff());
+      const tripRow = await priced(SPEND_JOB, (await syncEmissionSourceToScope(database.pool, { jobId: SPEND_JOB, sourceId: trip.data.sourceId }, staff())).data.rowId);
+      assert.deepEqual([tripRow.factor_source, tripRow.client_factor_id], ["client", "cf-rail"]);
+      assert.ok(Math.abs(tripRow.tco2e - 0.014) < 1e-9, `${tripRow.tco2e}`);
     });
   });
 });

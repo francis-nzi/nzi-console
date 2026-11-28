@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { AppShell, DataList, EvidenceDrawer, RiskBadge, RiskLegend, TopBar, type DataListColumn, type DataListFilter } from "@nzi/ui";
+import { AppShell, DataList, EvidenceDrawer, RiskBadge, RiskLegend, TabPanel, Tabs, TopBar, type DataListColumn, type DataListFilter } from "@nzi/ui";
 import { clientStatusMeta } from "@nzi/mock-data";
 import { clientListSpec, hasActiveFilters, PAGE_SIZES, type ClientListFilterKey, type ClientListQuery } from "@nzi/contracts";
 import type { ClientListPage, ClientListRow } from "@nzi/isolated-backend";
@@ -11,6 +11,11 @@ import { StaffRail } from "../lib/StaffRail";
 import { crumbTrail, workspaceCrumbs } from "../lib/crumbTrail";
 import { useListNavigation } from "../lib/useListNavigation";
 import { isSignedIn, useStaffMe } from "../lib/useEditAccess";
+import { dataEntryAdapterEnabled } from "../lib/featureFlags";
+import { ClientFactorsManager } from "./ClientFactorsManager";
+
+/** GAPS G3 (Cowork's placement, 28 Nov 2026): organisation-level factors live beside the portfolio, where a CRM can reach them. */
+const BOARD_TABS = [{ id: "clients", label: "Clients" }, { id: "organisation-factors", label: "Organisation factors" }] as const;
 
 function Completeness({ pct }: { pct: number }) {
   const color = pct >= 85 ? "var(--emerald)" : pct >= 50 ? "var(--amber)" : "var(--coral)";
@@ -101,6 +106,8 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
   // Nothing is selected on load, so no panel opens until a row is chosen.
   const [selectedId, setSelectedIdRaw] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const factorsTab = dataEntryAdapterEnabled("client-factors");
+  const [tab, setTab] = useState<string>("clients");
   // A selected row opens its panel; the panel's close (x, Escape) closes it until a row is chosen again.
   const setSelectedId = (id: string) => { setSelectedIdRaw(id); setPanelOpen(true); };
   const rail = <StaffRail activeId="clients" />;
@@ -170,6 +177,9 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
       </div>
 
       <div className="nz-body" style={{ paddingTop: 16 }}>
+        {factorsTab ? <Tabs items={BOARD_TABS} value={tab} onChange={setTab} ariaLabel="Clients" idBase="clients-board" className="nz-tabs" /> : null}
+        <TabPanel id="organisation-factors" idBase="clients-board" active={factorsTab && tab === "organisation-factors"} ariaLabel="Organisation factors"><ClientFactorsManager organisation /></TabPanel>
+        <TabPanel id="clients" idBase="clients-board" active={!factorsTab || tab === "clients"} ariaLabel="Clients">
         {/* Every figure here is over the filtered set, computed by the server — never over the page on screen. */}
         <section className="nz-ops-hero"><div><span className="nz-eyebrow light">Relationship command centre</span><h2>{summary.overdue?`${summary.overdue} client${summary.overdue===1?" has":"s have"} an overdue milestone.`:summary.atRisk?`${summary.atRisk} relationship${summary.atRisk===1?"":"s"} need focused attention.`:`No ${filtered ? "matching clients are" : "relationships are"} currently marked at risk.`}</h2><p>Bring relationship context, reporting delivery and data readiness together before the next client conversation.</p></div><div className="nz-ops-trust"><span><i>{ownershipComplete?"✓":"·"}</i> Ownership assigned</span><span><i>{deliveryLinked?"✓":"·"}</i> Delivery records linked</span><span><i>{footprintsRecorded?"✓":"·"}</i> Active footprints recorded</span></div></section>
         <div className="nz-metrics">
@@ -200,6 +210,7 @@ export function ClientsBoard({ page, query }: { page: ClientListPage; query: Cli
           onSelect={(c) => setSelectedId(c.id)}
           busy={nav.pending}
         />
+        </TabPanel>
       </div>
     </AppShell>
   );
