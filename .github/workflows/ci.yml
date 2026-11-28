@@ -905,6 +905,11 @@ jobs:
       # version); a row priced by its months' years; re-ingested rows re-pointed onto them only where they reproduce, the carried factors folded.
       - name: V7's client custom factors are loaded, priced by year, and the re-ingested rows re-pointed onto them
         run: npx tsx --test packages/isolated-backend/tests/v7CustomFactorsReal.test.ts
+      # DESIGN-backfill-reprice-and-reselect (R2, BF-1…BF-6 ruled 27 Nov; 0243): months re-read by calendar month and re-priced, datasets
+      # re-derived, countries corrected, UAE rows re-pointed — a dry run writes nothing; a commit writes only approved jobs at the approved
+      # figures, a two-year job only if it reconciles with V7's own; issued jobs listed; drift checked after; a re-run unchanged.
+      - name: The reviewed backfill re-prices by calendar month and re-selects, only on approval, and only what reconciles
+        run: npx tsx --test packages/isolated-backend/tests/v7ImportBackfillReal.test.ts
       # RULING-v7-2019-dataset-replace: the real DESNZ 2019 values corrected in place on the existing ids (composite-key join, the three named rules, no guessing),
       # the rows on a changed factor recalculated and re-attested; a commit needs the signed plan sha and the reviewed flagged-set hash; other consumers / issued figures refuse.
       - name: The DESNZ 2019 dataset correction plans, applies, recalculates and re-attests
