@@ -7,7 +7,7 @@ import { withTenantRead, withTenantWrite } from "../src/postgres";
 import type { PlannedRow } from "../src/v7ClientImport";
 import { insert, migratedRowCols } from "../src/v7ClientLoad";
 import { checkV7Drift, readConsoleScopeTotals, type V7FiguresClient, type V7FiguresRead, type V7RowFiguresClient, type V7RowFiguresRead } from "../src/v7Drift";
-import { V7_IMPORT_FAST_PATH_REASON } from "../src/v7ImportFastPath";
+import { previewV7ImportFastPath, V7_IMPORT_FAST_PATH_REASON } from "../src/v7ImportFastPath";
 import type { V7ImportRefreshSource } from "../src/v7ImportRefresh";
 import { listV7SpanningJobs, runV7SpanningBatch, v7SpanningBatchCsv, v7SpanningBatchLines, v7SpanningBatchTotals, v7SpanningBatchTotalsLines,
   type V7SpanningBatchOptions, type V7SpanningBatchOutcome } from "../src/v7ImportSpanningBatch";
@@ -60,7 +60,10 @@ const job = (k: number, period: [string, string] = ["2025-04-01", "2026-03-31"])
 // and a calendar-year job, which the batch never lists.
 const OK = job(81), OFF = job(82), EDITED = job(83), UNREAD = job(84), CAL = job(85, ["2025-01-01", "2025-12-31"]);
 const JOBS = [OK, OFF, EDITED, UNREAD, CAL];
-const byId = new Map(JOBS.map((entry) => [entry.jobId, entry]));
+// Live's shape (27 Nov): a job the previous system hasn't moved — every row already matches — with no committed refresh of its own, so
+// not current locally. The fast path refuses it NOT_READY_TO_INGEST, verdict clean. Seeded in its own test, last.
+const CLEAN = (() => { const entry = job(86); return { ...entry, now: entry.before }; })();
+const byId = new Map([...JOBS, CLEAN].map((entry) => [entry.jobId, entry]));
 const withoutRun = ({ runId: _runId, ...rest }: V7ReingestJobInput) => rest;
 const source: V7ImportRefreshSource = async (_db, { jobId }) => ({ sourceSha256: "e".repeat(64), rows: byId.get(jobId)!.now });
 const round6 = (value: number) => Math.round(value * 1e6) / 1e6;
@@ -75,6 +78,7 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
     [OFF.v7JobId]: { ok: true, body: { contract: "v7-import-figures/1", job_id: OFF.k, computed_at: "2026-11-26T10:00:00Z", rows: OFF.own(0.5) } },
     [EDITED.v7JobId]: { ok: true, body: { contract: "v7-import-figures/1", job_id: EDITED.k, computed_at: "2026-11-26T10:00:00Z", rows: EDITED.own() } },
     [UNREAD.v7JobId]: { ok: false, reason: "timeout" },
+    [CLEAN.v7JobId]: { ok: true, body: { contract: "v7-import-figures/1", job_id: CLEAN.k, computed_at: "2026-11-26T10:00:00Z", rows: CLEAN.own(0.2) } },
   };
   const rowFigures: V7RowFiguresClient = async ({ v7JobId }) => { calls.push(v7JobId); return ownFigures[v7JobId] ?? { ok: false, reason: "not-found" }; };
   // Endpoint 1, for the drift check after a bring-in: V7's totals for OK, as the console holds them once it is brought in.
@@ -100,6 +104,19 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
        (SELECT string_agg(d::text, '|' ORDER BY d.check_id) FROM nzi_console.v7_drift_checks d WHERE d.organisation_id = $1 AND d.job_id = $2))) AS p`, [ORG, jobId])).rows[0]!.p;
   const of = (outcomes: readonly V7SpanningBatchOutcome[], entry: { jobId: string }) => outcomes.find((outcome) => outcome.jobId === entry.jobId)!;
   let dryRunAfter: unknown = null;
+  /** One job as an imported job stands: migrated, its rows, and the system's standing re-ingest. */
+  const seed = async (entry: ReturnType<typeof job>) => {
+    await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
+      VALUES ($1,$2,'c1',$3,'crp','CRP','open','Data entry',2025,$4,$5,'nzi-pro-v7',$6,$7)`, [ORG, entry.jobId, 9800 + entry.k, entry.period[0], entry.period[1], entry.v7JobId, entry.number]);
+    await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`, [ORG, entry.jobId, entry.period[0], entry.period[1]]);
+    for (const row of entry.before) await insert(db, "job_scope_rows", [
+      { column: "organisation_id", value: ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
+      { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(entry.jobId, row)]);
+    const standing = `v7-reingest-${randomUUID()}`;
+    await withTenantWrite(database.pool, ORG, (client) => reingestV7JobInTransaction(client, { ...entry.plan(standing) },
+      { organisationId: ORG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
+        reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", ORG, V7_REINGEST_ACTOR) }));
+  };
 
   before(async () => {
     database = (await createDisposableDatabase("v7spanbatch"))!;
@@ -117,18 +134,7 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
       await db.query(`INSERT INTO nzi_console.emission_factors (organisation_id,dataset_id,factor_id,label,activity_unit,kgco2e_per_unit,scopes,source_levels) VALUES ($1,'v7-vintage-2025',$2,$3,$4,$5,ARRAY[$6::text],$7::text[])`,
         [ORG, id, label, unit, kg, scope, levels]);
     }
-    for (const entry of JOBS) {
-      await db.query(`INSERT INTO nzi_console.jobs (organisation_id,job_id,client_id,sequence,job_family,title,status,workflow_stage,reporting_year,reporting_period_start,reporting_period_end,source_system,legacy_db_id,legacy_job_number)
-        VALUES ($1,$2,'c1',$3,'crp','CRP','open','Data entry',2025,$4,$5,'nzi-pro-v7',$6,$7)`, [ORG, entry.jobId, 9800 + entry.k, entry.period[0], entry.period[1], entry.v7JobId, entry.number]);
-      await db.query(`INSERT INTO nzi_console.job_emissions_config (organisation_id,job_id,reporting_from,reporting_to,country_code) VALUES ($1,$2,$3,$4,'GB')`, [ORG, entry.jobId, entry.period[0], entry.period[1]]);
-      for (const row of entry.before) await insert(db, "job_scope_rows", [
-        { column: "organisation_id", value: ORG, type: "text" }, { column: "source_system", value: "nzi-pro-v7", type: "text" },
-        { column: "legacy_db_id", value: row.legacyDbId, type: "text" }, ...migratedRowCols(entry.jobId, row)]);
-      const standing = `v7-reingest-${randomUUID()}`;
-      await withTenantWrite(database.pool, ORG, (client) => reingestV7JobInTransaction(client, { ...entry.plan(standing) },
-        { organisationId: ORG, actorId: V7_REINGEST_ACTOR, principal: "system", idempotencyKey: standing, correlationId: standing,
-          reason: "v7 re-ingest (test)", grant: commandGrantForRole("admin", ORG, V7_REINGEST_ACTOR) }));
-    }
+    for (const entry of JOBS) await seed(entry);
     // A person's edit of one of EDITED's rows, as any scope-row command audits it: a manual edit, so never the auto path.
     await db.query(`INSERT INTO nzi_console.audit_events (organisation_id, audit_event_id, actor_id, principal_type, action, entity_type, entity_id, correlation_id, reason, after_json)
       SELECT $1, $2, 'staff-consultant', 'staff', 'scopeRow.update', 'scope_row', scope_row_id, $2, 'a correction (test)', '{}'::jsonb
@@ -283,5 +289,38 @@ describe("the batch bring-in for spanning jobs: the auto path with the previous 
     assert.deepEqual(calls, [OK.v7JobId, OFF.v7JobId], "endpoint 2 once per job; the clean one's for its derived rows (cause 8)");
     assert.equal(waits.length, 1);
     assert.deepEqual(await fingerprint(), print, "a dry run writes nothing");
+  });
+
+  it("a clean job the fast path refuses NOT_READY_TO_INGEST (verdict clean, never refreshed here): NOTHING TO BRING IN, or NEEDS RE-PRICING when behind — never SKIPPED — FLAGGED", async () => {
+    await seed(CLEAN);
+    assert.equal((await db.query(`SELECT 1 FROM nzi_console.v7_import_ingests WHERE organisation_id = $1 AND job_id = $2`, [ORG, CLEAN.jobId])).rowCount, 0,
+      "no committed refresh of its own: not current locally");
+    // Live's shape: the fast path's preview, verdict clean, refused not ready — "flagged".
+    const grant = commandGrantForRole("admin", ORG, "staff-admin");
+    const seen = await previewV7ImportFastPath(database.pool, source, CLEAN.jobId, { organisationId: ORG, actorId: "staff-admin", principal: "staff", grant,
+      idempotencyKey: randomUUID(), correlationId: randomUUID() }, { basePlan: withoutRun(CLEAN.plan("x")), rowFigures });
+    assert.deepEqual([seen.preview.verdict, seen.preview.outcome, seen.preview.refusal?.issues.map((issue) => issue.code), seen.because],
+      ["clean", "refused", ["NOT_READY_TO_INGEST"], ["flagged"]]);
+    assert.match(seen.preview.refusal!.issues[0]!.message, /^The job is clean, not ready to ingest/);
+    const before = await jobPrint(CLEAN.jobId);
+    // Dry run and commit alike: nothing to bring in, with its latest drift check (none yet: unchecked).
+    for (const commit of [false, true]) {
+      const [outcome] = (await run({ commit, jobNumbers: [CLEAN.number] })).outcomes;
+      assert.deepEqual(outcome, { status: "nothing-to-bring-in", jobId: CLEAN.jobId, jobNumber: CLEAN.number, drift: { outcome: "unchecked", checkedAt: null, scopes: null } },
+        `${commit ? "commit" : "dry run"}: ${JSON.stringify(outcome)}`);
+      assert.deepEqual(v7SpanningBatchLines(outcome!, commit), [`  ${CLEAN.number}: NOTHING TO BRING IN — drift unchecked`]);
+    }
+    // Behind at its latest drift check: needs re-pricing (backfill), with its gaps.
+    assert.equal((await checkAgainst(CLEAN, [2.39, 5, 0.0015])).outcome, "behind");
+    const behind = await jobPrint(CLEAN.jobId);
+    const outcome = (await run({ commit: true, jobNumbers: [CLEAN.number] })).outcomes[0]!;
+    assert.equal(outcome.status, "needs-repricing");
+    if (outcome.status !== "needs-repricing") return;
+    assert.deepEqual(outcome.drift.scopes, [{ scope: "1", console: 2.39, previous: 2.39, difference: 0 }, { scope: "2", console: 0, previous: 5, difference: -5 },
+      { scope: "3", console: 0.0015, previous: 0.0015, difference: 0 }]);
+    assert.deepEqual(v7SpanningBatchTotals([outcome], true).map((row) => [row.status, row.jobs]),
+      [["brought-in", 0], ["nothing-to-bring-in", 0], ["needs-repricing", 1], ["skipped", 0]]);
+    assert.notEqual(before, behind, "the drift check is stored");
+    assert.equal(await jobPrint(CLEAN.jobId), behind, "a commit run writes nothing of a clean job");
   });
 });
